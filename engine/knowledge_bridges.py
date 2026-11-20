@@ -130,13 +130,13 @@ class KnowledgeBridgeMixin:
         its tab: every routed column (its preparation's routes) with its bridge, built here with production's own
         pairing (``_city_bridge_sql``, ``_cell_bridge_sql``); every column of named entities its preparation types,
         not routed as a place, with the bridge of its cells' matches, exact and nearest (``_nongeo_matches``); the
-        single-column keys between the tables (``ingest``); and each table's money columns in its rows' currencies
+        single-column keys between the tables (engine/prepared.py table_links over ``ingest``'s relationships); and each table's money columns in its rows' currencies
         (engine/currency_intent.py), with the rates of every day its date column names and of ``as_of`` loaded on the
         request's database. Reads the knowledgebase."""
         from engine.currency_intent import is_currency_measure_column, is_currency_source_column
         from engine.dataset_semantics import is_synthetic_currency_column
         from engine.entities import WORLD_TABLE_TYPE
-        from engine.prepared import EntityLink, KeyLink, MoneyLink, PlaceLink, RequestLinks
+        from engine.prepared import EntityLink, MoneyLink, PlaceLink, RequestLinks, table_links
 
         database = self._database()
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
@@ -171,14 +171,7 @@ class KnowledgeBridgeMixin:
                         bridged, matched, has_country = True, len(pairs), {"country", "qid"} <= columns
                 entities.append(EntityLink(tab[table["name"]], column, table["columns"].index(column), str(held.get("label") or ""),
                                            entity_table, self._conn_bridge_name(table["name"]), placed, bridged, matched, has_country))
-        keys = []
-        for fk in fks:
-            source, target = self._table(norm, fk.get("from_table")), self._table(norm, fk.get("to_table"))
-            if (source is None or target is None or not isinstance(fk.get("from_col"), str) or not isinstance(fk.get("to_col"), str)
-                    or fk["from_col"] not in source["columns"] or fk["to_col"] not in target["columns"]):
-                continue
-            keys.append(KeyLink(tab[source["name"]], fk["from_col"], source["columns"].index(fk["from_col"]),
-                                tab[target["name"]], fk["to_col"], target["columns"].index(fk["to_col"])))
+        own = table_links(norm, fks)
         sch, _colidx, _tablemap = self.schema(norm, fks)
         rate_columns = tuple(sorted(column for column in self.words.get("exchange_rate", {}).get("columns", [])
                                     if column.startswith("rate_to_")))
@@ -200,8 +193,7 @@ class KnowledgeBridgeMixin:
             database.load_rates(list(rate_columns), sorted(days))
             money.append(MoneyLink(tab[table["name"]], table["columns"].index(currency), table["columns"].index(dated) if dated else None,
                                    tuple(table["columns"].index(name) for name in measures), rate_columns, as_of))
-        return RequestLinks({tab[table["name"]]: tuple(table["columns"]) for table in norm}, tuple(places), tuple(entities),
-                            tuple(keys), tuple(money))
+        return RequestLinks(own.columns, tuple(places), tuple(entities), own.keys, tuple(money))
 
     def _hold_unconnected(self, database, table, planner_schema, plan):
         """Hold the searched table with a row key, and one vector per free-text cell, in the request's database.

@@ -5,10 +5,12 @@ The live stack routes each question (ComposedKnowledgeQuery._composed):
     (EXCL/RATIO/TOPN/SHARE/TIME/HAVING/SORT/DIVIDE/RUNNING) -> the ComposeEngine view stack;
   * everything else -> the delegate, whose SQL for a self-contained (no-world) table is the own-data
     planner (tables.py select_query -> engine/program/answer.py): the Decisions path reads each table of the
-    database as a tab of one workbook, closed questions over options the engine built read the question, the
-    decoder builds programs (each a typed SQL AST over one table: the program language joins no tables), the
-    verifier runs them, and one choice call weighs those that returned rows; the likeliest answer is answered,
-    warned or asked back. A question whose gold joins tables can be right only when one table answers it.
+    database as a tab of one workbook, connected as serving connects it: each key between the tables (declared and
+    found from the rows) gains the other table's columns (engine/prepared.py table_links, engine/program/connected.py;
+    Spider has no knowledgebase, so no place, entity or money link), closed questions over options the engine built
+    read the question, the decoder builds programs (each a typed SQL AST over one table and what its keys reach), the
+    verifier runs them, and one choice call weighs those that returned rows; the likeliest answer is answered, warned
+    or asked back.
 
 The default `--backend sql` preserves the established selected-SQL evaluation. `python` lowers the same
 selected typed AST to the shared deterministic plan and executes its generated ORM/Python program on an
@@ -189,9 +191,18 @@ def ast_predict(
     member (an oracle ablation, never serving)."""
     from engine.prepared import scratch_database
 
-    with scratch_database():
+    with scratch_database() as database:
+        _connect(database, enc, schema_fks)
         return _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execution_backend,
                             python_row_limit)
+
+
+def _connect(database, enc, schema_fks):
+    """Register the request's links as serving does (engine/knowledge.py registers link_request), without the
+    knowledgebase Spider has none of: the keys between its tables (engine/prepared.py table_links)."""
+    from engine.prepared import table_links
+
+    database.link_with(lambda tables: table_links(*enc.ingest(tables, explicit_fks=schema_fks or ())))
 
 
 def _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execution_backend,
@@ -472,7 +483,8 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
     selection share one set of Decisions calls (engine/prepared.py RequestDatabase.answered)."""
     from engine.prepared import scratch_database
 
-    with scratch_database():
+    with scratch_database() as database:
+        _connect(database, enc, schema_fks)
         return _predict(enc, eng, reader, tabs, question, schema_fks, ast_schema_cache, selection, use_compose,
                         execution_backend, python_row_limit)
 

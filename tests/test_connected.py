@@ -273,6 +273,22 @@ def test_select_query_reads_the_connected_workbook_and_asks_the_currency_first()
     print("  PASS  select_query asks the currency first, once per request, and reads the connected workbook")
 
 
+def test_the_spider_evaluator_connects_the_keys_serving_finds() -> None:
+    """The Spider evaluator registers the request's own links as serving does (engine/prepared.py table_links, which
+    engine/knowledge_bridges.py request_links extends with the knowledgebase), so a key between two tables reaches the
+    other table's columns; before, the evaluator registered no linker and read every database unconnected."""
+    from spider.probe.full_eval import _connect
+    with scratch_database() as database:
+        _connect(database, TableQuery(), None)
+        tables = _tables()
+        key, _prepared = prepared_workbook(tables)
+        links = database.links(key, tables)
+    assert links is not None, "the evaluator registers the request's links"
+    assert links.keys == (KEY,), links.keys
+    assert not (links.places or links.entities or links.money), "Spider has no knowledgebase"
+    assert links.columns == {"orders": tuple(ORDERS["columns"]), "customers": tuple(CUSTOMERS["columns"])}
+
+
 TESTS = [
     test_a_key_and_what_it_reaches_hold_the_other_tables_values,
     test_a_place_column_reaches_its_country_continent_currency_and_population,
@@ -287,6 +303,7 @@ TESTS = [
     test_without_links_the_workbook_is_its_own,
     test_the_preparation_is_kept_by_what_the_links_reach,
     test_select_query_reads_the_connected_workbook_and_asks_the_currency_first,
+    test_the_spider_evaluator_connects_the_keys_serving_finds,
 ]
 
 

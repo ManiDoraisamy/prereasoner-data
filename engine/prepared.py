@@ -591,6 +591,26 @@ class RequestLinks:
     money: tuple[MoneyLink, ...] = ()
 
 
+def table_links(norm, fks) -> RequestLinks:
+    """A request's links among its own tables: each table's columns and the single-column keys between them (``fks``,
+    engine/tables.py ingest's relationships, declared and found from the rows), each side named by its tab. The world
+    layer adds what the tables reach in the knowledgebase (engine/knowledge_bridges.py request_links); the Spider
+    evaluator, which has no knowledgebase, registers these alone (spider/probe/full_eval.py)."""
+    named = {}
+    for table in norm:
+        named.setdefault(table["name"], table)
+    tab = {name: str(table["grid"]["name"]) for name, table in named.items()}
+    keys = []
+    for fk in fks:
+        source, target = named.get(fk.get("from_table")), named.get(fk.get("to_table"))
+        if (source is None or target is None or not isinstance(fk.get("from_col"), str) or not isinstance(fk.get("to_col"), str)
+                or fk["from_col"] not in source["columns"] or fk["to_col"] not in target["columns"]):
+            continue
+        keys.append(KeyLink(tab[source["name"]], fk["from_col"], source["columns"].index(fk["from_col"]),
+                            tab[target["name"]], fk["to_col"], target["columns"].index(fk["to_col"])))
+    return RequestLinks({tab[table["name"]]: tuple(table["columns"]) for table in norm}, keys=tuple(keys))
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # The request database
 # ---------------------------------------------------------------------------------------------------------------
