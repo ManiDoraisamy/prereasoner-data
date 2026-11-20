@@ -258,6 +258,34 @@ def test_tied_lines_print_in_sheet_order():
     assert [row[0] for row in _answer(Rank(ENTITY_GROUP, table.id, LOWEST, (), speed, key=name, function=SUM), tables)] == ["Munchlax", "Pyukumuku", "Shuckle"]
 
 
+def test_a_fused_leaf_shows_its_answer_without_the_tie_order():
+    """A line rank selects its line number first so tied lines print in sheet order, and a single answer drops it
+    (engine/program/execute.py). A decomposition leaf fuses the plan itself (engine/decomposition.py): shown_plan ends
+    it in the answer's columns, so a fused answer never shows a "tied_line" column or binds two leaves on it."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+    from engine.deterministic import DeterministicAnalysis, ExecutionMode
+    from engine.prepared import SharedConnection
+    from engine.program.execute import prepare
+    from engine.program.lowering import TIED_LINE, shown_plan, to_plan
+    rows = [["Name", "Speed"], ["Shuckle", 5.0], ["Abra", 90.0], ["Munchlax", 5.0]]
+    catalog, table, tables = _setup(rows)
+    name, speed = Col(table.id, 0), Col(table.id, 1)
+    tied = Rank(ENTITY_LINE, table.id, LOWEST, (), speed, (name,))
+    plan = to_plan(tied, catalog, "leaf", whole_tables=True)
+    assert TIED_LINE in plan.view_columns()[plan.output], "the rank orders its tied lines by their line number"
+    shown = shown_plan(plan)
+    assert TIED_LINE not in shown.view_columns()[shown.output]
+    prepare(tied, tables)
+    shared = SharedConnection(tables.connection)
+    engine = create_engine("sqlite+pysqlite://", creator=lambda: shared, poolclass=StaticPool)
+    result = DeterministicAnalysis(shown, conversation_schema="main", dataset_version="sheet").run(engine, mode=ExecutionMode.VERIFY, estimated_rows=3)
+    assert sorted(tuple(row.values())[0] for row in result.rows) == ["Munchlax", "Shuckle"], result.rows
+    # contrastive: a rank of two lines has no tie column, and its plan is returned as it is
+    two = to_plan(Rank(ENTITY_LINE, table.id, LOWEST, (), speed, (name,), count=2), catalog, "leaf", whole_tables=True)
+    assert shown_plan(two) is two
+
+
 def test_units():
     """21 questions. Percent cells are fractions: 10% or better is >= 0.1. A share may be stated either way. Thousands are reported as printed, never scaled."""
     assert stated_number("10%") == 0.1 and stated_number("$1,000") == 1000.0 and stated_number("30M") is None and stated_number("10", percent_column=True) == 0.1 and stated_number("0.5", percent_column=True) == 0.5 and stated_number("ten") is None
@@ -1758,7 +1786,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_tied_lines_print_in_sheet_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

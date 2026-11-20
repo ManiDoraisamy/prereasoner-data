@@ -443,6 +443,7 @@ def _leaf_readings(planner, slug, node, tables, *, feeds_cross: bool, question: 
     """
     from engine.analysis import analysis_view_name
     from engine.deterministic.lower import UnsupportedDeterministicPlan
+    from engine.program.lowering import shown_plan
 
     selection = planner.select_query(node["question"], tables)
     if selection.catalog is not None:
@@ -476,7 +477,7 @@ def _leaf_readings(planner, slug, node, tables, *, feeds_cross: bool, question: 
                 first_rejection = rejection
             continue
         try:
-            child = selection.plan(index, node["id"], whole_tables=True)
+            child = shown_plan(selection.plan(index, node["id"], whole_tables=True))
         except UnsupportedDeterministicPlan as exc:
             if first_lowering_failure is None:
                 first_lowering_failure = exc

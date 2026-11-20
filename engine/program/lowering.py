@@ -385,4 +385,18 @@ def to_plan(program: Program, catalog: Catalog, slug: str = "program", whole_tab
     return replace(plan, tables=tables)
 
 
-__all__ = ["KEY", "TIED_LINE", "VALUE", "plan_schema", "to_plan", "to_query"]
+def shown_plan(plan: AnalysisPlan) -> AnalysisPlan:
+    """``plan`` ending in the columns its answer shows: a line rank's tied lines leave out the line number that put them
+    in sheet order (TIED_LINE; engine/program/execute.py drops it from a single answer), so a decomposition's fused plan,
+    which orders its own rows, never shows or binds on it (engine/decomposition.py)."""
+    from engine.deterministic.plan import ProjectedView, SelectedValue, ViewValue
+
+    columns = plan.view_columns()[plan.output]
+    if TIED_LINE not in columns:
+        return plan
+    shown = ProjectedView(f"{plan.output}_shown", plan.output,
+                          tuple(SelectedValue(column, ViewValue(column)) for column in columns if column != TIED_LINE))
+    return replace(plan, views=(*plan.views, shown), output=shown.name)
+
+
+__all__ = ["KEY", "TIED_LINE", "VALUE", "plan_schema", "shown_plan", "to_plan", "to_query"]
