@@ -10,7 +10,7 @@ from engine.sheet.formulas import FormulaShape, classify, mark_runs
 from engine.sheet.model import Cell
 from engine.sheet.names import F_DATE, F_GENERAL, F_PERCENT, P_DAY, V_BOOL, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT
 from engine.sheet.payload import TabPayload
-from engine.sheet.values import format_kind, is_error, is_marker, parse_number, parse_period, period_of_serial
+from engine.sheet.values import aside_number, format_kind, is_error, is_marker, parse_number, parse_period, period_of_serial
 
 
 _RULE = re.compile(r"^(?:[-=_~]\s*){2,}$|^(?:[*.]\s*){3,}$")
@@ -29,7 +29,7 @@ def _read_text(text: str, typed: str | None = None) -> tuple:
         return (V_ERROR, stripped, None, F_GENERAL)
     if is_marker(stripped):
         return (V_MARKER, stripped, None, F_GENERAL)
-    reading = parse_number(stripped)
+    reading = parse_number(stripped) or aside_number(stripped)     # "41(11)", "38 (100)": a number and its bracketed aside
     if reading is not None:
         return (V_NUMBER, reading.value, None, F_PERCENT if reading.percent else F_GENERAL)
     period = parse_period(stripped if typed is None else typed)

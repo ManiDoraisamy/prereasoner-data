@@ -16,12 +16,13 @@ from functools import lru_cache
 
 from engine.sheet.names import (F_CURRENCY, F_DATE, F_DURATION, F_GENERAL, F_NUMBER, F_PERCENT, F_TEXT, F_TIME, P_DAY, P_MONTH, P_RANGE, P_YEAR)
 
-_NUMBER = re.compile(r"^(?P<open>\(?)\s*(?P<lead>[-+]?)\s*(?P<money>[$€£¥]?)\s*(?P<sign>[-+]?)\s*(?P<body>\d[\d,]*(?:\.\d*)?|\.\d+)(?:[eE](?P<exp>[-+]?\d+))?\s*"
+_NUMBER = re.compile(r"^(?P<open>\(?)\s*(?P<lead>[-+−]?)\s*(?P<money>[$€£¥]?)\s*(?P<sign>[-+−]?)\s*(?P<body>\d[\d,]*(?:\.\d*)?|\.\d+)(?:[eE](?P<exp>[-+]?\d+))?\s*"
                      r"(?P<pct>%?)\s*(?P<trail>-?)\s*(?P<close>\)?)$")
 _THOUSANDS_OK = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d*)?$")
 _ERROR = re.compile(r"^#(?:NULL!|DIV/0!|VALUE!|REF!|NAME\?|NUM!|N/A|ERROR!|GETTING_DATA)$", re.I)     # the file format's own error codes
 _MARKERS = frozenset({"-", "--", "---", "?", "??", "*", "**", "."})     # marks, not words: a filled cell saying there is no value
 _LETTER = r"[^\W\d_]"     # a letter of any script
+MINUS_SIGN = "−"     # the minus sign itself (U+2212), as typeset tables print a negative number
 _WITH_WORD = re.compile(rf"^(?P<number>\(?[-+$]?\s*\d[\d,]*(?:\.\d+)?\)?%?)\s+\(?{_LETTER}[\w /.-]*\)?$")
 
 
@@ -47,7 +48,7 @@ def parse_number(text: str) -> NumberReading | None:
     percent = bool(m.group("pct"))
     if percent:
         value /= 100.0
-    negative = bool(m.group("open")) ^ ("-" in (m.group("lead"), m.group("sign"), m.group("trail")))
+    negative = bool(m.group("open")) ^ any(mark in (m.group("lead"), m.group("sign"), m.group("trail")) for mark in ("-", MINUS_SIGN))
     if not math.isfinite(value):
         return None
     return NumberReading(-value if negative else value, percent, m.group("money"))
@@ -68,13 +69,28 @@ def number_with_word(text: str) -> NumberReading | None:
     return parse_number(m.group("number")) if m else None
 
 
+_ASIDE = re.compile(r"^(?P<number>[-+−]?\s*[$€£¥]?\d[\d,]*(?:\.\d+)?%?)\s*\((?P<aside>[^()]+)\)$")
+_UNIT_ASIDE = re.compile(r"^(?P<before>[^()]*\S)\s*\([^()]*\d[^()]*\)$")     # what stands before a bracket holding a figure
 _QUANTITY = re.compile(rf"^(?P<number>\(?[-+$]?\s*\d[\d,]*(?:\.\d+)?\)?)\s+(?P<unit>{_LETTER}[^\W\d_/.-]*[/.-]?(?:[ /.-]?{_LETTER}[^\W\d_/.-]*){{0,2}})$")
 
 
+def aside_number(text: str) -> NumberReading | None:
+    """A number with a second figure in brackets after it, as "41(11)" or "38 (100)": the bracket holds another reading
+    of it (another unit) or a part of it, so the cell reads as its first number; None otherwise. Only figures: a bracket
+    holding words ("4 (last: 1958)", "300,000 (MAQ)") is no aside of a number."""
+    m = _ASIDE.match(" ".join(text.split()))
+    if m is None or parse_number(m.group("aside")) is None:
+        return None
+    return parse_number(m.group("number"))
+
+
 def quantity_of(text: str) -> tuple[float, str] | None:
-    """A number with a unit after it, as "1,370 tons" or "20 knots": (the number, the unit folded: lower case, a final
-    full stop dropped), or None. A column holding one unit throughout reads as numbers of it (compiler._type_column)."""
-    m = _QUANTITY.match(" ".join(text.split()))
+    """A number with a unit after it, as "1,370 tons" or "20 knots", the same unit's figure in another unit after it in
+    brackets or not ("1.90 m (6 ft 3 in)"): (the number, the unit folded: lower case, a final full stop dropped), or
+    None. A column holding one unit throughout reads as numbers of it (compiler._type_column)."""
+    text = " ".join(text.split())
+    aside = _UNIT_ASIDE.match(text)
+    m = _QUANTITY.match(aside.group("before") if aside else text)
     if m is None or len(m.group("unit")) > 20:
         return None
     reading = parse_number(m.group("number"))

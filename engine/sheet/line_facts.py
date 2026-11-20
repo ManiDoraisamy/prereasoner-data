@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from engine.sheet.grid import Grid
 from engine.sheet.names import F_CURRENCY, FX_AGG_COLUMN, FX_AGG_ROW, FX_COLUMN_ARITH, FX_LINK_COLUMN, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT
-from engine.sheet.values import year_number
+from engine.sheet.values import parse_number, year_number
 
 _LABEL_VALUE = re.compile(r"^[^:]{2,40}:(\s|$)")
 _STYLE_WINDOW = 8
@@ -62,8 +62,9 @@ class LineFacts:
 
 
 def _written_index(cell) -> bool:
-    """A column index written as text, as (1) or (2): a label, though it parses as a number."""
-    return isinstance(cell.raw, str) and abs(cell.value) < 100 and float(cell.value).is_integer()
+    """A column index written as text, as (1) or (2): a label, though it parses as a number. A figure with its aside,
+    "38 (100)", is a figure."""
+    return isinstance(cell.raw, str) and abs(cell.value) < 100 and float(cell.value).is_integer() and parse_number(cell.raw) is not None
 
 
 def _style_share(grid: Grid, row: int) -> tuple[float, float, float]:

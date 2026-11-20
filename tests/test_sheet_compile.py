@@ -314,6 +314,36 @@ def test_stray_cells_are_set_apart_by_kind():
     assert sum(line.cells[1].value for line in table.lines if line.cells[1].stray is None) == 1 + 5 + 9 + 10 + 11 + 12 + 13 + 14
 
 
+def test_a_number_with_a_bracketed_aside_reads_as_its_number():
+    """Typeset tables print a figure with another reading of it in brackets: caps and goals "41(11)", a temperature
+    and its Fahrenheit "38 (100)", a height in metres and in feet "1.90 m (6 ft 3 in)", a negative with the minus sign
+    itself (U+2212). Each reads as its first number, showing what the sheet wrote; before, they were text: "who had
+    more points?" found no number column, and the months table's text lines grew into its header."""
+    from engine.program.semantics import cell_text
+    minus = "−"
+    rows = [["Player", "-1967", "Total"], ["Shigeo", "41(11)", "45(11)"], ["Mitsuo", "37(2)", "40(2)"], ["Takaji", "4(0)", "48(1)"]]
+    table = _tab(rows).tables[0]
+    assert [column.kind for column in table.columns] == [V_TEXT, V_NUMBER, V_NUMBER]
+    assert [line.cells[2].value for line in table.lines] == [45.0, 40.0, 48.0] and cell_text(table.lines[0].cells[2]) == "45(11)"
+    months = [["Month", "Jan", "Feb", "Mar", "Apr"], ["Record high C (F)", "38 (100)", "40 (104)", "43 (109)", "48 (118)"],
+              ["Record low C (F)", minus + "7 (19)", minus + "7 (19)", minus + "1 (30)", "5 (41)"], ["Sunshine hours", "193", "137", "155", "167"]]
+    model = _tab(months)
+    assert len(model.tables) == 1
+    table = model.tables[0]
+    assert table.header_rows == (1,) and [line.row for line in table.lines] == [2, 3, 4], (table.header_rows, [line.row for line in table.lines])
+    assert [table.lines[1].cells[p].value for p in range(1, 5)] == [-7.0, -7.0, -1.0, 5.0]
+    heights = [["Name", "Height"], ["Fabiana", "1.93 m (6 ft 4 in)"], ["Thaisa", "1.96 m (6 ft 5 in)"], ["Sheilla", "1.85 m (6 ft 1 in)"]]
+    table = _tab(heights).tables[0]
+    assert (table.columns[1].kind, table.columns[1].unit) == (V_NUMBER, "m") and [line.cells[1].value for line in table.lines] == [1.93, 1.96, 1.85]
+    # contrastive: a bracket holding words is no aside, and an accounting negative still reads negative
+    rows = [["Team", "Best"], ["a", "4 (last: 1958)"], ["b", "2 (first: 1950)"], ["c", "1 (last: 1949)"], ["d", "(1,234)"]]
+    table = _tab(rows).tables[0]
+    assert table.columns[1].kind != V_NUMBER and table.lines[3].cells[1].value == -1234.0
+    # negative: a plain text column stays text
+    rows = [["Code", "Name"], ["a", "Region (North)"], ["b", "Region (South)"], ["c", "Region (East)"]]
+    assert _tab(rows).tables[0].columns[1].kind == V_TEXT
+
+
 def test_a_column_of_one_unit_reads_as_numbers():
     """"1,370 tons", "20 knots" (WikiTableQuestions: "which name has the largest displacement?" could not rank a text
     column): a column whose cells nearly all state a number with one unit reads as numbers of it, each cell showing what
@@ -909,7 +939,7 @@ TESTS = [
     test_continuation_lines_take_no_label, test_a_family_says_how_much_its_members_repeat_each_other, test_a_date_from_the_clock_is_no_as_of, test_an_unchanged_sheet_keeps_its_hash_and_its_model,
     test_an_axis_holds_one_grain_and_no_totals, test_a_group_axis_needs_one_format, test_a_tall_merge_over_a_number_is_one_figure, test_a_name_keeps_what_the_sheet_wrote, test_running_balance_is_not_a_total, test_a_groups_subtotal_is_printed_wherever_it_stands, test_bands_give_sections,
     test_sparse_label_column_fills_down_and_traces_to_its_source, test_stacked_tables_split, test_repeated_header_continues_its_table, test_side_by_side_blocks_split, test_spacer_columns_do_not_split_one_table,
-    test_repeated_blocks_merge_into_one_family, test_months_across_are_an_axis, test_sequence_and_group_axes, test_stray_cells_are_set_apart_by_kind, test_a_column_of_one_unit_reads_as_numbers, test_hidden_lines_and_columns_are_kept_and_flagged,
+    test_repeated_blocks_merge_into_one_family, test_months_across_are_an_axis, test_sequence_and_group_axes, test_stray_cells_are_set_apart_by_kind, test_a_number_with_a_bracketed_aside_reads_as_its_number, test_a_column_of_one_unit_reads_as_numbers, test_hidden_lines_and_columns_are_kept_and_flagged,
     test_label_value_notes, test_tab_family_merges_with_the_tab_name_as_a_column, test_direct_markers_name_the_header, test_style_alone_never_moves_the_first_header, test_a_chart_tab_and_empty_tabs_do_not_crash,
     test_origin_shifts_addresses, test_compile_is_deterministic, test_every_fact_traces_to_a_cell, test_header_decision_is_a_sum_over_named_features, test_xlsx_reader_builds_the_wire_payload,
 ]
