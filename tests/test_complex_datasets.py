@@ -214,6 +214,7 @@ def test_the_serving_entry_point_carries_the_proposal_to_the_compose_layer():
 
     class _Qw:
         def begin_request(self): pass
+        def link_request(self, as_of=None, explicit_fks=()): pass
         def begin_typing(self): pass
         def take_typing(self): return {}
         def end_request(self): pass

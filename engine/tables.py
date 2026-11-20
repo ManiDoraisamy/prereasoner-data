@@ -187,21 +187,36 @@ def parse_rows(text):
     return rows
 
 
+_PLAIN_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def sheet_cell(value):
+    """A cell a sheet holds as text, as the sheet compiler is given it (engine/sheet): a plain number is a number, and
+    every other text ("$1,234.50", "25%", "1,370 tons", a date, a name) stays as written for the sheet's own reader,
+    which reads its number, unit, percent or day. A cell that is not text is kept. Typed as parse_rows types a cell
+    (_typed), "25%" would be 25 and "$1,234.50" a bare amount; left all text, a column of small whole numbers reads
+    as labels and the first line of figures joins the header."""
+    if isinstance(value, str) and _PLAIN_NUMBER.fullmatch(value.strip()):
+        return float(value)
+    return value
+
+
 def table_grid(name, csv_text=None, header=None, rows=None):
     """The sheet the own-data path reads for one request table (engine/program/answer.py), as the sheet compiler's wire
     form of a tab (engine/sheet/payload.py), named as the table is: {"name", "rows"}. A table's own rows are not it:
     parse_rows drops blank rows and canonicalizes the header, which destroys the structure the compiler reads.
 
-    An uploaded sheet (``csv_text``): its CSV parsed as plain rows, blank rows kept, every cell typed exactly as
-    parse_rows types it (_unquote, then _typed), the trailing all-blank columns trimmed as parse_rows trims them. A table
-    built from rows (``header`` and ``rows``: a saved reference, an enrichment table, a Spider database table): its
-    header and rows: what ``normalize_tables`` gives a table that carries no grid. ``grid_with_column`` carries a column
-    the request appends (dataset semantics) into an uploaded sheet's."""
+    An uploaded sheet (``csv_text``): its CSV parsed as plain rows, blank rows kept, each cell unquoted as parse_rows
+    unquotes it and given as ``sheet_cell`` gives a text cell, the trailing all-blank columns trimmed as parse_rows
+    trims them. A table built from rows (``header`` and ``rows``: a saved reference, an enrichment table, a Spider
+    database table, a host's rows): its header as written and its rows, each text cell as ``sheet_cell`` gives it: what
+    ``normalize_tables`` gives a table that carries no grid. ``grid_with_column`` carries a column the request appends
+    (dataset semantics) into an uploaded sheet's."""
     if csv_text is None:
-        return {"name": str(name), "rows": [list(header), *rows]}
+        return {"name": str(name), "rows": [list(header), *[[sheet_cell(cell) for cell in row] for row in rows]]}
     cells = list(_csv.reader(io.StringIO(csv_text or ""), skipinitialspace=True))
     width = max((index + 1 for row in cells for index, value in enumerate(row) if value.strip()), default=0)
-    return {"name": str(name), "rows": [[_typed(_unquote(value)) for value in row[:width]] for row in cells]}
+    return {"name": str(name), "rows": [[sheet_cell(_unquote(value)) for value in row[:width]] for row in cells]}
 
 
 def grid_with_column(grid, header, value):
@@ -411,7 +426,11 @@ class TableQuery:
         decomposition leaves and the evaluators (the Spider evaluator, the messy benchmark, the dev replay) call it.
 
         The tables are one workbook, a tab per table in their order, each its ``grid`` (``table_grid``), prepared once
-        per content (engine/prepared.py prepared_workbook). The Decisions path answers the question on the request's
+        per content (engine/prepared.py prepared_workbook). In a served request the world layer's links connect it
+        (engine/program/connected.py, engine/prepared.py connected_workbook): each place or entity column gains the
+        knowledgebase columns it reaches, each key the other table's columns, and, when the convert question names the
+        currency the question wants (engine/program/answer.py convert_target), each money column its amount in that
+        currency. The Decisions path answers the question on the request's
         database (engine/program/answer.py), once per request (RequestDatabase.answered), naming the tab the client has
         in view (RequestDatabase.active_sheet): the stock reading and one closed-question call read the question, the
         decoder builds the programs, the verifier runs each one, one choice call weighs those that returned rows, and
@@ -420,9 +439,10 @@ class TableQuery:
         (engine/program/lowering.py) and SQL with its read-as line as evidence. A question longer than
         ONE_QUERY_WORDS words that the path asks back about asks, in an analysis, for the decomposition proposal
         (engine/decomposition.py declined_compound). Raises LLMUnavailable when a Decisions call fails."""
-        from engine.prepared import prepared_workbook, scratch_database
-        from engine.program.answer import ASKED, WARNED, answer
+        from engine.prepared import connected_workbook, prepared_workbook, scratch_database
+        from engine.program.answer import ASKED, WARNED, answer, convert_target
         from engine.program.closed import answer_masses
+        from engine.program.connected import conversion_targets
         from engine.program.lowering import to_query
         from engine.sql_ast import render_query
         from engine.sql_candidate import ScoredQuery
@@ -430,6 +450,18 @@ class TableQuery:
 
         with scratch_database() as database:
             key, prepared = prepared_workbook(tables)
+            links = database.links(key, tables)
+            if links is not None:
+                own_key, own = key, prepared
+                key, prepared = database.connected(own_key, None, lambda: connected_workbook(own_key, own, links, database.connection))
+                targets = conversion_targets(links)
+                if targets:
+                    catalog = prepared.catalog
+                    target = database.answered(("convert", key), question,
+                                               lambda: convert_target(question, catalog, targets, database.active_sheet))
+                    if target is not None:
+                        key, prepared = database.connected(own_key, target,
+                                                           lambda: connected_workbook(own_key, own, links, database.connection, target))
             store = database.program_tables(key, prepared.catalog)
             said = database.answered(key, question,
                                      lambda: answer(question, prepared, store, database.active_sheet))

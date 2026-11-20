@@ -42,6 +42,7 @@ import zlib
 from collections import OrderedDict
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -518,6 +519,79 @@ class BaseImage:
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# The request's links
+# ---------------------------------------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class PlaceLink:
+    """A request table's column production routes to a place type (city, country, state), and its bridge: ``bridged``
+    when the bridge holds rows for it, ``cells`` its distinct cells and ``matched`` those the bridge holds."""
+    tab: str
+    column: str
+    position: int
+    world_type: str | None
+    bridge: str
+    bridged: bool
+    cells: int
+    matched: int
+
+
+@dataclass(frozen=True)
+class EntityLink:
+    """A request table's column of named entities (banks, hospitals), as its preparation types it: ``label`` the type,
+    ``entity_table`` the knowledgebase table of that type, ``placed`` when the column is routed as a place (its bridge is
+    then its place's), ``matched`` its cells the bridge holds, ``has_country`` when the entity table names each
+    entity's country."""
+    tab: str
+    column: str
+    position: int
+    label: str
+    entity_table: str
+    bridge: str
+    placed: bool
+    bridged: bool
+    matched: int
+    has_country: bool
+
+
+@dataclass(frozen=True)
+class KeyLink:
+    """A key of one request table into another, as production finds it (engine/tables.py ingest)."""
+    tab: str
+    column: str
+    position: int
+    other_tab: str
+    other_column: str
+    other_position: int
+
+
+@dataclass(frozen=True)
+class MoneyLink:
+    """A request table's money columns in its rows' own currencies: its currency-code column, its date column (None
+    without one), the money columns, the knowledgebase's rate columns (rate_to_usd, ...) and the as-of day a row with
+    no date is converted on. The request's database holds the rates of every day the date column names and of the
+    as-of day."""
+    tab: str
+    currency: int
+    date: int | None
+    measures: tuple[int, ...]
+    rate_columns: tuple[str, ...]
+    as_of: str
+
+
+@dataclass(frozen=True)
+class RequestLinks:
+    """What production connects for a request's tables (engine/knowledge_bridges.py request_links), each table named
+    by its tab (its grid's name); ``columns`` each table's column names by position. The own-data path places them on
+    its workbook (engine/program/connected.py)."""
+    columns: dict = field(default_factory=dict)
+    places: tuple[PlaceLink, ...] = ()
+    entities: tuple[EntityLink, ...] = ()
+    keys: tuple[KeyLink, ...] = ()
+    money: tuple[MoneyLink, ...] = ()
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # The request database
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -534,6 +608,9 @@ class RequestDatabase:
         self.active_sheet = active_sheet
         self._program = None                 # (workbook identity, the own-data path's tables on this database)
         self._answers = {}                   # (workbook identity, question) -> the own-data path's answer
+        self._linker = None                  # the world layer's builder of the request's links (link_with)
+        self._links = {}                     # workbook identity -> the request's links
+        self._connected = {}                 # (workbook identity, currency) -> (identity, preparation) connected
         self._tables = {}                    # main table -> fingerprint of the rows loaded into it
         self._fingerprints = {}              # (table name, id(rows)) -> (rows, fingerprint) for this request
         self._prepared = {}                  # preparation key -> the preparation, its rows held
@@ -624,6 +701,28 @@ class RequestDatabase:
         elif self._program[0] != key:
             raise ValueError("a request's database holds the program tables of one workbook")
         return self._program[1]
+
+    def link_with(self, linker):
+        """Have ``linker(tables)`` build the request's links (RequestLinks) when the own-data path first reads a
+        workbook of the request. The world layer registers it for a served request (engine/knowledge_bridges.py
+        link_request); a database with none (an evaluator's scratch database) reads its workbook unconnected."""
+        self._linker = linker
+
+    def links(self, key, tables):
+        """The request's links for the workbook ``key`` of ``tables``, built once per request; None without a linker."""
+        if self._linker is None:
+            return None
+        if key not in self._links:
+            self._links[key] = self._linker(tables)
+        return self._links[key]
+
+    def connected(self, key, target, compute):
+        """``compute()``, the workbook ``key`` connected by the request's links with its money columns read in
+        ``target`` (``connected_workbook``), once per request: the compose probe and the delegate read it alike."""
+        slot = (key, target)
+        if slot not in self._connected:
+            self._connected[slot] = compute()
+        return self._connected[slot]
 
     def answered(self, key, question, compute):
         """``compute()``, the own-data path's answer to ``question`` over the workbook ``key``, once per request: the
@@ -870,12 +969,41 @@ def prepared_workbook(tables):
             return key, held[0]
     with request_timing.span("prepare_workbook"):
         prepared = prepare(workbook_from_json({"name": "", "tabs": tabs}))
+    _keep_workbook(key, prepared, cells)
+    return key, prepared
+
+
+def _keep_workbook(key, prepared, cells):
     if cells <= WORKBOOK_CACHE_CELLS:
         with _WORKBOOKS_LOCK:
             _WORKBOOKS[key] = (prepared, cells)
             while sum(entry[1] for entry in _WORKBOOKS.values()) > WORKBOOK_CACHE_CELLS:
                 _WORKBOOKS.popitem(last=False)
-    return key, prepared
+
+
+def connected_workbook(key, prepared, links, connection, target=None):
+    """(identity, preparation) of the workbook ``key`` with what the request's ``links`` connect
+    (engine/program/connected.py), its money columns read in ``target`` when one is given: the reached columns are
+    read on the request's ``connection``, and the preparation is kept by the workbook and what they hold, so requests
+    reaching the same knowledgebase rows share it. The workbook's own (key, preparation) when nothing links."""
+    from engine.program.answer import prepare_catalog
+    from engine.program.connected import connect, linked_columns, links_on, reach
+    placed = links_on(prepared.catalog, links, target)
+    if not placed:
+        return key, prepared
+    reached = reach(prepared.catalog, placed, connection)
+    identity = hashlib.sha256(json.dumps([key, [repr(link) for link in placed], reached], default=str, ensure_ascii=False,
+                                         separators=(",", ":")).encode("utf-8")).hexdigest()
+    with _WORKBOOKS_LOCK:
+        held = _WORKBOOKS.get(identity)
+        if held is not None:
+            _WORKBOOKS.move_to_end(identity)
+            return identity, held[0]
+    with request_timing.span("prepare_connected"):
+        catalog = connect(prepared.catalog, placed, reached)
+        connected = prepare_catalog(catalog, prepared.typed, linked_columns(placed))
+    _keep_workbook(identity, connected, sum(len(table.lines) * len(table.columns) for table in catalog.tables))
+    return identity, connected
 
 
 # ---------------------------------------------------------------------------------------------------------------

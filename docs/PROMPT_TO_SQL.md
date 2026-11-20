@@ -96,9 +96,19 @@ asks back, nothing is served and the reply says how the likeliest reading read t
 - **Valid by construction**: every candidate is a well-typed AST over the request's own tables, so the
   planner cannot emit malformed SQL, and a value a filter names is one the sheet holds.
 
-What the path does not do: the program language reads one table at a time and joins none, so a question
-that needs two tables of a request joined (a saved reference beside an upload, a Spider schema's foreign
-keys) is answered from one table or asked back.
+In a served request the workbook is first connected
+([`engine/program/connected.py`](../engine/program/connected.py)): the world layer's links for the request
+(each routed place column's bridge, each column of named entities, the keys between the request's tables,
+the money columns and their rates; [`engine/knowledge_bridges.py:request_links`](../engine/knowledge_bridges.py))
+add to each table the columns they reach, `city → country`, `city → country → continent`, `customer → tier`,
+and, when one closed question finds the currency the question wants its answer in, `amount → USD`. The
+decoder lists them as any column. In the served chain a question the world path claims (a place it filters on,
+a world column it projects, a conversion it binds: `engine/knowledge_tables.py`) is answered there first; the
+connected columns serve the questions it passes on and the compose probe's reading.
+
+What the path does not do: the program language reads one table at a time, so two tables no key with unique
+values links (and a Spider schema's foreign keys, which its evaluator does not link) are answered from one
+table or asked back.
 
 ## World queries
 

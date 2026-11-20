@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
-import re
 import json
 import os
 import pickle
@@ -30,6 +29,7 @@ import psutil
 import torch
 
 from engine.named.chooser import ANSWER, Chooser
+from engine.tables import sheet_cell
 from engine.named.links import named_matrix
 from engine.named.pipeline import NamedEngine, Prepared, load_bundle
 from engine.named.reader import MODE_NAMED, MODE_NAMED_PLUS_OPEN, NamedReading
@@ -148,16 +148,6 @@ def load_studied(design: str = DESIGN) -> list[Item]:
     return sorted(items, key=lambda item: (int(item.book), item.id))
 
 
-_NUMERIC = re.compile(r"-?\d+(?:\.\d+)?")
-
-
-def _typed(cell: object) -> object:
-    """A benchmark workbook writes every cell as text, as a text upload does: a plain number reads as a number; "$1,234.50" and "25%" stay as written, and the sheet's reader takes them from there."""
-    if isinstance(cell, str) and _NUMERIC.fullmatch(cell.strip()):
-        return float(cell)
-    return cell
-
-
 def load_messy(split: str = "dev") -> list[Item]:
     """regress/messy_cases.py's questions on its seeded workbooks, graded by its own grade. The frozen split is run later, once, and never from here."""
     if split != "dev":
@@ -167,7 +157,7 @@ def load_messy(split: str = "dev") -> list[Item]:
     from regress.messy_workbooks import workbook
 
     def load(name: str) -> Catalog:
-        tabs = [{"name": tab["name"], "rows": [list(tab["columns"]), *[[_typed(cell) for cell in row] for row in tab["rows"]]]} for tab in workbook(name)]
+        tabs = [{"name": tab["name"], "rows": [list(tab["columns"]), *[[sheet_cell(cell) for cell in row] for row in tab["rows"]]]} for tab in workbook(name)]
         return Catalog.from_model(compile_workbook(workbook_from_json({"name": name, "tabs": tabs})))
 
     def right(expected, rows) -> bool:

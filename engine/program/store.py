@@ -65,12 +65,8 @@ PEER_NUMBER = "_n"
 INTEGER, TEXT, REAL, DATE = "integer", "text", "real", "date"     # what a store column holds; a day is ISO text
 
 
-def table_columns(catalog: Catalog, sql_name: str) -> list[tuple[str, str]]:
-    """(name, kind) of each column of a store table, by its SQL name (sql_table or peers_table), in its order: the
-    columns RequestTables creates."""
-    if sql_name.endswith("_peers"):
-        return [(LINE, INTEGER), (ROLE, TEXT), (LABEL, TEXT), (SECTION_FOLD, TEXT), (SECTION_PATH, TEXT), (PEER_NAME, TEXT), (PEER_FOLD, TEXT), (PEER_NUMBER, REAL), ("position", INTEGER)]
-    table = catalog.table(table_id_of(sql_name))
+def table_layout(table: CatalogTable) -> list[tuple[str, str]]:
+    """(name, kind) of each column a catalog table is stored with, in its order."""
     columns = [(LINE, INTEGER), (ROLE, TEXT), (LABEL, TEXT), (LABEL_LENGTH, INTEGER), (SECTION_FOLD, TEXT), (SECTION_TEXT, TEXT), (SECTION_PATH, TEXT)]
     for position in range(len(table.columns)):
         columns.extend(((text_column(position), TEXT), (fold_column(position), TEXT), (number_column(position), REAL), (day_column(position), DATE)))
@@ -78,7 +74,32 @@ def table_columns(catalog: Catalog, sql_name: str) -> list[tuple[str, str]]:
     return columns
 
 
+def table_columns(catalog: Catalog, sql_name: str) -> list[tuple[str, str]]:
+    """(name, kind) of each column of a store table, by its SQL name (sql_table or peers_table), in its order: the
+    columns RequestTables creates."""
+    if sql_name.endswith("_peers"):
+        return [(LINE, INTEGER), (ROLE, TEXT), (LABEL, TEXT), (SECTION_FOLD, TEXT), (SECTION_PATH, TEXT), (PEER_NAME, TEXT), (PEER_FOLD, TEXT), (PEER_NUMBER, REAL), ("position", INTEGER)]
+    return table_layout(catalog.table(table_id_of(sql_name)))
+
+
 _STORAGE = {INTEGER: "INTEGER", TEXT: "TEXT", REAL: "REAL", DATE: "TEXT"}
+
+
+def write_table(connection: sqlite3.Connection, name: str, table: CatalogTable, temporary: bool = False) -> None:
+    """Create the SQL table ``name`` holding ``table``'s lines in its stored layout (table_layout); ``temporary``: a TEMP
+    table, which the connection alone sees (engine/program/connected.py reads a table's own columns from one)."""
+    columns = table_layout(table)
+    definition = ", ".join(f'"{column}" {_STORAGE[kind]}' + (" PRIMARY KEY" if column == LINE else "") for column, kind in columns)
+    connection.execute(f'CREATE {"TEMP " if temporary else ""}TABLE "{name}" ({definition})')
+    words = [table.words(position) for position in table.prose_columns]
+    rows = []
+    for i, line in enumerate(table.lines):
+        row = [i, line.role, table.label_folds[i], len(table.label_folds[i]), table.section_folds[i], table.section_texts[i], table.section_paths[i]]
+        for position in range(len(table.columns)):
+            row.extend((table.texts[position][i], table.folds[position][i], table.numbers[position][i], table.days[position][i]))
+        row.extend(held[i] for held in words)
+        rows.append(row)
+    connection.executemany(f'INSERT INTO "{name}" VALUES ({",".join("?" * len(columns))})', rows)
 
 
 class RequestTables:
@@ -96,19 +117,7 @@ class RequestTables:
     def ensure(self, table_id: str) -> None:
         if table_id in self._loaded:
             return
-        table = self.catalog.table(table_id)
-        columns = [f'"{name}" {_STORAGE[kind]}' + (" PRIMARY KEY" if name == LINE else "") for name, kind in table_columns(self.catalog, sql_table(table_id))]
-        self.connection.execute(f'CREATE TABLE "{sql_table(table_id)}" ({", ".join(columns)})')
-        words = [table.words(position) for position in table.prose_columns]
-        width = len(columns)
-        rows = []
-        for i, line in enumerate(table.lines):
-            row = [i, line.role, table.label_folds[i], len(table.label_folds[i]), table.section_folds[i], table.section_texts[i], table.section_paths[i]]
-            for position in range(len(table.columns)):
-                row.extend((table.texts[position][i], table.folds[position][i], table.numbers[position][i], table.days[position][i]))
-            row.extend(held[i] for held in words)
-            rows.append(row)
-        self.connection.executemany(f'INSERT INTO "{sql_table(table_id)}" VALUES ({",".join("?" * width)})', rows)
+        write_table(self.connection, sql_table(table_id), self.catalog.table(table_id))
         self.connection.commit()
         self._loaded.add(table_id)
 

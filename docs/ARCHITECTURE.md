@@ -336,7 +336,9 @@ program. No model writes SQL.
 | Owner | Responsibility |
 |---|---|
 | `engine/tables.py` | The request table's grid (`table_grid`, `grid_with_column`, given to every table by `normalize_tables`), the one selection (`select_query`), its run (`_serve_ast`), the response (`serve`), the SQL guard and the one executor (`execute`, `_execute_deterministic`, on the request's database) |
-| `engine/prepared.py` | The workbook's preparation, once per content (`prepared_workbook`); the request database's program tables (`RequestDatabase.program_tables`), the request's answer to a question, once (`RequestDatabase.answered`) and the tab in view (`RequestDatabase.active_sheet`) |
+| `engine/prepared.py` | The workbook's preparation, once per content (`prepared_workbook`), and once per what a request's links reach (`connected_workbook`); the request's links (`RequestLinks`, built by the linker the world layer registers, `RequestDatabase.link_with` and `links`); the request database's program tables (`RequestDatabase.program_tables`), the request's answer to a question, once (`RequestDatabase.answered`) and the tab in view (`RequestDatabase.active_sheet`) |
+| `engine/program/connected.py` | The connected catalog: the request's links placed on the workbook (`links_on`), what each reaches on the request's database (`reach`) and the columns it adds (`connect`) |
+| `engine/knowledge_bridges.py` | The request's links (`request_links`: routes and their bridges, entity columns, keys, money columns and their rates) and their registration per served request (`link_request`) |
 | `engine/sheet/` | The sheet compiler: tabs to tables (headers, sections, printed lines, families of copies), the wire form a host sends (`payload.py`) |
 | `engine/program/answer.py` | `prepare` and `answer`: the stock reading, the closed-question calls, the decoder, the verifier, the choice and the per-answer decision |
 | `engine/program/closed.py` | The sheet's description, the closed questions per slot and the added ones, the fused reading, the choice record and the per-answer decision (`choose_answer`, `T_ASK` 0.42, `T_FLAG` 0.575) |
@@ -355,20 +357,38 @@ program. No model writes SQL.
    table is, in the request's order.
 2. `prepared_workbook` compiles it, types its text dates (one Decisions call), warms the decoder and lists each
    table's targets, once per content, kept in the process (`WORKBOOK_CACHE_CELLS`).
-3. The stock reading scores the program language's coordinates; the reading record offers each slot its options and
+3. In a served request the world layer's links connect it (`engine/program/connected.py`). `KnowledgeReasoner._serve`
+   registers `link_request` on the request's database; the own-data path's first read of the workbook builds the
+   request's links once (`request_links`): each routed place column's bridge (production's own pairing), each column
+   of named entities its preparation types (on a table with no place column) with the bridge of its cells' matches,
+   the single-column keys between the request's tables, and the money columns in their rows' currencies with the
+   rates of their days and of the as-of day. Each place or entity column whose bridge holds at least three of its
+   distinct cells (a place column only where most of its cells route) gains the knowledgebase columns it reaches, read
+   as joins on the request's database ("city → country", "city → country → continent", "city → population", "bank →
+   country"); each key whose values are unique in the other table gains that table's columns ("customer → tier",
+   "customer → city → country"). When the money columns can be read in other currencies, one closed question asks
+   which currency the question wants its answer in (`convert_target`, offered from 0.1); its converted columns join
+   ("amount → USD", the rate of the row's currency on the row's day, the as-of day without a date column), stating the
+   currency as their unit. The connected workbook is prepared once per what its links reach (`connected_workbook`),
+   and a value a key and its column both hold is read as one value in the value sets. A database with no linker (an
+   evaluator's scratch database) reads its workbook unconnected. In the served chain the world path still answers
+   first what it claims (a place filter, a projected world column, a bound conversion: `KnowledgeTableQuery.serve`, the
+   non-geographic world join); the connected columns serve the compose probe and the questions the world path passes
+   on to the delegate.
+4. The stock reading scores the program language's coordinates; the reading record offers each slot its options and
    one Decisions call answers it (a second answers the value sets, and a third, beside them, reads which of the
    question's own words name a comparison's two outcomes). The fused reading feeds the decoder's 50 most probable
    programs, each run by the verifier on the request's store tables.
-4. The programs that returned rows are listed. One Decisions call weighs them (each its read-as line and a preview
+5. The programs that returned rows are listed. One Decisions call weighs them (each its read-as line and a preview
    of its answer, and "none of these"); per answer, a candidate's probability is summed over the candidates returning
    the same answer. The likeliest answer is answered at `T_FLAG` or more, warned from `T_ASK`, and asked back below
    that or when "none of these" is likelier.
-5. `select_query` records it as a `PoolSelection`: the listed candidates (each its typed AST, SQL, answer probability
+6. `select_query` records it as a `PoolSelection`: the listed candidates (each its typed AST, SQL, answer probability
    and read-as line), ranked by that probability; `selected` (answered or warned), `warned` and `uncertain` (the
    coordinates the runner-up answer reads differently), or `declined` (the likeliest, when the path asks back). A
    question longer than `decomposition.ONE_QUERY_WORDS` (30) words that the path asks back about asks, in an analysis,
    for the decomposition proposal (`decomposition.declined_compound`); one it answers is answered.
-6. In an analysis, as every served request is, the chosen program's one plan runs through both deterministic
+7. In an analysis, as every served request is, the chosen program's one plan runs through both deterministic
    emitters on the request's database (`TableQuery._execute_deterministic`), in exact decimals, and its rows are
    shown as the sheet spells them. Outside one (an evaluator), the answer is the rows the choice read.
 
@@ -385,9 +405,11 @@ The response's `planner.selection` records the pool's size, the served member an
 probability, whether it is warned, and the member asked about when the path asks back.
 
 A request answers a question once (`RequestDatabase.answered`) although compose's routing probe, the hybrid search's
-check and the delegate each select. The program language reads one table at a time and joins none: a question that
-needs two of the request's tables joined (an upload beside a saved reference, an enrichment table, a Spider schema's
-foreign keys) is answered from one table or asked back. A decomposition's leaves are programs over one workbook; an
+check and the delegate each select. The program language reads one table at a time; what a served request's links
+reach (step 3) is a column of that table, so a question over a place's country, a key's other table or an amount in
+another currency reads one table. Two tables no single-column key with unique values links are not joined, nor is a
+Spider schema read through its foreign keys (the Spider evaluator registers no linker). A request answers on one
+connected workbook: a decomposition whose leaves want different currencies cannot share its database. A decomposition's leaves are programs over one workbook; an
 anti-join binds the leaves' keys by the store column each reads (`_bind_merge_keys`), so leaves over different tabs
 bind only through a foreign key, which store tables do not have.
 
@@ -896,8 +918,9 @@ The repository has one owner per decision:
 - own-data query selection (the Decisions path's candidates and its per-answer decision):
   `engine.tables.TableQuery.select_query`;
 - the Decisions path (the stock reading, the closed questions, the decoder, the verifier and the choice):
-  `engine.program`, with the sheet compiler `engine.sheet`; the workbook's preparation and its program tables on the
-  request database: `engine.prepared`;
+  `engine.program`, with the sheet compiler `engine.sheet`; the workbook's preparation, its connected preparation and
+  its program tables on the request database: `engine.prepared`; the connected catalog: `engine.program.connected`; the
+  request's links: `engine.knowledge_bridges` (`request_links`), registered per served request by `engine.knowledge`;
 - the one external model client (Gemini on Vertex AI and the Gemini Developer API's Decisions endpoint): `engine.llm`;
 - dual SQL/Python plan, source emission, and parity: `engine.deterministic`;
 - bounded compound-question proposal validation and typed-plan fusion: `engine.decomposition`;

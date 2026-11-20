@@ -63,6 +63,7 @@ class KnowledgeReasoner:
     def _serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
                decomposition=None):
         self.qw.begin_request()             # fresh request-scoped memo for shared-knowledge lookups
+        self.qw.link_request(as_of, explicit_fks)   # the own-data path's workbook gains what the request's tables reach
         if NEAR.search(question or "") and self._asks_for_places(question):
             r = self._nearby(question)
             if r:                                                           # geo nearby handled (server emits its result)

@@ -600,6 +600,9 @@ def test_a_nearness_word_reaches_the_place_lookup_only_for_places():
         def begin_request(self):
             pass
 
+        def link_request(self, as_of=None, explicit_fks=()):
+            pass
+
         def begin_typing(self):
             pass
 

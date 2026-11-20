@@ -5,6 +5,43 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## The own-data path reads what a request's links reach (2026-11-20)
+
+The demo gate's measurement (demo25: 86 right, 2 wrong, 3 asked of 91) ran the Decisions path on a connected catalog:
+each place column gained the knowledgebase columns it reaches, each column of named entities its entity's country, each
+key between the request's tables the other table's columns, and each money column its amount in the currency the
+question asks for. The cut-over served none of these (the program language joins nothing), so the gate's world and
+currency questions could not be answered by the path that measured them. They are production code now, in one path:
+
+- **The links are production's.** `engine/knowledge_bridges.py:request_links` builds them once per request, when the
+  own-data path first reads the workbook (`KnowledgeReasoner._serve` registers `link_request`; `RequestDatabase.links`
+  calls it): each routed column's bridge with production's own pairing, each column of named entities its preparation
+  types with the bridge of its matches, the single-column keys `ingest` finds, and each table's money columns in its
+  rows' currencies with the rates of its days and the as-of day loaded on the request's database
+  (`engine/prepared.py:RequestLinks`). Nothing new decides what connects to what.
+- **The catalog gains columns, the store stays one.** `engine/program/connected.py` places the links on the compiled
+  workbook (a link kept only where its column is the request table's column at that place; a place or entity column
+  only when its bridge holds three of its distinct cells, a place column only where production routes on its cells),
+  reads what each reaches as joins on the request's database (`reach`, over a TEMP copy of the table's own columns), and
+  adds the columns to a copy of the table (`connect`). The request's tables (`RequestTables`) hold them as any column,
+  in `main`, so the deterministic emitters read them; the measurement read the same values through views, which its
+  check proved line for line equal to the catalog's.
+- **The currency is a closed question.** When the money columns can be read in other currencies, one Decisions call
+  asks which currency the question wants its answer in, over the sheet's description (`convert_target`); from 0.1 the
+  likeliest currency's converted columns join, stating the currency as their unit, and the reading and the choice decide
+  between the amount as held and the amount converted.
+- **The preparation is kept by what the links reach.** A connected workbook is prepared once per its links and the
+  rows they reach (`connected_workbook`): requests on the same sheet reaching the same knowledgebase rows share it, and a
+  day's revised rate or a new population prepares it again. A value a key and the column it keys into both hold is read
+  as one value in the value sets (`value_set_scores` with the linked column pairs).
+- **Evaluators stay unconnected.** A database with no linker (an evaluator's scratch database) reads its workbook as
+  before, so the dev replay's parity is unchanged; the demo set of `regress/run_dev_decisions.py` registers the linker
+  as a served request does, and `--demo-maps` replays it on the request databases demo25 read.
+
+A request answers on one connected workbook: two leaves of a decomposition that want different currencies cannot share
+its database (the second raises). Two tables no single-column key with unique values links are still not joined, and
+the Spider evaluator registers no linker, so Spider's foreign keys are not read.
+
 ## The Decisions path replaces the trained readers as the own-data path (2026-11-20)
 
 On the owner's order for the v1 launch, production's own-data question answering moved from the trained readers
@@ -16,11 +53,13 @@ decomposition leaves, compose's probe, the hybrid search's check and every evalu
 
 - **The workbook is each request table's grid.** `parse_rows` drops blank rows and canonicalizes the header, which
   destroys the structure the sheet compiler reads, so every request table carries `grid`: an uploaded sheet's CSV as
-  plain rows (blank rows kept, cells typed exactly as `parse_rows` types them, trailing blank columns trimmed), else its
-  header and rows (`engine/tables.py:table_grid`, which `normalize_tables` gives a table that carries none). A currency
-  a conversation states is appended to the grid as to the table. Each tab is one request table, named as the table is.
-  Cells are typed as the planner types them, so "$1,234.50" and "25%" reach the compiler as numbers, where the measured
-  dev sets wrote them as text; the fresh-dev run on CSV payloads measures what that costs.
+  plain rows (blank rows kept, trailing blank columns trimmed), else its header and rows
+  (`engine/tables.py:table_grid`, which `normalize_tables` gives a table that carries none). A currency a conversation
+  states is appended to the grid as to the table. Each tab is one request table, named as the table is. A text cell
+  reaches the compiler as a sheet holds it (`sheet_cell`): a plain number a number, any other text ("$1,234.50",
+  "25%") as written for the sheet's own reader, as the measured dev and demo sets wrote them. Typed as `parse_rows`
+  types cells, "25%" was 25 and "$1,234.50" a bare amount; left all text (a host's rows, the gate's tables), a column
+  of small whole numbers read as labels and its first line joined the header (the demo replay, below).
 - **One database per request.** The program's tables are built on the request database's connection
   (`RequestDatabase.program_tables`), loaded on first use, under names no request table takes (`_t0`: a sheet sent
   with no name is the table `t0`). Verification, the chosen plan through both emitters and decomposition all run there.

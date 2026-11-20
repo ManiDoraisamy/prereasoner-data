@@ -2,7 +2,11 @@
 
   prepare   the workbook compiled (engine/sheet), its text dates typed by the API and the workbook compiled again with
             them (engine/program/dates.py), the decoder warmed and each table's targets listed for the stock reading: once
-            per workbook content (engine/prepared.py prepared_workbook keeps it), so it holds nothing of one request.
+            per workbook content (engine/prepared.py prepared_workbook keeps it), so it holds nothing of one request. A
+            served request's links add the columns they reach (engine/program/connected.py), and the workbook so
+            connected is prepared once per what it reaches (engine/prepared.py connected_workbook).
+  convert   when the request's money columns can be read in other currencies, one closed question over the currencies:
+            the one the question wants its answer in, if any, adds those columns converted.
   answer    on the request's tables (store.py, on the request's database): the stock reading (stock.py) -> the reading
             record (closed.py) -> one decide call, and a second over the value sets when the value question has an answer; beside them the said call over the question's own words ->
             the fused reading -> the typed k-best decoder, top DECODE_K,
@@ -23,8 +27,8 @@ from engine.llm import decide
 from engine.named.chooser import PRIOR, score_candidates
 from engine.named.units import Target
 from engine.program.catalog import Catalog
-from engine.program.closed import (ANSWERED, ASKED, WARNED, answer_key, choice_record, choose_answer, fused_reading, reading_record, said_record,
-                                   value_set_question)
+from engine.program.closed import (ANSWERED, ASKED, WARNED, answer_key, choice_record, choose_answer, convert_choice, convert_record, fused_reading,
+                                   reading_record, said_record, value_set_question)
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
 from engine.program.language import Program, coordinates
@@ -42,13 +46,15 @@ DECODE_K = 50              # programs the decoder lists and the verifier runs
 
 @dataclass
 class Prepared:
-    """One workbook, ready for questions: its catalog (text dates typed), decoder, each table's targets and the text dates
-    typed (cell text -> ISO day or month). Nothing in it belongs to one request: the request's tables are built on the
+    """One workbook, ready for questions: its catalog (text dates typed), decoder, each table's targets, the text dates
+    typed (cell text -> ISO day or month) and, for a workbook a request's links connect (engine/program/connected.py),
+    the column pairs its keys link. Nothing in it belongs to one request: the request's tables are built on the
     request's database (RequestTables)."""
     catalog: Catalog
     decoder: Decoder
     targets: dict[str, tuple[list[Target], list[tuple[str, ...]]]]
     typed: dict[str, str] = field(default_factory=dict)
+    linked: frozenset[tuple[str, str]] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -83,13 +89,30 @@ def prepare(workbook: WorkbookPayload) -> Prepared:
         catalog = Catalog.from_model(compile_workbook(workbook))
     with span("decisions_dates"):
         typed = typed_dates(catalog)
-    with span("program_prepare"):
-        if typed:
+    if typed:
+        with span("program_compile"):
             catalog = Catalog.from_model(compile_workbook(workbook, typed))
+    return prepare_catalog(catalog, typed)
+
+
+def prepare_catalog(catalog: Catalog, typed: dict[str, str] | None = None, linked: frozenset[tuple[str, str]] = frozenset()) -> Prepared:
+    """A compiled workbook's catalog ready for questions: the decoder warmed and each table's targets listed. typed: the
+    text dates its compile read; linked: the column pairs its keys link (engine/program/connected.py)."""
+    with span("program_prepare"):
         decoder = Decoder(catalog)
         decoder.warm()
         targets = workbook_targets(catalog)
-    return Prepared(catalog, decoder, targets, typed)
+    return Prepared(catalog, decoder, targets, dict(typed or {}), linked)
+
+
+def convert_target(question: str, catalog: Catalog, targets: list[str], active_sheet: str | None = None) -> str | None:
+    """The currency the question wants its answer in, among ``targets``, or None: one closed question, asked before the
+    reading because it decides whether the reading is offered the money columns converted into it
+    (engine/program/connected.py Conversion). Raises LLMUnavailable."""
+    state, questions, criteria = convert_record(catalog, question, targets, active_sheet)
+    with span("decisions_convert"):
+        decision = decide(state, questions)
+    return convert_choice(decision.fields["convert"], criteria)
 
 
 def answer(question: str, prepared: Prepared, tables: RequestTables, active_sheet: str | None = None) -> Answer:
@@ -112,7 +135,7 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
     tokens = reading.tokens + (sets.tokens if sets else 0) + (said.tokens if said else 0)
     with span("program_pool"):
         fused = fused_reading(named, record, reading.fields, set_names, sets.fields["value_set"] if sets else None,
-                              said_words, said.fields if said else None)
+                              said_words, said.fields if said else None, prepared.linked)
         decoded = prepared.decoder.decode(fused.reading, k=DECODE_K, weights=DEFAULT_WEIGHTS)
         verified = verify(decoded.programs, tables, fused.expected, top=DECODE_K)
         listed = [candidate for candidate in score_candidates(verified, fused, catalog, PRIOR) if candidate.rows]
@@ -136,4 +159,4 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
                   tuple(candidate.verified.scored.program for candidate in listed), decision.pick, decision.runner_up)
 
 
-__all__ = ["ANSWERED", "ASKED", "DECODE_K", "WARNED", "Answer", "Prepared", "answer", "prepare"]
+__all__ = ["ANSWERED", "ASKED", "DECODE_K", "WARNED", "Answer", "Prepared", "answer", "convert_target", "prepare", "prepare_catalog"]

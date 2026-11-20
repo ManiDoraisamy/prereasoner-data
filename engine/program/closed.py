@@ -557,16 +557,23 @@ def added_scores(scores: Mapping[str, float], mapping: Mapping[str, str], probab
     return out
 
 
-def value_set_scores(scores: Mapping[str, float], names: Sequence[str], probabilities: Mapping[str, float] | None) -> dict[str, float]:
+def value_set_scores(scores: Mapping[str, float], names: Sequence[str], probabilities: Mapping[str, float] | None,
+                     linked: frozenset[tuple[str, str]] = frozenset()) -> dict[str, float]:
     """Each value the set question asked about at W * (log P(in) - log P(not in)), P(in) summed over the sets holding it,
-    in place of its term against none; values not asked keep theirs."""
+    in place of its term against none; values not asked keep theirs. A key and the column it keys into hold the same
+    values (linked: pairs of "<table>.<position>" column ids, both ways, engine/program/connected.py linked_columns): the
+    API splits such a value between the two columns and each falls below one half though the question names it, so a
+    value's P(in) sums the sets holding it or the same text in a column linked to its own. The same text in columns no
+    key links stays two values."""
     out = dict(scores)
     if not probabilities or not names:
         return out
     sets = _value_sets(len(names))
     keys = [_set_key(at) for at in range(len(sets))]
+    parts = [(name.split(":", 1)[-1].partition("=")[0], name.partition("=")[2]) for name in names]
     for i, name in enumerate(names):
-        inside = sum(probabilities.get(key, 0.0) for key, members in zip(keys, sets) if i in members)
+        same = {j for j, (column, text) in enumerate(parts) if text == parts[i][1] and (j == i or (parts[i][0], column) in linked)}
+        inside = sum(probabilities.get(key, 0.0) for key, members in zip(keys, sets) if same & set(members))
         inside = min(max(inside, P_FLOOR), 1 - P_FLOOR)
         out[name] = W * (math.log(inside) - math.log(1 - inside))
     return out
@@ -732,16 +739,17 @@ def said_scores(scores: Mapping[str, float], mapping: Mapping[str, str], fields:
 
 def fused_reading(named: NamedReading, record: ReadingRecord, fields: Mapping[str, Mapping[str, float]],
                   set_names: Sequence[str] = (), set_probabilities: Mapping[str, float] | None = None,
-                  said_words: Mapping[str, str] | None = None, said_fields: Mapping[str, Mapping[str, float]] | None = None) -> NamedReading:
+                  said_words: Mapping[str, str] | None = None, said_fields: Mapping[str, Mapping[str, float]] | None = None,
+                  linked: frozenset[tuple[str, str]] = frozenset()) -> NamedReading:
     """The stock reading with the API's answers in it, applied in order: the slots' terms, the percent operator, the
-    stated number, period and year, the value set, the counted values, the composed period, the question's own two
-    words; and the closed heads."""
+    stated number, period and year, the value set (a value read as one across the columns a key links), the counted
+    values, the composed period, the question's own two words; and the closed heads."""
     scores = api_scores(named.reading.scores, record, fields)
     scores = percent_scores(scores, record.percent, fields.get("row_formula"))
     scores = added_scores(scores, record.numbers, fields.get("stated_number"))
     scores = added_scores(scores, record.periods, fields.get("stated_period"))
     scores = added_scores(scores, record.years, fields.get("stated_year"))
-    scores = value_set_scores(scores, set_names, set_probabilities)
+    scores = value_set_scores(scores, set_names, set_probabilities, linked)
     if record.counted:
         scores = counted_value_scores(scores, record, fields)
     scores = composed_period_scores(scores, record, fields)
@@ -750,6 +758,30 @@ def fused_reading(named: NamedReading, record: ReadingRecord, fields: Mapping[st
     reading = Reading(scores)
     read = replace(named.read, closed=api_closed(record, fields, named.read.closed))
     return replace(named, read=read, reading=reading, reach=table_reach(reading))
+
+
+# ------------------------------------------------------------------------------------------------ the convert record
+CONVERT_INSTRUCTIONS = ("STATE describes the person's spreadsheet and their question. The sheet holds amounts of money, each row in its own currency. "
+                        "Does the question ask for its answer expressed in one currency, whatever currencies the rows are in? Choose that currency. "
+                        "Choose none when the question names a currency only to pick rows, or names no currency.")
+CONVERT_NONE = "no conversion"
+# The question's likeliest currency is offered from this probability: its converted columns join the catalog, and the
+# reading and the choice decide between an amount as held and the amount converted.
+CONVERT_OFFER = 0.1
+
+
+def convert_record(catalog: Catalog, question: str, targets: Sequence[str], active_sheet: str | None = None) -> tuple[dict, dict, dict[str, str]]:
+    """The convert question: which of ``targets`` (currency codes, options o00, o01, ...) the question wants its answer
+    in, or none. Returns (STATE, questions, criteria)."""
+    criteria = {f"o{at:02d}": code for at, code in enumerate(targets)}
+    criteria[NONE] = CONVERT_NONE
+    return sheet_state(catalog, question, active_sheet), {"convert": {"instructions": CONVERT_INSTRUCTIONS, "criteria": criteria}}, criteria
+
+
+def convert_choice(probabilities: Mapping[str, float], criteria: Mapping[str, str]) -> str | None:
+    """The likeliest currency (the first option among equals) when its probability reaches CONVERT_OFFER, else None."""
+    best = max(sorted(key for key in probabilities if key != NONE), key=probabilities.__getitem__)
+    return criteria[best] if probabilities[best] >= CONVERT_OFFER else None
 
 
 # -------------------------------------------------------------------------------------------------- the choice record
@@ -830,4 +862,5 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
 
 
 __all__ = ["ANSWERED", "ASKED", "CHOOSE_K", "T_ASK", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses",
-           "choice_record", "choose_answer", "fused_reading", "reading_record", "said_record", "sheet_state", "value_set_question"]
+           "choice_record", "choose_answer", "convert_choice", "convert_record", "fused_reading", "reading_record", "said_record", "sheet_state",
+           "value_set_question", "value_set_scores"]

@@ -20,13 +20,19 @@ and a batch's padding can move a vector in its last bits, so a run keeps the mea
 --threads 4: --sets wtq and --sets messy,freshdev (as eor1 ran) and --sets freshdev,databench (as pgd1 ran), one process
 each. Results: regress/results/dev_decisions/<tag>/<set>.jsonl and summary_<sets>.json.
 
+--sets demo is the demo gate (tests/test_datasets.py: each dataset's prompt and its standalone eval.txt follow-ups) against
+demo25, graded on rows as demo25 was: each question is a served request's own-data selection, on its own request database
+with the world layer's links registered (engine/knowledge_bridges.py link_request), so it reads the live knowledgebase
+through the Cloud SQL proxy. --demo-maps reads each dataset instead on the request database production built for it on
+2026-11-18 (build_maps.py's maps folder), the inputs demo25 read, with the links recorded there.
+
 --csv is a new measurement, not parity: production receives each tab as CSV, so each tab is rendered to CSV text (the
 cells as the loader read them) and read as an upload is (csv_table, canonical table names); its bodies differ from the
 measurement's, so it needs --record DIR, which sends a body neither cache holds to the Decisions API (the deployment's
 GOOGLE_API_KEY) and keeps the answer in DIR for a replay.
 
 usage: python -X utf8 -m regress.run_dev_decisions [--sets messy,freshdev] [--limit N] [--tag NAME] [--threads 4] [--resume]
-                                                   [--csv --record DIR]
+                                                   [--csv --record DIR] [--sets demo [--demo-maps DIR]]
 """
 from __future__ import annotations
 
@@ -34,9 +40,11 @@ import argparse
 import gzip
 import importlib.util
 import json
+import math
 import os
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import contextlib
@@ -60,7 +68,13 @@ PROBE = EXPERIMENTS / "decisions-probe-20261118"
 # stack with the tab in view named and the said call; DataBench against pgd1, the kept stack before those two, since no
 # workbook of it has two tabs and no question of it reads a word pair (its records are pgd1's but for the said call)
 REFERENCE_TAGS = {"messy": "eor1", "freshdev": "eor1", "wtq": "eor1", "databench": "pgd1"}
-SETS = ("messy", "wtq", "databench", "freshdev")
+SETS = ("messy", "wtq", "databench", "freshdev", "demo")
+# The demo set against demo25 (results/e2e_demo25_con_stock.jsonl.gz): the stock arm on the connected catalog (place,
+# entity, currency and key links, the kept closed questions, the tab in view named), read on the request databases
+# production built for the demo datasets on 2026-11-18 (the day their money columns with no date convert on).
+DEMO_REFERENCE = "e2e_demo25_con_stock.jsonl.gz"
+DEMO_AS_OF = "2026-11-18"
+CENT = 0.01                 # run_connected.py: a scalar within one cent, a row's cells to the cent
 
 
 class ReplayMiss(RuntimeError):
@@ -196,8 +210,139 @@ def label_of(kind: str, right: bool) -> str:
 
 
 def reference(name: str) -> dict:
-    with gzip.open(PROBE / "results" / f"e2e_{REFERENCE_TAGS[name]}_stock_{name}.jsonl.gz", "rt", encoding="utf-8") as source:
+    target = DEMO_REFERENCE if name == "demo" else f"e2e_{REFERENCE_TAGS[name]}_stock_{name}.jsonl.gz"
+    with gzip.open(PROBE / "results" / target, "rt", encoding="utf-8") as source:
         return {row["id"]: row for row in map(json.loads, source) if row}
+
+
+@dataclass(frozen=True)
+class DemoItem:
+    """One question of the demo gate (tests/test_datasets.py: each dataset's prompt and its standalone eval.txt
+    follow-ups, chat lines left out), graded on rows as demo25 was (run_connected.py grade)."""
+    id: str
+    question: str
+    book: str
+    expected: object
+    fx: bool
+    folder: Path
+    alternate = None
+
+    def grade(self, rows) -> bool:
+        return demo_grade(self.expected, self.fx, rows)
+
+
+def demo_items(limit=None) -> list[DemoItem]:
+    import tests.test_datasets as gate
+    items = []
+    for name in sorted(folder.name for folder in gate.DATASET_DIR.iterdir() if folder.is_dir() and folder.name in gate.EXPECTED):
+        folder = gate.DATASET_DIR / name
+        kind, want = gate.EXPECTED[name]
+        questions = [((folder / "prompt.txt").read_text(encoding="utf-8").strip(), want, kind == "world+fx")]
+        questions += [(question, expected, fx) for question, expected, fx, chat_only in (gate._eval_cases(folder) or []) if not chat_only]
+        items.extend(DemoItem(f"{name}#{at}", question, name, expected, fx, folder) for at, (question, expected, fx) in enumerate(questions))
+    return items[:limit]
+
+
+def _same(actual, expected, tolerance) -> bool:
+    from engine.program.semantics import fold
+    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+        try:
+            return abs(float(actual) - float(expected)) <= tolerance
+        except (TypeError, ValueError):
+            return False
+    return actual is not None and fold(str(actual)) == fold(str(expected))
+
+
+def demo_grade(expected, fx, rows) -> bool:
+    """A scalar is a 1 x 1 numeric answer within one cent (within the gate's FX tolerance for a conversion), a row set
+    the expected rows in order (extra columns to the right ignored); an expected clarification is never an answer."""
+    from tests.test_datasets import FX_TOLERANCE
+    if expected is None or not rows:
+        return False
+    if isinstance(expected, (dict, list)):
+        want = expected["rows"] if isinstance(expected, dict) else expected
+        return len(rows) == len(want) and all(len(row) >= len(wanted) and all(_same(a, b, CENT) for a, b in zip(row, wanted))
+                                              for row, wanted in zip(rows, want))
+    if len(rows) != 1 or len(rows[0]) != 1:
+        return False
+    try:
+        actual = float(rows[0][0])
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(actual) and abs(actual - expected) <= (abs(expected) * FX_TOLERANCE if fx else CENT)
+
+
+def maps_links(record: dict):
+    """A dataset's links as build_maps.py recorded what production connected for it (maps/<dataset>.json): its routes
+    and their bridges, entity columns, keys and money columns (engine/prepared.py RequestLinks)."""
+    from engine.prepared import EntityLink, KeyLink, MoneyLink, PlaceLink, RequestLinks
+    places = tuple(PlaceLink(r["upload"], r["column"], r["column_index"], r["world_type"], r["bridge"], r["bridged"], r["cells"], r["cells_matched"])
+                   for r in record.get("routes", []))
+    entities = tuple(EntityLink(e["upload"], e["column"], e["column_index"], e.get("label") or "", e.get("entity_table", ""), e.get("bridge", ""),
+                                e["routed_as_place"], e["bridged"], e["cells_matched"], e["has_country"]) for e in record.get("entity_columns", []))
+    normalized = {table["name"]: table for table in record.get("normalized", [])}
+    keys = []
+    for fk in record.get("links_between_uploads", []):
+        source, target = normalized.get(fk.get("from_table")), normalized.get(fk.get("to_table"))
+        if (source and target and isinstance(fk.get("from_col"), str) and isinstance(fk.get("to_col"), str)
+                and fk["from_col"] in source["columns"] and fk["to_col"] in target["columns"]):
+            keys.append(KeyLink(source["upload"], fk["from_col"], source["columns"].index(fk["from_col"]),
+                                target["upload"], fk["to_col"], target["columns"].index(fk["to_col"])))
+    money = tuple(MoneyLink(c["upload"], c["currency_index"], c["date_index"], tuple(m["column_index"] for m in c["measures"]),
+                            tuple(c["rate_columns"]), c["as_of"]) for c in record.get("conversions", []))
+    return RequestLinks({upload["name"]: tuple(upload["columns"]) for upload in record["uploads"]}, places, entities, tuple(keys), money)
+
+
+class DemoRequests:
+    """Each demo question as a served request reads it: its own request database (engine/prepared.py
+    request_database, the knowledgebase's base image attached), the world layer's links registered on it
+    (engine/knowledge_bridges.py link_request, as engine/knowledge.py registers them), then the one own-data selection
+    over the dataset's tables as the gate sends them. The convert question's currency is recorded per question.
+
+    With ``maps`` (the request databases production built for the demo on 2026-11-18, which demo25 read: build_maps.py's
+    maps/<dataset>.json with its .main.sqlite bridges and .kb.sqlite knowledgebase part), each question's database
+    holds that snapshot and its links are the recorded ones: the same selection, on the measurement's own inputs, so the
+    knowledgebase's changes since (a day's exchange rate published after the snapshot) do not enter."""
+
+    def __init__(self, maps: Path | None = None):
+        import engine.program.answer as answer_module
+        self.maps = maps
+        if maps is None:
+            from engine.knowledge_query import KnowledgeQuery
+            self.world = KnowledgeQuery()
+        else:
+            self.world = TableQuery()
+        self.tables = {}
+        self.converted = None
+        held = answer_module.convert_target
+
+        def recorded(*args, **kwargs):
+            self.converted = held(*args, **kwargs)
+            return self.converted
+        answer_module.convert_target = recorded
+
+    def select(self, item: DemoItem):
+        import tests.test_datasets as gate
+        from engine.prepared import request_database
+        from engine.relations import request_memo
+        from engine.request_state import request_scope
+        if item.book not in self.tables:
+            self.tables[item.book] = gate._tables(item.folder)
+        self.converted = None
+        if self.maps is not None:
+            record = json.loads((self.maps / f"{item.book}.json").read_text(encoding="utf-8"))
+            with scratch_database() as database:
+                database.connection.deserialize((self.maps / f"{item.book}.main.sqlite").read_bytes())
+                database.connection.deserialize((self.maps / f"{item.book}.kb.sqlite").read_bytes(), name="knowledgebase")
+                database.link_with(lambda _tables: maps_links(record))
+                return self.world.select_query(item.question, normalize_tables(self.tables[item.book]))
+        with request_scope(), request_memo(), request_database():
+            self.world.begin_request()
+            try:
+                self.world.link_request(DEMO_AS_OF)
+                return self.world.select_query(item.question, normalize_tables(self.tables[item.book]))
+            finally:
+                self.world.end_request()
 
 
 def main() -> int:
@@ -209,6 +354,7 @@ def main() -> int:
     parser.add_argument("--resume", action="store_true", help="skip questions already recorded (the stock reader's history then differs)")
     parser.add_argument("--csv", action="store_true", help="each tab rendered to CSV and read as an upload is (a new measurement, not parity)")
     parser.add_argument("--record", type=Path, help="a cache folder: a body neither cache holds is sent to the Decisions API and kept here")
+    parser.add_argument("--demo-maps", type=Path, help="the demo set on the request databases demo25 read (build_maps.py's maps folder)")
     args = parser.parse_args()
     names = args.sets.split(",")
     if any(name not in SETS for name in names):
@@ -221,8 +367,9 @@ def main() -> int:
     planner = TableQuery()
     run_e2e, summarize = experiment_modules()
     totals = {}
+    demo = DemoRequests(args.demo_maps) if "demo" in names else None
     for name in names:
-        items = items_of(name, run_e2e, args.limit)
+        items = demo_items(args.limit) if name == "demo" else items_of(name, run_e2e, args.limit)
         held = reference(name)
         target = out / f"{name}.jsonl"
         done = set()
@@ -240,13 +387,17 @@ def main() -> int:
                 clock = time.perf_counter()
                 row = {"id": item.id, "set": name, "miss": None, "error": None}
                 try:
-                    if item.book != book:
-                        book, tables = None, None
-                        request.close()
-                        tables = tables_of(item, args.csv)
-                        request.enter_context(scratch_database())
-                        book = item.book
-                    selection = planner.select_query(item.question, tables)
+                    if name == "demo":
+                        selection = demo.select(item)
+                        row["convert_to"] = demo.converted
+                    else:
+                        if item.book != book:
+                            book, tables = None, None
+                            request.close()
+                            tables = tables_of(item, args.csv)
+                            request.enter_context(scratch_database())
+                            book = item.book
+                        selection = planner.select_query(item.question, tables)
                     shown = selection.selected if selection.selected is not None else selection.declined
                     rows = selection.rows[shown] if shown is not None else ()
                     kind = kind_of(selection)
@@ -285,6 +436,8 @@ def main() -> int:
                             differs.append(f"label {row['label']} vs {reference_label}")
                         if bool(row["error"]) != bool(theirs.get("error")):
                             differs.append(f"error {row['error']} vs {theirs.get('error')}")
+                        if name == "demo" and row.get("convert_to") != theirs.get("convert_to"):
+                            differs.append(f"currency {row.get('convert_to')} vs {theirs.get('convert_to')}")
                 row["differs"] = differs
                 counts["n"] += 1
                 counts["misses"] += row["miss"] is not None
