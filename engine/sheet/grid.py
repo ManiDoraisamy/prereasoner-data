@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from functools import lru_cache
 
 from engine.sheet.formulas import FormulaShape, classify, mark_runs
@@ -20,8 +21,9 @@ def clean(text: str) -> str:
 
 
 @lru_cache(maxsize=131072)
-def _read_text(text: str) -> tuple:
-    """(kind, value, period, format kind) of a text cell."""
+def _read_text(text: str, typed: str | None = None) -> tuple:
+    """(kind, value, period, format kind) of a text cell. typed: the day or month (ISO text) the workbook's loading read
+    this text as (engine/program/dates.py), parsed in the text's place; the cell keeps its own text."""
     stripped = clean(text)
     if is_error(stripped):
         return (V_ERROR, stripped, None, F_GENERAL)
@@ -30,14 +32,15 @@ def _read_text(text: str) -> tuple:
     reading = parse_number(stripped)
     if reading is not None:
         return (V_NUMBER, reading.value, None, F_PERCENT if reading.percent else F_GENERAL)
-    period = parse_period(stripped)
+    period = parse_period(stripped if typed is None else typed)
     if period is not None:
         return ((V_DATE, period.start, period, F_DATE) if period.kind == P_DAY else (V_PERIOD, stripped, period, F_GENERAL))
     return (V_TEXT, stripped, None, F_GENERAL)
 
 
-def read_cell(row: int, col: int, raw: object, number_format: str | None, date1904: bool) -> Cell | None:
-    """The typed cell, or None when the cell is blank."""
+def read_cell(row: int, col: int, raw: object, number_format: str | None, date1904: bool, typed: Mapping[str, str] | None = None) -> Cell | None:
+    """The typed cell, or None when the cell is blank. typed: text cells read as days or months when the workbook was
+    loaded, by their text (engine/program/dates.py)."""
     if raw is None or raw == "":
         return None
     if isinstance(raw, bool):
@@ -55,14 +58,14 @@ def read_cell(row: int, col: int, raw: object, number_format: str | None, date19
     text = str(raw)
     if not text.strip():
         return None
-    kind, value, period, fmt = _read_text(text)
+    kind, value, period, fmt = _read_text(text, typed.get(clean(text)) if typed else None)
     return Cell(row, col, raw, kind, value, period, fmt)
 
 
 class Grid:
     """A tab's filled cells by row, 1-based, each row's cells in column order."""
 
-    def __init__(self, tab: TabPayload):
+    def __init__(self, tab: TabPayload, typed: Mapping[str, str] | None = None):
         self.tab = tab
         self.rows: dict[int, dict[int, Cell]] = {}
         formats, exceptions = tab.formats, tab.format_exceptions
@@ -77,7 +80,7 @@ class Grid:
                 if raw is None or raw == "":
                     continue
                 fmt = exceptions.get((r, c), formats.get(c)) if isinstance(raw, (int, float)) else None
-                cell = read_cell(r, c, raw, fmt, date1904)
+                cell = read_cell(r, c, raw, fmt, date1904, typed)
                 if cell is None:
                     continue
                 if (r, c) in tab.error_cells:

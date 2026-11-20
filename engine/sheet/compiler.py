@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from engine.sheet.formulas import column_letter
@@ -895,11 +896,11 @@ def _notes_of(grid: Grid, tab: str, rows: list[int]) -> list[Note]:
     return notes
 
 
-def compile_tab(tab: TabPayload) -> TabModel:
-    """One tab's model."""
+def compile_tab(tab: TabPayload, typed: Mapping[str, str] | None = None) -> TabModel:
+    """One tab's model. typed: text cells read as days or months when the workbook was loaded (grid.read_cell)."""
     if tab.sheet_type == SHEET_CHART:
         return TabModel(tab.name, tab.sheet_type, tab.hidden, [], [], [])
-    grid = Grid(tab)
+    grid = Grid(tab, typed)
     roles = read_roles(grid)
     regions = _split_at_closing_totals(grid, _regions(grid, roles), roles)
     tab_titles = regions[0].titles if regions else []
