@@ -2,8 +2,7 @@
 
 This directory contains the model lineage and the active training and promotion paths. Start with
 [`../docs/TRAINING.md`](../docs/TRAINING.md) for the architecture, then use
-[`schema_org/README.md`](schema_org/README.md) for the runnable generalized Schema.org pipeline and
-[`readers/README.md`](readers/README.md) for the own-data readers.
+[`schema_org/README.md`](schema_org/README.md) for the runnable generalized Schema.org pipeline.
 
 ## What Ships
 
@@ -11,8 +10,6 @@ Serving uses one bundle:
 
 - a Qwen2.5-0.5B LoRA encoder and relational readout from `props/`;
 - an 80-URI Schema.org property head from `schema_org/`;
-- the own-data readers from `readers/`: a stage-1 schema-item model, stage-2 reading models, a
-  re-scorer, and a refusal fit;
 - deterministic class superposition, calibration thresholds, and source-grounding gates; and
 - one hash manifest that binds the public artifacts to an immutable Hugging Face revision.
 
@@ -20,10 +17,10 @@ The encoder's 71 older property-named coordinates remain for compatibility. They
 class vocabulary. The promoted Schema.org head represents all 1,521 properties and 926 classes,
 releases only classes that pass evidence and heldout gates, and abstains on the rest.
 
-Nothing here trains a model that writes SQL. The readers classify named readings of a question, which
-the deterministic builder in `engine/readers/readings.py` makes into typed queries, and their re-scorer
-and refusal choose among the candidates that run. Gemini, used by the chat orchestrator and reference
-generation, is an external service, not a trained artifact.
+Nothing here trains a model that writes SQL. Own-data questions take the Decisions path
+(`engine/program`): stock bge-m3, untrained here, shortlists the options, and Gemini's Decisions API, an
+external service like the chat orchestrator's Gemini, answers closed questions over them; no artifact from
+this directory serves it. The trained readers it replaced (2026-11-20) are in git history.
 
 ## Current Pipeline
 
@@ -43,9 +40,9 @@ Training writes candidates under `training/schema_org/data/experiments/`. Only `
 the serving artifacts in `engine/data/`. Promotion validates corpus isolation, validation-only model
 selection, untouched heldout evidence, source and runtime fingerprints, and every artifact hash.
 
-The readers train under `training/readers/data/experiments/<id>/`, and only
-`python -m training.readers.promote` writes `engine/data/readers/`; the recipe of the shipped bundle is
-in [`readers/README.md`](readers/README.md).
+`training/readers/data/experiments/<id>/` holds every measured run, the readers' and the Decisions path's
+(gitignored), and `training/readers/lease.py` the one GPU lease loop `training/named` uses
+([`readers/README.md`](readers/README.md)).
 
 ## CPU And GPU Environments
 
@@ -72,7 +69,7 @@ Never create an unowned training pod or train directly into `engine/data/`.
 | Path | Responsibility |
 |---|---|
 | `schema_org/` | Active corpus, URI property head, class calibration, and promotion |
-| `readers/` | Own-data readers: labels, examples, stage-1 and stage-2 trainers, re-scorer, refusal, and promotion |
+| `readers/` | The experiments folder and the one GPU lease loop; the readers' pipeline went with the readers |
 | `props/` | Shared encoder lineage and historical property-router pipeline |
 | `tools/` | Bounded remote execution and reproducible dependency installation |
 | `lib/` | Encoder and graph components retained by the shared representation |
@@ -85,8 +82,6 @@ history is in [`../docs/notes/training.md`](../docs/notes/training.md); it is no
 ## Required External Inputs
 
 - pinned Qwen base-model revision and promoted LoRA/readout artifacts;
-- for the readers, Spider, BIRD and Spider-Syn and the XLM-R base and large weights
-  ([`readers/README.md`](readers/README.md), "Inputs");
 - versioned source releases described in [`../docs/SOURCE_DATA.md`](../docs/SOURCE_DATA.md);
 - corpus rows generated locally and intentionally excluded from Git; and
 - credentials supplied through environment variables for source databases, Hugging Face publication,

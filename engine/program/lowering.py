@@ -12,7 +12,8 @@ from engine.program.catalog import Catalog
 from engine.program.language import (Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
 from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
 from engine.program.semantics import fold as fold_text
-from engine.program.store import (LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, day_column, fold_column, number_column, peers_table, text_column)
+from engine.program.store import (DATE, INTEGER, LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, REAL, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, TEXT, day_column, fold_column,
+                                  number_column, peers_table, sql_table, table_columns, table_id_of, text_column)
 from engine.sheet.names import RECORD
 from engine.sql_ast import (Abs, Aggregate, BinaryExpr, BlankAsZero, BooleanExpr, ColumnRef, Comparison, DatePart, Join, Literal, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SQLType, Star, and_predicates, column_refs)
 
@@ -23,19 +24,19 @@ POSITION = "position"
 
 
 def _number(column: Col) -> ColumnRef:
-    return ColumnRef(column.table, number_column(column.position), SQLType.REAL)
+    return ColumnRef(sql_table(column.table), number_column(column.position), SQLType.REAL)
 
 
 def _fold(column: Col) -> ColumnRef:
-    return ColumnRef(column.table, SECTION_FOLD if column.position == SECTION else fold_column(column.position), SQLType.TEXT)
+    return ColumnRef(sql_table(column.table), SECTION_FOLD if column.position == SECTION else fold_column(column.position), SQLType.TEXT)
 
 
 def _shown(column: Col) -> ColumnRef:
-    return ColumnRef(column.table, SECTION_TEXT if column.position == SECTION else text_column(column.position), SQLType.TEXT)
+    return ColumnRef(sql_table(column.table), SECTION_TEXT if column.position == SECTION else text_column(column.position), SQLType.TEXT)
 
 
 def _day(column: Col) -> ColumnRef:
-    return ColumnRef(column.table, day_column(column.position), SQLType.DATE)
+    return ColumnRef(sql_table(column.table), day_column(column.position), SQLType.DATE)
 
 
 def _like(text: str, anchor: str = ANYWHERE) -> Literal:
@@ -71,8 +72,8 @@ def _condition(condition: Condition):
     if isinstance(condition, CompareColumns):
         return Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, _number(condition.other))
     if isinstance(condition, CompareLine):     # against the first data line the value names; that line's key kept out
-        table, key, named = condition.column.table, _fold(condition.key), Literal(fold_text(condition.value), SQLType.TEXT)
-        anchor = ScalarSubquery(SelectQuery((SelectItem(_number(condition.column), VALUE),), table, where=_where(_data_lines(table), Comparison(key, "=", named)),
+        table, key, named = sql_table(condition.column.table), _fold(condition.key), Literal(fold_text(condition.value), SQLType.TEXT)
+        anchor = ScalarSubquery(SelectQuery((SelectItem(_number(condition.column), VALUE),), table, where=_where(_data_lines(condition.column.table), Comparison(key, "=", named)),
                                             order_by=(OrderTerm(ColumnRef(table, LINE, SQLType.INTEGER)),), limit=1))
         other = BooleanExpr("OR", (_is_null(key), Comparison(key, "!=", named)))
         return BooleanExpr("AND", (Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, anchor), other))
@@ -81,12 +82,12 @@ def _condition(condition: Condition):
     if isinstance(condition, IsNumber):
         return _is_null(_number(condition.column), negated=True)
     if isinstance(condition, (InSection, OnLine)):
-        return _line_condition(condition, condition.table)
+        return _line_condition(condition, sql_table(condition.table))
     raise TypeError(f"unknown condition: {type(condition).__name__}")
 
 
 def _line_condition(condition, table: str):
-    """A condition on a line's bands or label, on its own table or on the melted view, which holds them too."""
+    """A condition on a line's bands or label, on its own SQL table or on the melted view, which holds them too."""
     if isinstance(condition, InSection):
         path = ColumnRef(table, SECTION_PATH, SQLType.TEXT)
         return Comparison(path, "LIKE", _like(condition.text) if condition.partial else _like(f"| {condition.text} |"))
@@ -98,7 +99,8 @@ def _line_condition(condition, table: str):
 
 
 def _data_lines(table: str):
-    return Comparison(ColumnRef(table, ROLE, SQLType.TEXT), "=", Literal(RECORD, SQLType.TEXT))
+    """The data lines of a catalog table."""
+    return Comparison(ColumnRef(sql_table(table), ROLE, SQLType.TEXT), "=", Literal(RECORD, SQLType.TEXT))
 
 
 def _measure(measure: Measure):
@@ -155,21 +157,21 @@ def _show_query(program: Show, *, scalar: bool = False) -> SelectQuery:
     if program.listing:
         key = _fold(program.shown[0])
         where = _where(None if addresses_printed(program.where) else _data_lines(program.table), *map(_condition, program.where), _is_null(key, negated=True))
-        return SelectQuery((SelectItem(key, VALUE),), program.table, where=where, group_by=(key,), order_by=(OrderTerm(Aggregate("MIN", ColumnRef(program.table, LINE, SQLType.INTEGER))),))
+        return SelectQuery((SelectItem(key, VALUE),), sql_table(program.table), where=where, group_by=(key,), order_by=(OrderTerm(Aggregate("MIN", ColumnRef(sql_table(program.table), LINE, SQLType.INTEGER))),))
     columns = [_number(program.shown[0])] if scalar else [_shown(column) for column in program.shown]
     select = tuple(SelectItem(column, f"shown_{at}") for at, column in enumerate(columns))
-    line = ColumnRef(program.table, LINE, SQLType.INTEGER)
+    line = ColumnRef(sql_table(program.table), LINE, SQLType.INTEGER)
     if program.step is not None:
         # The data line nearest the first line the conditions keep, below it (after) or above it (before).
         after = program.step == AFTER
-        anchor = SelectQuery((SelectItem(Aggregate("MIN", line), VALUE),), program.table, where=_where(*map(_condition, program.where)))
+        anchor = SelectQuery((SelectItem(Aggregate("MIN", line), VALUE),), sql_table(program.table), where=_where(*map(_condition, program.where)))
         beside = Comparison(line, ">" if after else "<", ScalarSubquery(anchor))
-        return SelectQuery(select, program.table, where=_where(_data_lines(program.table), beside),
+        return SelectQuery(select, sql_table(program.table), where=_where(_data_lines(program.table), beside),
                            order_by=(OrderTerm(line, "ASC" if after else "DESC"),), limit=1)
     order = [OrderTerm(line)]
     if addresses_printed(program.where):
-        order.insert(0, OrderTerm(ColumnRef(program.table, LABEL_LENGTH, SQLType.INTEGER)))
-    return SelectQuery(select, program.table, where=_where(*map(_condition, program.where)), order_by=tuple(order), limit=1)
+        order.insert(0, OrderTerm(ColumnRef(sql_table(program.table), LABEL_LENGTH, SQLType.INTEGER)))
+    return SelectQuery(select, sql_table(program.table), where=_where(*map(_condition, program.where)), order_by=tuple(order), limit=1)
 
 
 def _reads_printed(measure: Measure, table) -> bool:
@@ -191,7 +193,7 @@ def _agg_query(program: Agg, catalog: Catalog) -> SelectQuery:
         value = Abs(value)
     every_line = addresses_printed(program.where) or (program.measure is not None and _reads_printed(program.measure, catalog.table(table)))
     where = _where(None if every_line else _data_lines(table), *map(_condition, program.where), guard)
-    return SelectQuery((SelectItem(value, VALUE),), table, where=where)
+    return SelectQuery((SelectItem(value, VALUE),), sql_table(table), where=where)
 
 
 def _breakdown_query(program: Breakdown, catalog: Catalog) -> SelectQuery:
@@ -205,8 +207,8 @@ def _breakdown_query(program: Breakdown, catalog: Catalog) -> SelectQuery:
     printed = addresses_printed(program.where) or (program.measure is not None and _reads_printed(program.measure, catalog.table(table)))
     where = _where(None if printed else _data_lines(table), *map(_condition, program.where), *(_is_null(group, negated=True) for group in groups), guard)
     select = tuple(SelectItem(group, f"{KEY}_{at}") for at, group in enumerate(groups)) + (SelectItem(value, VALUE),)
-    first = OrderTerm(Aggregate("MIN", ColumnRef(table, LINE, SQLType.INTEGER)))
-    return SelectQuery(select, table, where=where, group_by=groups, order_by=(first, *(OrderTerm(group) for group in groups)))
+    first = OrderTerm(Aggregate("MIN", ColumnRef(sql_table(table), LINE, SQLType.INTEGER)))
+    return SelectQuery(select, sql_table(table), where=where, group_by=groups, order_by=(first, *(OrderTerm(group) for group in groups)))
 
 
 def _rank_query(program: Rank, catalog: Catalog) -> SelectQuery:
@@ -218,8 +220,8 @@ def _rank_query(program: Rank, catalog: Catalog) -> SelectQuery:
         select = tuple(SelectItem(_shown(column), f"shown_{at}") for at, column in enumerate(program.shown)) + (SelectItem(value, VALUE),)
         where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _present(program.measure))
         if program.count > 1:      # exactly that many lines, a tie broken by sheet order
-            return SelectQuery(select, table, where=where, order_by=(OrderTerm(value, order), OrderTerm(ColumnRef(table, LINE, SQLType.INTEGER))), limit=program.count)
-        return SelectQuery(select, table, where=where, order_by=(OrderTerm(value, order),), limit=1, with_ties=True)
+            return SelectQuery(select, sql_table(table), where=where, order_by=(OrderTerm(value, order), OrderTerm(ColumnRef(sql_table(table), LINE, SQLType.INTEGER))), limit=program.count)
+        return SelectQuery(select, sql_table(table), where=where, order_by=(OrderTerm(value, order),), limit=1, with_ties=True)
     if program.entity == ENTITY_GROUP:
         key = _fold(program.key)
         if program.function == COUNT:
@@ -229,8 +231,8 @@ def _rank_query(program: Rank, catalog: Catalog) -> SelectQuery:
         where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _is_null(key, negated=True), guard)
         ranked = OrderTerm(Abs(value) if program.by_size else value, order)
         if program.count > 1:      # exactly that many groups, a tie broken by the key
-            return SelectQuery((SelectItem(key, KEY), SelectItem(value, VALUE)), table, where=where, group_by=(key,), order_by=(ranked, OrderTerm(key)), limit=program.count)
-        return SelectQuery((SelectItem(key, KEY), SelectItem(value, VALUE)), table, where=where, group_by=(key,), order_by=(ranked,), limit=1, with_ties=True)
+            return SelectQuery((SelectItem(key, KEY), SelectItem(value, VALUE)), sql_table(table), where=where, group_by=(key,), order_by=(ranked, OrderTerm(key)), limit=program.count)
+        return SelectQuery((SelectItem(key, KEY), SelectItem(value, VALUE)), sql_table(table), where=where, group_by=(key,), order_by=(ranked,), limit=1, with_ties=True)
     return _peer_query(program, printed, order)
 
 
@@ -249,7 +251,7 @@ def _peer_query(program: Rank, printed: bool, order: str) -> SelectQuery:
             terms.append(_line_condition(condition, peers))
         else:
             terms.append(_condition(condition))
-            joins = (Join(table, ColumnRef(peers, LINE, SQLType.INTEGER), ColumnRef(table, LINE, SQLType.INTEGER)),)
+            joins = (Join(sql_table(table), ColumnRef(peers, LINE, SQLType.INTEGER), ColumnRef(sql_table(table), LINE, SQLType.INTEGER)),)
     if program.mark is not None:
         terms.append(Comparison(ColumnRef(peers, PEER_FOLD, SQLType.TEXT), "=", Literal(fold_text(program.mark), SQLType.TEXT)))
         value = Aggregate("COUNT", Star())
@@ -280,19 +282,19 @@ def _top_value(program: Rank, catalog: Catalog, numeric: bool, line: bool = Fals
     order = _order(program.direction)
     if program.entity == ENTITY_LINE:
         column = program.shown[0]
-        value = ColumnRef(table, number_column(column.position), SQLType.REAL) if numeric and column.position != SECTION else _fold(column)
+        value = ColumnRef(sql_table(table), number_column(column.position), SQLType.REAL) if numeric and column.position != SECTION else _fold(column)
         if line:
-            value = ColumnRef(table, LINE, SQLType.INTEGER)
+            value = ColumnRef(sql_table(table), LINE, SQLType.INTEGER)
         measure = _measure(program.measure)
         where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _present(program.measure))
-        return ScalarSubquery(SelectQuery((SelectItem(value, VALUE),), table, where=where, order_by=(OrderTerm(measure, order), OrderTerm(ColumnRef(table, LINE, SQLType.INTEGER))), limit=1))
+        return ScalarSubquery(SelectQuery((SelectItem(value, VALUE),), sql_table(table), where=where, order_by=(OrderTerm(measure, order), OrderTerm(ColumnRef(sql_table(table), LINE, SQLType.INTEGER))), limit=1))
     key = _fold(program.key)
     if program.function == COUNT:
         ranked, guard = Aggregate("COUNT", Star()), None
     else:
         ranked, guard = Aggregate(_FUNCTIONS[program.function], _measure(program.measure)), _present(program.measure)
     where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _is_null(key, negated=True), guard)
-    return ScalarSubquery(SelectQuery((SelectItem(key, VALUE),), table, where=where, group_by=(key,), order_by=(OrderTerm(Abs(ranked) if program.by_size else ranked, order), OrderTerm(key)), limit=1))
+    return ScalarSubquery(SelectQuery((SelectItem(key, VALUE),), sql_table(table), where=where, group_by=(key,), order_by=(OrderTerm(Abs(ranked) if program.by_size else ranked, order), OrderTerm(key)), limit=1))
 
 
 def _check_query(program: Check, catalog: Catalog) -> SelectQuery:
@@ -342,21 +344,30 @@ def _affinity(column: ColumnRef) -> str:
     return {SQLType.REAL: "REAL", SQLType.INTEGER: "INTEGER"}.get(column.type, "TEXT")
 
 
-def plan_schema(query: SelectQuery, catalog: Catalog) -> list[dict]:
-    """The columns a query reads, as the deterministic lowering wants them. Only those: a plan's generated classes need no more. A join's target lists its line numbers, which prove it one line per value."""
+_KIND_TYPES = {INTEGER: SQLType.INTEGER, TEXT: SQLType.TEXT, REAL: SQLType.REAL, DATE: SQLType.DATE}
+
+
+def plan_schema(query: SelectQuery, catalog: Catalog, whole_tables: bool = False) -> list[dict]:
+    """The columns a query reads, as the deterministic lowering wants them. Only those, a plan's generated classes need no more, unless
+    whole_tables: then every column of each table it reads, so the plans of several queries over one table declare it alike (a decomposition
+    fuses its leaves' plans, engine/decomposition.py). A join's target lists its line numbers, which prove it one line per value."""
     seen: dict[tuple[str, str], dict] = {}
     for column in column_refs(query):
         seen.setdefault((column.table, column.name), {"table": column.table, "name": column.name, "affinity": _affinity(column), "is_date": column.type == SQLType.DATE})
+    if whole_tables:
+        for name in sorted({table for table, _column in seen}):
+            for column, kind in table_columns(catalog, name):
+                seen.setdefault((name, column), {"table": name, "name": column, "affinity": _affinity(ColumnRef(name, column, _KIND_TYPES[kind])), "is_date": kind == DATE})
     if isinstance(query, SelectQuery):
         for join in query.joins:
-            seen[(join.table, LINE)]["values"] = list(range(len(catalog.table(join.table).lines)))
+            seen[(join.table, LINE)]["values"] = list(range(len(catalog.table(table_id_of(join.table)).lines)))
     return [seen[key] for key in sorted(seen)]
 
 
-def to_plan(program: Program, catalog: Catalog, slug: str = "program") -> AnalysisPlan:
-    """The one plan both deterministic emitters read."""
+def to_plan(program: Program, catalog: Catalog, slug: str = "program", whole_tables: bool = False) -> AnalysisPlan:
+    """The one plan both deterministic emitters read; whole_tables: each table it reads declared whole (plan_schema)."""
     query = to_query(program, catalog)
-    schema = plan_schema(query, catalog)
+    schema = plan_schema(query, catalog, whole_tables)
     plan = lower_calculation(slug, query, schema, ()) if isinstance(program, (Calc, Check)) else lower_select_query(slug, query, schema, ())
     # The store holds a number as the sheet's float: both programs read it as its shortest decimal, one exact reading.
     tables = tuple(replace(table, columns=tuple(replace(column, binary_float=column.type == SQLType.REAL) for column in table.columns)) for table in plan.tables)

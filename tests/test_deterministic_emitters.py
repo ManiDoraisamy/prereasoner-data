@@ -541,43 +541,6 @@ def test_distinct_projection_retains_all_duplicate_sources_before_order_and_limi
         raise AssertionError("a reduction needs a grouping key or an aggregate")
 
 
-def test_selected_execution_audit_compares_exact_decimal_wire_values():
-    from training.readers.semantic_audit import selected_execution_trace
-    from engine.sql_schema import SchemaGraph
-    from regress.sql_import import import_sql
-
-    table = {"name": "items", "columns": ["amount"], "rows": [[1], [0], [0]],
-             "import": {"sourceSheet": "Payments", "sourceRange": "D5:D8",
-                        "sourceRows": {"encoding": "ranges", "count": 3, "ranges": [[0, 6, 3]]},
-                        "columnBindings": [{"name": "amount", "column": "D"}]}}
-    graph = SchemaGraph.from_tables([table], [])
-    base = {"id": "1.1", "sql": 'SELECT AVG("amount") FROM "items"', "rows": 1}
-    trace = selected_execution_trace(base, [table], graph, import_sql(base["sql"], graph))
-    assert trace["state"] == "execution_sources_resolved"
-    assert trace["selected_ast_sql_parity"] and trace["baseline_row_count_reproduced"]
-    assert trace["learned_named_dimensions_causally_traced"] is False
-    from engine.tables import TableQuery
-    from engine.sql_ast import query_to_tree
-    import hashlib
-    import json
-    query = import_sql(base["sql"], graph)
-    schema = [{"table": "items", "name": "amount", "affinity": "INTEGER"}]
-    columns, rows = TableQuery().execute({"items": table}, schema, base["sql"], query=query)
-    result = {"columns": columns, "rows": rows}
-    linked = selected_execution_trace(base, [table], graph, query, selected_result=result)
-    assert linked["selected_answer_reproduced"]
-    assert linked["source_lineage"]["source_tables"]["request/input/items"]["source_layout"]["sourceSheet"] == "Payments"
-    assert linked["selected_ast_sha256"] == hashlib.sha256(
-        json.dumps(query_to_tree(query), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    try:
-        selected_execution_trace(base, [table], graph, query,
-                                 selected_result={"columns": columns, "rows": [[9]]})
-    except ValueError as error:
-        assert "selected answer" in str(error)
-    else:
-        raise AssertionError("source rows for a different answer accepted")
-
-
 def test_integer_literals_follow_text_column_affinity_in_both_operand_orders():
     from engine.prepared import scratch_database
     from engine.tables import TableQuery
@@ -853,54 +816,29 @@ def test_existing_typed_sql_ast_lowers_without_parsing_rendered_sql():
 
 
 def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
+    """The Spider evaluator's python backend runs the chosen program's one plan (sql_rank.PoolSelection.plan) through
+    serving's executor and grades it beside the rows the choice read."""
+    from engine.prepared import current_database
+    from engine.program.catalog import Catalog
+    from engine.program.language import Agg, Col
+    from engine.program.lowering import to_query
+    from engine.program.names import SUM
+    from engine.program.store import RequestTables
+    from engine.sheet import compile_workbook, workbook_from_json
+    from engine.sql_ast import render_query
     from engine.sql_candidate import ScoredQuery
-    from spider.probe.full_eval import (
-        _execute_python_candidate,
-        _lower_python_candidate,
-    )
+    from engine.tables import TableQuery
+    from spider.probe.full_eval import ast_predict
     from spider.probe.spider_eval import compare
 
-    tables = [
-        {
-            "name": "orders",
-            "columns": ["order_id", "amount"],
-            "rows": [[1, 10], [2, 20], [3, None]],
-        }
-    ]
-    schema = [
-        {
-            "table": "orders",
-            "name": "order_id",
-            "affinity": "INTEGER",
-            "values": [1, 2, 3],
-        },
-        {
-            "table": "orders",
-            "name": "amount",
-            "affinity": "INTEGER",
-            "values": [10, 20, None],
-        },
-    ]
-    query = SelectQuery(
-        (
-            SelectItem(
-                Aggregate("SUM", ColumnRef("orders", "amount", SQLType.INTEGER)),
-                "total",
-            ),
-        ),
-        "orders",
-    )
-    candidate = ScoredQuery(
-        query, "SELECT SUM(amount) AS total FROM orders", 1, ()
-    )
-    from engine.tables import TableQuery
-
-    plan, _estimated_rows = _lower_python_candidate(candidate, tables, schema, ())
-    rows = _execute_python_candidate(TableQuery(), plan, {"orders": tables[0]}, schema)
-    assert rows == [[30]]
-    assert compare([[30]], rows)["scalar_exact"] is True
-
-    from spider.probe.full_eval import ast_predict
+    tables = [{"name": "orders", "columns": ["order_id", "amount"], "rows": [[1, 10], [2, 20], [3, None]]}]
+    schema = [{"table": "orders", "name": "order_id", "affinity": "INTEGER", "values": [1, 2, 3]},
+              {"table": "orders", "name": "amount", "affinity": "INTEGER", "values": [10, 20, None]}]
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json(
+        {"name": "", "tabs": [{"name": "orders", "rows": [["order_id", "amount"], [1, 10], [2, 20], [3, ""]]}]})))
+    program = Agg(SUM, Col("t0", 1), "t0")
+    query = to_query(program, catalog)
+    candidate = ScoredQuery(query, render_query(query), 1.0, ("the total of amount",))
 
     class FakeEncoder:
         def ingest(self, input_tables, explicit_fks=()):
@@ -909,27 +847,21 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
         def schema(self, _tables, _foreign_keys):
             return schema, {}, {"orders": tables[0]}
 
-        def select_query(self, *_args):
-            return PoolSelection((candidate,), (True,), (True,), (0,), 0)
+        def select_query(self, _question, _tables):
+            store = RequestTables(catalog, current_database().connection)
+            return PoolSelection((candidate,), (0,), 0, programs=(program,), rows=(((30.0,),),),
+                                 catalog=catalog, tables=store)
 
         def guard(self, _sql):
             return True, None
 
         def execute(self, table_map, schema_, sql, query=None, deterministic_plan=None):
-            if deterministic_plan is not None:                 # the production executor runs the program
-                return TableQuery().execute(table_map, schema_, sql, deterministic_plan=deterministic_plan)
-            return ["total"], [(30,)]
+            return TableQuery().execute(table_map, schema_, sql, query=query, deterministic_plan=deterministic_plan)
 
-    evaluated = ast_predict(
-        FakeEncoder(),
-        tables,
-        "total amount",
-        schema_fks=(),
-        execution_backend="auto",
-        python_row_limit=10_000,
-    )
-    assert evaluated["ok"] is True
-    assert evaluated["rows"] == [[30]]
+    evaluated = ast_predict(FakeEncoder(), tables, "total amount", schema_fks=(), execution_backend="auto",
+                            python_row_limit=10_000)
+    assert evaluated["ok"] is True, evaluated
+    assert compare([[30]], evaluated["rows"])["scalar_exact"] is True, evaluated["rows"]
     assert evaluated["execution_backend_actual"] == "python"
     assert evaluated["python_sql_equal"] is True
 
@@ -1048,44 +980,31 @@ def test_spider_backend_parity_preserves_blank_text_and_null_as_different_cells(
 
 
 def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
-    """Gold grading must observe serving, not silently substitute a SQL answer.
+    """Gold grading must observe serving, not silently substitute the candidates' answer.
 
-    A top-1 ranking serves every tied row (sql_ast.keep_ties). A backend that
-    still returns one of them diverges, and the divergence is reported rather
-    than graded away: the evaluator grades what AUTO serves. Verify fails hard.
+    A top-1 ranking keeps every tied row (the program language's ranks: engine/program/lowering.py). When the rows
+    the choice read hold only one of them, the evaluator grades what AUTO serves, the chosen program's plan, and
+    reports the divergence rather than grading it away. Verify fails hard.
     """
+    from engine.prepared import current_database
+    from engine.program.catalog import Catalog
+    from engine.program.language import Col, Rank
+    from engine.program.lowering import to_query
+    from engine.program.names import COUNT, ENTITY_GROUP
+    from engine.program.store import RequestTables
+    from engine.sheet import compile_workbook, workbook_from_json
+    from engine.sql_ast import render_query
     from engine.sql_candidate import ScoredQuery
+    from engine.tables import TableQuery
     from spider.probe.full_eval import ast_predict
 
-    tables = [
-        {
-            "name": "courses",
-            "columns": ["course_id", "course_name"],
-            "rows": [[1, "rs"], [2, "ai"]],
-        }
-    ]
-    schema = [
-        {"table": "courses", "name": "course_id", "affinity": "INTEGER", "values": [1, 2]},
-        {"table": "courses", "name": "course_name", "affinity": "TEXT", "values": ["rs", "ai"]},
-    ]
-    name = ColumnRef("courses", "course_name", SQLType.TEXT)
-    query = SelectQuery(
-        (
-            SelectItem(name, "course_name"),
-            SelectItem(Aggregate("COUNT", Star()), "total"),
-        ),
-        "courses",
-        group_by=(name,),
-        order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),),
-        limit=1,
-    )
-    candidate = ScoredQuery(
-        query,
-        'SELECT course_name, COUNT(*) FROM courses GROUP BY course_name '
-        "ORDER BY COUNT(*) DESC LIMIT 1",
-        1,
-        (),
-    )
+    tables = [{"name": "courses", "columns": ["course_name"], "rows": [["rs"], ["ai"]]}]
+    schema = [{"table": "courses", "name": "course_name", "affinity": "TEXT", "values": ["rs", "ai"]}]
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json(
+        {"name": "", "tabs": [{"name": "courses", "rows": [["course_name"], ["rs"], ["ai"]]}]})))
+    program = Rank(ENTITY_GROUP, "t0", key=Col("t0", 0), function=COUNT)
+    query = to_query(program, catalog)
+    candidate = ScoredQuery(query, render_query(query), 1.0, ("the course_name with the most lines",))
 
     class TiedEncoder:
         def ingest(self, input_tables, explicit_fks=()):
@@ -1094,26 +1013,24 @@ def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
         def schema(self, _tables, _foreign_keys):
             return schema, {}, {"courses": tables[0]}
 
-        def select_query(self, *_args):
-            return PoolSelection((candidate,), (True,), (True,), (0,), 0)
+        def select_query(self, _question, _tables):
+            # The rows the choice read: one of the two tied courses.
+            store = RequestTables(catalog, current_database().connection)
+            return PoolSelection((candidate,), (0,), 0, programs=(program,), rows=((("rs", 1),),),
+                                 catalog=catalog, tables=store)
 
         def guard(self, _sql):
             return True, None
 
         def execute(self, table_map, schema_, sql, query=None, deterministic_plan=None):
-            if deterministic_plan is not None:                 # the production executor runs the program
-                from engine.tables import TableQuery
-                return TableQuery().execute(table_map, schema_, sql, deterministic_plan=deterministic_plan)
-            # The engine-arbitrary pick: the OTHER tie member than the plan's
-            # deterministic tie-break would choose.
-            return ["course_name", "total"], [("rs", 1)]
+            return TableQuery().execute(table_map, schema_, sql, query=query, deterministic_plan=deterministic_plan)
 
     evaluated = ast_predict(
         TiedEncoder(), tables, "course with most enrollments",
         schema_fks=(), execution_backend="auto", python_row_limit=10_000,
     )
-    assert evaluated["ok"] is True
-    assert evaluated["rows"] == [["ai", 1], ["rs", 1]]      # exactly what AUTO serves: both tied rows
+    assert evaluated["ok"] is True, evaluated
+    assert evaluated["rows"] == [["ai", 1], ["rs", 1]], evaluated["rows"]     # what AUTO serves: both tied rows
     assert evaluated["execution_backend_actual"] == "python"
     assert evaluated["python_sql_equal"] is False           # the divergence is recorded
     assert not evaluated.get("python_fallback_reason")
@@ -1419,9 +1336,10 @@ def test_an_average_of_converted_rows_runs_in_both_programs():
 
 def test_a_top_1_ranking_keeps_every_tied_row_in_both_programs():
     # "which customer placed the most orders" (customer-orders, 2026-10-02): five customers tie at three
-    # orders and one was served. The served top-1 keeps every tied row (sql_ast.keep_ties), the SQL with
+    # orders and one was served. A top-1 ranking that keeps every tied row (SelectQuery.with_ties, as the
+    # program language's ranks are: engine/program/lowering.py) keeps them in both programs, the SQL with
     # RANK() and the Python program by comparing the ranking keys, in the same order.
-    from engine.sql_ast import keep_ties, render_query
+    from engine.sql_ast import render_query
 
     customer = ColumnRef("orders", "customer", SQLType.TEXT)
     count = Aggregate("COUNT", Star())
@@ -1429,8 +1347,8 @@ def test_a_top_1_ranking_keeps_every_tied_row_in_both_programs():
         (SelectItem(customer, "customer"), SelectItem(count, "orders")), "orders", group_by=(customer,),
         order_by=(OrderTerm(count, "DESC"),), limit=1,
     )
-    served = keep_ties(ranked)
-    assert served.with_ties and "RANK() OVER" in render_query(served)
+    served = replace(ranked, with_ties=True)
+    assert "RANK() OVER" in render_query(served)
     schema = [{"table": "orders", "name": "order_id", "affinity": "INTEGER", "values": [1, 2, 3, 4, 5]},
               {"table": "orders", "name": "customer", "affinity": "TEXT",
                "values": ["Bo", "Ada", "Cy", "Ada", "Bo"]}]
@@ -1442,8 +1360,7 @@ def test_a_top_1_ranking_keeps_every_tied_row_in_both_programs():
                               estimated_rows=5)
     assert result.mode.value == "verify"                       # both programs ran and agreed, in order
     assert [tuple(row.values()) for row in result.rows] == [("Ada", 2), ("Bo", 2)], result.rows
-    # Contrast: an explicit cutoff above one keeps exactly that many rows, and the unserved LIMIT 1 one row.
-    assert keep_ties(replace(ranked, limit=2)) == replace(ranked, limit=2)
+    # Contrast: a plain LIMIT 1 keeps one row.
     single = _execute_fixture(lower_select_query("most_orders", ranked, schema, ()), statements,
                               estimated_rows=5)
     assert [tuple(row.values()) for row in single.rows] == [("Ada", 2)], single.rows
@@ -1465,7 +1382,7 @@ def test_a_ranking_by_a_value_it_does_not_show_runs_in_both_programs():
     import sqlite3
 
     from engine.deterministic.plan import SortedView, SortValue
-    from engine.sql_ast import keep_ties, render_query
+    from engine.sql_ast import render_query
 
     customer = ColumnRef("orders", "customer", SQLType.TEXT)
     amount = ColumnRef("orders", "amount", SQLType.INTEGER)
@@ -1486,7 +1403,7 @@ def test_a_ranking_by_a_value_it_does_not_show_runs_in_both_programs():
     top_spenders = SelectQuery((SelectItem(customer),), "orders", group_by=(customer,),
                                order_by=(OrderTerm(spend, "DESC"),), limit=2)
     largest_order = SelectQuery((SelectItem(customer),), "orders", order_by=(OrderTerm(amount, "DESC"),), limit=1)
-    leader = keep_ties(replace(top_spenders, limit=1))
+    leader = replace(top_spenders, limit=1, with_ties=True)
     for name, query, expected in (("top_spenders", top_spenders, [("Ada",), ("Cy",)]),
                                   ("largest_order", largest_order, [("Cy",)]),
                                   ("leader", leader, [("Ada",)])):

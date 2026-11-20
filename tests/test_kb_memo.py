@@ -343,8 +343,7 @@ def test_a_later_question_on_the_same_cells_derives_nothing_again():
 
 
 def test_a_graph_kept_for_a_request_serves_the_next():
-    """Two requests with equal cells read one graph and one readers' schema, each with its own records."""
-    from engine.readers.text import Schema
+    """Two requests with equal cells read one graph and one thing derived from it, each with its own records."""
     from engine.relations import memoized, request_memo
     from engine.sql_schema import SchemaGraph
 
@@ -356,10 +355,10 @@ def test_a_graph_kept_for_a_request_serves_the_next():
 
     with request_memo():
         first = graph_of(["Paris", "Lyon"])
-        read = memoized("readers_schema", lambda: first, lambda: Schema(first), 2)
+        read = memoized("graph_columns", lambda: first, lambda: list(first.columns), 2)
     with request_memo():
         again = graph_of(["Paris", "Lyon"])
-        reread = memoized("readers_schema", lambda: again, lambda: Schema(again), 2)
+        reread = memoized("graph_columns", lambda: again, lambda: list(again.columns), 2)
     with request_memo():
         other = graph_of(["Paris", "Lille"])
     assert again is first and reread is read, "the same cells"

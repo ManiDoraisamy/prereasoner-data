@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import Any, Sequence
+from typing import Any
 
 from engine.calculations.core import (
     ComputationEvidence,
     compose_row_plans,
-    describe_computation,
 )
 from engine.calculations.specifications import SPECIFICATIONS
 from engine.sql_schema import SchemaGraph
@@ -33,14 +32,6 @@ def detect_calculations(question: str):
     return tuple(
         intent for specification in SPECIFICATIONS
         if (intent := specification.detect(question)) is not None
-    )
-
-
-def plans_for(question: str, graph: SchemaGraph):
-    return tuple(
-        plan
-        for intent in detect_calculations(question)
-        for plan in _BY_NAME[intent.specification].plans(intent, graph)
     )
 
 
@@ -162,34 +153,6 @@ def assess_calculations(
                 "reason": "the selected query does not exactly compose every requested calculation",
             } for row in rows]
     return tuple(rows)
-
-
-def select_calculation_candidate(
-    question: str,
-    tables,
-    graph: SchemaGraph,
-    candidates: Sequence,
-):
-    """Choose the first ranked candidate satisfying every explicit calculation intent.
-
-    Scores and candidate ordering are untouched.  If no candidate is admissible, rank one is
-    retained solely to provide concrete failed evidence in the clarification response.
-    """
-    ranked = tuple(candidates)
-    intents = detect_calculations(question)
-    if not ranked:
-        return None, (), 0
-    if not intents:
-        return ranked[0], (), 0
-    assessments = tuple(
-        assess_calculations(question, tables, graph, describe_computation(candidate.query))
-        for candidate in ranked
-    )
-    selected = next((
-        index for index, rows in enumerate(assessments)
-        if rows and all(row.get("status") == "satisfied" for row in rows)
-    ), 0)
-    return ranked[selected], assessments[selected], selected
 
 
 def attach_calculation_evidence(response: dict, assessments) -> dict:

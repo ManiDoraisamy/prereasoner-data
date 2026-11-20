@@ -71,8 +71,8 @@ def sheet_state(catalog: Catalog, question: str, active_sheet: str | None = None
     """STATE of both records: the question and each table's tab, line count and columns (id, header, kind, three example
     cells). A family table is named by all the tabs it merges, as the engine's read-as names it. A workbook whose data
     tables sit on two tabs or more also names the tab in view (the client's active sheet when it is one of them, else the
-    tab of the first data table) and the convention production keeps among copies of one layout (engine/tables.py
-    on_screen_first); a workbook on one tab is described without them."""
+    tab of the first data table) and the convention production keeps among copies of one layout; a workbook on one tab
+    is described without them. The request carries the tab in view (engine/prepared.py RequestDatabase.active_sheet)."""
     tables = []
     for table in catalog.tables:
         columns = []
@@ -781,7 +781,7 @@ def choice_record(catalog: Catalog, question: str, listed: Sequence[tuple[str, S
 
 def answer_key(rows: Sequence[Sequence]) -> str:
     """An answer's identity: candidates returning the same rows give the same answer."""
-    return hashlib.sha1(json.dumps([list(row) for row in rows], default=str, ensure_ascii=False).encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha1(json.dumps([list(row) for row in rows], default=str, ensure_ascii=False).encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
 
 
 @dataclass(frozen=True)
@@ -796,22 +796,29 @@ class AnswerChoice:
     none: float
 
 
-def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[str]) -> AnswerChoice:
-    """Per answer, not per candidate: the API spreads its probability over readings that return the same answer (a right
-    answer at ranks 0, 5, 9 and 12 read 0.33, 0.28 and 0.13 on three of them), so a candidate's probability is summed over
-    the listed candidates whose answer (answers[i], answer_key) is the same. The likeliest answer, ties to the earlier
-    listing, is asked back when none is likelier or it is below T_ASK, warned below T_FLAG, and answered otherwise."""
-    probabilities = probabilities or {}
-    keys = sorted(key for key in probabilities if key != NONE)
-    none = probabilities.get(NONE, 0.0)
-    if not keys:
-        return AnswerChoice(ASKED, None, None, None, none)
+def answer_masses(probabilities: Mapping[str, float] | None, answers: Sequence[str]) -> tuple[dict[str, float], dict[str, int]]:
+    """(each answer's probability, summed over the listed candidates returning it; each answer's first listing) from the
+    choice's probabilities, for the answers the choice offered (answers[i] is listing i's answer_key)."""
     mass: dict[str, float] = {}
     first: dict[str, int] = {}
-    for key in keys:
+    for key in sorted(key for key in (probabilities or {}) if key != NONE):
         answer = answers[int(key[1:])]
         mass[answer] = mass.get(answer, 0.0) + probabilities[key]
         first.setdefault(answer, int(key[1:]))
+    return mass, first
+
+
+def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[str]) -> AnswerChoice:
+    """Per answer, not per candidate: the API spreads its probability over readings that return the same answer (a right
+    answer at ranks 0, 5, 9 and 12 read 0.33, 0.28 and 0.13 on three of them), so a candidate's probability is summed over
+    the listed candidates whose answer (answers[i], answer_key) is the same (answer_masses). The likeliest answer, ties to
+    the earlier listing, is asked back when none is likelier or it is below T_ASK, warned below T_FLAG, and answered
+    otherwise."""
+    probabilities = probabilities or {}
+    none = probabilities.get(NONE, 0.0)
+    mass, first = answer_masses(probabilities, answers)
+    if not mass:
+        return AnswerChoice(ASKED, None, None, None, none)
     ranked = sorted(mass, key=lambda answer: (-mass[answer], first[answer]))
     best = ranked[0]
     runner_up = first[ranked[1]] if len(ranked) > 1 else None
@@ -822,5 +829,5 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
     return AnswerChoice(kind, first[best], runner_up, mass[best], none)
 
 
-__all__ = ["ANSWERED", "ASKED", "CHOOSE_K", "T_ASK", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key",
+__all__ = ["ANSWERED", "ASKED", "CHOOSE_K", "T_ASK", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses",
            "choice_record", "choose_answer", "fused_reading", "reading_record", "said_record", "sheet_state", "value_set_question"]

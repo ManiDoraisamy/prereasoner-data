@@ -133,7 +133,7 @@ def join_keys(values):
     on each cell's exact text, so in a column that also holds 'ABC', '1.0' and '1' are two keys and 'Abc' is
     not 'abc'. Number keys are Decimals and text keys strings, so a column of numbers never matches a text
     column: PostgreSQL cannot compare BIGINT with TEXT, and the Python emitter does not equate them.
-    Foreign-key discovery, reference selection and join grounding (engine/sql_grounding.py) read keys only
+    Foreign-key discovery and reference selection read keys only
     this way: case-folded keys claimed a foreign key whose join matched no row, float magnitudes merged
     distinct integers, and numbers read cell by cell matched '1.0' to '1' in text columns, where the join
     dropped the rows (release reviews, 2026-10-07)."""

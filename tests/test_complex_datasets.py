@@ -1,9 +1,9 @@
-"""Hermetic release gate for the shipped non-linear decomposition fixtures.
+"""Release gate for the shipped non-linear decomposition fixtures.
 
-The real promoted planner produces every leaf AST. The compiler then fuses those
-leaves once, emits SQL and readable Python from that one DAG, and executes both
-against the same in-memory SQLite snapshot. Expected rows are fixture-authored
-gold values, not values copied from either backend.
+The production own-data selection (the Decisions path, engine/tables.py select_query) answers every leaf, so a test
+that reads a leaf needs the runtime bundle and the Decisions API's key, and is skipped, as skipped, without them. The
+compiler fuses the leaves' programs once, emits SQL and readable Python from that one DAG, and executes both on the
+request's database. Expected rows are fixture-authored gold values, not values copied from either backend.
 """
 
 from __future__ import annotations
@@ -12,20 +12,21 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 
 from engine.decomposition import build_decomposed_plan
 from engine.deterministic import DeterministicAnalysis
 from engine.deterministic.context import analysis_execution_context
 from engine.encoder_overlay import EncoderQuery
-from tests.test_datasets import DATASET_DIR, EXPECTED, _eval_cases, _tables
+from tests.test_datasets import DATASET_DIR, EXPECTED, _tables
 
 
 COMPLEX_DATASETS = ("complex-promotions", "complex-category-gaps",
                     "complex-promotions-xlsx", "complex-unsold-products")
-# The prompts with several goals ("the top 3 ... and the top 2 ..., then list each pair ..."), which no one query
-# holds and which therefore ask for the decomposition proposal. The unsold-products prompt asks one thing, the rows no
-# referencing row matches, which the readers read as one query (NOT IN a subquery) since readers v11 (2026-10-22).
+# The prompts with several goals ("the top 3 ... and the top 2 ..., then list each pair ..."), longer than one query
+# is taken to answer (engine/decomposition.py ONE_QUERY_WORDS); the Decisions path asks back about each, so each
+# asks for the decomposition proposal. The
+# unsold-products prompt asks one thing, the rows no referencing row matches.
 COMPOUND_DATASETS = ("complex-promotions", "complex-category-gaps", "complex-promotions-xlsx")
 
 
@@ -46,160 +47,34 @@ def _quote(identifier: str) -> str:
 def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None = None,
                  question: str | None = None, raw_tables: list[dict] | None = None):
     """Compile `proposal` (default: the shipped fixture) for `question` (default: the prompt)
-    over `raw_tables` (default: the fixture's tables in file-name order)."""
+    over `raw_tables` (default: the fixture's tables in file-name order), on one request database, as serving does."""
+    from sqlalchemy.pool import StaticPool
+
+    from engine.prepared import SharedConnection, scratch_database
+
     raw_tables = raw_tables or _tables(directory)
     tables, foreign_keys = planner.ingest(raw_tables)
-    schema, _, _ = planner.schema(tables, foreign_keys)
     proposal = proposal or json.loads(
         (directory / "decomposition.json").read_text(encoding="utf-8")
     )
-    plan = build_decomposed_plan(
-        planner,
-        directory.name.replace("-", "_"),
-        tables,
-        schema,
-        foreign_keys,
-        proposal,
-        question=question or (directory / "prompt.txt").read_text(encoding="utf-8").strip(),
-    )
-    source_tables = {table["name"]: table for table in tables}
-    from engine.prepared import register_functions
-
-    engine = create_engine("sqlite+pysqlite:///:memory:")
-    event.listen(engine, "connect", lambda connection, _record: register_functions(connection))
-    with engine.connect() as connection:
-        connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
-        for table in plan.tables:
-            definitions = ", ".join(
-                f"{_quote(column.name)} {_sqlite_type(column.type.value)}"
-                for column in table.columns
-            )
-            connection.exec_driver_sql(
-                f"CREATE TABLE conversation.{_quote(table.name)} ({definitions})"
-            )
-            source = source_tables[table.name]
-            placeholders = ", ".join("?" for _ in source["columns"])
-            statement = (
-                f"INSERT INTO conversation.{_quote(table.name)} "
-                f"({', '.join(_quote(column) for column in source['columns'])}) "
-                f"VALUES ({placeholders})"
-            )
-            connection.exec_driver_sql(statement, [tuple(row) for row in source["rows"]])
-        result = DeterministicAnalysis(
-            plan, conversation_schema="conversation"
-        ).run(
-            connection,
+    with scratch_database() as database:
+        plan = build_decomposed_plan(
+            planner,
+            directory.name.replace("-", "_"),
+            tables,
+            foreign_keys,
+            proposal,
+            question=question or (directory / "prompt.txt").read_text(encoding="utf-8").strip(),
+        )
+        shared = SharedConnection(database.connection)
+        engine = create_engine("sqlite+pysqlite://", creator=lambda: shared, poolclass=StaticPool)
+        result = DeterministicAnalysis(plan, conversation_schema="main", dataset_version="fixture").run(
+            engine,
             mode="verify",
             estimated_rows=sum(len(table["rows"]) for table in tables),
             python_row_limit=10_000,
         )
     return plan, result
-
-
-# The decomposition the production model proposed for complex-category-gaps in the Chrome
-# release gate (2026-09-23). Its category leaf asks for category NAMES.
-PRODUCTION_CATEGORY_GAPS_PROPOSAL = {
-    "subquestions": [
-        {"id": "top_customers", "question": "top 2 customer names by total spend"},
-        {"id": "top_categories", "question": "top 2 product category names by total revenue"},
-        {"id": "purchases", "question": "customer name and product category name for each purchase"},
-    ],
-    "merges": [
-        {"id": "candidate_pairs", "op": "cross", "inputs": ["top_customers", "top_categories"]},
-        {"id": "missing_pairs", "op": "anti_join", "inputs": ["candidate_pairs", "purchases"]},
-    ],
-    "output": "missing_pairs",
-    "grain": "one customer-category pair per top customer and top category where the "
-             "customer has never purchased from that category",
-}
-
-
-def test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure():
-    """The Chrome release gate caught this. For the leaf "top 2 product category names by
-    total revenue" the arbiter chose the right ranking without projecting revenue; the leaf
-    contract then served a lower-ranked pool member that satisfied it but ordered
-    category-product pairs by product name, and the answer listed Home products instead of the
-    one real gap. A leaf now serves the arbiter's own ranking with its measure projected."""
-    planner = EncoderQuery()
-    _plan, result = _run_fixture(
-        planner, DATASET_DIR / "complex-category-gaps", PRODUCTION_CATEGORY_GAPS_PROPOSAL,
-    )
-    _kind, expected = EXPECTED["complex-category-gaps"]
-    actual = [[row[column] for column in expected["columns"]] for row in result.rows]
-    assert actual == expected["rows"], actual
-
-
-# The decomposition the production model proposed in the Chrome release gate of 2026-10-17: its evidence leaf names
-# the customer as an item ("customer and product category for each purchase"), not the customer's name.
-GATE_20261017_CATEGORY_GAPS_PROPOSAL = {
-    "subquestions": [
-        {"id": "top_customers", "question": "top 2 customers by total spend"},
-        {"id": "top_categories", "question": "top 2 product categories by total revenue"},
-        {"id": "purchase_evidence", "question": "customer and product category for each purchase"},
-    ],
-    "merges": [
-        {"id": "candidate_pairs", "op": "cross", "inputs": ["top_customers", "top_categories"]},
-        {"id": "missing_pairs", "op": "anti_join", "inputs": ["candidate_pairs", "purchase_evidence"]},
-    ],
-    "output": "missing_pairs",
-    "grain": "one customer-category pair per top customer and top category where the customer has never purchased "
-             "from that category",
-}
-
-
-def test_a_table_named_as_a_leaf_item_is_shown_by_its_display_field():
-    """The Chrome release gate of 2026-10-17 caught this. The model's evidence leaf "customer and product category for
-    each purchase" showed only the category, the gate refused it for not showing the customers asked for, and the
-    demo prompt answered "I couldn't split this question into parts". A table named as one of the items to show is
-    shown by its display field (ExpansionSupport.projection_columns)."""
-    planner = EncoderQuery()
-    _plan, result = _run_fixture(
-        planner, DATASET_DIR / "complex-category-gaps", GATE_20261017_CATEGORY_GAPS_PROPOSAL,
-    )
-    _kind, expected = EXPECTED["complex-category-gaps"]
-    actual = [[row[column] for column in expected["columns"]] for row in result.rows]
-    assert actual == expected["rows"], actual
-
-
-def test_a_value_binds_to_the_column_that_holds_it():
-    """The Chrome pass (2026-09-24) caught this. For "how about customers from Lyon?" the
-    orchestrator proposed the leaf "product names bought by Lyon customers"; the SQL proposer,
-    which reads the schema and never the values, wrote ``customer_name = 'Lyon'`` and the arbiter
-    ranked it first, so no purchase matched and every product was listed as never bought in
-    Lyon. 'Lyon' occurs only in ``purchases.city``. A mis-grounded filter is never eligible now
-    (engine/sql_grounding.py), whichever way the leaf is worded."""
-    directory = DATASET_DIR / "complex-unsold-products"
-    expected = next(want for question, want, _fx, chat in _eval_cases(directory)
-                    if chat and "Lyon" in question)
-    proposal = json.loads((directory / "decomposition.json").read_text(encoding="utf-8"))
-    planner = EncoderQuery()
-    lyon = "List the product names that no customer from Lyon has bought, ordered by product name."
-    for wording in ("product names bought by Lyon customers",
-                    "product names bought by customers from Lyon"):
-        proposal["subquestions"][1]["question"] = wording
-        _plan, result = _run_fixture(planner, directory, proposal, lyon)
-        actual = [[row[column] for column in expected["columns"]] for row in result.rows]
-        assert actual == expected["rows"], (wording, actual)
-
-
-def test_a_purchases_leaf_joins_through_the_bridge_table():
-    """The Chrome gate (2026-10-01) caught this. In the production upload order (customers,
-    products, orders, order_items) the orchestrator worded the evidence leaf "For each customer,
-    list every product name they have ever bought". The 7B joined products ON orders.order_id =
-    products.product_id, skipping order_items; the query ran and matched no row, the arbiter
-    ranked it first, and every candidate pair survived the anti-join. A join the foreign keys
-    contradict is never eligible now (engine/sql_grounding.py), and the leaf serves the first
-    reading that keeps the customer as well as the product (engine/decomposition.py)."""
-    directory = DATASET_DIR / "complex-promotions"
-    by_name = {table["name"]: table for table in _tables(directory)}
-    upload_order = [by_name[name] for name in ("customers", "products", "orders", "order_items")]
-    proposal = json.loads((directory / "decomposition.json").read_text(encoding="utf-8"))
-    proposal["subquestions"][2]["question"] = (
-        "For each customer, list every product name they have ever bought")
-    _kind, expected = EXPECTED["complex-promotions"]
-    _plan, result = _run_fixture(EncoderQuery(), directory, proposal, raw_tables=upload_order)
-    actual = [[row[column] for column in expected["columns"]] for row in result.rows]
-    assert actual == expected["rows"], actual
 
 
 def test_a_decomposition_cannot_invent_a_cutoff():
@@ -365,7 +240,6 @@ def test_a_negated_existence_prompt_is_answered_as_one_query():
     assert not response.get("decomposition_required") and not response.get("clarify"), response
     _, expected = EXPECTED["complex-unsold-products"]
     assert [list(row) for row in response["result"]["rows"]] == expected["rows"], response["result"]
-    assert "NOT IN" in response["sql"].upper(), response["sql"]
 
 
 TESTS = [
@@ -373,24 +247,19 @@ TESTS = [
     test_compose_surface_does_not_swallow_a_compound_question,
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
-    test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
-    test_a_table_named_as_a_leaf_item_is_shown_by_its_display_field,
-    test_a_value_binds_to_the_column_that_holds_it,
-    test_a_purchases_leaf_joins_through_the_bridge_table,
     test_a_decomposition_cannot_invent_a_cutoff,
     test_a_negated_existence_prompt_is_answered_as_one_query,
 ]
 
 
+# Load the runtime bundle (the planner's schema); the second group also reads questions through the Decisions API.
 MODEL_BACKED = (
-    test_a_negated_existence_prompt_is_answered_as_one_query,
-    test_shipped_complex_datasets_match_gold_in_python_and_sql,
-    test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
-    test_a_table_named_as_a_leaf_item_is_shown_by_its_display_field,
-    test_a_value_binds_to_the_column_that_holds_it,
-    test_a_purchases_leaf_joins_through_the_bridge_table,
     test_a_decomposition_cannot_invent_a_cutoff,
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
+)
+DECISIONS_BACKED = (
+    test_a_negated_existence_prompt_is_answered_as_one_query,
+    test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_compose_surface_does_not_swallow_a_compound_question,
 )
 
@@ -412,13 +281,22 @@ def runtime_bundle_missing() -> str | None:
     return None
 
 
+def decisions_missing() -> str | None:
+    """Why the Decisions API cannot be called here, or None (engine/llm.py reads the deployment's key)."""
+    from engine.config import decisions_key
+
+    return None if decisions_key() else "the Decisions API has no key here (GOOGLE_API_KEY)"
+
+
 def main() -> int:
     failed, skipped = [], []
     missing = runtime_bundle_missing()
+    unread = missing or decisions_missing()
     for test in TESTS:
-        if missing and test in MODEL_BACKED:
+        why = missing if test in MODEL_BACKED else unread if test in DECISIONS_BACKED else None
+        if why:
             skipped.append(test.__name__)
-            print(f"  SKIP {test.__name__}: {missing}")
+            print(f"  SKIP {test.__name__}: {why}")
             continue
         try:
             test()

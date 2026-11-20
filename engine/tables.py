@@ -1,9 +1,12 @@
-"""Multi-table interpretable text->SQL over uploaded CSVs. N tables joined on DETERMINISTIC foreign keys
-(engine.relations): FK discovery gives the join graph, the model only PICKS which tables/columns the
-question refers to (learned intent + name/representation binding) and the SQL is assembled with qualified
-`"t"."c"` identifiers, guarded SELECT-only, and executed on the request's SQLite database (engine/prepared.py).
-Per-token readout is read PER LAYER through the SAME anchored model, so a JOIN's `"orders"."customer_id"`
-fires is_field + the FK edge to `"customers"."customer_id"`.
+"""The request's tables and the own-data answer over them.
+
+A request table is {name, columns, rows} as the planner types it, plus its ``grid``: the sheet as the own-data path reads
+it (``table_grid``). ``TableQuery.select_query`` is the one own-data selection: the request's grids, read as one
+workbook, answered by the Decisions path (engine/program/answer.py: closed questions over options the engine built, the
+decoder's programs, one choice), every candidate a typed SQL AST (engine/program/lowering.py) run on the request's SQLite
+database (engine/prepared.py). ``TableQuery.serve`` runs the chosen one and builds the response; the foreign keys
+(engine.relations), the schema records and the per-layer readout (``analyze``) describe the upload to the world routes
+and the /dimension view.
 
 TableQuery does NOT load its own encoder: in the serving closure it is always composed under the unified
 encoder overlay (engine.knowledge_query.load_encoder shares device/alloc/nc/dims/sid/thr/model/nL/tok/qwen/hdim onto
@@ -13,7 +16,6 @@ from __future__ import annotations
 import csv as _csv
 import io
 import re
-import sqlite3
 import threading
 from functools import wraps
 from pathlib import Path
@@ -64,7 +66,8 @@ def normalize_table_name(name):
 
 
 def normalize_tables(tables):
-    """Return the canonical table/row representation used by planning and execution."""
+    """Return the canonical table/row representation used by planning and execution: each table with its grid, the
+    one an uploaded sheet carries, else its header and rows (``table_grid``)."""
     normalized = []
     for table in tables:
         original_columns = list(table["columns"])
@@ -75,6 +78,7 @@ def normalize_tables(tables):
             "name": normalize_table_name(table["name"]),
             "columns": columns,
             "rows": rows,
+            "grid": table["grid"] if "grid" in table else table_grid(table["name"], header=original_columns, rows=rows),
         })
     return normalized
 
@@ -98,9 +102,9 @@ def affinity(struct):
 
 
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}([ T].+)?$")      # ISO dates (sort + substr-year safe as TEXT)
-# The planner's reply when no runnable reading reads the whole question (engine/answer_presentation.UNREAD_REPLY).
-NO_EXECUTABLE_CANDIDATE = "planner: no executable AST candidate"
-READERS_MODEL = "engine - learned readers + typed SQL AST builder"
+# The planner's reply when no candidate reads the question (engine/answer_presentation.UNREAD_REPLY).
+NO_CANDIDATE = "planner: no valid AST candidate"
+PROGRAM_MODEL = "engine - Decisions path: closed questions over the sheet's programs + typed SQL AST"
 
 
 def name_words(name):
@@ -183,10 +187,41 @@ def parse_rows(text):
     return rows
 
 
+def table_grid(name, csv_text=None, header=None, rows=None):
+    """The sheet the own-data path reads for one request table (engine/program/answer.py), as the sheet compiler's wire
+    form of a tab (engine/sheet/payload.py), named as the table is: {"name", "rows"}. A table's own rows are not it:
+    parse_rows drops blank rows and canonicalizes the header, which destroys the structure the compiler reads.
+
+    An uploaded sheet (``csv_text``): its CSV parsed as plain rows, blank rows kept, every cell typed exactly as
+    parse_rows types it (_unquote, then _typed), the trailing all-blank columns trimmed as parse_rows trims them. A table
+    built from rows (``header`` and ``rows``: a saved reference, an enrichment table, a Spider database table): its
+    header and rows: what ``normalize_tables`` gives a table that carries no grid. ``grid_with_column`` carries a column
+    the request appends (dataset semantics) into an uploaded sheet's."""
+    if csv_text is None:
+        return {"name": str(name), "rows": [list(header), *rows]}
+    cells = list(_csv.reader(io.StringIO(csv_text or ""), skipinitialspace=True))
+    width = max((index + 1 for row in cells for index, value in enumerate(row) if value.strip()), default=0)
+    return {"name": str(name), "rows": [[_typed(_unquote(value)) for value in row[:width]] for row in cells]}
+
+
+def grid_with_column(grid, header, value):
+    """``grid`` with one column appended: ``header`` on the first filled row (the row parse_rows reads as the header),
+    ``value`` on every filled row after it, blank on blank rows."""
+    width = max((len(row) for row in grid["rows"]), default=0)
+    out, seen_header = [], False
+    for row in grid["rows"]:
+        filled = any(cell not in (None, "") for cell in row)
+        cell = "" if not filled else value if seen_header else header
+        seen_header = seen_header or filled
+        out.append(list(row) + [""] * (width - len(row)) + [cell])
+    return {**grid, "rows": out}
+
+
 def csv_table(csv_text, name):
     rows = parse_rows(csv_text)
     cols = list(rows[0].keys()) if rows else []
-    return {"name": name, "columns": cols, "rows": [[r.get(c) for c in cols] for r in rows]}
+    return {"name": name, "columns": cols, "rows": [[r.get(c) for c in cols] for r in rows],
+            "grid": table_grid(name, csv_text)}
 
 
 def table_from_rows(name, columns, rows):
@@ -204,50 +239,13 @@ def table_from_rows(name, columns, rows):
     return {"name": name, "columns": cols, "rows": typed_rows}
 
 
-class _PoolRuns:
-    """The database ``TableQuery.select_query`` runs its pools on, the request's (engine/prepared.py) holding its
-    tables, and whether each query it ran there finished and the shape of what it returned: a pool member is run
-    once per selection."""
-
-    def __init__(self, planner, tablemap, sch):
-        self._tablemap, self._sch = tablemap, sch
-        self._database = None
-        self._own = None
-        self.outcomes = {}
-        # (rows, columns) of each query that ran: the result shape the re-scorer reads
-        self.shapes = {}
-        # Whether each query that ran matched no row: none came back, or an aggregate's one NULL total or zero count.
-        self.matched_nothing = {}
-        # Whether what each query that ran returned holds nothing: no row, or only blank cells. A zero is a value.
-        self.blank = {}
-
-    def database(self):
-        if self._database is None:
-            from engine.prepared import RequestDatabase, current_database
-            self._database = current_database()
-            if self._database is None:                    # outside a served request: a database of its own
-                self._database = self._own = RequestDatabase()
-        return self._database
-
-    def connection(self):
-        return self.database().load(self._tablemap, self._sch)
-
-    def close(self):
-        if self._own is not None:
-            self._own.close()
-        self._database = self._own = None
-
-
 class TableQuery:
-    named_reader = None
-
-    def __init__(self, deploy_dir=DATA_DIR, *, named_reader=None):
+    def __init__(self, deploy_dir=DATA_DIR):
         # DEFERRED encoder: the serving closure never runs TableQuery standalone — engine.knowledge_query's
         # load_encoder OVERLAYS the trained encoder onto this instance right after construction (shared refs:
         # device/alloc/nc/dims/sid/thr/model/nL/tok/qwen/hdim — ONE model in memory). Nothing model-shaped is loaded
         # here, so startup does not pay for weights that would be immediately replaced.
         self.deploy_dir = Path(deploy_dir)
-        self.named_reader = named_reader
         self.alloc = None
         self.nc = None
         self.dims = []
@@ -356,27 +354,21 @@ class TableQuery:
         (`relations.memoized`): each record and mapping is the caller's own copy."""
         from engine.relations import content_key, memoized, table_cells
         sch, colidx, tablemap = memoized(
-            "planner_schema", lambda: (id(self.model), id(self.named_reader), content_key(tables), repr(fks)),
+            "planner_schema", lambda: (id(self.model), content_key(tables), repr(fks)),
             lambda: self._schema(tables, fks), table_cells(tables))
         return [dict(column) for column in sch], dict(colidx), dict(tablemap)
 
     def _schema(self, tables, fks):
         units, colidx = self._schema_name_units(tables, fks)
-        if self.named_reader is None:
-            x = self._encode([u["text"] for u in units])
-            final = self._layers(units, x)[-1]
-        else:
-            # Schema types are source observations. Semantic predictions are
-            # made once beside the question by the injected readers bundle.
-            x = np.zeros((len(units), 0), np.float32)
-            final = x
+        x = self._encode([u["text"] for u in units])
+        final = self._layers(units, x)[-1]
         pos = {(u["table"], u["colname"]): i for i, u in enumerate(units)}
         sch = []
         for t in tables:
             rowdicts = [dict(zip(t["columns"], r)) for r in t["rows"]]
             for c in t["columns"]:
                 i = pos[(t["name"], c)]; vec = final[i]
-                struct = {d["name"] for d in self.dims if d["family"] == "struct" and vec[d["dim_id"]] >= 0.5} if self.named_reader is None else set()
+                struct = {d["name"] for d in self.dims if d["family"] == "struct" and vec[d["dim_id"]] >= 0.5}
                 ace = sorted(((dim_label(d["name"])[1], vec[d["dim_id"]]) for d in self.dims if d["family"] == "ace"),
                              key=lambda z: -z[1])
                 vals = [rd.get(c) for rd in rowdicts]
@@ -388,8 +380,6 @@ class TableQuery:
                     # into missing numbers. Keep the cells and prevent arithmetic
                     # on this column; other columns and row counts remain usable.
                     aff = "TEXT"
-                elif self.named_reader is not None and ne and all(isinstance(v, bool) for v in ne):
-                    aff = "INTEGER"
                 else:
                     aff = affinity(struct)
                 sch.append({"table": t["name"], "name": str(c), "idx": colidx[(t["name"], c)], "struct": struct,
@@ -415,226 +405,75 @@ class TableQuery:
         return sims[0][0] if sims and sims[0][1] > 0.3 else None
 
     # ---------- planning ----------
-    def search_pool(self, question, norm, fks, sch, graph=None, *, turns=None):
-        """The readers' candidates under the pool contract: ``select_query``'s first stage
-        (engine.readers.search.ReadingSearch.pool), with the registered calculations' expansions of them
-        (engine.calculations.search). Its top candidate is the readers' most probable reading. The readers read
-        one table of each group of layout copies (``one_of_each_layout``)."""
-        from engine.calculations.search import CalculationQueryExpander
-        from engine.readers.search import reading_search
-        from engine.sql_expansion import plain_marks
-        from engine.sql_schema import SchemaGraph
-        question = plain_marks(question)
-        if graph is None:
-            graph = SchemaGraph.from_planner(sch, fks)
-        with request_timing.span("readers"):
-            readers = self.named_reader or reading_search()
-            input_graph = one_of_each_layout(graph, question)
-            pool = readers.pool(question, input_graph, turns=turns) if turns is not None else readers.pool(question, input_graph)
-        if self.named_reader is not None:
-            return pool
-        return pool + CalculationQueryExpander(graph).expand(question, pool)
+    def select_query(self, question, tables):
+        """Choose the query to serve for an own-data question over the request's ``tables``; returns a
+        ``PoolSelection`` (engine/sql_rank.py). This is the one own-data selection: serving, the compose probe,
+        decomposition leaves and the evaluators (the Spider evaluator, the messy benchmark, the dev replay) call it.
 
-    def select_query(self, question, norm, fks, sch, tablemap, searched=None, graph=None, *, turns=None):
-        """Choose the query to serve for an own-data question; returns a ``PoolSelection``.
-
-        1. The readers read the question against the schema and build their most probable readings as
-           typed ASTs (``search_pool``, engine/readers/search.py).
-        2. Every candidate that passes the guard is run on an in-memory SQLite copy of the
-           request's tables, under a step budget that grows with the cells of the tables it reads
-           (engine/sql_rank.execution_op_limit). A query that fails cannot be chosen, and
-           neither can one that tests a text column against a literal the column never holds
-           while another column does, or one that joins two columns the foreign keys keep apart
-           (engine/sql_grounding.py).
-        3. The readers' re-scorer orders the eligible candidates by the question, each one's read-as line
-           and the shape of its result. A date the question names (engine/sql_dates) keeps the choice to
-           the candidates that realize it, when one does; a candidate whose SUM or AVG reads only rows its
-           joins repeat (engine/sql_grounding.py) is chosen only when every one does; and a registered
-           calculation intent (engine/calculations) takes the best-ranked candidate that satisfies it.
-        4. The readers' learned refusal serves the choice only when it is confident of it
-           (``ReadingSearch.confidence``, recorded as ``confidence``) and the question is no longer than the
-           questions its threshold was matched on (engine/decomposition.py:ONE_QUERY_WORDS); otherwise nothing is
-           selected, the refused choice is recorded as ``declined``, and the reply says how it read the question
-           (or, for a long question in an analysis, asks for the decomposition proposal).
-        5. A choice whose served result holds nothing, no row or only blank cells, is declined the same way
-           (``found_nothing``): the reply asks, and says how it read the question, never that the data is absent. A
-           less probable reading does not answer in its place: most pools hold one that drops the question's filter.
-
-        This is the one own-data selection: serving, decomposition leaves, the Spider evaluator and
-        the offline regression gate all call it. The decomposition probe reads only its first stage
-        (``search_pool``); a caller that already ran that stage passes its pool as ``searched``.
-        """
-        from engine.sql_expansion import plain_marks
-        from engine.sql_schema import SchemaGraph
-
-        # The question as its readers parse it: typographic quotes as the ASCII ones, comparison symbols as words
-        # (sql_expansion.plain_marks).
-        question = plain_marks(question)
-        # One schema graph serves the request: building one indexes every cell value, which
-        # took seconds a build on a few thousand rows, four times a question (2026-10-04).
-        if graph is None:
-            graph = SchemaGraph.from_planner(sch, fks)
-        if searched is None:
-            searched = self.search_pool(question, norm, fks, sch, graph=graph, turns=turns) if turns is not None else self.search_pool(question, norm, fks, sch, graph=graph)
-        runs = _PoolRuns(self, tablemap, sch)
-        try:
-            return self._choose(question, norm, sch, tablemap, graph, searched, runs)
-        finally:
-            runs.close()
-
-    def _choose(self, question, norm, sch, tablemap, graph, pool, runs):
-        """Run, ground, re-score and choose among one pool (steps 2 to 4 of ``select_query``)."""
-        from dataclasses import replace
-
-        from engine.calculations import select_calculation_candidate, detect_calculations
-        from engine.decomposition import one_query_length
-        from engine.readers.search import reading_search
-        from engine.sql_dates import realizes_dates, served_date_phrases
-        from engine.sql_expansion import tokens as question_tokens
-        from engine.sql_grounding import absent_value, double_counted_members, grounded_members, shared_headers
-        from engine.currency_intent import currency_conversion_target
-        from engine.sql_rank import PoolSelection, mixed_currencies, outread_by_rows, select_ranked_candidate, served_member
-
-        pool = tuple(pool)
-        executable = self._executable(pool, tablemap, runs)
-        with request_timing.span("pool_grounding"):
-            grounded = grounded_members(pool, tablemap, graph)
-            double_counted = double_counted_members(pool, tablemap)
-        readers = self.named_reader or reading_search()
-        shapes = [runs.shapes.get(member.sql) if ran else None for member, ran in zip(pool, executable)]
-        with request_timing.span("rescore"):
-            scores = readers.rescore(question, pool, shapes)
-        # A reading of one of two columns that share a header, the question not saying which, is not eligible.
-        shared = tuple(shared_headers(member.query, tablemap, question) for member in pool)
-        ranking = tuple(sorted((index for index, (ran, sound) in enumerate(zip(executable, grounded))
-                                if ran and sound and not shared[index]),
-                               key=lambda i: (-(scores[i] if scores[i] is not None else -1e9), i)))
-        calculation_satisfied = [False] * len(pool)
-        if detect_calculations(question):
-            for index in ranking:
-                _, assessments, _ = select_calculation_candidate(
-                    question, norm, graph, [pool[index]])
-                calculation_satisfied[index] = bool(assessments) and all(
-                    row.get("status") == "satisfied" for row in assessments)
-        phrases = served_date_phrases(question, question_tokens(question), graph)
-        date_satisfied = [realizes_dates(member.query, phrases) for member in pool]
-        request_timing.count("pool", len(pool))
-        undecided = self._undecided(pool, ranking, runs)
-        outread = outread_by_rows(pool, ranking, [runs.matched_nothing.get(member.sql, False) for member in pool])
-        currencies = {} if currency_conversion_target(question) else mixed_currencies(graph)
-        # What is served is the member's served form: a ranking whose first group has no name still names the next.
-        eligible = set(ranking)
-        blank = tuple(index in eligible and runs.blank.get(member.sql, False)
-                      and self._holds_nothing(served_member(member, currencies), tablemap, runs)
-                      for index, member in enumerate(pool))
-        selection = PoolSelection(pool, tuple(executable), tuple(grounded), ranking, None,
-                                  tuple(calculation_satisfied), tuple(date_satisfied), double_counted, undecided,
-                                  shared, outread=outread, blank=blank, currencies=currencies)
-        selected = select_ranked_candidate(ranking, calculation_satisfied, date_satisfied, double_counted, undecided,
-                                           outread)
-        confidence = readers.confidence(pool, scores, shapes, selected) if selected is not None else None
-        # The choice's confidence speaks only for questions as long as those its threshold was matched on: a longer
-        # one is declined however confident (engine/decomposition.py:ONE_QUERY_WORDS). "Find the top 2 product
-        # categories by revenue and the top 2 customers by total spend, then list each pair where ..." was read as
-        # one ranking at 0.19 by the 2026-10-23 bundle, above its threshold of 0.1434.
-        if not readers.confident(confidence) or not one_query_length(question):
-            return replace(selection, confidence=confidence, declined=selected)
-        absent = absent_value(pool[selected].query, graph) if selected is not None else None
-        if absent is not None:
-            return replace(selection, confidence=confidence, declined=selected, absent_value=absent)
-        chosen = replace(selection, selected=selected, confidence=confidence)
-        if selected is not None and self._holds_nothing(chosen.candidate, tablemap, runs):
-            return replace(selection, confidence=confidence, declined=selected, found_nothing=True)
-        return chosen
-
-    def _holds_nothing(self, candidate, tablemap, runs):
-        """Whether ``candidate``, run on the copy of the request's tables in ``runs`` unless it ran there already,
-        returns no row or only blank cells. One that does not run says nothing: its execution reports why."""
-        self._executable((candidate,), tablemap, runs)
-        return runs.blank.get(candidate.sql, False)
-
-    @staticmethod
-    def _undecided(pool, ranking, runs):
-        """Per pool member: whether it is an eligible ranking whose order ranks none of the rows it keeps above the
-        first row it leaves out (engine/sql_rank.ranking_cut_probe, ranks_nothing), on the copy of the request's
-        tables in ``runs``."""
+        The tables are one workbook, a tab per table in their order, each its ``grid`` (``table_grid``), prepared once
+        per content (engine/prepared.py prepared_workbook). The Decisions path answers the question on the request's
+        database (engine/program/answer.py), once per request (RequestDatabase.answered), naming the tab the client has
+        in view (RequestDatabase.active_sheet): the stock reading and one closed-question call read the question, the
+        decoder builds the programs, the verifier runs each one, one choice call weighs those that returned rows, and
+        the likeliest answer is answered, warned or asked back (engine/program/closed.py). No model writes SQL or a
+        program. The candidates that returned rows are the pool, each its program's typed AST
+        (engine/program/lowering.py) and SQL with its read-as line as evidence. A question longer than
+        ONE_QUERY_WORDS words that the path asks back about asks, in an analysis, for the decomposition proposal
+        (engine/decomposition.py declined_compound). Raises LLMUnavailable when a Decisions call fails."""
+        from engine.prepared import prepared_workbook, scratch_database
+        from engine.program.answer import ASKED, WARNED, answer
+        from engine.program.closed import answer_masses
+        from engine.program.lowering import to_query
         from engine.sql_ast import render_query
-        from engine.sql_rank import ranking_cut_probe, ranks_nothing
+        from engine.sql_candidate import ScoredQuery
+        from engine.sql_rank import PoolSelection
 
-        undecided = [False] * len(pool)
-        for index in ranking:
-            probe = ranking_cut_probe(pool[index].query)
-            if probe is None:
-                continue
-            query, limit, terms = probe
-            try:
-                rows = runs.connection().execute(render_query(query)).fetchmany(limit + 1)
-            except sqlite3.Error:
-                continue
-            undecided[index] = ranks_nothing(rows, limit, terms)
-        return tuple(undecided)
+        with scratch_database() as database:
+            key, prepared = prepared_workbook(tables)
+            store = database.program_tables(key, prepared.catalog)
+            said = database.answered(key, question,
+                                     lambda: answer(question, prepared, store, database.active_sheet))
+        mass, _first = answer_masses(said.probabilities, said.listed_answers)
+        scores = [mass.get(answer_id, 0.0) for answer_id in said.listed_answers]
+        pool = []
+        for program, line, score in zip(said.listed_programs, said.listed_read_as, scores):
+            query = to_query(program, prepared.catalog)
+            pool.append(ScoredQuery(query, render_query(query), score, (line,)))
+        ranking = tuple(sorted(range(len(pool)), key=lambda index: (-scores[index], index)))
+        asked = said.kind == ASKED
+        return PoolSelection(tuple(pool), ranking, None if asked else said.pick, said.mass,
+                             said.pick if asked else None, said.kind == WARNED, said.uncertain, said.runner_up,
+                             said.probabilities, said.listed_programs, said.listed_rows, prepared.catalog, store)
 
-    def _serve_ast(self, question, norm, fks, sch, tablemap, graph=None, *, turns=None):
-        """Select the own-data query (``select_query``) and execute it through this executor."""
+    def _serve_ast(self, question, norm, tablemap):
+        """Select the own-data query (``select_query``) and run it. In an analysis, as every served request is, the
+        chosen program's one plan runs through both deterministic emitters on the request's database
+        (``_execute_deterministic``, which records it); outside one (an evaluator, a test) the answer is the rows the
+        choice read. Returns (candidate, result, error, selection); a question the path asks back has neither a
+        candidate nor an error."""
         from engine.deterministic.context import current_analysis_context
-        analysis_context = current_analysis_context()
-        searched = None
-        if analysis_context is not None:
-            from engine.decomposition import compound_candidate
 
-            searched = self.search_pool(question, norm, fks, sch, graph=graph, turns=turns) if turns is not None else self.search_pool(question, norm, fks, sch, graph=graph)
-            compound = compound_candidate(searched)
-            if compound is not None:
-                # A named compound request needs a branch proposal before it has an
-                # executable dual-emitter plan. Do not run a single query that answers one
-                # fragment of the question and then throw its rows away: the search's own
-                # reading asks for the decomposition (tests.test_complex_datasets).
-                return compound, None, None, tuple(searched), None
-        selection = self.select_query(question, norm, fks, sch, tablemap, searched=searched, graph=graph, turns=turns) if turns is not None else self.select_query(question, norm, fks, sch, tablemap, searched=searched, graph=graph)
-        candidates = selection.pool
+        selection = self.select_query(question, norm)
         candidate = selection.candidate
-        if candidate is None and not (selection.found_nothing and analysis_context is not None):
-            if not candidates:
-                return None, None, "planner: no valid AST candidate", candidates, selection
-            return None, None, NO_EXECUTABLE_CANDIDATE, candidates, selection
-        deterministic_plan = None
-        if analysis_context is not None:
-            from engine.decomposition import single_branch
-
-            # One dual-emitter branch serves a named request, so a set operation gives way to the
-            # best-ranked single SELECT; compound questions are decomposed (engine/decomposition.py).
-            selection = selection.constrained(single_branch)
-            candidate = selection.candidate
-            if candidate is None:
-                why = NO_EXECUTABLE_CANDIDATE if selection.found_nothing else "planner: no single-query AST candidate"
-                return None, None, why, candidates, selection
+        if candidate is None:
+            return None, None, None, selection
         ok, why = self.guard(candidate.sql)
         if not ok:
-            return candidate, None, "guard: " + why, candidates, selection
-        if analysis_context is not None:
-            from engine.deterministic.lower import (
-                UnsupportedDeterministicPlan,
-                lower_select_query,
-            )
-
-            try:
-                deterministic_plan = lower_select_query(
-                    analysis_context.slug, candidate.query, sch, fks,
-                )
-            except UnsupportedDeterministicPlan:
-                deterministic_plan = None
+            return candidate, None, "guard: " + why, selection
+        index = selection.selected
+        context = current_analysis_context()
         try:
-            cols, rows = self.execute(
-                tablemap, sch, candidate.sql, query=candidate.query,
-                deterministic_plan=deterministic_plan,
-            )
-            result = {
-                "columns": cols,
-                "rows": [["" if value is None else value for value in row] for row in rows],
-            }
-            return candidate, result, None, candidates, selection
+            if context is None:
+                rows = selection.rows[index]
+            else:
+                _columns, rows = self._execute_deterministic(
+                    tablemap, selection.plan(index, context.slug), estimated_rows=selection.estimated_rows(index))
+                rows = selection.shown(index, rows)
         except Exception as exc:  # execution errors are returned in the serving envelope
-            return candidate, None, f"{type(exc).__name__}: {exc}", candidates, selection
+            return candidate, None, f"{type(exc).__name__}: {exc}", selection
+        result = {"columns": list(selection.columns(index)),
+                  "rows": [["" if value is None else value for value in row] for row in rows]}
+        return candidate, result, None, selection
 
     # ---------- guard + execute ----------
     def guard(self, sql):
@@ -646,61 +485,6 @@ class TableQuery:
         if FORBID.search(s):
             return False, "forbidden keyword"
         return True, "ok"
-
-    def _executable(self, pool, tablemap, runs):
-        """Which pooled queries pass the guard and run to completion within their SQLite VM step
-        budget (``engine.sql_rank.execution_op_limit``, which grows with the cells of the tables a
-        query reads) on ``runs``, the request's one in-memory copy of its tables. The step budget is
-        deterministic and machine-independent; it stops a pathological join, not a normal query.
-        Success only makes a query eligible; it is not evidence that the query answers the question.
-        A query ``runs`` already ran keeps its outcome."""
-        if not pool:
-            return ()
-        from engine.answer_presentation import blank_cell
-        from engine.request_deadline import expired, remaining
-        from engine.sql_rank import execution_op_limit
-        steps = budget = interval = 0
-        def progress():
-            nonlocal steps
-            steps += interval
-            return int(steps >= budget or expired())
-        outcomes = []
-        with request_timing.span("pool_execute"):
-            try:
-                for candidate in pool:
-                    remaining()
-                    if candidate.sql in runs.outcomes:
-                        outcomes.append(runs.outcomes[candidate.sql])
-                        continue
-                    ran = False
-                    if self.guard(candidate.sql)[0]:
-                        con = runs.connection()
-                        steps, budget = 0, execution_op_limit(candidate.query, tablemap)
-                        interval = max(1, min(10000, budget))
-                        con.set_progress_handler(progress, interval)
-                        try:
-                            # Eligibility needs completion, but not a second materialized copy
-                            # of tens of thousands of result rows for each candidate.
-                            cursor = con.execute(candidate.sql)
-                            rows, first, holds = 0, None, False
-                            while chunk := cursor.fetchmany(1024):
-                                first = chunk[0] if first is None else first
-                                rows += len(chunk)
-                                holds = holds or not all(blank_cell(value) for row in chunk for value in row)
-                                remaining()
-                            runs.shapes[candidate.sql] = (rows, len(cursor.description or ()))
-                            runs.matched_nothing[candidate.sql] = rows == 0 or (
-                                rows == 1 and all(value in (None, 0) for value in first))
-                            runs.blank[candidate.sql] = not holds
-                            ran = True
-                        except sqlite3.Error:
-                            ran = False
-                    runs.outcomes[candidate.sql] = ran
-                    outcomes.append(ran)
-            finally:
-                if runs.outcomes:
-                    runs.database().restore_deadline()    # the request's own statements end at its deadline
-        return tuple(outcomes)
 
     def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None):
         """Run one query on the request's database (engine/prepared.py), outside a served request on a database of
@@ -734,11 +518,12 @@ class TableQuery:
             rows = normalized
         return columns, rows
 
-    def _execute_deterministic(self, tablemap, plan, knowledgebase_release=None, labels=None):
+    def _execute_deterministic(self, tablemap, plan, knowledgebase_release=None, labels=None, estimated_rows=None):
         """Run a served plan through both emitters on the request's database. ``labels`` resolves knowledgebase
         entities to their labels for display (docs/SHEETS_AS_REASONING.md rule 5); a plan that reads the
         knowledgebase cannot be shown without it, so every world trail passes it here, the one executor they
-        share."""
+        share. ``estimated_rows``: the rows the plan reads, when its tables are not the request tables of
+        ``tablemap`` (the own-data path's, engine/program/store.py)."""
         from sqlalchemy import create_engine
         from sqlalchemy.pool import StaticPool
 
@@ -768,7 +553,7 @@ class TableQuery:
         ).run(
             engine,
             mode=context.execution_mode or deterministic_execution_mode(),
-            estimated_rows=sum(
+            estimated_rows=estimated_rows if estimated_rows is not None else sum(
                 len(tablemap[name].get("rows") or ())
                 for name in {
                     table_name
@@ -850,35 +635,33 @@ class TableQuery:
         return out
 
     def serve(self, tables, question, explicit_fks=()):
-        """tables: [{name, columns, rows}]. Full multi-table pipeline for the web UI."""
+        """tables: [{name, columns, rows, grid}]. The own-data answer to ``question`` (``select_query``), run on the
+        request's database, as the response the web UI, the world layer's delegate and the evaluators read."""
+        from engine.llm import LLMUnavailable
+        from engine.prepared import scratch_database
         from engine.sql_schema import SchemaGraph
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, colidx, tablemap = self.schema(norm, fks)
         graph = SchemaGraph.from_planner(sch, fks)
-        try:
-            candidate, result, err, candidates, selection = self._serve_ast(
-                question, norm, fks, sch, tablemap, graph=graph
-            )
-        except Exception as exc:
-            candidate, result, candidates, selection = None, None, (), None
-            err = f"{type(exc).__name__}: {exc}"
+        with scratch_database():
+            try:
+                candidate, result, err, selection = self._serve_ast(question, norm, tablemap)
+            except LLMUnavailable:
+                raise                                # the path does not answer from a reading the API did not make
+            except Exception as exc:
+                candidate, result, selection = None, None, None
+                err = f"{type(exc).__name__}: {exc}"
         clarification = declined = None
-        if candidate is None and err == NO_EXECUTABLE_CANDIDATE and selection is not None and selection.ranking:
+        if candidate is None and err is None:
             from engine.decomposition import declined_compound
             from engine.deterministic.context import current_analysis_context
 
             if current_analysis_context() is not None:
                 declined = declined_compound(selection, question)
-            if declined is None:
-                refused = selection.pool[selection.declined if selection.declined is not None else selection.ranking[0]]
-                clarification = (absent_value_clarification(refused, selection.absent_value)
-                                 if selection.absent_value else unsure_clarification(refused))
-            err = None
-        elif candidate is None and selection is not None and not selection.ranking and any(selection.shared_headers):
-            # Every runnable reading read one of two columns that share a header: ask which.
-            clarification = shared_header_clarification(next(h for h in selection.shared_headers if h)[0])
-            err = None
-        model = READERS_MODEL
+            if declined is None and selection.declined is not None:
+                clarification = unsure_clarification(selection.pool[selection.declined])
+            elif declined is None:
+                err = NO_CANDIDATE
         sql = candidate.sql if candidate is not None else None
         computation = None
         if candidate is not None:
@@ -906,27 +689,26 @@ class TableQuery:
             } for column in sch],
             "tokens": [],
             "ast": repr(candidate.query) if candidate is not None else None,
-            "candidate_count": len(candidates),
+            "candidate_count": len(selection.pool) if selection is not None else 0,
             "evidence": list(candidate.evidence) if candidate is not None else [],
-            "features": dict(candidate.features) if candidate is not None else {},
+            "features": {},
             "computation": computation.record() if computation is not None else None,
             "selection": selection.record() if selection is not None else None,
             "read_as": read_as_of(candidate),
-            "model": model,
+            "model": PROGRAM_MODEL,
         }
         if clarification is not None:
             response.update(clarification)
         if candidate is not None:
-            # The readers' learned refusal accepted this reading: it is the own-data planner's certificate
+            # The Decisions path chose this reading of the whole question: it is the own-data planner's certificate
             # (engine/knowledge_query.py keeps its residual wording gate for the routes without one).
             from engine.query_contract import Coverage
             response['coverage'] = Coverage(True).record()
+            if selection.warned:
+                response["uncertain"] = uncertain_answer(selection)
             from engine.sql_ast import share_output
             if share_output(candidate.query):
                 response["unit"] = "percent"         # a share of a whole: 0.3 is stated as 30%
-            copies = _unread_copies(question, candidate.query, graph)
-            if copies:
-                response["layout_copies"] = copies   # the answer says which of them it read
             from engine.calculations import assess_calculations
             from engine.calculations.registry import attach_calculation_evidence
             assessments = assess_calculations(
@@ -947,100 +729,32 @@ class TableQuery:
             }
         elif declined is not None:
             response["decomposition_required"] = declined
-        elif candidate is not None:
-            from engine.deterministic.context import current_analysis_context
-            from engine.decomposition import selected_decomposition_required
-
-            required = selected_decomposition_required(candidate)
-            if current_analysis_context() is not None and required:
-                response["decomposition_required"] = required
         return response
 
 
-def one_of_each_layout(graph, question):
-    """``graph`` with one table of each group of layout copies (``SchemaGraph.layout_copies``): the copy the question
-    names, else the first. Copies hold one layout's rows for different products or months, such as the NT, SI and FF
-    subscription exports; the readers read the question against one of them, and the answer names the others
-    (``_unread_copies``). Read against a workbook of three exports and their three reports, every reading of "What is
-    the total Amount broken down by Plan and Currency?" joined copies that no foreign key connects (tests.test_scale,
-    2026-10-23)."""
-    words = set(name_words(question))
-    dropped = set()
-    for group in graph.layout_copies:
-        named = [table for table in group if set(name_words(table)) <= words]
-        dropped |= set(group) - {(named or group)[0]}
-    return graph.without(frozenset(dropped)) if dropped else graph
-
-
-def on_screen_first(tables, active_sheet):
-    """``tables`` with the tab the person has open first, so that of tabs that could all answer, the question reads that one
-    (``one_of_each_layout``). A sheet is uploaded once: a question asked on Checklist was answered from Forklift, the tab open
-    at the upload (2026-10-31)."""
-    words = name_words(active_sheet or "")
-    return sorted(tables, key=lambda table: name_words(table["name"]) != words)
-
-
-def _unread_copies(question, query, graph):
-    """{"read": [table], "others": [...]}: the other tables that could answer a one-table reading when the
-    question names no table, else None: copies of its layout (`SchemaGraph.layout_copies`), and near copies
-    (one layout holds the other's, as an export with one more column does) that hold every column it reads.
-    An answer from one of three subscription exports (NT, SI and FF) says which, so it is not taken for the
-    workbook's total (2026-10-04). A table that only shares a key or a name (orders' customer_id) is not one."""
-    from engine.relations import layout
-    from engine.sql_ast import column_refs
-    referenced = query.referenced_tables()
-    if len(referenced) != 1:
-        return None
-    (table,) = referenced
-    if set(name_words(table)) <= set(name_words(question)):
-        return None
-    read = layout(column.name for column in column_refs(query))
-    own = layout(column.ref.name for column in graph.by_table[table])
-    copies = next((group for group in graph.layout_copies if table in group), ())
-
-    def near_copy(other):
-        theirs = layout(column.ref.name for column in graph.by_table[other])
-        return len(own & theirs) >= 3 and (own <= theirs or theirs <= own) and read <= theirs
-
-    others = [other for other in graph.tables if other != table and (other in copies or near_copy(other))]
-    if not others:
-        return None
-    return {"read": [table], "others": others}
-
-
 def read_as_of(candidate):
-    """The readers' plain reading of ``candidate`` (engine/readers/read_as.py), or None for a query the readers
-    did not build."""
+    """The own-data path's plain reading of ``candidate`` (engine/program/output.py read_as), its first evidence, or
+    None."""
     evidence = getattr(candidate, "evidence", None) or ()
     first = evidence[0] if evidence else None
     return first if isinstance(first, str) and first else None
 
 
-def shared_header_clarification(header):
-    """The reply when every runnable reading reads one of two columns that share ``header`` and the question does not
-    say which (engine/sql_grounding.shared_headers)."""
-    return {"clarify": True, "dropped": [], "read_as": None,
-            "reason": f"More than one column is headed “{header}”. Which one do you mean? Name it with its column "
-                      f"letter, such as “{header} in column B”."}
+def uncertain_answer(selection):
+    """The response's ``uncertain`` record of a warned answer (``PoolSelection.warned``): the coordinates the
+    runner-up answer reads differently (engine/program/language.coordinates), and the runner-up's reading, so the
+    reply can say the answer is one the path is not sure of and what else the question may mean."""
+    other = selection.runner_up
+    return {"coordinates": list(selection.uncertain),
+            "also_read_as": read_as_of(selection.pool[other]) if other is not None else None}
 
 
 def unsure_clarification(candidate):
-    """The reply when the readers' refusal is not confident of any runnable reading, or the chosen one holds nothing:
-    how it read the question (engine/answer_presentation.py:unsure_reason)."""
+    """The reply when the Decisions path asks back: how it read the question, by its likeliest reading
+    (engine/answer_presentation.py:unsure_reason)."""
     from engine.answer_presentation import unsure_reason
     read_as = read_as_of(candidate)
     return {"clarify": True, "reason": unsure_reason(read_as), "dropped": [], "read_as": read_as}
-
-
-def absent_value_clarification(candidate, absent):
-    """The reply when the chosen reading tests a column of few values against a value it does not hold: what it read,
-    and what the column does hold, so the person can say which they meant in one word."""
-    from engine.readers.text import words
-    column, value, values = absent
-    listed = ", ".join(values[:-1]) + " and " + values[-1] if len(values) > 1 else values[0]
-    return {"clarify": True, "dropped": [], "read_as": read_as_of(candidate),
-            "reason": f"Your {words(column)} column holds {listed}, and I can't tell which of those “{value}” means. "
-                      "Which did you mean?"}
 
 
 def sch_col_of(agg, sch):

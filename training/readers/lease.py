@@ -1,36 +1,16 @@
-"""GPU leases for the readers' trainers. Each job builds the remote command the recorded runs used, stages the
-pod-side code of this package, and runs it through training/tools/runpod_api.py's owned, time-bounded lease: first
-on the SECURE cloud, then on COMMUNITY when that attempt fails (no instance, no CUDA, or a failed training). A
-command that succeeded but whose download broke (runpod_api's INCOMPLETE_EXIT) is never run again elsewhere: its pod
-is kept with the files, which training/readers/pull_parts.sh pulls. A lease also refuses to start for an experiment
-whose out/ holds a finished run (a best.json): that run is pulled or moved aside by hand, never trained again.
+"""The one GPU lease loop: a remote command run through training/tools/runpod_api.py's owned, time-bounded lease, first on
+the SECURE cloud, then on COMMUNITY when that attempt fails (no instance, no CUDA, or a failed training), with the
+pod-side code a training package names staged beside it. A command that succeeded but whose download broke
+(runpod_api's INCOMPLETE_EXIT) is never run again elsewhere: its pod is kept with the files, which the lease run again
+with --resume pulls. A lease also refuses to start for an experiment whose out/ holds a finished run
+(a best.json): that run is pulled or moved aside by hand, never trained again.
 
-Jobs:
-  full      stage 2 (readings) on <data>/stage2.jsonl.gz: XLM-R large, lr 1e-5, gradient checkpointing; the model
-            is shrunk on the pod (shrink_state) before out/ comes back.
-  folds     cross-fold stage-2 models on <data>/stage2.jsonl.gz (training.readers.folds runs on the pod); each
-            fold's weights are deleted on the pod, so only its held-out outputs (calibration_outputs.jsonl) return.
-  rescorer  re-scorers one after another, each --job NAME=TRAIN.jsonl.gz=CAL.jsonl.gz[=large]: trained on TRAIN's
-            candidates, its checkpoint selected on CAL's; "large" is XLM-R large with --checkpointing --questions 4
-            on 24 GB cards, else XLM-R base on 16 GB or more.
-
-Every remote command: cd /workspace, unzip the data, pip install transformers>=4.44,<5, exit 3 when CUDA is
-unavailable, train (exit 4 when training fails), shrink (``> log && test -s small.pt && rm model.pt``), list out/.
-The pod's /workspace/out comes back to training/readers/data/experiments/<id>/out (a failed attempt's recovered
-out/ is moved aside to out.<cloud>, and one an earlier lease left to out.earlier, so the next attempt's files never mix
-with them); each attempt's log is <id>/lease_<cloud>.log and the code that ran is <id>/code. The lease's state file is
-~/.cache/prereasoner/runpod_readers_<id>.json, so parallel leases never share one.
-
-usage: python -m training.readers.lease full --experiment <id> --data <dir with stage2.jsonl[.gz]>
-           [--epochs 15] [--eval-from 8] [--backbone FacebookAI/xlm-roberta-large] [--lr 1e-5]
-       python -m training.readers.lease folds --experiment <id> --data <dir> --folds 0,1 [--epochs 12] [--eval-from 9]
-           [--train-only synsql]
-       python -m training.readers.lease rescorer --experiment <id> --job NAME=TRAIN.jsonl.gz=CAL.jsonl.gz[=large] ...
-       options of every job: [--minutes N] [--max-hourly-cost 1.0] [--clouds SECURE,COMMUNITY] [--gpus a,b]
-           [--image IMAGE] [--cuda 12.4,12.8] [--dry-run] [--resume]
+The pod's /workspace/out comes back to <experiments>/<id>/out (a failed attempt's recovered out/ is moved aside to
+out.<cloud>, and one an earlier lease left to out.earlier, so the next attempt's files never mix with them); each
+attempt's log is <id>/lease_<cloud>.log and the code that ran is <id>/code. The lease's state file is
+~/.cache/prereasoner/<state>_<id>.json, so parallel leases never share one. training/named/lease.py builds its jobs on
+it; the readers' jobs went with the readers (DECISIONS.md, 2026-11-20).
 """
-import argparse
-import gzip
 import os
 import re
 import shutil
@@ -42,22 +22,14 @@ from training.readers import EXPERIMENTS_DIR
 from training.tools.runpod_api import INCOMPLETE_EXIT
 
 ROOT = Path(__file__).resolve().parents[2]
-LARGE = "FacebookAI/xlm-roberta-large"
 # XLM-R large trains with checkpointing on 24 GB or more; slower or smaller cards would outrun the lease. The RTX 5090
 # is left out: the recorded image's torch 2.4 has no kernels for it ("CUDA kernel errors", 2026-10-22).
 LARGE_GPUS = ["NVIDIA GeForce RTX 4090", "NVIDIA L40S", "NVIDIA RTX 6000 Ada Generation", "NVIDIA RTX A6000",
               "NVIDIA A40"]
-BASE_GPUS = LARGE_GPUS + ["NVIDIA GeForce RTX 3090", "NVIDIA RTX A5000", "NVIDIA RTX A4500", "NVIDIA GeForce RTX 4080",
-                          "NVIDIA RTX 4000 Ada Generation", "NVIDIA RTX A4000", "NVIDIA L4"]
 # The image and CUDA versions the recorded runs leased (their logs report torch 2.4.1+cu124). An empty --image or
 # --cuda leaves runpod_api's digest-pinned default.
 RECORDED_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 RECORDED_CUDA = "12.4,12.5,12.6,12.7,12.8,12.9"
-# What the pod imports: the shared model definitions and this package's GPU-side steps, nothing that needs the engine.
-POD_CODE = ("engine/__init__.py", "engine/readers/layout.py", "engine/readers/numerals.py", "engine/readers/models.py",
-            "training/__init__.py", "training/readers/__init__.py", "training/readers/provenance.py",
-            "training/readers/train.py",
-            "training/readers/folds.py", "training/readers/rescorer.py", "training/readers/shrink_state.py")
 PIP = "pip install -q 'transformers>=4.44,<5' 2>&1 | tail -1"
 # The check runs a kernel: a card the image's torch has no kernels for reports CUDA available and fails mid-run
 # (an RTX 5090, 2026-10-22), and a host with a broken driver fails here ("CUDA unknown error").
@@ -68,75 +40,7 @@ ALLOC = "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
 NAME = re.compile(r"[A-Za-z0-9._-]+")
 
 
-# ------------------------------------------------------------------------------------------------ remote commands
-
-def prelude(archives):
-    return f"cd /workspace && mkdir -p out && gunzip -kf {archives} && {PIP}; {CUDA_CHECK}"
-
-
-def shrink(model, backbone, small, log):
-    return (f"python -m training.readers.shrink_state shrink {model} {backbone} {small} > {log} 2>&1 "
-            f"&& test -s {small} && rm -f {model}; tail -1 {log}")
-
-
-def readings(backbone, lr, epochs, eval_from, examples, out, seed=0):
-    return (f"{ALLOC} python -m training.readers.train readings --backbone {backbone} --epochs {epochs} --lr {lr} "
-            f"--checkpointing --examples {examples} --out {out} --eval-from {eval_from} --seed {int(seed)}")
-
-
-def full_command(backbone, lr, epochs, eval_from, seed=0):
-    """Stage 2 on stage2.jsonl into out/stage2, shrunk."""
-    train = readings(backbone, lr, epochs, eval_from, "stage2.jsonl", "out/stage2", seed)
-    return (f"{prelude('stage2.jsonl.gz')}; {train} > out/stage2.log 2>&1 || "
-            "{ grep -v Warning out/stage2.log | tail -4; exit 4; }; grep -v Warning out/stage2.log | tail -4; "
-            f"{shrink('out/stage2/model.pt', backbone, 'out/stage2/small.pt', 'out/shrink.log')}; ls -la out/stage2")
-
-
-def folds_command(folds, backbone, lr, epochs, eval_from, train_only=""):
-    """The fold files made on the pod (``train_only``: sources every fold trains on and none holds out), then each
-    wanted fold trained into out/fold<i>, its weights deleted."""
-    loop = "; ".join(
-        f"{readings(backbone, lr, epochs, eval_from, f'folds/fold{i}.jsonl', f'out/fold{i}')} > out/fold{i}.log 2>&1"
-        f" || {{ tail -3 out/fold{i}.log; exit 4; }}; rm -f out/fold{i}/model.pt" for i in folds)
-    split = "python -m training.readers.folds stage2.jsonl folds" + (f" --train-only {train_only}" if train_only else "")
-    return f"{prelude('stage2.jsonl.gz')}; {split} && {loop}; ls -la out/*"
-
-
-def rescorer_command(jobs):
-    """Each (name, train, calibration, size) re-scorer trained into out/<name>, shrunk."""
-    steps = []
-    for name, _, _, size in jobs:
-        backbone = f"FacebookAI/xlm-roberta-{size}"
-        extra = " --checkpointing --questions 4" if size == "large" else ""
-        steps.append(
-            f"{ALLOC} python -m training.readers.rescorer train --candidates {name}_train.jsonl "
-            f"--calibration {name}_cal.jsonl --backbone {backbone} --out out/{name} --epochs 3{extra} "
-            f"> out/{name}.log 2>&1 || {{ tail -5 out/{name}.log; exit 4; }}; grep epoch out/{name}/log.jsonl; "
-            + shrink(f"out/{name}/model.pt", backbone, f"out/{name}/small.pt", f"out/{name}.shrink.log"))
-    return f"{prelude('*.jsonl.gz')}; " + "; ".join(steps) + "; ls -la out/*"
-
-
-# ---------------------------------------------------------------------------------------------------------- jobs
-
-def stage2_archive(data, make=True):
-    """<data>/stage2.jsonl.gz, made from stage2.jsonl when only that exists (and ``make``)."""
-    data = Path(data)
-    archive = data / "stage2.jsonl.gz"
-    if make and not archive.exists():
-        with open(data / "stage2.jsonl", "rb") as source, gzip.open(archive, "wb") as sink:
-            shutil.copyfileobj(source, sink)
-    return archive
-
-
-def parse_job(text):
-    """NAME=TRAIN=CAL[=large] -> (name, train path, calibration path, "base" or "large")."""
-    parts = text.split("=")
-    if len(parts) not in (3, 4) or not NAME.fullmatch(parts[0]) or (len(parts) == 4 and parts[3] != "large"):
-        raise argparse.ArgumentTypeError(f"expected NAME=TRAIN.jsonl.gz=CAL.jsonl.gz[=large], got {text!r}")
-    return parts[0], parts[1], parts[2], "large" if len(parts) == 4 else "base"
-
-
-def stage_code(directory, code=POD_CODE):
+def stage_code(directory, code):
     """The pod-side modules copied into ``directory`` as their packages (uploaded as /workspace/engine and
     /workspace/training, so the pod runs them with python -m from /workspace)."""
     if directory.exists():
@@ -147,9 +51,10 @@ def stage_code(directory, code=POD_CODE):
         shutil.copyfile(ROOT / relative, target)
 
 
-def lease(args, job, remote, uploads, gpus, *, experiments=None, code=POD_CODE, state="runpod_readers"):
-    """Run the lease on each cloud in turn until one succeeds; the exit code of the last attempt. The keywords are what
-    another training package (training/named/lease.py) brings to this one lease loop."""
+def lease(args, job, remote, uploads, gpus, *, code, experiments=None, state="runpod_readers"):
+    """Run the lease on each cloud in turn until one succeeds; the exit code of the last attempt. ``code``: the
+    repository files the pod imports; the keywords are what a training package (training/named/lease.py) brings to
+    this one lease loop."""
     experiment = (experiments or EXPERIMENTS_DIR) / args.experiment
     out = experiment / "out"
     code_dir = experiment / "code"
@@ -194,59 +99,9 @@ def lease(args, job, remote, uploads, gpus, *, experiments=None, code=POD_CODE, 
         print(f"{job} {cloud} lease exit {code}", flush=True)
         if code == 0:
             break
-        if code == INCOMPLETE_EXIT:                        # trained; the pod is kept for pull_parts.sh
+        if code == INCOMPLETE_EXIT:                        # trained; the pod is kept for --resume
             print(f"{job} kept its pod: see {experiment / f'lease_{cloud}.log'}", flush=True)
             break
         previous = cloud
     print(f"{job} done ok={code == 0}")
     return code
-
-
-def main(argv=None):
-    ap = argparse.ArgumentParser(description="Train the readers on a bounded RunPod lease.")
-    jobs = ap.add_subparsers(dest="job", required=True)
-    full = jobs.add_parser("full", help="the full stage-2 model on a data directory")
-    folds = jobs.add_parser("folds", help="cross-fold stage-2 models on a data directory")
-    rescorer = jobs.add_parser("rescorer", help="re-scorers on candidate files")
-    for parser, minutes in ((full, 200), (folds, 150), (rescorer, 180)):
-        parser.add_argument("--experiment", required=True, help="the run's id: training/readers/data/experiments/<id>")
-        parser.add_argument("--minutes", type=int, default=minutes, help="the lease's hard limit")
-        parser.add_argument("--max-hourly-cost", type=float, default=1.0)
-        parser.add_argument("--clouds", default="SECURE,COMMUNITY", help="tried in order until one succeeds")
-        parser.add_argument("--gpus", help="comma-separated GPU types, most wanted first (default: by job)")
-        parser.add_argument("--image", default=RECORDED_IMAGE, help="'' for runpod_api's pinned image")
-        parser.add_argument("--cuda", default=RECORDED_CUDA, help="allowed CUDA versions; '' for runpod_api's")
-        parser.add_argument("--dry-run", action="store_true", help="print the command and uploads; lease nothing")
-        parser.add_argument("--resume", action="store_true",
-                            help="run on this experiment's owned pod (its state file) within its deadline; no new pod")
-    for parser, epochs, eval_from in ((full, 15, 8), (folds, 12, 9)):
-        parser.add_argument("--data", required=True, help="a directory holding stage2.jsonl.gz (or stage2.jsonl)")
-        parser.add_argument("--backbone", default=LARGE)
-        parser.add_argument("--lr", default="1e-5")
-        parser.add_argument("--epochs", type=int, default=epochs)
-        parser.add_argument("--eval-from", type=int, default=eval_from)
-        parser.add_argument("--seed", type=int, default=0, help="the trainer's seed (shuffle, initialisation)")
-    folds.add_argument("--folds", required=True, help="comma-separated fold numbers, e.g. 0,1")
-    folds.add_argument("--train-only", default="", help="sources every fold trains on and none holds out (synsql)")
-    rescorer.add_argument("--job", dest="jobs", action="append", type=parse_job, required=True,
-                          help="NAME=TRAIN.jsonl.gz=CAL.jsonl.gz[=large], repeatable")
-    args = ap.parse_args(argv)
-    if not NAME.fullmatch(args.experiment):
-        ap.error("--experiment takes letters, digits, '.', '_' and '-'")
-    if args.job == "rescorer":
-        uploads = []
-        for name, train, calibration, _ in args.jobs:
-            uploads += [(train, f"/workspace/{name}_train.jsonl.gz"), (calibration, f"/workspace/{name}_cal.jsonl.gz")]
-        gpus = LARGE_GPUS if any(size == "large" for *_, size in args.jobs) else BASE_GPUS
-        return lease(args, "rescorer", rescorer_command(args.jobs), uploads, gpus)
-    uploads = [(str(stage2_archive(args.data, make=not args.dry_run)), "/workspace/stage2.jsonl.gz")]
-    if args.job == "full":
-        remote = full_command(args.backbone, args.lr, args.epochs, args.eval_from, args.seed)
-    else:
-        wanted = [int(i) for i in args.folds.split(",")]
-        remote = folds_command(wanted, args.backbone, args.lr, args.epochs, args.eval_from, args.train_only)
-    return lease(args, args.job, remote, uploads, LARGE_GPUS)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

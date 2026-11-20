@@ -58,6 +58,31 @@ AutoModel.from_pretrained(BGE_MODEL_ID, revision=BGE_REVISION)
 AutoTokenizer.from_pretrained(BGE_MODEL_ID, revision=BGE_REVISION)
 PY
 
+# Stock bge-m3 (~2.3 GB), the Decisions path's stock reading of every own-data question (engine/program/stock.py),
+# loaded once at startup. Its hub id and revision are engine/named/backbone.py's; exactly the files
+# weights_manifest.json pins under base_models are baked in, and each must match its SHA-256 there.
+COPY engine/named/backbone.py /tmp/prereasoner_backbone.py
+COPY engine/data/weights_manifest.json /tmp/prereasoner_weights_manifest.json
+RUN PYTHONPATH=/tmp python - <<'PY'
+import hashlib
+import json
+
+from huggingface_hub import hf_hub_download
+from prereasoner_backbone import BACKBONES
+
+spec = BACKBONES["bge-m3"]
+with open("/tmp/prereasoner_weights_manifest.json", encoding="utf-8") as source:
+    pinned = json.load(source)["base_models"]["bge-m3"]["files"]
+for name, expected in sorted(pinned.items()):
+    path = hf_hub_download(spec.hub, name, revision=spec.revision)
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    if digest.hexdigest() != expected:
+        raise SystemExit(f"bge-m3 {name}: sha256 {digest.hexdigest()} is not the manifest's {expected}")
+PY
+
 # ---------- runtime ----------
 FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9
 

@@ -15,7 +15,6 @@ from engine.calculations.registry import (
     calculation_clarify,
     composed_plans_for,
     detect_calculations,
-    select_calculation_candidate,
 )
 
 __all__ = [
@@ -31,5 +30,4 @@ __all__ = [
     "composed_plans_for",
     "describe_computation",
     "detect_calculations",
-    "select_calculation_candidate",
 ]

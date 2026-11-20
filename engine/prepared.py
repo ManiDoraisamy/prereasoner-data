@@ -6,10 +6,14 @@ per-conversation lock. A question cost about 67 statements (0.87 s of 7.5 s, 202
 the same cells again cost more. Now:
 
 * ``RequestDatabase`` is the request's private SQLite database. ``main`` holds the request's tables as the planner
-  types them, the bridges its routes build and the hybrid search's vectors; ``knowledgebase`` holds the part of the
-  knowledgebase the request can reach. The readers' candidate pool, the decomposition probe, the deterministic plan
-  of every route, the world path's checks, the hybrid search and the resolution slides all read it. Nothing else
-  writes it, so no question waits for another.
+  types them, the own-data path's tables of the request's workbook (engine/program/store.py, under names no request
+  table takes), the bridges its routes build and the hybrid search's vectors; ``knowledgebase`` holds the part of the
+  knowledgebase the request can reach. The own-data path's verification of its candidates, the decomposition probe, the
+  deterministic plan of every route, the world path's checks, the hybrid search and the resolution slides all read it.
+  Nothing else writes it, so no question waits for another.
+* ``prepared_workbook`` is the own-data path's preparation of the request's workbook (engine/program/answer.py
+  prepare: the sheet compile, its text dates typed by one Decisions call, the decoder and the stock reading's
+  targets), once per workbook content and kept in the process.
 * ``TablePreparation`` is what one table needs from the knowledgebase, computed once per version of the table:
   its column routes and typing evidence, every candidate entity of each distinct cell of a routed column (a cell
   can name several Parises, and the country a question names chooses among them), the entity type and matches of
@@ -70,6 +74,9 @@ NAMES_CACHE_ENTRIES = 200_000
 STORED_PER_CONVERSATION = 32
 # How many SQLite VM steps run between two checks of the request's deadline.
 DEADLINE_STEPS = 20_000
+# Prepared workbooks (``prepared_workbook``) are kept until they hold these many cells: a prepared workbook holds its
+# catalog, the decoder's indexes and the stock reading's targets, several times the cells' own size.
+WORKBOOK_CACHE_CELLS = 2_000_000
 
 # PostgreSQL column types as the request database stores them. A numeric is canonical decimal text, ordered by
 # the decimal collation and computed by the decimal functions (engine.numeric); a double precision stays a binary
@@ -518,11 +525,15 @@ _DATABASE: ContextVar = ContextVar("request_database", default=None)
 
 
 class RequestDatabase:
-    """The request's private SQLite database (see the module docstring)."""
+    """The request's private SQLite database (see the module docstring). ``active_sheet`` is the tab the client has in
+    view, as the request names it (a canonical table name), or None."""
 
-    def __init__(self, base=None):
+    def __init__(self, base=None, active_sheet=None):
         self.connection = connect()
         self._base = base
+        self.active_sheet = active_sheet
+        self._program = None                 # (workbook identity, the own-data path's tables on this database)
+        self._answers = {}                   # (workbook identity, question) -> the own-data path's answer
         self._tables = {}                    # main table -> fingerprint of the rows loaded into it
         self._fingerprints = {}              # (table name, id(rows)) -> (rows, fingerprint) for this request
         self._prepared = {}                  # preparation key -> the preparation, its rows held
@@ -534,11 +545,7 @@ class RequestDatabase:
         self.connection.execute("ATTACH DATABASE ':memory:' AS knowledgebase")
         if base is not None:
             self.connection.deserialize(base.image, name="knowledgebase")
-        self.restore_deadline()
-
-    # ---- the deadline ----
-    def restore_deadline(self):
-        """End any statement once the request's deadline passes (it was the PostgreSQL statement timeout)."""
+        # Any statement ends once the request's deadline passes (it was the PostgreSQL statement timeout).
         from engine.request_deadline import expired
         self.connection.set_progress_handler(lambda: int(expired()), DEADLINE_STEPS)
 
@@ -606,6 +613,26 @@ class RequestDatabase:
                                "rows_sha256": digest, "row_count": len(table["rows"]),
                                "owner": "engine.prepared.RequestDatabase.load"}
         return snapshots
+
+    # ---- the own-data path ----
+    def program_tables(self, key, catalog):
+        """The own-data path's tables of the workbook ``key`` (``prepared_workbook``) on this database, over its
+        ``catalog`` (engine/program/store.py RequestTables), each loaded on first use. A request reads one workbook."""
+        from engine.program.store import RequestTables
+        if self._program is None:
+            self._program = (key, RequestTables(catalog, self.connection))
+        elif self._program[0] != key:
+            raise ValueError("a request's database holds the program tables of one workbook")
+        return self._program[1]
+
+    def answered(self, key, question, compute):
+        """``compute()``, the own-data path's answer to ``question`` over the workbook ``key``, once per request: the
+        compose probe, the delegate and the world path's checks that ask one question share one set of Decisions
+        calls."""
+        slot = (key, question)
+        if slot not in self._answers:
+            self._answers[slot] = compute()
+        return self._answers[slot]
 
     # ---- the knowledgebase part ----
     def catalog(self, table):
@@ -757,14 +784,15 @@ def _cell(value, affinity):
 
 
 @contextmanager
-def request_database():
+def request_database(active_sheet=None):
     """Serve one request on its own database: the knowledgebase's base image attached, the request's tables loaded
-    as it reads them. Nested calls share the outer request's database."""
+    as it reads them; ``active_sheet``, the tab the client has in view (``RequestDatabase.active_sheet``). Nested calls
+    share the outer request's database."""
     if _DATABASE.get() is not None:
         yield _DATABASE.get()
         return
     with request_timing.span("prepare_database"):
-        database = RequestDatabase(knowledge().base())
+        database = RequestDatabase(knowledge().base(), active_sheet)
     token = _DATABASE.set(database)
     try:
         yield database
@@ -793,6 +821,61 @@ def scratch_database():
     finally:
         _DATABASE.reset(token)
         database.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The own-data path's workbook
+# ---------------------------------------------------------------------------------------------------------------
+
+_WORKBOOKS: OrderedDict = OrderedDict()      # workbook identity -> (its preparation, its cells), oldest use first
+_WORKBOOKS_LOCK = threading.Lock()
+_GRID_KEYS: OrderedDict = OrderedDict()     # ids of a request's grids -> (those grids, identity, cells)
+_GRID_KEYS_LOCK = threading.Lock()
+GRID_KEYS_KEPT = 64
+
+
+def workbook_key(tabs):
+    """(identity, cells) of the workbook whose tabs are ``tabs``: the hash of the tabs. An uploaded sheet's grid is one
+    object for as long as the process keeps its parse (engine/server.py), so the hash of the same grids is computed
+    once: a question reads its workbook in the compose probe, the delegate and a decomposition's leaves."""
+    ids = tuple(id(tab) for tab in tabs)
+    with _GRID_KEYS_LOCK:
+        held = _GRID_KEYS.get(ids)
+        if held is not None and all(a is b for a, b in zip(held[0], tabs)):
+            _GRID_KEYS.move_to_end(ids)
+            return held[1], held[2]
+    key = hashlib.sha256(json.dumps(tabs, default=str, ensure_ascii=False,
+                                    separators=(",", ":")).encode("utf-8")).hexdigest()
+    cells = sum(len(row) for tab in tabs for row in tab.get("rows") or ())
+    with _GRID_KEYS_LOCK:
+        _GRID_KEYS[ids] = (tabs, key, cells)
+        while len(_GRID_KEYS) > GRID_KEYS_KEPT:
+            _GRID_KEYS.popitem(last=False)
+    return key, cells
+
+
+def prepared_workbook(tables):
+    """(identity, preparation) of the workbook the own-data path reads for a request's tables: one tab per table, in
+    the tables' order, each the table's grid (engine/tables.py table_grid). Prepared once per content
+    (engine/program/answer.py prepare) and kept, least recently used first out, while ``WORKBOOK_CACHE_CELLS`` hold.
+    Raises LLMUnavailable when the preparation's Decisions call fails."""
+    from engine.program.answer import prepare
+    from engine.sheet import workbook_from_json
+    tabs = [table["grid"] for table in tables]
+    key, cells = workbook_key(tabs)
+    with _WORKBOOKS_LOCK:
+        held = _WORKBOOKS.get(key)
+        if held is not None:
+            _WORKBOOKS.move_to_end(key)
+            return key, held[0]
+    with request_timing.span("prepare_workbook"):
+        prepared = prepare(workbook_from_json({"name": "", "tabs": tabs}))
+    if cells <= WORKBOOK_CACHE_CELLS:
+        with _WORKBOOKS_LOCK:
+            _WORKBOOKS[key] = (prepared, cells)
+            while sum(entry[1] for entry in _WORKBOOKS.values()) > WORKBOOK_CACHE_CELLS:
+                _WORKBOOKS.popitem(last=False)
+    return key, prepared
 
 
 # ---------------------------------------------------------------------------------------------------------------

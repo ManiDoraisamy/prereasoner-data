@@ -10,7 +10,6 @@ import re
 from typing import Any, Iterable, Sequence
 
 from engine.numeric import NUMBER_TEXT, NUMBER_WORD, has_integer_padding, observed_numeric_affinity, parse_decimal
-from engine.relations import layout
 from engine.sql_ast import ColumnRef, Join, SQLType
 
 
@@ -18,9 +17,6 @@ _WORD_RE = re.compile(NUMBER_WORD + r"|[^\W_]+(?:'[^\W_]+)?", re.UNICODE)
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T].*)?$")
 _NAME_WORDS = frozenset({"name", "title", "label"})
 
-
-# The share of the smaller table's columns two tables hold in common to be copies of one export.
-COPY_SHARE = 0.9
 
 
 def _annotations(value):
@@ -213,43 +209,6 @@ class SchemaGraph:
         refs = {key: column.ref for key, column in self.column_map.items()}
         return tuple(key for edge in relate(tables, explicit_fks=declared)["fks"] if not edge.get("explicit")
                      and (key := _foreign_key(edge, refs)) is not None)
-
-    @cached_property
-    def layout_copies(self) -> tuple[tuple[str, ...], ...]:
-        """The tables that are copies of one layout (`relations.layout`), as groups in the tables' order: an
-        export of several columns kept per product or month, such as NT, SI and FF subscriptions. A table of
-        one or two columns lists one thing (customers' names, orders' names), and a table a foreign key
-        references is its own thing (two code lookups different keys reference): neither is a copy."""
-        referenced = {foreign_key.to_column.table for foreign_key in self.foreign_keys}
-        layouts = {table: layout(column.ref.name for column in self.by_table[table]) for table in self.tables}
-
-        def near(one, other):
-            return len(one & other) >= COPY_SHARE * min(len(one), len(other))
-
-        keys = {(key.from_column.table, layout((key.from_column.name,))): key.to_column.table for key in self.foreign_keys}
-
-        def keyed_apart(first, second):
-            """A column both tables hold references different things."""
-            return any(table == first and (second, column) in keys and not near(layouts[target], layouts[keys[second, column]])
-                       for (table, column), target in keys.items())
-
-        groups: list[tuple[frozenset[str], list[str]]] = []
-        for table in self.tables:
-            if table in referenced or len(self.by_table[table]) < 3:
-                continue
-            own = layouts[table]
-            for shape, members in groups:
-                # Exports drift: NT holds SI's columns and sixteen more, and FF spells one of them "Domian". Read as
-                # different tables, the readers chose whichever listed the question's value, and the answer came from
-                # SI with the user on NT (2026-10-30). A shared column that keys different things is no export's drift:
-                # "teaches" holds every column of "takes" but one, and their ID references instructors and students. Each
-                # export's Year referencing its own report tab is drift: the reports are one layout too (2026-10-31).
-                if own == shape or (near(own, shape) and not keyed_apart(table, members[0])):
-                    members.append(table)
-                    break
-            else:
-                groups.append((own, [table]))
-        return tuple(tuple(members) for _, members in groups if len(members) > 1)
 
     def reachable(self, tables: Iterable[str]) -> set[str]:
         """The tables the foreign keys connect to ``tables``, those included."""

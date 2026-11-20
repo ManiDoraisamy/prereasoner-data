@@ -418,7 +418,66 @@ def test_the_firebase_app_is_initialized_once_under_concurrent_requests():
     print("  PASS  the firebase app is initialized once under concurrent requests")
 
 
+def test_a_question_reads_the_tab_in_view_and_a_failed_decisions_call_is_retryable():
+    """The request's active sheet reaches the reasoner as the table it names (a canonical table name), which the own-data
+    path's records name as the tab in view; and a Decisions call that fails (engine.llm.LLMUnavailable) answers a
+    retryable 503, never a 500 and never an answer from a reading the API did not make."""
+    import urllib.error
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from engine import server
+    from engine.llm import LLMUnavailable
+    from engine.request_replay import DurableResponseReplay
+    from tests.test_request_limits import _RequestJobs
+
+    seen = []
+
+    class Model:
+        def serve(self, tables, question, conversation, as_of, **kwargs):
+            seen.append(kwargs.get("active_sheet"))
+            if question == "down":
+                raise LLMUnavailable("Decisions call failed (429)")
+            return {"question": question, "result": {"columns": ["q"], "rows": [[1]]}, "error": None}
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.H)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    host, port = httpd.server_address[:2]
+
+    def ask(question, job, **extra):
+        body = json.dumps({"tables": [{"name": "Sales 2024", "data": "id,amount\n1,2\n"}], "question": question,
+                           "jobId": job, **extra}).encode()
+        request = urllib.request.Request(f"http://{host}:{port}/api/reason", data=body, method="POST",
+                                         headers={"Authorization": "Bearer sub-a", "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                return response.status, json.loads(response.read())
+        except urllib.error.HTTPError as error:
+            return error.code, json.loads(error.read())
+
+    try:
+        with (
+            patch.object(server, "_verify_principal", lambda token: (token, token)),
+            patch.object(server, "resolve_conversation", lambda *_args: "c_" + "0" * 32),
+            patch.object(server.master, "relevant_tables", lambda *_args: {"tables": [], "warnings": []}),
+            patch.object(server, "emitter", lambda *_args: (lambda *a, **k: None)),
+            patch.object(server, "MODEL", Model()),
+            patch.object(server, "WORLD_REPLAY", DurableResponseReplay()),
+            patch("engine.pg._pg", _RequestJobs().connect),
+        ):
+            answered = ask("total amount", "job_view", active_sheet="Sales 2024")
+            plain = ask("total amount", "job_plain")
+            down = ask("down", "job_down")
+    finally:
+        httpd.shutdown()
+    assert answered[0] == 200 and seen[0] == "sales_2024", (answered, seen)
+    assert plain[0] == 200 and seen[1] is None, (plain, seen)
+    assert down[0] == 503 and down[1].get("retryable") is True, down
+    print("  PASS  the tab in view reaches the reasoner; a failed Decisions call is a retryable 503")
+
+
 TESTS = [
+    test_a_question_reads_the_tab_in_view_and_a_failed_decisions_call_is_retryable,
     test_two_questions_run_at_once_each_on_its_own_stream,
     test_each_request_sees_only_its_own_planner_state,
     test_a_request_local_value_is_never_read_through_a_reused_id,

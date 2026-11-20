@@ -1,7 +1,9 @@
 """The request's SQLite tables for a catalog: one physical table per catalog table, loaded on first use, plus the melted view a peer rank reads.
 
-A table t3 holds, per line: _line (its order), _role, _label (fold) and _label_len, _section (fold), _section_text, _section_path (fold). Per column at position p: c{p}_t the cell as shown, c{p}_f its fold, c{p}_n its number as the sheet's binary float, which SQLite computes natively for the candidates and both deterministic programs read as its
-shortest decimal for a chosen one (ColumnSpec.binary_float), c{p}_d its ISO day. A blank is NULL in all four. t3_peers holds one row per line and column: _line, _role, _label, _section, _name, _f, _n. "_one" is the one row
+They live on the request's one database (engine/prepared.py RequestDatabase.program_tables) beside the request's own tables, and every name
+starts with an underscore, which no request table's canonical name does (engine/request_validation.canonical_table_name strips it): catalog
+table t3 is the SQL table _t3. It holds, per line: _line (its order), _role, _label (fold) and _label_len, _section (fold), _section_text, _section_path (fold). Per column at position p: c{p}_t the cell as shown, c{p}_f its fold, c{p}_n its number as the sheet's binary float, which SQLite computes natively for the candidates and both deterministic programs read as its
+shortest decimal for a chosen one (ColumnSpec.binary_float), c{p}_d its ISO day. A blank is NULL in all four. _t3_peers holds one row per line and column: _line, _role, _label, _section, _name, _f, _n. "_one" is the one row
 a calculation selects from. Identifiers are ours, so nothing a sheet writes reaches SQL except as a bound value or a typed literal.
 """
 from __future__ import annotations
@@ -28,8 +30,18 @@ def day_column(position: int) -> str:
     return f"c{position}_d"
 
 
+def sql_table(table_id: str) -> str:
+    """The SQL table of a catalog table."""
+    return f"_{table_id}"
+
+
+def table_id_of(sql_name: str) -> str:
+    """The catalog table a SQL table holds (sql_table's inverse)."""
+    return sql_name[1:]
+
+
 def peers_table(table_id: str) -> str:
-    return f"{table_id}_peers"
+    return f"_{table_id}_peers"
 
 
 ONE_ROW = "_one"
@@ -45,8 +57,27 @@ PEER_FOLD = "_f"
 PEER_NUMBER = "_n"
 
 
+INTEGER, TEXT, REAL, DATE = "integer", "text", "real", "date"     # what a store column holds; a day is ISO text
+
+
+def table_columns(catalog: Catalog, sql_name: str) -> list[tuple[str, str]]:
+    """(name, kind) of each column of a store table, by its SQL name (sql_table or peers_table), in its order: the
+    columns RequestTables creates."""
+    if sql_name.endswith("_peers"):
+        return [(LINE, INTEGER), (ROLE, TEXT), (LABEL, TEXT), (SECTION_FOLD, TEXT), (SECTION_PATH, TEXT), (PEER_NAME, TEXT), (PEER_FOLD, TEXT), (PEER_NUMBER, REAL), ("position", INTEGER)]
+    table = catalog.table(table_id_of(sql_name))
+    columns = [(LINE, INTEGER), (ROLE, TEXT), (LABEL, TEXT), (LABEL_LENGTH, INTEGER), (SECTION_FOLD, TEXT), (SECTION_TEXT, TEXT), (SECTION_PATH, TEXT)]
+    for position in range(len(table.columns)):
+        columns.extend(((text_column(position), TEXT), (fold_column(position), TEXT), (number_column(position), REAL), (day_column(position), DATE)))
+    return columns
+
+
+_STORAGE = {INTEGER: "INTEGER", TEXT: "TEXT", REAL: "REAL", DATE: "TEXT"}
+
+
 class RequestTables:
-    """One private SQLite database over a catalog. Tables load on first use, since a question reaches few of a workbook's tables."""
+    """A catalog's tables on one SQLite connection: the request's database (engine/prepared.py), else a private one. Tables load on first use, since a question
+    reaches few of a workbook's tables."""
 
     def __init__(self, catalog: Catalog, connection: sqlite3.Connection | None = None):
         self.catalog = catalog
@@ -60,10 +91,8 @@ class RequestTables:
         if table_id in self._loaded:
             return
         table = self.catalog.table(table_id)
-        columns = [f'"{LINE}" INTEGER PRIMARY KEY', f'"{ROLE}" TEXT', f'"{LABEL}" TEXT', f'"{LABEL_LENGTH}" INTEGER', f'"{SECTION_FOLD}" TEXT', f'"{SECTION_TEXT}" TEXT', f'"{SECTION_PATH}" TEXT']
-        for position in range(len(table.columns)):
-            columns.extend((f'"{text_column(position)}" TEXT', f'"{fold_column(position)}" TEXT', f'"{number_column(position)}" REAL', f'"{day_column(position)}" TEXT'))
-        self.connection.execute(f'CREATE TABLE "{table_id}" ({", ".join(columns)})')
+        columns = [f'"{name}" {_STORAGE[kind]}' + (" PRIMARY KEY" if name == LINE else "") for name, kind in table_columns(self.catalog, sql_table(table_id))]
+        self.connection.execute(f'CREATE TABLE "{sql_table(table_id)}" ({", ".join(columns)})')
         width = len(columns)
         rows = []
         for i, line in enumerate(table.lines):
@@ -71,7 +100,7 @@ class RequestTables:
             for position in range(len(table.columns)):
                 row.extend((table.texts[position][i], table.folds[position][i], table.numbers[position][i], table.days[position][i]))
             rows.append(row)
-        self.connection.executemany(f'INSERT INTO "{table_id}" VALUES ({",".join("?" * width)})', rows)
+        self.connection.executemany(f'INSERT INTO "{sql_table(table_id)}" VALUES ({",".join("?" * width)})', rows)
         self.connection.commit()
         self._loaded.add(table_id)
 
@@ -81,7 +110,8 @@ class RequestTables:
         self.ensure(table_id)
         table: CatalogTable = self.catalog.table(table_id)
         name = peers_table(table_id)
-        self.connection.execute(f'CREATE TABLE "{name}" ("{LINE}" INTEGER, "{ROLE}" TEXT, "{LABEL}" TEXT, "{SECTION_FOLD}" TEXT, "{SECTION_PATH}" TEXT, "{PEER_NAME}" TEXT, "{PEER_FOLD}" TEXT, "{PEER_NUMBER}" REAL, "position" INTEGER)')
+        definition = ", ".join(f'"{column}" {_STORAGE[kind]}' for column, kind in table_columns(self.catalog, name))
+        self.connection.execute(f'CREATE TABLE "{name}" ({definition})')
         rows = []
         for i, line in enumerate(table.lines):
             for position, column in enumerate(table.columns):

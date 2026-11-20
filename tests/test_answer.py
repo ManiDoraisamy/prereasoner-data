@@ -22,6 +22,7 @@ from engine.program.closed import (CHOICE_NONE, CHOOSE_K, NONE, SAID_OPTIONS_MOS
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
 from engine.program.names import PERCENT_OP, SAID_ABOVE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SAID, coordinate
+from engine.program.store import RequestTables
 from engine.sheet import compile_workbook, workbook_from_json
 
 ROWS = [["Region", "Product", "Amount", "Date", "Year built"],
@@ -295,7 +296,7 @@ def test_an_either_or_is_answered_in_the_questions_words() -> None:
         if name in wanted and _option(question, wanted[name]) is not None:
             return {_option(question, wanted[name]): 0.8, NONE: 0.15} if NONE in question["criteria"] else {_option(question, wanted[name]): 0.9}
         return {NONE: 0.9} if NONE in question["criteria"] else {}
-    said = _with_transport(FakeTransport(rule), lambda: answer("is the total amount for East more or less than 200", prepared))
+    said = _with_transport(FakeTransport(rule), lambda: answer("is the total amount for East more or less than 200", prepared, RequestTables(prepared.catalog)))
     assert said.kind == ANSWERED and said.rows == (("more",),) and said.read_as.startswith("'more' if ")
 
 # --------------------------------------------------------------------------------------------------------- the path
@@ -311,7 +312,7 @@ def test_answer_reads_decodes_and_chooses_through_its_calls() -> None:
             return {first: 0.8}
         return _reading_rule(name, criteria_question, state)
     transport = FakeTransport(rule)
-    said = _with_transport(transport, lambda: answer(question, prepared))
+    said = _with_transport(transport, lambda: answer(question, prepared, RequestTables(prepared.catalog)))
     names = [list(body["questions"]) for body in transport.bodies]
     assert names[-1] == ["reading"] and ["said_above", "said_below"] in names and any("value" in called for called in names), names
     assert len(names) in (3, 4), names
@@ -321,6 +322,8 @@ def test_answer_reads_decodes_and_chooses_through_its_calls() -> None:
     assert said.kind == expected.kind and said.rows == said.listed_rows[expected.pick] and said.read_as == said.listed_read_as[expected.pick]
     assert said.tokens == 7 * len(transport.bodies)
     assert ((240.5,),) in said.listed_rows, "the sum of Amount for East is listed"
+    assert len(said.listed_programs) == len(said.listed_rows) and said.pick == expected.pick and said.runner_up == expected.runner_up
+    assert said.program is said.listed_programs[said.pick]
 
 
 def test_a_failed_call_reaches_the_caller() -> None:
@@ -330,7 +333,7 @@ def test_a_failed_call_reaches_the_caller() -> None:
     def down(payload):
         raise llm.LLMUnavailable("down")
     try:
-        _with_transport(down, lambda: answer("total amount for East", prepared))
+        _with_transport(down, lambda: answer("total amount for East", prepared, RequestTables(prepared.catalog)))
     except llm.LLMUnavailable:
         return
     raise AssertionError("an unavailable API was not reported")

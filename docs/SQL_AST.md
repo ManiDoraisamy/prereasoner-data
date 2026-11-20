@@ -1,5 +1,7 @@
 # Own-Data SQL Planner
 
+> **Status (2026-11-20).** The trained own-data readers this document describes (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change. The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); what this document says of the readers is historical.
+
 This is the own-data SQL planner: the path from a question over uploaded tables to executed SQL.
 Every query it can run is a validated typed abstract syntax tree (AST). Learned encoder readers read
 the question beside the schema as named readings, and a deterministic builder makes each reading a

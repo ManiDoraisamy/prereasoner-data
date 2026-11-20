@@ -107,19 +107,23 @@ def run() -> dict:
         if columns != ["total"] or rows != [("900719925474099.33",)]:
             raise RuntimeError(f"exact calculation smoke mismatch: {columns!r} {rows!r}")
 
-        # A health endpoint proves only that weights loaded. This request exercises
-        # the active ranker, typed AST planner, the request database and the knowledgebase
-        # it is prepared from, and the result contract using the exact image being promoted.
+        # A health endpoint proves only that weights loaded. This request exercises the own-data path
+        # (the stock reader, the Decisions API with the deployment's key, the typed AST and both
+        # deterministic emitters), the request database and the knowledgebase it is prepared from, and
+        # the result contract using the exact image being promoted, as engine/server.py serves it:
+        # inside an analysis execution context.
+        from engine.deterministic.context import analysis_execution_context
         from engine.knowledge import KnowledgeReasoner
 
-        reasoning = KnowledgeReasoner().serve(
-            [table_from_rows(
-                "orders", ["order_id", "amount"],
-                [["1", "1.10"], ["2", "2.20"]],
-            )],
-            "what is the total amount",
-            conversation,
-        )
+        with analysis_execution_context(None, conversation):
+            reasoning = KnowledgeReasoner().serve(
+                [table_from_rows(
+                    "orders", ["order_id", "amount"],
+                    [["1", "1.10"], ["2", "2.20"]],
+                )],
+                "what is the total amount",
+                conversation,
+            )
         _assert_reasoning_result(reasoning)
     finally:
         connection = _pg()

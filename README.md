@@ -46,14 +46,14 @@ What runs today:
 |---|---|---|
 | Encoder | `Qwen/Qwen2.5-0.5B` used without its decoder, adapted with a LoRA and a 10-block relational readout trained to fill **90 named coordinates**: 9 column types (`is_num`, `is_time`, `currency`, ...), 71 property names (`addressCountry`, `brand`, `birthDate`, ...), and 10 query intents (`intent_agg_sum`, `intent_filter_gt`, `intent_sort_desc`, ...) | What each column is, and what a composition or world question asks for |
 | Schema.org head | A linear layer reading 80 Schema.org properties. A class score is a weighted sum of those property scores. 56 properties and 11 classes pass the release gates; the others abstain | Which world table a column may join. Joins also need exact source-key matches |
-| Own-data readers | XLM-R encoders that read a question beside the schema: one scores the tables and columns it uses, the reading models read its named readings (aggregates, conditions, groups, orderings, set operations, shares), a re-scorer orders the candidates that ran, and a logistic refusal decides whether to serve | Which readings become candidate queries, which one is served, and when to decline |
-| Typed SQL builder | A deterministic builder that makes each reading a typed syntax tree, joining tables along their foreign keys | The candidate queries themselves |
+| Decisions path (own data) | The sheet compiler reads each uploaded tab; stock bge-m3 and the engine's word reader shortlist what a question may mean; the Decisions API (an external closed-choice model) answers closed questions whose options the engine built, with probabilities only; and one more closed question weighs the programs that ran | Which reading is decoded into programs, which answer is served, warned, or asked back |
+| Program decoder and typed SQL | A deterministic decoder that builds the most probable programs of the reading, each lowered to a typed syntax tree over one table | The candidate queries themselves |
 | Execution | PostgreSQL, plus a generated Python program that mirrors the SQL for supported shapes | The numbers |
 
-No model writes the SQL. The builder makes every own-data query from the readers' readings, each
-candidate runs on a copy of your tables, the ones that fail or test a value the column never holds are
-dropped, and the re-scorer ranks the rest. The answer shows the query and how the question was read; when
-the readers are not confident, the reply says what they read instead of answering.
+No model writes the SQL. The decoder builds every own-data program from the reading, each candidate runs
+on your tables, and the choice weighs the ones that returned rows, per answer. The answer shows the query and
+how the question was read; an answer the choice is less sure of is given as one, and below that the reply says
+what it read instead of answering.
 
 The optional chat service uses Gemini to make follow-up wording explicit and request engine operations.
 It sends schema metadata, bounded recent user questions and saved analysis questions. It sends no source
@@ -71,7 +71,7 @@ version pays that cost in three visible ways:
   have no public data source yet. Facts come from Wikidata, the ECB, GeoNames, IANA, CLDR, CDC, NLM
   and the other releases listed in [docs/SOURCE_DATA.md](docs/SOURCE_DATA.md).
 - **Nouns, not actions.** Properties name things. Actions are covered only by fixed query forms (the
-  encoder's ten intents and the readers' aggregates, conditions, groups and orderings), so Prereasoner
+  encoder's ten intents and the program language's aggregates, conditions, groups and ranks), so Prereasoner
   handles questions over structured data such as CSV and spreadsheet files, and nothing broader.
 
 The project is open source so that this vocabulary can grow the way the periodic table did, one
@@ -155,10 +155,10 @@ engine/server.py                 HTTP/auth/request adapter
         v
 engine/knowledge.py              one serving entry point
         |
-        +--> own-data typed AST planner: learned readers read the question, a
-        |       deterministic builder makes each reading a typed AST; candidates run
-        |       and grounded, re-scored, served or declined by the refusal
-        |       engine/tables.py (select_query), engine/readers/, engine/sql_rank.py,
+        +--> own-data path: the Decisions API answers closed questions over options
+        |       the engine built, the decoder builds programs (typed ASTs), the verifier
+        |       runs them, one choice per answer: served, warned or asked back
+        |       engine/tables.py (select_query), engine/program/, engine/sheet/,
         |       engine/sql_ast.py
         |
         +--> world grounding when a public entity relation is required
@@ -248,9 +248,8 @@ Open the local UI at `http://localhost:8090`.
 `engine.fetch_weights` downloads the public
 [weight bundle](https://huggingface.co/prereasoner/prereasoner-weights) without a token and checks
 every file against the revision and hashes in `engine/data/weights_manifest.json`. See
-[engine/data/README.md](engine/data/README.md). The own-data readers in `engine/data/readers/` are
-installed only by `training/readers/promote.py`, which records their hashes in the same manifest
-([training/readers/README.md](training/readers/README.md)).
+[engine/data/README.md](engine/data/README.md). The image also bakes stock bge-m3 from the hub, each file
+checked against the hashes the same manifest pins under `base_models`.
 
 The guided Google Cloud deployment uses Vertex AI Gemini through its service account, and Terraform
 creates the engine's Gemini Developer API key and keeps it in Secret Manager; it does not ask for a key.
@@ -282,7 +281,7 @@ For native Python, the Firebase emulator, and database seeding, see
 Fast checks that need neither weights nor Postgres:
 
 ```powershell
-python -m tests.test_readers
+python -m tests.test_answer
 python -m tests.test_sql_ast
 python -m tests.test_deterministic_emitters
 python -m tests.test_calculations
@@ -327,7 +326,7 @@ answers derived from the CSV files; `python -m tests.test_datasets` runs them ag
 | `mcp_server/` | MCP adapter over the same engine API |
 | `sheets-addon/`, `excel-addon/` | Google Sheets and Excel add-ons; they call the hosted chat service |
 | `db/` | PostgreSQL schema, source synchronization, migrations, and grants |
-| `training/` | Encoder, own-data readers and Schema.org head training and calibration; never imported by serving |
+| `training/` | Encoder and Schema.org head training and calibration, and the named-reader experiments; never imported by serving |
 | `tests/` | Hermetic and live integration suites |
 | `spider/` | Serving-faithful Spider evaluation and recorded results |
 | `docs/` | Architecture, developer guides, testing, research, and training |
@@ -339,10 +338,10 @@ ranking errors, missing world data, or wrong relationship inference. Accuracy wo
 measured stages: routing, table selection, candidate-pool recall, top-1 ranking, refusal, execution,
 and evaluation.
 
-No model writes SQL: every query is built from the readers' readings, and a question the readers are
-not confident of is declined with what they read rather than answered as a different one. Recorded
-Spider results are in [spider/results/RESULTS.md](spider/results/RESULTS.md). The readers' training
-sources include Spider's dev questions, so the Spider test set is their held-out measurement.
+No model writes SQL: every query is a program the decoder built, and a question the choice is not sure
+enough of is asked back with what it read rather than answered as a different one. Recorded Spider results
+are in [spider/results/RESULTS.md](spider/results/RESULTS.md); the program language joins no tables, so a
+Spider question whose answer needs a join is answered from one table or asked back.
 `gold_tables` results are an oracle ablation, not a Spider comparison. See
 [docs/SQL_AST.md](docs/SQL_AST.md).
 

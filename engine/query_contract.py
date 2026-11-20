@@ -2,8 +2,8 @@
 
 ``unreadable_operand`` finds the column a total or average names whose cells are not all numbers: compose, the
 registered calculations and the world routes refuse it, naming the cells. ``Coverage`` is the record an answer
-carries of whether its query reads the whole question: the readers' accepted reading certifies an own-data answer
-(engine/tables.py), and the world routes' wording gate records its own (engine/knowledge_query.py).
+carries of whether its query reads the whole question: the Decisions path's decided reading certifies an own-data
+answer (engine/tables.py), and the world routes' wording gate records its own (engine/knowledge_query.py).
 """
 from __future__ import annotations
 

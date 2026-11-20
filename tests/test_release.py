@@ -108,11 +108,12 @@ def test_spacy_warmup_does_not_block_model_readiness():
     assert not worker.is_alive(), "background spaCy warmup failed to exit"
 
 
-def test_the_engine_loads_the_readers_before_it_serves():
-    # 2026-10-26 (f2d08f5): the readers loaded on an instance's first own-data question, 191 s on a fresh Cloud Run
-    # instance, and the chat's engine call timed out at 180 s. They load after the world reasoner, never beside it:
-    # building them in bfloat16 sets torch's default dtype for the whole process, and 3fa1b46's world encoder, built
-    # meanwhile, came out in bfloat16, so every own-data question failed (2026-10-27).
+def test_the_engine_loads_the_stock_reader_before_it_serves():
+    # 2026-10-26 (f2d08f5): the own-data path's model loaded on an instance's first own-data question, 191 s on a fresh
+    # Cloud Run instance, and the chat's engine call timed out at 180 s. The Decisions path's stock reader (bge-m3,
+    # engine/program/stock.py) loads before the server serves, after the world reasoner, never beside it: a bfloat16
+    # build set torch's default dtype for the whole process, and 3fa1b46's world encoder, built meanwhile, came out in
+    # bfloat16, so every own-data question failed (2026-10-27).
     import threading
 
     import engine.server as server
@@ -120,10 +121,10 @@ def test_the_engine_loads_the_readers_before_it_serves():
     order = []
     loading = threading.Lock()
 
-    def readers():
-        assert loading.acquire(blocking=False), "the readers loaded while the world reasoner was being built"
+    def stock():
+        assert loading.acquire(blocking=False), "the stock reader loaded while the world reasoner was being built"
         loading.release()
-        order.append("readers")
+        order.append("stock reader")
 
     def world():
         with loading:
@@ -146,11 +147,11 @@ def test_the_engine_loads_the_readers_before_it_serves():
                 patch("engine.dimension.DimensionModel", lambda **kwargs: None), \
                 patch.object(server, "_start_spacy_warmup", lambda model: None), \
                 patch.object(server, "ThreadingHTTPServer", Server), \
-                patch("engine.readers.search.reading_search", readers):
+                patch("engine.program.stock.stock_reader", stock):
             server.main()
     finally:
         server.MODEL, server.DIM_MODEL, server.ENRICHMENT = saved
-    assert order == ["world", "readers", "serve"], order
+    assert order == ["world", "stock reader", "serve"], order
 
 
 def test_vendored_xlsx_parser_has_the_reviewed_identity():
@@ -185,7 +186,7 @@ def test_spider_results_fingerprint_every_source_file_a_run_executes():
     from spider.probe import full_eval
 
     paths = full_eval._source_paths(ROOT)
-    for name in ("engine/relations.py", "engine/numeric.py", "engine/sql_dates.py", "engine/sql_grounding.py",
+    for name in ("engine/relations.py", "engine/numeric.py", "engine/sql_dates.py", "engine/program/answer.py",
                  "engine/deterministic/emitter/sql/__init__.py", "spider/probe/full_eval.py",
                  "spider/probe/evalutil.py", "spider/probe/spider_eval.py"):
         assert name in paths, name
@@ -231,9 +232,7 @@ def test_spider_results_fingerprint_the_databases_they_read_and_the_model_bundle
 
         before = fingerprint(here)
         assert "dbs/shop.sqlite" in before and "dbs/zoo.sqlite" not in before
-        candidate_paths = full_eval._input_paths(here, here / "dbs", ["shop"], include_encoder=False)
-        assert "encoder" not in candidate_paths and "encoder_meta" not in candidate_paths
-        assert {"dev", "tables", "dbs/shop.sqlite"} <= candidate_paths.keys()
+        assert {"dev", "tables", "dbs/shop.sqlite", "encoder", "encoder_meta"} <= before.keys()
         moved = Path(tmp, "b")
         shutil.copytree(here, moved)
         assert fingerprint(moved) == before
@@ -248,18 +247,20 @@ def test_public_weight_bundle_is_manifested_and_documented():
     manifest = json.loads(_text("engine/data/weights_manifest.json"))
     assert manifest["repository"] == "prereasoner/prereasoner-weights"
     assert re.fullmatch(r"[0-9a-f]{40}", manifest["revision"])
-    encoder = {name for name in manifest["files"] if not name.startswith("readers/")}
-    assert encoder == {"anchor_assignment.npz", "encoder.pt", "encoder_meta.pt", "primitives.npz",
-                       "qwen_lora/adapter_config.json", "qwen_lora/adapter_model.safetensors",
-                       "schema_property_head.pt"}, encoder
-    # The readers' bundle (training/readers/promote.py): stage 1, at least one stage-2 reader that says how it reads,
-    # the re-scorer and the choice that ranks and refuses.
-    readers = {name for name in manifest["files"] if name.startswith("readers/")}
-    assert {"readers/stage1/model.pt", "readers/choice.json"} <= readers, readers
-    assert any(name.startswith("readers/rescorer_") and name.endswith("/model.pt") for name in readers), readers
-    assert any(name.endswith("/reader.json") and name.startswith("readers/stage2_") for name in readers), readers
-    # No SQL-writing model is part of the runtime bundle: the readers read questions as named readings and the
-    # deterministic builder makes every query (CLAUDE.md, SQL planner rules).
+    assert set(manifest["files"]) == {"anchor_assignment.npz", "encoder.pt", "encoder_meta.pt", "primitives.npz",
+                                      "qwen_lora/adapter_config.json", "qwen_lora/adapter_model.safetensors",
+                                      "schema_property_head.pt"}, manifest["files"]
+    # The Decisions path's stock reading loads bge-m3 from the image (the Dockerfile bakes exactly these files from
+    # the hub at engine/named/backbone.py's revision and checks each hash); the readers' bundle went with them.
+    from engine.named.backbone import BACKBONES
+    pinned = manifest["base_models"]["bge-m3"]["files"]
+    assert {"config.json", "pytorch_model.bin", "tokenizer.json"} <= set(pinned), pinned
+    assert all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in pinned.values()), pinned
+    dockerfile = _text("Dockerfile")
+    assert 'BACKBONES["bge-m3"]' in dockerfile and '["base_models"]["bge-m3"]["files"]' in dockerfile
+    assert re.fullmatch(r"[0-9a-f]{40}", BACKBONES["bge-m3"].revision)
+    # No SQL-writing model is part of the runtime bundle: the Decisions API answers closed questions over options the
+    # engine built, and the decoder builds every program (CLAUDE.md, SQL planner rules).
     assert "sql_proposer/adapter_model.safetensors" not in manifest["files"]
     assert not {"xiyan_sql_proposer.json", "sql_arbiter.json"} & set(manifest["committed_artifacts"])
 
@@ -1104,8 +1105,8 @@ def test_a_download_that_stops_after_the_command_succeeded_keeps_the_pod():
 
 
 def test_a_kept_pod_is_finished_by_a_resumed_lease_with_no_command():
-    # What a kept pod is for, on any job, where pull_parts.sh knows only a stage-2 run: the same download again, bringing
-    # back only what is missing, then the pod's termination.
+    # What a kept pod is for, on any job: the same download again, bringing back only what is missing, then the pod's
+    # termination.
     import time
 
     from training.tools import runpod_api
@@ -1214,14 +1215,14 @@ def test_a_retried_or_resumed_upload_does_not_nest_either():
 
     with tempfile.TemporaryDirectory() as directory:
         code_dir = Path(directory) / "code" / "engine"
-        (code_dir / "readers").mkdir(parents=True)
+        (code_dir / "named").mkdir(parents=True)
         (code_dir / "__init__.py").write_text("")
-        (code_dir / "readers" / "models.py").write_text("new")
+        (code_dir / "named" / "model.py").write_text("new")
         pod = _FakePod(Path(directory) / "pod")
-        pod.file("/workspace/engine/readers/models.py", b"old")
+        pod.file("/workspace/engine/named/model.py", b"old")
         code, terminated = _lease_on(pod, ["--upload", str(code_dir), "/workspace/engine"])
         assert (code, terminated) == (0, True), (code, terminated)
-        assert pod.path("/workspace/engine/readers/models.py").read_text() == "new", "the resumed pod kept the old code"
+        assert pod.path("/workspace/engine/named/model.py").read_text() == "new", "the resumed pod kept the old code"
         assert not pod.path("/workspace/engine/engine").exists(), "the upload nested inside the folder that exists"
         # A failed try replaced by its retry.
         pod = _FakePod(Path(directory) / "retried")
@@ -1229,12 +1230,12 @@ def test_a_retried_or_resumed_upload_does_not_nest_either():
         code, terminated = _lease_on(pod, ["--upload", str(code_dir), "/workspace/engine"])
         assert (code, terminated) == (0, True), (code, terminated)
         assert not pod.path("/workspace/engine/engine").exists(), "the retried upload nested"
-        assert pod.path("/workspace/engine/readers/models.py").read_text() == "new"
+        assert pod.path("/workspace/engine/named/model.py").read_text() == "new"
 
 
 def test_large_outputs_travel_compressed_and_come_back_whole():
-    # Held-out outputs and checkpoints are gzipped on the pod, their originals kept there for pull_parts.sh, and restored
-    # here. The folds lost on 2026-11-01 had 6,159 to 15,918 lines of a slow single stream.
+    # Held-out outputs and checkpoints are gzipped on the pod, their originals kept there for a pull by hand, and
+    # restored here. The folds lost on 2026-11-01 had 6,159 to 15,918 lines of a slow single stream.
     outputs = b'{"question": 1, "outputs": [0.25, 0.5]}\n' * 60000
 
     def lease(prepare=lambda pod: None):
@@ -1336,7 +1337,7 @@ def test_a_unicode_training_log_is_decoded_as_utf8_without_losing_success():
     assert output.getvalue() == "\u2581\n"
 
 
-def test_a_readers_lease_never_trains_again_after_its_download_broke():
+def test_a_lease_never_trains_again_after_its_download_broke():
     # 2026-10-22: a stage-2 run trained and its download broke; the lease went on to the next cloud and rented a
     # second pod to train it again, while the first pod held the weights. A broken download now ends the lease with
     # its pod kept, and an experiment whose out/ holds a finished run refuses a new lease.
@@ -1361,7 +1362,7 @@ def test_a_readers_lease_never_trains_again_after_its_download_broke():
                 (Path(directory) / "x" / "out" / "stage2" / "best.json").write_text("{}")
             args = argparse.Namespace(experiment="x", minutes=10, max_hourly_cost=1.0, gpus=None, image=None,
                                       cuda=None, dry_run=False, clouds="SECURE,COMMUNITY", resume=False)
-            code = readers_lease.lease(args, "full", "true", [], ["NVIDIA A40"])
+            code = readers_lease.lease(args, "full", "true", [], ["NVIDIA A40"], code=())
         return code, clouds
 
     assert attempts(runpod_api.INCOMPLETE_EXIT) == (runpod_api.INCOMPLETE_EXIT, ["SECURE"])
@@ -1374,7 +1375,7 @@ def test_a_readers_lease_never_trains_again_after_its_download_broke():
         assert runpod_api.main(["lease", "--max-minutes", "5", "--", "true"]) == runpod_api.INCOMPLETE_EXIT
 
 
-def test_a_readers_lease_names_what_it_moves_aside():
+def test_a_lease_names_what_it_moves_aside():
     # 2026-11-01: an out/ an earlier lease left went to a folder literally named out.None: nothing had run before this
     # lease's first attempt, so there was no cloud to name.
     import argparse
@@ -1396,7 +1397,7 @@ def test_a_readers_lease_names_what_it_moves_aside():
                 patch.object(readers_lease.subprocess, "run", side_effect=run):
             args = argparse.Namespace(experiment="x", minutes=10, max_hourly_cost=1.0, gpus=None, image=None,
                                       cuda=None, dry_run=False, clouds="SECURE,COMMUNITY", resume=False)
-            assert readers_lease.lease(args, "full", "true", [], ["NVIDIA A40"]) == 1
+            assert readers_lease.lease(args, "full", "true", [], ["NVIDIA A40"], code=()) == 1
         assert not (experiment / "out.None").exists(), "out/ was moved aside to a folder named out.None"
         assert (experiment / "out.earlier" / "earlier.log").read_text() == "earlier"
         assert (experiment / "out.SECURE" / "attempt.log").read_text() == "SECURE"
@@ -2046,7 +2047,7 @@ TESTS = [
     test_cpu_suite_timeouts_are_bounded_and_overridable,
     test_public_artifact_boundary,
     test_spacy_warmup_does_not_block_model_readiness,
-    test_the_engine_loads_the_readers_before_it_serves,
+    test_the_engine_loads_the_stock_reader_before_it_serves,
     test_vendored_xlsx_parser_has_the_reviewed_identity,
     test_spider_evaluator_supports_module_invocation,
     test_spider_results_fingerprint_every_source_file_a_run_executes,
@@ -2081,8 +2082,8 @@ TESTS = [
     test_a_retried_download_lands_on_the_same_paths,
     test_a_retried_or_resumed_upload_does_not_nest_either,
     test_large_outputs_travel_compressed_and_come_back_whole,
-    test_a_readers_lease_never_trains_again_after_its_download_broke,
-    test_a_readers_lease_names_what_it_moves_aside,
+    test_a_lease_never_trains_again_after_its_download_broke,
+    test_a_lease_names_what_it_moves_aside,
     test_a_dropped_connection_does_not_end_the_remote_command,
     test_a_unicode_training_log_is_decoded_as_utf8_without_losing_success,
     test_runpod_resume_requires_ownership_and_never_creates_a_pod,

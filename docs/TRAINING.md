@@ -1,5 +1,7 @@
 # Training and model promotion
 
+> **Status (2026-11-20).** The trained own-data readers this document describes (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change. The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); what this document says of the readers is historical.
+
 This page explains which model code runs today, how its data is built, and how one candidate becomes
 the runtime bundle. Historical experiments live in `training/props/pipeline.md`; they are background,
 not another serving path.

@@ -142,13 +142,11 @@ def main():
         result = served(lease.name, Q.serve, workbook, question, lease.name)
         elapsed = time.perf_counter() - start
         answer = (result.get('result') or {}).get('rows') or []
-        # The readers read the six tabs as one export and its report (one_of_each_layout), and their choice prefers a
-        # reading without the total, so no reading builds a confident answer (DECISIONS.md, 2026-10-24, a known gap
-        # the owner accepted): the question is declined, never answered with other totals. Once answered, it is
-        # the breakdown from the export it names.
+        # The six tabs are three exports of one layout and their reports: the sheet compiler reads the exports as one
+        # family (engine/sheet), and the Decisions path answers from the copy the question names or asks back, never
+        # with other totals. Once answered, it is the breakdown from the export it names.
         if answer:
             assert {(row[0], row[1]): Decimal(str(row[2])) for row in answer} == by_plan, (result.get('sql'), answer[:3])
-            assert result.get('layout_copies') == {'read': ['NT'], 'others': ['SI', 'FF']}, result.get('layout_copies')
         else:
             assert result.get('clarify') or result.get('error'), result
         assert elapsed < 120, (question, elapsed)

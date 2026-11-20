@@ -1,9 +1,10 @@
-"""Hermetic tests for the typed SQL AST (validation, rendering, execution), grounding, SQL import, the lexical readings
-the planner's helpers keep, and the plumbing of the one own-data selection (engine/tables.py:select_query).
+"""Hermetic tests for the typed SQL AST (validation, rendering, execution), SQL import, the lexical readings the
+planner's helpers keep, and the plumbing of the one own-data selection (engine/tables.py:select_query): the request's
+grids, the Decisions path's candidates as the pool, the per-answer decision as the served, warned or asked reply, the
+length rule, the chosen program on both deterministic emitters, and the one request database.
 
-The readers (engine/readers) build every own-data candidate; their weights never load here. A test's pool is the
-queries the readers would build for its question, written as SQL and imported into the typed AST
-(regress/sql_import.py), and the readers' re-scorer and refusal are a stub (``StubReaders``).
+The Decisions path's stock reader is a fake whose vectors come from a text's hash and its API a fake transport that
+answers each closed question by the test's rule (tests/test_answer.py): nothing reaches a network or a model file.
 
 Run: python -m tests.test_sql_ast
 """
@@ -44,12 +45,11 @@ from engine.sql_ast import (
 )
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
 from engine.sql_candidate import ScoredQuery
-from engine.sql_grounding import double_counted, grounded_members, join_pairs, literal_bindings
-from engine.sql_rank import analyze_question
+from engine.sql_rank import PoolSelection, analyze_question
 from engine.sql_schema import SchemaGraph
 from regress.sql_import import import_sql, normalize_decoded_sql
 from spider.probe.evalutil import run_with_budget
-from engine.tables import READERS_MODEL, TableQuery
+from engine.tables import PROGRAM_MODEL, TableQuery
 from spider.probe.spider_eval import (
     compare as compare_spider_rows,
     record_integrated_result,
@@ -333,58 +333,6 @@ def test_currency_conversion_query_executes_end_to_end():
     assert execute([orders, fx], render_query(query)) == [(980.0,)]
 
 
-def test_planner_discovers_and_executes_same_name_currency_edge():
-    """Ingestion keys an FX sheet's same-named currency column to the orders' currency, and the conversion the
-    registered calculations build over that edge (engine/calculations/search.py, the expansions search_pool adds to
-    the readers' plain total) executes to the converted total."""
-    from engine.calculations.search import CalculationQueryExpander
-
-    orders = {"name": "orders", "columns": ["currency", "amount"],
-              "rows": [["EUR", 520], ["EUR", 450], ["GBP", 100]]}
-    rates = {"name": "illustrative fx rates", "columns": ["currency", "rate_to_usd"],
-             "rows": [["USD", 1.0], ["EUR", 1.08], ["GBP", 1.27], ["INR", 0.012]]}
-    tables, fks = TableQuery().ingest([orders, rates])
-    assert any(
-        fk["from_table"] == "orders" and fk["from_col"] == "currency"
-        and fk["to_table"] == "illustrative_fx_rates" and fk["to_col"] == "currency"
-        for fk in fks
-    ), fks
-
-    graph = SchemaGraph.from_tables(tables, fks)
-    plain = import_sql('SELECT SUM("orders"."amount") FROM "orders"', graph)
-    converted = CalculationQueryExpander(graph).expand(
-        "total order amount in US dollars", [ScoredQuery(plain, render_query(plain), 0.0, ())])
-    top = next(candidate for candidate in converted if "rate_to_usd" in candidate.sql)
-    assert 'SUM(("orders"."amount" * "illustrative_fx_rates"."rate_to_usd"))' in top.sql, top.sql
-    rows = execute(tables, top.sql)
-    assert len(rows) == 1 and abs(rows[0][0] - 1174.6) < 1e-9, (top.sql, rows)
-
-
-def test_currency_conversion_survives_uploaded_column_case():
-    # REGRESSION: engine.tables normalizes TABLE names but preserves COLUMN case, while the rate column is
-    # synthesized lowercase ("rate_to_usd"). An exact-case membership test therefore bound nothing for an FX
-    # sheet headed "Rate_To_USD", and the planner silently answered with the UNCONVERTED SUM — a wrong
-    # number, no clarify. Same rows as the lowercase test above, headers cased the way a spreadsheet export
-    # actually arrives; the conversion is the calculations' expansion of the readers' plain total.
-    from engine.calculations.search import CalculationQueryExpander
-
-    orders = {"name": "orders", "columns": ["Currency", "Amount"],
-              "rows": [["EUR", 520], ["EUR", 450], ["GBP", 100]]}
-    rates = {"name": "illustrative fx rates", "columns": ["Currency", "Rate_To_USD"],
-             "rows": [["USD", 1.0], ["EUR", 1.08], ["GBP", 1.27], ["INR", 0.012]]}
-    tables, fks = TableQuery().ingest([orders, rates])
-    graph = SchemaGraph.from_tables(tables, fks)
-    plain = import_sql('SELECT SUM("orders"."Amount") FROM "orders"', graph)
-    converted = CalculationQueryExpander(graph).expand(
-        "total order amount in US dollars", [ScoredQuery(plain, render_query(plain), 0.0, ())])
-    top = next((candidate for candidate in converted if "Rate_To_USD" in candidate.sql), None)
-    assert top is not None, [candidate.sql for candidate in converted]
-    # the identifier must be rendered as the schema spells it, or the SQL will not execute
-    assert 'SUM(("orders"."Amount" * "illustrative_fx_rates"."Rate_To_USD"))' in top.sql, top.sql
-    rows = execute(tables, top.sql)
-    assert len(rows) == 1 and abs(rows[0][0] - 1174.6) < 1e-9, (top.sql, rows)
-
-
 def test_world_aggregate_currency_binding_is_typed_and_unambiguous():
     from engine.knowledge_tables import KnowledgeTableQuery
 
@@ -443,38 +391,9 @@ def test_arithmetic_expression_validation():
             pass
 
 
-class StubReaders:
-    """engine/readers/search.py:ReadingSearch as search_pool and select_query read it, without its weights.
-
-    ``pool`` returns the planner's ``pool``: the queries its readers would build, a list for every question or a dict
-    by question (a planner without one reads no question). ``rescore`` gives each candidate that ran its pool
-    ``score`` (0.0 for a query written for a test, so ties keep the pool's order), and the learned refusal
-    (``confidence``, ``confident``) accepts every choice unless built with ``confident=False``."""
-
-    def __init__(self, planner, confident=True):
-        self.planner = planner
-        self.accepts = confident
-
-    def pool(self, question, graph):
-        readings = self.planner.pool
-        if readings is None:
-            raise AssertionError("the hermetic planner has no readers: give it the pool its readers would build")
-        return list(readings.get(question, ()) if isinstance(readings, dict) else readings)
-
-    def rescore(self, question, pool, shapes):
-        return [member.score if shape is not None else None for member, shape in zip(pool, shapes)]
-
-    def confidence(self, pool, scores, shapes, chosen):
-        return 0.9 if self.accepts else 0.1
-
-    def confident(self, confidence):
-        return confidence is None or confidence >= 0.5
-
-
-def _hermetic_planner(confident=True):
-    """The production TableQuery without its encoder or the readers' weights: ``schema`` types columns from their
-    values, and search_pool and select_query read ``StubReaders`` (``planner.pool``, ``planner.readers``) where
-    serving reads the readers; the calculations' expansions, execution, grounding and choice are production's."""
+def _hermetic_planner():
+    """The production TableQuery without its encoder: ``schema`` types columns from their values. Its selection is
+    production's, the Decisions path: a test reads it with the fake reader and transport (``_decisions``)."""
     class HermeticPlanner(TableQuery):
         def schema(self, tables, fks):
             columns, index = [], 0
@@ -492,18 +411,7 @@ def _hermetic_planner(confident=True):
                     index += 1
             return columns, {}, {table["name"]: table for table in tables}
 
-        def search_pool(self, *args, **kwargs):
-            with patch("engine.readers.search.reading_search", return_value=self.readers):
-                return super().search_pool(*args, **kwargs)
-
-        def select_query(self, *args, **kwargs):
-            with patch("engine.readers.search.reading_search", return_value=self.readers):
-                return super().select_query(*args, **kwargs)
-
-    planner = HermeticPlanner()
-    planner.pool = None
-    planner.readers = StubReaders(planner, confident)
-    return planner
+    return HermeticPlanner()
 
 
 def _request(planner, tables=None):
@@ -513,271 +421,8 @@ def _request(planner, tables=None):
     return norm, fks, sch, tablemap
 
 
-def _select(planner, question, tables=None, searched=None):
-    """The production own-data selection. ``searched`` is the pool select_query runs, grounds and chooses from;
-    None reads the planner's readers for it, as serving does."""
-    return planner.select_query(question, *_request(planner, tables), searched=searched)
-
-
-def _model_query(planner, sql, tables=None, score=0.0, read_as="model:query"):
-    """A query the readers could build, written as SQL and imported into the typed AST against the request's schema
-    (regress/sql_import.py): a pool member select_query can run, ground and choose. ``score`` is the re-scorer's
-    logit for it (``StubReaders.rescore``) and ``read_as`` its read-as line, the first item of its evidence."""
-    norm, fks, sch, _ = _request(planner, tables)
-    query = import_sql(sql, SchemaGraph.from_planner(sch, fks))
-    validate_query(query)
-    return ScoredQuery(query, render_query(query), score, (read_as,))
-
-
-def test_select_query_serves_the_reading_that_keeps_the_named_date():
-    """Cloud product suite, 2026-10-02: with an undated reading ranked first, "How many contracts
-    were signed before July 10, 2026?" was served without its date and declined. The served
-    selection keeps to the readings that realize the date when one does."""
-    contracts = {"name": "contracts", "columns": ["contract", "value", "signed"], "rows": [
-        ["NDA", 5000, "2026-07-06"], ["License", 900000, "2026-07-05"], ["Lease", 30000, "2026-07-12"]]}
-    planner = _hermetic_planner()
-    question = "How many contracts were signed before July 10, 2026?"
-    undated = _model_query(planner, "SELECT COUNT(*) FROM contracts", [contracts], score=1.0)
-    dated = _model_query(planner, "SELECT COUNT(*) FROM contracts WHERE signed < '2026-07-10'", [contracts])
-    selection = _select(planner, question, [contracts], searched=[undated, dated])
-    assert selection.ranking[0] == 0, "the undated reading is ranked first"
-    served = selection.candidate
-    assert selection.selected == 1 and "'2026-07-10'" in served.sql, served.sql
-    assert selection.date_satisfied[selection.selected] and not selection.date_satisfied[0]
-    assert selection.record()["date_satisfied"] is True
-    # Contrast: without a date in the question the ranking's choice stands.
-    plain = _select(planner, "How many contracts are there?", [contracts], searched=[undated, dated])
-    assert plain.candidate.sql == undated.sql and not any(plain.date_satisfied)
-
-
 SALES = {"name": "sales", "columns": ["region", "year", "amount", "note"], "rows": [
     ["East", 2023, 100, ""], ["East", 2024, 250, ""], ["West", 2024, 300, ""], ["West", 2025, 50, ""]]}
-
-
-def _reply(response, question):
-    """What the person reads of a served response, by the path serving takes: the world routes' terminal check
-    (engine/knowledge_query.verify_nonempty), the tool's shape, the one renderer."""
-    from engine.answer_presentation import terminal_reply
-    from engine.knowledge_query import verify_nonempty
-    from mcp_server.engine_client import shape_reason_response
-
-    return terminal_reply(shape_reason_response(verify_nonempty(response, question), None))
-
-
-def test_a_reading_that_finds_nothing_is_asked_about_and_never_answered():
-    """Real sheets, 2026-11-01: 34 of 186 replies said "No matching rows were found", "No value was recorded" or "No rows
-    in your data match" while the rows existed: the chosen reading's result was empty, and the reply stated that as a
-    fact about the data. Such a result is no answer. The reply says what was read and asks, in the one question back.
-    No less probable reading answers in its place: nearly every pool holds one that drops the filter."""
-    from engine.deterministic.context import analysis_execution_context
-
-    planner = _hermetic_planner()
-    unfiltered = _model_query(planner, "SELECT SUM(amount) FROM sales", [SALES], score=-2.0, read_as="total amount of sales")
-    for sql, read_as in (
-            ("SELECT SUM(amount) FROM sales WHERE year = 2031", "total amount of sales where year is 2031"),
-            ("SELECT region FROM sales WHERE year = 2031", "region of sales where year is 2031"),
-            ("SELECT note FROM sales WHERE year = 2024", "note of sales where year is 2024")):
-        question = "the sales for 2031" if "2031" in sql else "the note for 2024"
-        reading = _model_query(planner, sql, [SALES], score=-0.4, read_as=read_as)
-        planner.pool = [reading, unfiltered]
-        selection = _select(planner, question, [SALES])
-        assert selection.selected is None and selection.candidate is None, f"{sql} was chosen though it finds nothing"
-        assert selection.declined == 0 and selection.found_nothing and selection.record()["found_nothing"]
-        response = planner.serve([SALES], question)
-        assert response.get("clarify") is True and response["result"] is None, response
-        assert response["valid"] is False and response["read_as"] == read_as
-        reply = _reply(response, question)
-        assert f"I read this as “{read_as}”" in reply and reply.rstrip().endswith("?"), reply
-        for flat in ("No matching rows", "No value was recorded", "No rows in your data"):
-            assert flat not in reply, reply
-        # A named request, which runs the query's deterministic program, is asked about the same way.
-        with analysis_execution_context({"slug": "sales", "revision": 1}, "c_" + "8" * 32):
-            named = planner.serve([SALES], question)
-        assert named.get("clarify") is True and named["result"] is None and named["read_as"] == read_as, named
-
-    # A question whose only reading of the date finds nothing is asked about too: the more probable reading drops the
-    # date, and the date rule keeps the choice to the reading that realizes it.
-    contracts = {"name": "contracts", "columns": ["contract", "value", "signed"], "rows": [
-        ["NDA", 5000, "2026-07-06"], ["License", 900000, "2026-07-05"]]}
-    undated = _model_query(planner, "SELECT SUM(value) FROM contracts", [contracts], score=1.0)
-    dated = _model_query(planner, "SELECT SUM(value) FROM contracts WHERE signed < '2020-07-10'", [contracts], score=0.0)
-    question = "What is the total value of contracts signed before July 10, 2020?"
-    selection = _select(planner, question, [contracts], searched=[undated, dated])
-    assert selection.found_nothing and selection.declined == 1 and selection.selected is None, selection.record()
-
-    # Nothing else in the pool: the same question back.
-    planner.pool = [reading]
-    assert _select(planner, question, [SALES]).found_nothing
-
-
-def test_a_reading_that_finds_something_is_served_as_before():
-    """The same questions over the same sheet with a year that has rows, and the results that only look empty: every
-    question with an answer keeps it."""
-    planner = _hermetic_planner()
-    unfiltered = _model_query(planner, "SELECT SUM(amount) FROM sales", [SALES], score=-2.0)
-    total = _model_query(planner, "SELECT SUM(amount) FROM sales WHERE year = 2024", [SALES], score=-0.4)
-    planner.pool = [total, unfiltered]
-    selection = _select(planner, "the sales for 2024", [SALES])
-    assert selection.selected == 0 and not selection.found_nothing and selection.candidate.sql == total.sql
-    response = planner.serve([SALES], "the sales for 2024")
-    assert not response.get("clarify") and response["result"]["rows"] == [[550]], response
-    assert _reply(response, "the sales for 2024") == "550"
-
-    # A reading the re-scorer prefers that finds nothing still gives way to a more probable one that finds rows
-    # (``outread_by_rows``, unchanged): the rows exist, and the answer is theirs.
-    echo = _model_query(planner, "SELECT SUM(amount) FROM sales WHERE year = 2031", [SALES], score=-1.0)
-    with patch.object(planner.readers, "rescore", return_value=[0.0, 1.0]):
-        outread = _select(planner, "the sales for 2024", [SALES], searched=[total, echo])
-    assert outread.ranking == (1, 0) and outread.selected == 0 and not outread.found_nothing, outread.record()
-
-    # A zero is a value: a count of no rows answers 0, and the less probable reading that counts all of them does not
-    # replace it.
-    none = _model_query(planner, "SELECT COUNT(*) FROM sales WHERE year = 2031", [SALES], score=-0.4)
-    every = _model_query(planner, "SELECT COUNT(*) FROM sales", [SALES], score=-2.0)
-    planner.pool = [none, every]
-    response = planner.serve([SALES], "how many sales in 2031")
-    assert response["selection"]["selected"] == 0 and response["result"]["rows"] == [[0]], response
-    assert _reply(response, "how many sales in 2031") == "0"
-
-    # A list with some blank cells holds something, and is listed.
-    noted = dict(SALES, rows=[row[:3] + ["call back" if row[2] == 300 else ""] for row in SALES["rows"]])
-    listing = _model_query(planner, "SELECT note FROM sales WHERE year = 2024", [noted], score=-0.4)
-    planner.pool = [listing]
-    response = planner.serve([noted], "the note for 2024")
-    assert not response.get("clarify") and response["result"]["rows"] == [[""], ["call back"]], response
-
-    # What is served is the served form: a ranking of groups whose largest group has no name returns a blank from the
-    # pool's own query, and the name of the next group when served (sql_ast.named_groups). It stays the answer.
-    industries = {"name": "deals", "columns": ["industry", "amount"], "rows": [
-        ["", 900], ["", 800], ["Retail", 300], ["Energy", 100]]}
-    ranking = _model_query(planner, "SELECT industry FROM deals GROUP BY industry ORDER BY SUM(amount) DESC LIMIT 1",
-                           [industries], score=-0.4)
-    planner.pool = [ranking]
-    selection = _select(planner, "which industry brings in the most", [industries])
-    assert selection.selected == 0 and not selection.found_nothing, selection.record()
-    response = planner.serve([industries], "which industry brings in the most")
-    assert response["result"]["rows"] == [["Retail"]], response
-    # The same ranking over a sheet with no named group at all has no answer.
-    unnamed = dict(industries, rows=[["", 900], ["", 800]])
-    planner.pool = [_model_query(planner, ranking.sql, [unnamed], score=-0.4)]
-    assert _select(planner, "which industry brings in the most", [unnamed]).found_nothing
-
-
-def test_a_reading_that_finds_nothing_keeps_its_route():
-    """A declined choice otherwise reads as the readers having no answer: a semantic search would stand in for it and
-    the world lookup would run. It is still the upload's reading (engine/routing.py, KnowledgeQuery._readers_decline),
-    and a compound question's leaf keeps its order: a leaf is a step of the plan, not the answer."""
-    from engine.decomposition import leaf_candidates
-    from engine.knowledge_query import KnowledgeQuery
-    from engine.routing import reads_upload_whole
-
-    planner = _hermetic_planner()
-    empty = _model_query(planner, "SELECT SUM(amount) FROM sales WHERE year = 2031", [SALES], score=-0.4)
-    later = _model_query(planner, "SELECT SUM(amount) FROM sales WHERE year = 2024", [SALES], score=-2.0)
-    planner.pool = [later, empty]
-    question = "the sales for 2031"
-    selection = _select(planner, question, [SALES])
-    assert selection.found_nothing and selection.declined == 1
-    assert reads_upload_whole(question, selection, _request(planner, [SALES])[2])
-    assert not KnowledgeQuery._readers_decline(planner, [SALES], question)
-    assert [reading.sql for reading in leaf_candidates(selection, "a", question, False)] == [empty.sql, later.sql]
-
-    # Contrast: a refusal that is not confident is the readers having no answer, as before.
-    unsure = _hermetic_planner(confident=False)
-    unsure.pool = [_model_query(unsure, "SELECT SUM(amount) FROM sales WHERE year = 2024", [SALES])]
-    refused = _select(unsure, "the sales for 2024", [SALES])
-    assert refused.selected is None and not refused.found_nothing
-    assert not reads_upload_whole("the sales for 2024", refused, _request(unsure, [SALES])[2])
-    assert KnowledgeQuery._readers_decline(unsure, [SALES], "the sales for 2024")
-
-
-def test_select_query_never_chooses_a_query_that_does_not_run():
-    """A pooled query that does not finish within the SQLite step budget (EXECUTION_OP_LIMIT) is
-    never chosen, and a question whose pool holds none that runs is not answered."""
-    planner = _hermetic_planner()
-    planner.pool = [_model_query(planner, 'SELECT "Name" FROM "people"')]
-    with patch("engine.sql_rank.EXECUTION_OP_LIMIT", 1):
-        selection = _select(planner, "list person names")
-        response = planner.serve([PEOPLE], "list person names")
-    assert selection.pool and not any(selection.executable)
-    assert selection.ranking == () and selection.selected is None and selection.candidate is None
-    assert selection.record()["executable"] == 0
-    assert response["valid"] is False and response["read_as"] is None and "clarify" not in response
-    assert response["error"] == "planner: no executable AST candidate"
-
-
-def test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget():
-    """A pooled query may take EXECUTION_OPS_PER_CELL SQLite steps for each cell of the tables it reads
-    (engine.sql_rank.execution_op_limit). Two subscription exports joined on their currency, a value
-    most of their rows share, ran to the flat 100M-step budget: about 2.4 s each, 110 s of one question
-    in production (2026-10-05). Such a join now stops at the budget its tables set and is not eligible,
-    while every row of the largest tab the add-on reads, listed in order, stays eligible."""
-    from engine.sql_rank import (EXECUTION_OP_FLOOR, EXECUTION_OP_LIMIT, EXECUTION_OPS_PER_CELL,
-                                 execution_op_limit)
-
-    planner = _hermetic_planner()
-    exports = [{"name": name, "columns": ["id", "Currency", "Amount"],
-                "rows": [[f"{name}_{i}", "usd", 10] for i in range(3000)]} for name in ("nt", "si")]
-    joined = _model_query(planner, 'SELECT COUNT(*) FROM "nt" JOIN "si" ON "nt"."Currency" = "si"."Currency"',
-                          exports)
-    counted = _model_query(planner, 'SELECT COUNT(*) FROM "nt"', exports)
-    tablemap = _request(planner, exports)[3]
-    assert execution_op_limit(joined.query, tablemap) == EXECUTION_OP_FLOOR        # 18,000 cells
-    selection = _select(planner, "how many nt rows are there", exports, searched=[joined, counted])
-    assert selection.executable == (False, True), selection.executable
-    assert selection.candidate.sql == counted.sql
-
-    # Every row of the largest tab the add-on reads (50,000), listed in order, the heaviest normal shape
-    # measured (2.3 steps a cell on a 22-column export), takes under a quarter of its budget.
-    columns = ["id", "Plan", "Status", "Amount", "Currency", "Interval", "Quantity", "Customer", "Email", "Domain",
-               "Product", "Coupon"]
-    tablemap = {"subscriptions": {"columns": columns, "rows": [
-        [f"sub_{i:06}", f"plan_{i % 40}", "active", i % 100, "usd", "month", 1, f"cus_{i % 9000}",
-         f"user{i}@example.invalid", "example.invalid", "Startup", ""] for i in range(50000)]}}
-    listed = SelectQuery(select=tuple(SelectItem(ColumnRef("subscriptions", name, SQLType.TEXT)) for name in columns),
-                         from_table="subscriptions",
-                         order_by=(OrderTerm(ColumnRef("subscriptions", "id", SQLType.TEXT)),))
-    assert execution_op_limit(listed, tablemap) == EXECUTION_OPS_PER_CELL * 600000   # above the floor
-    from engine.prepared import RequestDatabase
-    database = RequestDatabase()
-    connection = database.load(tablemap, [
-        {"table": "subscriptions", "name": name, "affinity": "INTEGER" if name in ("Amount", "Quantity") else "TEXT"}
-        for name in columns])
-    steps = 0
-
-    def count():
-        nonlocal steps
-        steps += 1000
-    connection.set_progress_handler(count, 1000)
-    assert len(connection.execute(render_query(listed)).fetchall()) == 50000
-    database.close()
-    assert 4 * steps < execution_op_limit(listed, tablemap), steps
-
-    wide = {"wide": {"columns": list(range(50)), "rows": range(200000)}}           # 10M cells
-    assert execution_op_limit(listed, wide) == EXECUTION_OP_LIMIT                    # a table it does not hold
-    wide_listed = SelectQuery(select=(SelectItem(ColumnRef("wide", "0", SQLType.TEXT)),), from_table="wide")
-    assert execution_op_limit(wide_listed, wide) == EXECUTION_OP_LIMIT               # the ceiling
-
-
-def test_select_query_copies_the_tables_once_and_runs_each_query_once():
-    """select_query copies the request's tables into its database once and runs each distinct query once
-    (engine/tables.py _PoolRuns, engine/prepared.py): a second copy of a large workbook per pool member, or a
-    query run again, is time no answer needs (2026-10-05)."""
-    from engine.prepared import scratch_database
-    planner = _hermetic_planner()
-    amounts = {"name": "orders", "columns": ["Amount"], "rows": [[100], [200]]}
-    total = _model_query(planner, 'SELECT SUM("orders"."Amount") FROM "orders"', [amounts])
-    listed = _model_query(planner, 'SELECT "orders"."Amount" FROM "orders"', [amounts])
-    copies, guarded = [], []
-    guard = planner.guard
-    planner.guard = lambda sql: guarded.append(sql) or guard(sql)
-    with scratch_database() as database:
-        database.connection.set_trace_callback(
-            lambda statement: copies.append(statement) if statement.startswith("CREATE TABLE main.") else None)
-        selection = _select(planner, "what is total Amount", [amounts], searched=[total, listed, total])
-    assert selection.candidate.sql == total.sql and selection.executable == (True, True, True)
-    assert len(copies) == 1, f"{len(copies)} copies of the request's tables"
-    assert guarded == [total.sql, listed.sql], guarded
 
 
 def test_a_duration_is_how_long_rows_lasted_not_a_quantity_and_an_interval():
@@ -852,434 +497,6 @@ PURCHASES = {
              [3, "Bob", "Lyon", "Gamma"], [4, "Cara", "Paris", "Gamma"],
              [5, "Dan", "Berlin", "Delta"], [6, "Eve", "Paris", "Alpha"]],
 }
-
-
-def test_literal_grounding_names_the_column_a_value_actually_occupies():
-    text = SQLType.TEXT
-    customer = ColumnRef("purchases", "customer_name", text)
-    city = ColumnRef("purchases", "city", text)
-    product = ColumnRef("purchases", "product_name", text)
-    tables = {"purchases": PURCHASES}
-
-    def query(where, **scope):
-        return SelectQuery((SelectItem(product),), "purchases", where=where, **scope)
-
-    def grounded(q):
-        validate_query(q)
-        graph = SchemaGraph.from_tables(list(tables.values()), ())
-        return grounded_members([ScoredQuery(q, render_query(q), 0.0, ())], tables, graph)[0]
-
-    lyon = Literal("Lyon", text)
-    assert not grounded(query(Comparison(customer, "=", lyon))), "a city bound to a name column"
-    assert not grounded(query(Comparison(lyon, "=", customer))), (
-        "literal-on-left equality must receive the same grounding check")
-    assert grounded(query(Comparison(city, "=", lyon)))
-    assert grounded(query(Comparison(city, "=", Literal("  lyon ", text)))), "case and spacing fold"
-    assert grounded(query(Comparison(customer, "=", Literal("Tokyo", text)))), (
-        "a value no column holds is left alone: the honest answer is empty")
-    # Exclusions are checked like equality: excluding a city from a name column excludes nothing.
-    alice = Literal("Alice", text)
-    for exclusion in (Comparison(customer, "!=", lyon), Comparison(customer, "<>", lyon),
-                      Comparison(lyon, "!=", customer),
-                      InPredicate(customer, (lyon,), negated=True)):
-        assert not grounded(query(exclusion)), exclusion
-    assert grounded(query(Comparison(customer, "!=", alice))), "a held value is a real exclusion"
-    assert grounded(query(Comparison(city, "<>", lyon)))
-    assert grounded(query(Comparison(customer, "<>", Literal("Tokyo", text)))), "held nowhere: left alone"
-    assert grounded(query(InPredicate(customer, (alice,), negated=True)))
-    assert not grounded(query(InPredicate(customer, (alice, lyon))))
-    assert grounded(query(InPredicate(customer, (alice, Literal("Bob", text)))))
-    assert grounded(query(Comparison(customer, "LIKE", Literal("%Lyon%", text)))), "patterns are out of scope"
-    assert grounded(query(Comparison(ColumnRef("purchases", "purchase_id", SQLType.INTEGER), "=",
-                                     Literal(3, SQLType.INTEGER)))), "numbers are out of scope"
-
-    # Aliases resolve to their table; nested subqueries are checked in their own scope.
-    aliased = SelectQuery((SelectItem(ColumnRef("p", "product_name", text)),), "purchases",
-                          from_alias="p",
-                          where=Comparison(ColumnRef("p", "customer_name", text), "=", lyon))
-    assert literal_bindings(aliased) == (("purchases", "customer_name", "Lyon"),)
-    assert not grounded(aliased)
-    products = ColumnRef("products", "product_name", text)
-    for column, sound in ((customer, False), (city, True)):
-        inner = query(Comparison(column, "=", lyon))
-        unsold = SelectQuery((SelectItem(products),), "products",
-                             where=InPredicate(products, inner, negated=True))
-        assert grounded(unsold) is sound, column
-
-    # The accepted cost, pinned: with two columns of one domain, a value only the sibling column
-    # holds makes the named column's test ineligible, even where the question meant that column.
-    orders = {"name": "orders", "columns": ["order_id", "ship_city", "billing_city"],
-              "rows": [[1, "Lyon", "Paris"], [2, "Berlin", "Paris"]]}
-    ship = ColumnRef("orders", "ship_city", text)
-    shipped = SelectQuery((SelectItem(ship),), "orders",
-                          where=Comparison(ship, "=", Literal("Paris", text)))
-    validate_query(shipped)
-    assert not grounded_members([ScoredQuery(shipped, render_query(shipped), 0.0, ())],
-                                {"orders": orders}, SchemaGraph.from_tables([orders], ()))[0]
-
-
-def test_select_query_never_serves_a_misgrounded_query():
-    """A SQL model reads the schema and a few example values, never the data its filter tests. For
-    "Lyon customers" a model's query filtered customer_name = 'Lyon', which matches no row because
-    'Lyon' is a city, and it was ranked first. Ranked first, it is still never served: the reading
-    that binds 'Lyon' to the column that holds it is."""
-    misbound, bound = "\"customer_name\" = 'Lyon'", "\"city\" = 'Lyon'"
-    planner = _hermetic_planner()
-    question = "product names bought by Lyon customers"
-    model = _model_query(planner, "SELECT product_name FROM purchases WHERE customer_name = 'Lyon'",
-                         [PURCHASES])
-    held = _model_query(planner, "SELECT product_name FROM purchases WHERE city = 'Lyon'", [PURCHASES])
-    selection = _select(planner, question, [PURCHASES], searched=[model, held])
-    assert misbound in selection.pool[0].sql
-    assert selection.executable[0] and not selection.grounded[0] and 0 not in selection.ranking
-    assert selection.selected == 1 and bound in selection.candidate.sql, selection.candidate.sql
-    assert selection.record()["misgrounded"] == 1
-
-    # Same profile, a value the column does hold: the model's query is served as before.
-    alice = "\"customer_name\" = 'Alice'"
-    question = "product names bought by Alice"
-    model = _model_query(planner, "SELECT product_name FROM purchases WHERE customer_name = 'Alice'",
-                         [PURCHASES])
-    selection = _select(planner, question, [PURCHASES], searched=[model, held])
-    assert selection.selected == 0 and alice in selection.candidate.sql and all(selection.grounded)
-
-
-def _promotions():
-    """complex-promotions, in its production upload order (web/public/index.html DATASETS)."""
-    from tests.test_datasets import DATASET_DIR, _tables
-
-    tables = {table["name"]: table for table in _tables(DATASET_DIR / "complex-promotions")}
-    return [tables[name] for name in ("customers", "products", "orders", "order_items")]
-
-
-def test_select_query_never_serves_a_join_the_foreign_keys_contradict():
-    """Production 2026-10-01, complex-promotions leaf "For each customer, list every product name
-    they have ever bought": a SQL model joined products ON orders.order_id = products.product_id,
-    skipping order_items. The query ran and matched no row, it was ranked first, and the anti-join
-    it fed removed nothing, so six customer-product pairs were listed instead of three."""
-    bypass = '"orders"."order_id" = "products"."product_id"'
-    bridge = '"order_items"."product_id" = "products"."product_id"'
-    planner = _hermetic_planner()
-    tables = _promotions()
-    question = "For each customer, list every product name they have ever bought"
-    model = _model_query(planner, (
-        "SELECT T1.customer_name , T3.product_name FROM customers AS T1 JOIN orders AS T2 "
-        "ON T1.customer_id = T2.customer_id JOIN products AS T3 ON T2.order_id = T3.product_id"), tables)
-    bridged = _model_query(planner, (
-        "SELECT T1.customer_name , T4.product_name FROM customers AS T1 JOIN orders AS T2 ON "
-        "T1.customer_id = T2.customer_id JOIN order_items AS T3 ON T2.order_id = T3.order_id "
-        "JOIN products AS T4 ON T3.product_id = T4.product_id"), tables)
-    selection = _select(planner, question, tables, searched=[model, bridged])
-    assert bypass in selection.pool[0].sql
-    assert selection.executable[0], "it runs: execution is not evidence"
-    assert not selection.grounded[0], "two keys the foreign keys tell apart"
-    assert 0 not in selection.ranking
-    assert bridge in selection.candidate.sql, selection.candidate.sql
-    assert selection.record()["misgrounded"] == 1
-
-    # The same bypass inside a subquery is the same defect.
-    nested = _model_query(planner, (
-        "SELECT customer_name FROM customers WHERE customer_id IN (SELECT orders.customer_id "
-        "FROM orders JOIN products ON orders.order_id = products.product_id "
-        "WHERE products.product_name = 'Alpha')"), tables)
-    selection = _select(planner, "customers who bought Alpha", tables, searched=[nested])
-    assert bypass in nested.sql and not selection.grounded[0] and selection.ranking == ()
-
-    # A key equated with a column whose values it never holds (Spider car_1: model_list.ModelId
-    # joined to car_names.Model, a name) can never match either.
-    models = {"name": "model_list", "columns": ["model_id", "maker", "model"],
-              "rows": [[1, 1, "amc"], [2, 2, "audi"], [3, 3, "bmw"]]}
-    names = {"name": "car_names", "columns": ["make_id", "model", "make"],
-             "rows": [[1, "amc", "amc hornet"], [2, "amc", "amc gremlin"], [3, "audi", "audi 100ls"],
-                      [4, "bmw", "bmw 2002"]]}
-    keyed = _model_query(
-        planner, "SELECT car_names.make FROM model_list JOIN car_names ON model_list.model_id = car_names.model",
-        [models, names])
-    selection = _select(planner, "which makes does each model have", [models, names], searched=[keyed])
-    assert '"model_list"."model_id" = "car_names"."model"' in keyed.sql
-    assert not selection.grounded[0] and selection.ranking == ()
-
-
-def test_select_query_serves_the_bridge_join_the_foreign_keys_state():
-    """Same profile: a model's join through order_items is eligible and, ranked first, served."""
-    bridge = '"order_items"."product_id" = "products"."product_id"'
-    planner = _hermetic_planner()
-    tables = _promotions()
-    question = "customer name and product name for each order"
-    model = _model_query(planner, (
-        "SELECT T1.customer_name , T4.product_name FROM customers AS T1 JOIN orders AS T2 ON "
-        "T1.customer_id = T2.customer_id JOIN order_items AS T3 ON T2.order_id = T3.order_id "
-        "JOIN products AS T4 ON T3.product_id = T4.product_id"), tables)
-    names = _model_query(planner, "SELECT customer_name FROM customers", tables)
-    selection = _select(planner, question, tables, searched=[model, names])
-    assert all(selection.grounded)
-    assert selection.selected == 0 and bridge in selection.candidate.sql
-
-
-def test_join_grounding_leaves_joins_the_foreign_keys_do_not_contradict():
-    planner = _hermetic_planner()
-
-    def eligible(question, tables, line):
-        member = _model_query(planner, line, tables)
-        selection = _select(planner, question, tables, searched=[member])
-        assert selection.grounded[0] and selection.ranking == (0,), member.sql
-
-    # A shortcut through a shared parent key (world_1: city.CountryCode = countrylanguage.CountryCode).
-    country = {"name": "country", "columns": ["code", "country_name"],
-               "rows": [["FR", "France"], ["ES", "Spain"], ["MX", "Mexico"]]}
-    city = {"name": "city", "columns": ["city_id", "city_name", "country_code"],
-            "rows": [[1, "Paris", "FR"], [2, "Lyon", "FR"], [3, "Madrid", "ES"], [4, "Puebla", "MX"],
-                     [5, "Seville", "ES"]]}
-    language = {"name": "language", "columns": ["country_code", "language"],
-                "rows": [["FR", "French"], ["ES", "Spanish"], ["MX", "Spanish"], ["ES", "Catalan"]]}
-    eligible("cities in countries that speak Spanish", [country, city, language],
-             "SELECT city.city_name FROM city JOIN language ON city.country_code = "
-             "language.country_code WHERE language.language = 'Spanish'")
-
-    # An attribute join between tables the foreign keys connect.
-    promotions = _promotions()
-    customers = dict(promotions[0], columns=promotions[0]["columns"] + ["signup_date"],
-                     rows=[row + [date] for row, date in zip(promotions[0]["rows"], [
-                         "2026-01-10", "2026-01-01", "2026-02-20", "2025-12-31"])])
-    eligible("customers who ordered on their signup date", [customers] + promotions[1:],
-             "SELECT customers.customer_name FROM customers JOIN orders ON orders.customer_id = "
-             "customers.customer_id AND orders.order_date = customers.signup_date")
-
-    # A key join between tables no foreign key connects (flight_2's undeclared airline key).
-    airlines = {"name": "airlines", "columns": ["uid", "airline"],
-                "rows": [[1, "United"], [2, "JetBlue"], [3, "Delta"]]}
-    flights = {"name": "flights", "columns": ["flight_no", "operator"],
-               "rows": [[10, 1], [11, 1], [12, 2], [13, 3], [14, 2]]}
-    eligible("how many JetBlue flights", [airlines, flights],
-             "SELECT COUNT(*) FROM flights JOIN airlines ON airlines.uid = flights.operator "
-             "WHERE airlines.airline = 'JetBlue'")
-
-    # A role key the discovery did not resolve (two of its four values are not customers) whose
-    # values overlap the key it is joined to.
-    shoppers = {"name": "customers", "columns": ["customer_id", "customer_name"],
-                "rows": [[1, "Alice"], [2, "Bob"], [3, "Cara"]]}
-    shipments = {"name": "orders", "columns": ["order_id", "customer_id", "ship_to_id", "amount"],
-                 "rows": [[10, 1, 2, 5.0], [11, 1, 9, 7.5], [12, 2, 1, 3.0], [13, 3, 8, 4.0],
-                          [14, 3, 2, 6.0]]}
-    eligible("names of the customers orders were shipped to", [shoppers, shipments],
-             "SELECT customers.customer_name FROM orders JOIN customers "
-             "ON orders.ship_to_id = customers.customer_id")
-
-
-def test_join_grounding_reads_every_equated_column_pair():
-    """JOIN ... ON pairs and column equalities in WHERE, in every scope, with aliases resolved."""
-    integer, text = SQLType.INTEGER, SQLType.TEXT
-    correlated = SelectQuery(
-        (SelectItem(ColumnRef("o", "customer_id", integer)),), "orders", from_alias="o",
-        where=Comparison(ColumnRef("o", "order_id", integer), "=",
-                         ColumnRef("products", "product_id", integer)))
-    query = SelectQuery(
-        (SelectItem(ColumnRef("products", "product_name", text)),), "products",
-        joins=(Join("order_items", ColumnRef("order_items", "product_id", integer),
-                    ColumnRef("products", "product_id", integer)),),
-        where=ExistsPredicate(correlated))
-    assert join_pairs(query) == (
-        (("order_items", "product_id"), ("products", "product_id")),
-        (("orders", "order_id"), ("products", "product_id")),
-    )
-    # A self join equates nothing across tables.
-    boss = SelectQuery(
-        (SelectItem(ColumnRef("e", "name", text)),), "employees", from_alias="e",
-        joins=(Join("employees", ColumnRef("e", "manager_id", integer),
-                    ColumnRef("m", "employee_id", integer), alias="m"),))
-    assert join_pairs(boss) == ()
-
-
-def test_double_counting_reads_the_rows_each_join_repeats():
-    """engine/sql_grounding.double_counted, per SELECT: a SUM or AVG whose operand reads only rows its joins
-    repeat. A customer joined to her orders appears once per order; an order joined to its customer, once."""
-    integer, real, text = SQLType.INTEGER, SQLType.REAL, SQLType.TEXT
-    customers = {"name": "customers", "columns": ["customer_id", "country", "credit"],
-                 "rows": [[1, "France", 100], [2, "Japan", 50], [3, "Japan", 70]]}
-    orders = {"name": "orders", "columns": ["order_id", "customer_id", "amount"],
-              "rows": [[10, 1, 5], [11, 1, 7], [12, 2, 3]]}
-    items = {"name": "items", "columns": ["item_id", "order_id", "product_id", "quantity"],
-             "rows": [[100, 10, 1, 1], [101, 10, 2, 2], [102, 12, 1, 4]]}
-    products = {"name": "products", "columns": ["product_id", "price"], "rows": [[1, 2.5], [2, 4.0]]}
-    profiles = {"name": "profiles", "columns": ["customer_id", "segment"],
-                "rows": [[1, "retail"], [2, "trade"], [3, "trade"]]}
-    addresses = {"name": "addresses", "columns": ["address_id", "customer_id", "city"],
-                 "rows": [[1, 1, "Lyon"], [2, 1, "Paris"], [3, 2, "Osaka"]]}
-    employees = {"name": "employees", "columns": ["employee_id", "manager_id", "salary"],
-                 "rows": [[1, None, 90], [2, 1, 60], [3, 1, 50]]}
-    tables = {table["name"]: table for table in (customers, orders, items, products, profiles, addresses, employees)}
-    graph = SchemaGraph.from_tables(list(tables.values()), [
-        ("orders", "customer_id", "customers", "customer_id"), ("items", "order_id", "orders", "order_id"),
-        ("items", "product_id", "products", "product_id"), ("profiles", "customer_id", "customers", "customer_id"),
-        ("addresses", "customer_id", "customers", "customer_id")])
-
-    def counted(query, data=tables):
-        if isinstance(query, str):
-            query = import_sql(query, graph)
-        validate_query(query)
-        return [f"{aggregate.function}({aggregate.operand.table}.{aggregate.operand.name})"
-                for aggregate in double_counted(query, data)]
-
-    join = "FROM orders JOIN customers ON orders.customer_id = customers.customer_id"
-    # Contrast: a child's measure totalled by its parent's attribute reads each order once.
-    assert counted(f"SELECT customers.country, SUM(orders.amount) {join} GROUP BY customers.country") == []
-    # The parent's own measure is read once per order, wherever the aggregate stands.
-    assert counted(f"SELECT customers.country, SUM(customers.credit) {join} GROUP BY customers.country") == [
-        "SUM(customers.credit)"]
-    assert counted(f"SELECT AVG(customers.credit) {join}") == ["AVG(customers.credit)"]
-    assert counted(f"SELECT customers.country {join} GROUP BY customers.country "
-                   "ORDER BY SUM(customers.credit) DESC") == ["SUM(customers.credit)"]
-    assert counted(f"SELECT customers.country {join} GROUP BY customers.country "
-                   "HAVING AVG(customers.credit) > 60") == ["AVG(customers.credit)"]
-    # Left alone: COUNT counts the joined rows whichever column it names; MIN, MAX and DISTINCT read values.
-    assert counted(f"SELECT COUNT(customers.country), COUNT(*), MIN(customers.credit), MAX(customers.credit), "
-                   f"COUNT(DISTINCT customers.customer_id) {join}") == []
-    # A table that holds each key once repeats nothing.
-    assert counted("SELECT SUM(customers.credit) FROM customers JOIN profiles "
-                   "ON profiles.customer_id = customers.customer_id") == []
-    # Repeats carry across joins: an order of a customer with two addresses appears twice.
-    assert counted(f"SELECT SUM(orders.amount) {join} JOIN addresses "
-                   "ON addresses.customer_id = customers.customer_id") == ["SUM(orders.amount)"]
-    # An operand that reads a table the joins do not repeat is computed once per row of that table.
-    lines = "FROM items JOIN products ON items.product_id = products.product_id"
-    assert counted(f"SELECT SUM(items.quantity * products.price) {lines}") == []
-    assert counted(f"SELECT SUM(products.price) {lines}") == ["SUM(products.price)"]
-    # A self join: a manager appears once per report, a report once.
-    bosses = "FROM employees AS e JOIN employees AS m ON e.manager_id = m.employee_id"
-    assert counted(f"SELECT SUM(m.salary) {bosses}") == ["SUM(m.salary)"]
-    assert counted(f"SELECT SUM(e.salary) {bosses}") == []
-    # Each SELECT is read against its own joins.
-    assert counted(f"SELECT customers.country FROM customers WHERE customers.credit > "
-                   f"(SELECT AVG(customers.credit) {join})") == ["AVG(customers.credit)"]
-
-    # A composite key repeats a row only when the combination repeats: each currency and each month
-    # repeats in rates, but each pair once, while payments holds ("usd", 1) twice.
-    payments = {"name": "payments", "columns": ["currency", "month", "amount"],
-                "rows": [["usd", 1, 10], ["usd", 2, 20], ["eur", 1, 30], ["usd", 1, 5]]}
-    rates = {"name": "rates", "columns": ["currency", "month", "rate"],
-             "rows": [["usd", 1, 1.0], ["usd", 2, 1.1], ["eur", 1, 0.9]]}
-
-    def converted(column):
-        return SelectQuery((SelectItem(Aggregate("SUM", column)),), "payments", joins=(Join(
-            "rates", ColumnRef("rates", "currency", text), ColumnRef("payments", "currency", text),
-            additional=((ColumnRef("rates", "month", integer), ColumnRef("payments", "month", integer)),)),))
-
-    keyed = {"payments": payments, "rates": rates}
-    assert counted(converted(ColumnRef("payments", "amount", integer)), keyed) == []
-    assert counted(converted(ColumnRef("rates", "rate", real)), keyed) == ["SUM(rates.rate)"]
-
-    # A derived table's values are computed, not read; the uploaded table joined to it still repeats it.
-    credit = ColumnRef("t", "credit", integer)
-    derived = SubquerySource(SelectQuery((SelectItem(ColumnRef("customers", "customer_id", integer)),
-                                          SelectItem(ColumnRef("customers", "credit", integer))), "customers"), "t")
-    on = Join("orders", ColumnRef("orders", "customer_id", integer), ColumnRef("t", "customer_id", integer))
-    assert counted(SelectQuery((SelectItem(Aggregate("SUM", credit)),), derived, joins=(on,))) == ["SUM(t.credit)"]
-    assert counted(SelectQuery((SelectItem(Aggregate("SUM", ColumnRef("orders", "amount", integer))),),
-                               derived, joins=(on,))) == []
-
-
-def test_named_request_decomposes_a_compound_question_a_single_query_answers_in_part():
-    """The readers read "products no Paris customer bought" as a set difference, and a single join listing
-    what Paris DID buy is ranked first. A named product request must ask for decomposition and execute
-    nothing: a single query cannot answer a compound question. Evaluation (no analysis context) serves
-    selection's choice."""
-
-    from engine.decomposition import search_probe
-    from engine.deterministic.context import analysis_execution_context
-    from tests.test_datasets import DATASET_DIR, _tables
-
-    tables = _tables(DATASET_DIR / "complex-unsold-products")
-    question = "List the product names that no customer from Paris has bought, ordered by product name."
-    planner = _hermetic_planner()
-    unsold = _model_query(planner, ("SELECT product_name FROM products EXCEPT "
-                                    "SELECT product_name FROM purchases WHERE city = 'Paris'"), tables)
-    one_join = _model_query(planner, (
-        "SELECT products.product_name FROM products JOIN purchases "
-        "ON products.product_name = purchases.product_name "
-        "WHERE purchases.city = 'Paris' ORDER BY products.product_name"), tables, score=1.0)
-    planner.pool = [unsold, one_join]
-    assert isinstance(unsold.query, SetQuery)
-
-    evaluated = planner.serve(tables, question)
-    assert evaluated["valid"] and evaluated["sql"] == one_join.sql, evaluated
-    assert evaluated["result"]["rows"]
-    with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
-            patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
-        named = planner.serve(tables, question)
-    assert named.get("decomposition_required"), named
-    assert named["result"] is None and named["error"] is None
-
-    # The compose path's probe asks the same question of the readers' reading alone: no selection runs.
-    with patch.object(planner, "select_query", side_effect=AssertionError("the probe ran selection")):
-        probe = search_probe(planner, tables, question)
-    assert probe.decomposition_required and probe.selection is None
-
-
-def test_a_compound_named_request_asks_for_decomposition_before_selection_runs():
-    """tests.test_complex_datasets failed on the CPU 7B SQL model (2026-09-30): a named compound
-    request decoded the whole prompt before asking whether it was read as compound, the decode ran
-    past its CPU budget, and the request failed instead of asking for a decomposition. The readers'
-    most probable reading alone decides compound structure, so a named compound request runs no
-    selection: no pool execution."""
-
-    from engine.deterministic.context import analysis_execution_context
-    from tests.test_datasets import DATASET_DIR, _tables
-
-    tables = _tables(DATASET_DIR / "complex-unsold-products")
-    question = "List the product names that no customer from Paris has bought, ordered by product name."
-    planner = _hermetic_planner()
-    planner.pool = [_model_query(planner, ("SELECT product_name FROM products EXCEPT "
-                                           "SELECT product_name FROM purchases WHERE city = 'Paris'"), tables)]
-    with patch.object(planner, "select_query", wraps=planner.select_query) as select:
-        with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
-                patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
-            named = planner.serve(tables, question)
-        assert named.get("decomposition_required"), named
-        assert named["result"] is None and named["error"] is None
-        assert select.call_count == 0, f"a compound named request ran selection {select.call_count} time(s)"
-        # Contrast: evaluation (no analysis context) serves selection's choice, so it runs it.
-        assert planner.serve(tables, question)["valid"]
-        assert select.call_count == 1
-
-
-def test_named_request_never_serves_or_decomposes_a_lower_read_set_operation():
-    """The live demo gate caught this after a SQL model's queries could be served. "total amount for
-    restaurants in United States" read as an INTERSECT over invented values, ranked first, made every
-    named request ask for a decomposition. Compound structure is the readers' most probable reading: when it
-    is one goal, a named request neither decomposes nor serves a set operation the re-scorer ranks first, it
-    serves the best-ranked single query. Evaluation still serves selection's choice."""
-
-    from engine.decomposition import search_probe
-    from engine.deterministic.context import analysis_execution_context
-    from tests.test_datasets import DATASET_DIR, _tables
-
-    (sheet,) = _tables(DATASET_DIR / "neartail-catering")
-    tables = [dict(sheet, rows=[[name, event, int(amount)] for name, event, amount in sheet["rows"]])]
-    question = "total amount for restaurants in United States"
-    planner = _hermetic_planner()
-    total = _model_query(planner, "SELECT SUM(amount) FROM catering", tables)
-    invented = _model_query(planner, ("SELECT SUM(amount) FROM catering WHERE amount > 0 "
-                                      "UNION SELECT SUM(amount) FROM catering WHERE amount > 1"),
-                            tables, score=1.0)
-    planner.pool = [total, invented]
-    selection = _select(planner, question, tables)
-    assert selection.candidate.sql == invented.sql, "evaluation serves the re-scorer's choice"
-    probe = search_probe(planner, tables, question)
-    assert not probe.decomposition_required and probe.selection.selected == 1
-    for lower_read in (invented, _model_query(planner, (
-            "SELECT SUM(amount) FROM catering WHERE event = 'breakfast' "
-            "INTERSECT SELECT SUM(amount) FROM catering WHERE event = 'lunch'"), tables, score=1.0)):
-        planner.pool = [total, lower_read]
-        with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32):
-            named = planner.serve(tables, question)
-        assert not named.get("decomposition_required"), named
-        # A named request runs the served query's deterministic program; its SQL is the program's, its AST the total.
-        assert named["valid"] and named["ast"] == repr(total.query), named
-        assert named["deterministic"]["mode"] == "python" and named["result"]["rows"] == [[26000]], named
-        assert named["selection"]["selected"] == 0
-    # The INTERSECT finds nothing, so evaluation, which serves no set operation away, asks instead.
-    empty = _select(planner, question, tables)
-    assert empty.selected is None and empty.found_nothing and empty.declined == 1, empty.record()
 
 
 def test_proposal_import_rejects_malformed_model_text():
@@ -1368,8 +585,7 @@ def test_join_keys_are_read_as_the_executed_join_compares_them():
     """A release review (2026-10-07). Foreign-key discovery compared keys without case, while the join it planned
     compares them exactly: orders keyed ABC, ABC, DEF were linked to customers keyed abc and def, and "total
     amount by customer name" was served as no rows. Customers keyed ABC and abc, two keys to the join, were no
-    key at all. Join grounding read keys through float, so accounts 2**53 and 2**53 + 1 were one key and a
-    total over their payments was read as double counted. Both now read a key as the join does."""
+    key at all. Discovery now reads a key as the join does."""
     from decimal import Decimal
 
     from engine.relations import discover_fks, join_keys
@@ -1414,16 +630,6 @@ def test_join_keys_are_read_as_the_executed_join_compares_them():
         edges = discover_fks([mixed_orders, mixed_customers])
         result = joined([mixed_orders, mixed_customers])
         assert bool(edges) == bool(expected) and result == expected, (keys, edges, result)
-    accounts = {"name": "accounts", "columns": ["account_id", "owner"], "rows": [[2**53, "Ann"], [2**53 + 1, "Bo"]]}
-    payments = {"name": "payments", "columns": ["payment_id", "account_id", "amount"],
-                "rows": [[1, 2**53, 5], [2, 2**53 + 1, 7], [3, 2**53, 1]]}
-    graph = SchemaGraph.from_tables([accounts, payments], [("payments", "account_id", "accounts", "account_id")])
-    total = import_sql("SELECT accounts.owner, SUM(payments.amount) FROM payments JOIN accounts "
-                       "ON payments.account_id = accounts.account_id GROUP BY accounts.owner", graph)
-    assert double_counted(total, {"accounts": accounts, "payments": payments}) == ()
-    # Contrast: an account listed twice does repeat each payment the join matches to it.
-    twice = {**accounts, "rows": accounts["rows"] + [[2**53, "Ann"]]}
-    assert len(double_counted(total, {"accounts": twice, "payments": payments})) == 1
 
 
 def test_an_explicit_zero_foreign_key_confidence_stays_zero():
@@ -1527,18 +733,6 @@ def test_a_list_item_that_is_only_the_count_asks_for_the_count():
         ("continent name", False), ("count", True)]
     assert [r.count for r in output_requests("Which shops sell shoes? List the shop name and the count of shoes.")] == [
         False, True]
-
-
-def test_a_superlative_over_the_shown_field_is_one_value():
-    """Spider DEV 988, 989 (2026-10-14): "What is the age of the oldest dog?" ranked the dogs by birth date and served
-    every dog tied at the earliest one. A ranking showing only what it is ordered by serves one row, its ties showing
-    the same value (sql_ast.keep_ties). Contrast: a ranking showing another field keeps every tied row."""
-    from engine.sql_ast import keep_ties
-    age = ColumnRef("Dogs", "age", SQLType.INTEGER)
-    name = ColumnRef("Dogs", "name", SQLType.TEXT)
-    oldest = SelectQuery((SelectItem(age),), "Dogs", order_by=(OrderTerm(age, "DESC"),), limit=1)
-    assert keep_ties(oldest) == oldest
-    assert keep_ties(SelectQuery((SelectItem(name),), "Dogs", order_by=(OrderTerm(age, "DESC"),), limit=1)).with_ties
 
 
 def test_the_opening_sentence_lists_its_coordinated_outputs():
@@ -1869,8 +1063,8 @@ def test_spider_ingestion_keeps_discovered_and_declared_relationships():
     tables = [carriers, ports, shipments]
     declared = [{"from_table": "shipments", "from_col": "destination_id", "to_table": "ports", "to_col": "id"}]
     planner = _hermetic_planner()
-    planner.pool = [_model_query(planner, ("SELECT COUNT(*) FROM shipments JOIN carriers "
-                                           "ON shipments.carrier = carriers.id WHERE carriers.name = 'Alpha'"), tables)]
+    # The evaluator's own selection is production's (TableQuery.select_query); this test reads its ingestion.
+    planner.select_query = lambda question, tables: PoolSelection((), (), None)
     cache = {}
     with patch.object(planner, "schema", wraps=planner.schema) as schema:
         actual = ast_predict(planner, tables, "How many shipments use carrier Alpha?", declared, cache)
@@ -1879,11 +1073,11 @@ def test_spider_ingestion_keeps_discovered_and_declared_relationships():
         assert ("shipments", "carrier", "carriers", "id") in pairs, merged
         assert ("shipments", "destination_id", "ports", "id") in pairs, merged
         assert not any(edge["from_col"] == "weight" for edge in merged), merged
-        assert actual.get("ok") and actual["rows"] == [[2]], actual
+        assert not actual["ok"] and actual["stage"] == "ast_search", actual
         # A repeated question reuses that one schema; a changed declaration is
         # a different ingestion input even for the same table object identities.
-        again = ast_predict(planner, tables, "How many shipments use carrier Alpha?", declared, cache)
-        assert again.get("rows") == actual["rows"] and schema.call_count == 1
+        ast_predict(planner, tables, "How many shipments use carrier Alpha?", declared, cache)
+        assert schema.call_count == 1
         ast_predict(planner, tables, "How many shipments are there?", [], cache)
         assert schema.call_count == 2
         discovered = schema.call_args.args[1]
@@ -1915,16 +1109,8 @@ def test_declared_self_relationship_keeps_unrelated_queries_and_source_rows():
     assert graph.reachable({"employees"}) == {"employees"}
     assert graph.join_trees({"employees", "artists"}) == ()
     assert graph.join_trees({"employees"})[0].joins == ()
-    planner.pool = {question: [_model_query(planner, sql, tables)] for question, sql in (
-        ("List artist names", 'SELECT "Name" FROM "artists"'),
-        ("List employee names", 'SELECT "Name" FROM "employees"'),
-        ("How many employees are there?", 'SELECT COUNT(*) FROM "employees"'))}
-    unrelated = ast_predict(planner, tables, "List artist names", declared)
-    assert unrelated["ok"] and Counter(map(tuple, unrelated["rows"])) == Counter({("Nora",): 1, ("Nico",): 1}), unrelated
-    listed = ast_predict(planner, tables, "List employee names", declared)
-    assert listed["ok"] and Counter(map(tuple, listed["rows"])) == Counter({("A",): 2, ("B",): 1}), listed
-    counted = ast_predict(planner, tables, "How many employees are there?", declared)
-    assert counted["ok"] and counted["rows"] == [[3]], counted
+    planner.select_query = lambda question, tables: PoolSelection((), (), None)
+    ast_predict(planner, tables, "List employee names", declared)
     assert json.dumps(tables, sort_keys=True) == before
     for malformed in ({**declared[0], "to_table": "absent"},
                       {**declared[0], "to_col": "absent"},
@@ -1999,41 +1185,6 @@ def test_a_comparison_symbol_is_its_word():
     assert plain_marks("the priority list") == "the priority list"
 
 
-def test_one_value_bounded_both_ways_is_contradictory():
-    """Spider DEV 856, 857, 2026-10-17: "Show the record companies shared by orchestras founded before 2003 and after
-    2003." was served as Year_of_Founded > 2003 AND Year_of_Founded < 2003, which matches no row. A conjunction
-    bounding a column below where it bounds it above is contradictory (sql_ast.contradictory). Contrast: a range is
-    no contradiction."""
-    from engine.sql_ast import and_predicates, contradictory
-    founded = ColumnRef("orchestra", "Year_of_Founded", SQLType.INTEGER)
-    after, before = Comparison(founded, ">", Literal(2003)), Comparison(founded, "<", Literal(2003))
-    company = (SelectItem(ColumnRef("orchestra", "Record_Company", SQLType.TEXT)),)
-    assert contradictory(SelectQuery(company, "orchestra", where=and_predicates([after, before])))
-    assert not contradictory(SelectQuery(company, "orchestra", where=and_predicates([
-        after, Comparison(founded, "<", Literal(2010))])))
-
-
-def test_a_value_bounded_away_from_its_equality_is_contradictory():
-    """Fresh holdout 189, 2026-10-17: "Provide the full names of employees earning more than the employee with id 163."
-    was served as EMPLOYEE_ID = 163 AND EMPLOYEE_ID > 163, which matches no row: an equality bounds its column from both
-    sides, and the bound away from it passed the contradiction filter. Contrast: an equality inside the bound is no
-    contradiction, nor one of another column."""
-    from engine.sql_ast import and_predicates, contradictory
-    employee = ColumnRef("employees", "EMPLOYEE_ID", SQLType.INTEGER)
-    salary = ColumnRef("employees", "SALARY", SQLType.INTEGER)
-    names = (SelectItem(ColumnRef("employees", "FIRST_NAME", SQLType.TEXT)),)
-    equal = Comparison(employee, "=", Literal(163))
-
-    def where(*terms):
-        return SelectQuery(names, "employees", where=and_predicates(list(terms)))
-
-    assert contradictory(where(equal, Comparison(employee, ">", Literal(163))))
-    assert contradictory(where(Comparison(employee, "<", Literal(100)), equal))
-    assert not contradictory(where(equal, Comparison(employee, ">=", Literal(163))))
-    assert not contradictory(where(equal, Comparison(employee, ">", Literal(100))))
-    assert not contradictory(where(equal, Comparison(salary, ">", Literal(163))))
-
-
 def test_a_count_counts_its_nouns_head():
     """Held-out Spider train 989, 2026-10-17: "How many movie ratings have more than 3 stars?" counted the different
     movies: the counted noun was read as Movie, its first word. A table named right after the one a count's noun
@@ -2055,27 +1206,6 @@ def test_a_count_counts_its_nouns_head():
     taught = SchemaGraph.from_tables([instructor, teaches], [])
     assert counted_noun_tables(tokens("How many instructors teach a course in the Spring of 2010?"), taught) == {
         "instructor"}
-
-
-def test_evaluator_grades_the_served_selection():
-    from spider.probe.full_eval import ast_predict
-
-    planner = _hermetic_planner()
-    planner.pool = [_model_query(planner, 'SELECT "Name" FROM "people"'),
-                    _model_query(planner, 'SELECT COUNT(*) FROM "people"')]
-    served = _select(planner, "list person names")
-    record = ast_predict(planner, [PEOPLE], "list person names")
-    assert record["ok"] and record["sql"] == served.candidate.sql
-    assert record["selected_candidate_rank"] == served.selected
-    assert record["selection"] == served.record()
-    assert "served_by" not in record
-    oracle = ast_predict(planner, [PEOPLE], "list person names", selection="pool_oracle")
-    assert [entry["sql"] for entry in oracle["pool_execution"]] == [c.sql for c in served.pool]
-    for rank, entry in enumerate(oracle["pool_execution"]):
-        assert entry["score"] == served.pool[rank].score
-        assert entry["executable"] == served.executable[rank]
-        assert entry["grounded"] == served.grounded[rank]
-        assert entry["eligible"] == (served.executable[rank] and served.grounded[rank])
 
 
 def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints():
@@ -2102,9 +1232,7 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
     assert top1["strict"] is True
     assert record["pool"][0]["strict"] and not record["pool"][0]["eligible"]
     assert record["pool"][1]["eligible"]
-    assert record["pool"][1]["features"] == {"projection": 1.0}
     assert record["pool"][1]["evidence"] == ["extrema:projection"]
-    assert record["pool"][1]["calculation_satisfied"] is False
     assert record["pool"][1]["oracle_executed"] is True
     assert record["pool"][2]["eligible"] is True and not record["pool"][2]["oracle_executed"]
 
@@ -2118,135 +1246,6 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
             pass
         else:
             raise AssertionError("duplicate, out-of-denominator, or malformed checkpoint accepted")
-
-
-def test_named_serving_trace_replays_currency_grouping_ties_and_identity_and_rejects_tampering():
-    from copy import deepcopy
-    from engine.sql_ast import query_to_tree
-    from engine.sql_rank import mixed_currencies, replay_served_transform, served_member
-
-    graph = SchemaGraph.from_tables([
-        {"name": "sales", "columns": ["Plan", "Amount", "Currency"],
-         "rows": [["A", 10, "usd"], ["B", 20, "inr"], ["C", 20, "usd"]]}], [])
-    plan, amount = (graph.column_map[("sales", name)].ref for name in ("Plan", "Amount"))
-    total = SelectQuery((SelectItem(Aggregate("SUM", amount)),), "sales")
-    ranked = SelectQuery((SelectItem(plan),), "sales", order_by=(OrderTerm(amount, "DESC"),), limit=1)
-    listing = SelectQuery((SelectItem(plan),), "sales")
-    for query in (total, ranked, listing):
-        member = ScoredQuery(query, render_query(query), .9, (), named_trace={"model_ast": query_to_tree(query)})
-        served = served_member(member, mixed_currencies(graph))
-        assert replay_served_transform(query, graph, served.named_trace) == served.query
-        if query is total:
-            assert served.query.group_by == (graph.column_map[("sales", "Currency")].ref,)
-        elif query is ranked:
-            assert served.query.with_ties
-        else:
-            assert served.query == query
-        for field in ("currencies", "operations", "output_ast", "input_ast"):
-            changed = deepcopy(served.named_trace)
-            changed["served_transform"][field] = {} if field != "operations" else []
-            try:
-                replay_served_transform(query, graph, changed)
-            except ValueError:
-                pass
-            else:
-                raise AssertionError(f"tampered {field} accepted")
-        changed = deepcopy(served.named_trace)
-        changed["model_ast"] = {}
-        try:
-            replay_served_transform(query, graph, changed)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("a different model AST accepted")
-
-
-def test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_precedence():
-    from engine.sql_rank import select_ranked_candidate
-    assert select_ranked_candidate((), ()) is None
-    # A total of money over several currencies is served per currency, unless the question already says which.
-    from engine.sql_rank import mixed_currencies, per_currency
-    from engine.sql_ast import Aggregate, Comparison, Literal, SelectItem, SelectQuery
-    from engine.sql_schema import SchemaGraph
-    money = SchemaGraph.from_tables([{"name": "t", "columns": ["id", "Currency", "Amount", "Quantity"],
-                                      "rows": [[1, "usd", 10, 1], [2, "inr", 800, 2], [3, "usd", 5, 1]]},
-                                     {"name": "one", "columns": ["Currency", "Amount"], "rows": [["usd", 1], ["usd", 2]]}], [])
-    currencies = mixed_currencies(money)
-    assert set(currencies) == {"t"}, currencies
-    amount, quantity = money.column_map[("t", "Amount")].ref, money.column_map[("t", "Quantity")].ref
-    currency = money.column_map[("t", "Currency")].ref
-    total = SelectQuery((SelectItem(Aggregate("SUM", amount)),), "t")
-    split = per_currency(total, currencies)
-    assert split.group_by == (currency,) and split.select[0].expression == currency
-    # Already filtered or grouped by currency, not money, a row list, or a sheet of one currency: as it was.
-    filtered = SelectQuery(total.select, "t", where=Comparison(currency, "=", Literal("usd")))
-    assert per_currency(filtered, currencies) is filtered
-    grouped = SelectQuery((SelectItem(currency), SelectItem(Aggregate("SUM", amount))), "t", group_by=(currency,))
-    assert per_currency(grouped, currencies) is grouped
-    units = SelectQuery((SelectItem(Aggregate("SUM", quantity)),), "t")
-    assert per_currency(units, currencies) is units
-    assert per_currency(total, {}) is total
-    # Within a group too: a plan's total of mixed money is a sum of nothing ("by Plan and Currency", read without it).
-    identity = money.column_map[("t", "id")].ref
-    by_id = SelectQuery((SelectItem(identity), SelectItem(Aggregate("SUM", amount))), "t", group_by=(identity,))
-    split = per_currency(by_id, currencies)
-    assert split.group_by == (identity, currency), split.group_by
-    assert [item.expression for item in split.select] == [identity, currency, Aggregate("SUM", amount)], split.select
-    first = SelectQuery((SelectItem(Aggregate("SUM", amount)), SelectItem(identity)), "t", group_by=(identity,))
-    assert [item.expression for item in per_currency(first, currencies).select] == [
-        Aggregate("SUM", amount), identity, currency]
-    ranked = SelectQuery(by_id.select, "t", group_by=(identity,), limit=1)
-    assert per_currency(ranked, currencies) is ranked, "the top group stays one group"
-    # A test of a column of few values against a value it does not hold is named; one of many values, or a held one, not.
-    from engine.sql_grounding import absent_value
-    from engine.sql_schema import SchemaGraph
-    from engine.sql_ast import (Aggregate, ColumnRef, Comparison, Literal, OrderTerm, SelectItem, SelectQuery, SQLType,
-                                named_groups, render_query)
-    graph = SchemaGraph.from_tables([{"name": "t", "columns": ["id", "status", "note"],
-                                      "rows": [[i, ["active", "canceled"][i % 2], f"n{i}"] for i in range(40)]}], [])
-    status = graph.column_map[("t", "status")].ref
-    note = graph.column_map[("t", "note")].ref
-    star = (SelectItem(status),)
-    churned = SelectQuery(star, "t", where=Comparison(status, "=", Literal("churned")))
-    assert absent_value(churned, graph) == ("status", "churned", ("active", "canceled"))
-    assert absent_value(SelectQuery(star, "t", where=Comparison(status, "=", Literal("Canceled"))), graph) is None
-    assert absent_value(SelectQuery(star, "t", where=Comparison(note, "=", Literal("gone"))), graph) is None
-    # A ranking of groups ranks the groups that have a name; a listing of groups keeps its blank.
-    industry, amount = ColumnRef("t", "industry", SQLType.TEXT), ColumnRef("t", "amount", SQLType.INTEGER)
-    total = Aggregate("SUM", amount)
-    ranking = SelectQuery((SelectItem(industry),), "t", group_by=(industry,),
-                          order_by=(OrderTerm(total, "DESC"),), limit=1)
-    assert "\"t\".\"industry\" <> ''" in render_query(named_groups(ranking))
-    listing = SelectQuery((SelectItem(industry), SelectItem(total)), "t", group_by=(industry,))
-    assert named_groups(listing) is listing
-    plain = SelectQuery((SelectItem(industry),), "t", order_by=(OrderTerm(amount, "DESC"),), limit=1)
-    assert named_groups(plain) is plain
-    year = ColumnRef("t", "year", SQLType.INTEGER)
-    by_year = SelectQuery((SelectItem(year),), "t", group_by=(year,), order_by=(OrderTerm(total, "DESC"),), limit=1)
-    assert "\"t\".\"year\" IS NOT NULL" in render_query(named_groups(by_year))
-    # A reading that matches nothing does not beat a more probable reading that finds rows, whatever the re-scorer
-    # thinks of its words; the readers' most probable reading keeps an empty answer ("orders from Mars").
-    from types import SimpleNamespace
-    from engine.sql_rank import outread_by_rows
-    pool = [SimpleNamespace(score=-0.4), SimpleNamespace(score=-1.0), SimpleNamespace(score=-2.0)]
-    outread = outread_by_rows(pool, (1, 2, 0), [False, True, False])
-    assert outread == (False, True, False)
-    assert select_ranked_candidate((1, 2, 0), [False] * 3, outread=outread) == 2
-    assert outread_by_rows(pool, (0, 1, 2), [True, False, False]) == (False, False, False)
-    assert select_ranked_candidate((1, 0), [False] * 3, outread=outread_by_rows(pool, (1, 0), [True] * 3)) == 1
-    # A more probable reading that is not eligible (it did not run, or misreads a column) outreads nothing.
-    assert outread_by_rows(pool, (1,), [False, True, False]) == (False, False, False)
-    assert select_ranked_candidate((2, 1, 0), (False, True, False)) == 1
-    # A query that keeps the named dates comes first; the calculation rule applies among them.
-    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (True, False, False)) == 0
-    assert select_ranked_candidate((2, 1, 0), (False, True, False), (True, True, False)) == 1
-    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3) == 1
-    # Among those, a query whose SUM or AVG reads only rows its joins repeat gives way to one that does not, even
-    # to a satisfied calculation; when every one does, the order stands.
-    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (), (False, True, True)) == 0
-    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (), (True,) * 3) == 2
-    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False, False, True), (False, False, True)) == 2
-    assert select_ranked_candidate((2, 1, 0), (False, True, False), (), (False, True, False)) == 2
 
 
 def test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
@@ -2276,9 +1275,6 @@ def test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
 
 
 def test_sql_import_preserves_arithmetic_over_aggregates():
-    from collections import Counter
-    import sqlite3
-    from training.readers.gold import read_gold, read_program
     from typing import get_args, get_type_hints
 
     sales = {'name': 'sales', 'columns': ['amount', 'units', 'cost', 'label'],
@@ -2304,39 +1300,6 @@ def test_sql_import_preserves_arithmetic_over_aggregates():
         query = import_sql(sql, graph)
         validate_query(query)
         assert execute([sales], render_query(query)) == expected
-    connection = sqlite3.connect(':memory:')
-    connection.execute('CREATE TABLE sales(amount REAL, units REAL, cost REAL, label TEXT)')
-    connection.executemany('INSERT INTO sales VALUES(?,?,?,?)', sales['rows'])
-    try:
-        for index, (sql, expected) in enumerate(cases):
-            counts, reasons = Counter(), Counter()
-            record, query, source_rows, agrees = read_program(
-                'fixture', index, {'db_id': 'fixture', 'query': sql}, connection, graph, counts, reasons)
-            assert agrees and source_rows == [[expected]] and query is not None
-            assert record == {'source': 'fixture', 'index': index, 'db_id': 'fixture'}
-            assert counts == {'questions': 1, 'imported': 1, 'ast_rows': 1} and not reasons
-        counts = Counter()
-        legacy = read_gold('fixture', 0, {'db_id': 'fixture', 'query': cases[0][0]},
-                           connection, graph, counts, Counter(), Counter())
-        assert legacy['status'].startswith('not-readable:') and counts['ast_rows'] == 1
-        counts = Counter()
-        ordinary = read_gold('fixture', 0, {'db_id': 'fixture', 'query': 'SELECT SUM(amount) FROM sales'},
-                             connection, graph, counts, Counter(), Counter())
-        assert ordinary['status'] == 'ok' and counts['questions'] == counts['rebuilt_rows'] == 1
-        counts = Counter()
-        failed = read_program('fixture', 0, {'db_id': 'fixture', 'query': 'SELECT ABS(amount) FROM sales'},
-                              connection, graph, counts, Counter())
-        assert failed[0]['status'] == 'import' and failed[1] is None and not failed[3]
-        assert counts == {'questions': 1}
-        invalid = read_program('fixture', 0, {'db_id': 'fixture', 'query': 'SELECT SUM(label) FROM sales'},
-                               connection, graph, Counter(), Counter())
-        assert not invalid[3] and 'requires a numeric column' in invalid[0]['ast_error']
-        assert 'source_error' not in invalid[0]
-        invalid_source = read_program('fixture', 0, {'db_id': 'fixture', 'query': 'SELECT SUM(SUM(amount)) FROM sales'},
-                                      connection, graph, Counter(), Counter())
-        assert not invalid_source[3] and invalid_source[0]['source_error']
-    finally:
-        connection.close()
     for sql in ('SELECT SUM(SUM(amount)) FROM sales',
                 'SELECT SUM(SUM(amount) * 1.0 / units) FROM sales',
                 'SELECT SUM(amount) + SUM(label) FROM sales'):
@@ -2582,45 +1545,6 @@ def test_the_coverage_gate_reads_the_months_a_query_compares():
     assert realized_month_words("How many orders in Q4?", months) == {"q4"}
 
 
-def test_two_values_of_one_column_are_either():
-    """Probe, 2026-10-02: "total amount from Paris and Lyon" filtered city = 'Paris' AND city =
-    'Lyon' and answered nothing. No row holds both, and no Spider gold query conjoins two such values
-    (Spider writes "the continents Asia and Europe" as OR): the conjunction is contradictory, its
-    disjunction is what either value means (sql_ast.conjunction), and the served selection grounds no
-    such conjunction (engine/sql_grounding.py)."""
-    from engine.sql_ast import BooleanExpr, conjunction, contradictory
-
-    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
-        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Marseille"],
-        [5, "Eve", 6, "Nice"]]}
-    city = ColumnRef("orders", "city", SQLType.TEXT)
-    both = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "orders",
-                       where=BooleanExpr("AND", (Comparison(city, "=", Literal("Paris", SQLType.TEXT)),
-                                                 Comparison(city, "=", Literal("Lyon", SQLType.TEXT)))))
-    assert contradictory(both)
-    either = SelectQuery(both.select, "orders", where=conjunction(both.where.terms))
-    assert isinstance(either.where, BooleanExpr) and either.where.operator == "OR", either.where
-    assert execute([orders], render_query(either)) == [(3,)]
-    pool = [ScoredQuery(both, render_query(both), 0.0, ()), ScoredQuery(either, render_query(either), 0.0, ())]
-    assert grounded_members(pool, {"orders": orders}, SchemaGraph.from_tables([orders], [])) == (False, True)
-    # Contrast: a self-join compares two aliases, not one column.
-    first, second = ColumnRef("T2", "city", SQLType.TEXT), ColumnRef("T3", "city", SQLType.TEXT)
-    route = BooleanExpr("AND", (Comparison(first, "=", Literal("Ashley", SQLType.TEXT)),
-                                Comparison(second, "=", Literal("Aberdeen", SQLType.TEXT))))
-    assert conjunction(route.terms) == route
-
-
-def test_a_value_compared_as_text_and_as_a_number_is_one_value():
-    """Review of the either-value rewrite (2026-10-02): a value compared as text and as a number is one value, not a
-    conflict (sql_ast.contradictory)."""
-    from engine.sql_ast import BooleanExpr, contradictory
-
-    code = ColumnRef("orders", "order ID", SQLType.TEXT)
-    same = SelectQuery((SelectItem(Star()),), "orders", where=BooleanExpr("AND", (
-        Comparison(code, "=", Literal("1", SQLType.TEXT)), Comparison(code, "=", Literal(1, SQLType.INTEGER)))))
-    assert not contradictory(same)
-
-
 def test_a_plural_reads_as_its_singular_everywhere():
     """Spider DEV, 2026-10-02: five modules each kept a copy of one plural rule, which read "courses" as
     "cours", "matches" as "matche" and "finishes" as "finishe", so "the course", "the match" and "the best
@@ -2634,306 +1558,6 @@ def test_a_plural_reads_as_its_singular_everywhere():
         assert canon(singular) == canon(plural) == singular, (singular, plural, canon(plural))
     # Contrast: a word that ends in "ss", or a short one, keeps its "s".
     assert (canon("bus"), canon("class"), canon("business")) == ("bus", "class", "business")
-
-
-def _subscription_workbook(extra_si_column=False, exports=None):
-    """Three subscription exports with one layout (NT, SI and FF) and a report of each, small enough to total
-    by hand: a customer's Stripe workbook, 2026-10-04. ``extra_si_column`` gives SI one more column, and
-    ``exports`` (name -> rows) replaces the exports."""
-    # A report lists each product once per currency, so no column of it is a key the exports reference.
-    exports = exports or {
-        "NT": [("price_a", "Neartail - Startup", "usd", 10, "active"),
-               ("price_a", "Neartail - Startup", "usd", 10, "canceled"),
-               ("price_a", "Neartail - Startup", "eur", 9, "active"),
-               ("price_b", "Order Form - Basic", "eur", 7, "active"),
-               ("price_b", "Order Form - Basic", "usd", 8, "active")],
-        "SI": [("price_c", "Formesign - Pro", "usd", 20, "active"),
-               ("price_c", "Formesign - Pro", "usd", 20, "canceled"),
-               ("price_c", "Formesign - Pro", "inr", 5, "active"),
-               ("price_g", "Formesign - Team", "usd", 40, "active")],
-        "FF": [("price_d", "Payment Form - Monthly", "usd", 3, "active"),
-               ("price_d", "Payment Form - Monthly", "eur", 4, "active"),
-               ("price_e", "Payment Form - Yearly", "usd", 30, "canceled"),
-               ("price_e", "Payment Form - Yearly", "usd", 30, "active")],
-    }
-    tables = []
-    for name, rows in exports.items():
-        extra = extra_si_column and name == "SI"
-        tables.append({"name": name, "columns": ["Plan", "Product", "Currency", "Amount", "Status"] + (["Tax"] if extra else []),
-                       "rows": [list(row) + ([1] if extra else []) for row in rows]})
-        totals = {}
-        for _plan, product, currency, amount, _status in rows:
-            count, total = totals.get((product, currency), (0, 0))
-            totals[(product, currency)] = (count + 1, total + amount)
-        tables.append({"name": f"{name} Report", "columns": ["Product", "Currency", "Subscriptions", "Total Amount"],
-                       "rows": [[product, currency, count, total]
-                                for (product, currency), (count, total) in sorted(totals.items())]})
-    return tables
-
-
-def test_tabs_of_one_layout_are_read_as_one():
-    """A customer's Stripe workbook, 2026-10-04: three subscription exports with one layout and a report of each.
-    An answer from one of the copies says which it read, and the others that could answer, so it is not taken for
-    the workbook's total; not when the question names the tab (engine/tables.py _unread_copies,
-    SchemaGraph.layout_copies)."""
-    workbook = _subscription_workbook()
-    question = "What is the total Amount broken down by Plan and Currency?"
-    by_plan = ('SELECT "{t}"."Plan", "{t}"."Currency", SUM("{t}"."Amount") FROM "{t}" '
-               'GROUP BY "{t}"."Plan", "{t}"."Currency"')
-    in_si = "What is the total Amount in SI by Plan?"
-    planner = _hermetic_planner()
-    planner.pool = {question: [_model_query(planner, by_plan.format(t="NT"), workbook)],
-                    in_si: [_model_query(planner, 'SELECT "SI"."Plan", SUM("SI"."Amount") FROM "SI" GROUP BY "SI"."Plan"',
-                                         workbook)]}
-    served = planner.serve(workbook, question)
-    assert sorted(map(tuple, served["result"]["rows"])) == [("price_a", "eur", 9), ("price_a", "usd", 20), ("price_b", "eur", 7), ("price_b", "usd", 8)], served["sql"]
-    assert served["layout_copies"] == {"read": ["NT"], "others": ["SI", "FF"]}, served.get("layout_copies")
-    named = planner.serve(workbook, in_si)
-    # SI's money is in two currencies, so each plan's total is per currency (sql_rank.per_currency): 40 usd + 5 inr is no 45.
-    assert sorted(map(tuple, named["result"]["rows"])) == [("price_c", "inr", 5), ("price_c", "usd", 40),
-                                                           ("price_g", "usd", 40)], named["sql"]
-    assert "layout_copies" not in named
-    # A near copy (SI with one more column) is named too; another table that merely has the column read is not.
-    near_workbook = _subscription_workbook(extra_si_column=True)
-    planner.pool = [_model_query(planner, by_plan.format(t="NT"), near_workbook)]
-    near = planner.serve(near_workbook, question)
-    assert set(near["layout_copies"]["others"]) == {"NT", "SI", "FF"} - set(near["layout_copies"]["read"]), near.get("layout_copies")
-    customers = {"name": "customers", "columns": ["customer_id", "name", "country"],
-                 "rows": [["c1", "Ada", "France"], ["c2", "Lin", "Japan"]]}
-    suppliers = {"name": "suppliers", "columns": ["supplier_id", "name", "country"],
-                 "rows": [["s1", "Acme", "Germany"], ["s2", "Bolt", "France"]]}
-    planner.pool = [_model_query(planner, 'SELECT "customers"."country" FROM "customers"', [customers, suppliers])]
-    listed = planner.serve([customers, suppliers], "list the countries")
-    assert listed["valid"] and "layout_copies" not in listed, listed.get("layout_copies")
-    # The narrowed graph keeps its parent's value index for the tables it keeps.
-    graph = SchemaGraph.from_tables(workbook, [])
-    kept = [column for column in graph.columns if column.ref.table not in {"SI", "FF"}]
-    assert graph.without(frozenset({"SI", "FF"})).value_index == SchemaGraph(kept, graph.foreign_keys).value_index
-    # Negative: tables with one layout that foreign keys reference are different things (two code lookups),
-    # and so are lists of one or two columns.
-    main = {"name": "main", "columns": ["id", "a_code", "b_code"], "rows": [[1, "x", "p"], [2, "y", "p"]]}
-    lookups = [{"name": name, "columns": ["code", "description", "active"], "rows": rows}
-               for name, rows in (("ref_a", [["x", "Ex", 1], ["y", "Why", 1]]),
-                                  ("ref_b", [["p", "Pea", 1], ["q", "Queue", 0]]))]
-    assert SchemaGraph.from_tables([main, *lookups], []).layout_copies == (("ref_a", "ref_b"),)
-    keyed = SchemaGraph.from_tables([main, *lookups], [("main", "a_code", "ref_a", "code"),
-                                                       ("main", "b_code", "ref_b", "code")])
-    assert keyed.layout_copies == ()
-    lists = [{"name": name, "columns": ["code", "description"], "rows": [["x", "Ex"]]} for name in ("ref_a", "ref_b")]
-    assert SchemaGraph.from_tables(lists, []).layout_copies == ()
-
-
-def test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_one():
-    """Subscription exports beside reports that list each product once, in its one currency (2026-10-05):
-    discovery keys the exports' Product to a report's, and the best-ranked reading of "What is the total Amount
-    broken down by Plan and Currency?" summed the report's Total Amount over that join, once per subscription the
-    report row matched: 40 for a product whose subscriptions total 20. A SUM or AVG that reads only rows its joins
-    repeat is served only when every eligible reading does, so the exports' own Amount is served."""
-    workbook = _subscription_workbook(exports={
-        "NT": [("price_a", "Neartail - Startup", "usd", 10, "active"),
-               ("price_a", "Neartail - Startup", "usd", 10, "canceled"),
-               ("price_b", "Order Form - Basic", "eur", 7, "active")],
-        "SI": [("price_c", "Formesign - Pro", "usd", 20, "active"),
-               ("price_c", "Formesign - Pro", "usd", 20, "canceled")]})
-    question = "What is the total Amount broken down by Plan and Currency?"
-    planner = _hermetic_planner()
-    reported = _model_query(planner, (
-        'SELECT "NT"."Plan", "NT"."Currency", SUM("NT_Report"."Total Amount") FROM "NT" JOIN "NT_Report" '
-        'ON "NT"."Product" = "NT_Report"."Product" GROUP BY "NT"."Plan", "NT"."Currency"'), workbook, score=1.0)
-    own = _model_query(planner, ('SELECT "NT"."Plan", "NT"."Currency", SUM("NT"."Amount") FROM "NT" '
-                                 'GROUP BY "NT"."Plan", "NT"."Currency"'), workbook)
-    planner.pool = [reported, own]
-    selection = _select(planner, question, workbook)
-    first = selection.ranking[0]
-    assert 'SUM("NT_Report"."Total Amount")' in selection.pool[first].sql and selection.double_counted[first], (
-        "the best-ranked eligible reading totals the report once per subscription", selection.pool[first].sql)
-    assert not selection.double_counted[selection.selected] and not selection.record()["double_counted"]
-    served = planner.serve(workbook, question)
-    assert {(row[0], row[1], row[-1]) for row in served["result"]["rows"]} == {
-        ("price_a", "usd", 20), ("price_b", "eur", 7)}, served["sql"]
-
-    # Negative: when every eligible reading reads repeats, the best-ranked is served. A course's credits
-    # summed over the classes that offer it read the repeats on purpose (Spider train, college_1).
-    course = {"name": "course", "columns": ["crs_code", "dept_code", "crs_credit"],
-              "rows": [["ACCT-211", "ACCT", 3], ["ACCT-212", "ACCT", 3], ["CIS-220", "CIS", 4]]}
-    classes = {"name": "class", "columns": ["class_code", "crs_code"],
-               "rows": [[1, "ACCT-211"], [2, "ACCT-211"], [3, "CIS-220"], [4, "ACCT-212"]]}
-    member = _model_query(planner, "SELECT course.dept_code, SUM(course.crs_credit) FROM course JOIN class "
-                                   "ON course.crs_code = class.crs_code GROUP BY course.dept_code", [course, classes])
-    only = _select(planner, "What is the total crs credit by dept code?", [course, classes], searched=[member])
-    assert only.double_counted == (True,) and only.selected == 0 and only.record()["double_counted"]
-
-
-def test_one_of_two_columns_that_share_a_header_is_asked_about():
-    """A sheet headed "id, Amount, Amount, Units" names its fields "Amount [column B]" and "Amount [column C]", and
-    "total Amount" summed column B alone (tests.test_scale, 2026-10-23): a reading of one of two columns that share a
-    header, the question not saying which, is not eligible, and the reply asks which. Contrast: the question that
-    names the column letter is answered, and so is one about another column."""
-    from engine.tables import csv_table
-
-    messy = csv_table("id,Amount,Amount,Units\n1,10,20,2\n2,30,40,3", "orders")
-    planner = _hermetic_planner()
-    planner.pool = {
-        "total Amount": [_model_query(planner, 'SELECT SUM("Amount [column B]") FROM "orders"', [messy])],
-        "total Amount in column C": [_model_query(planner, 'SELECT SUM("Amount [column C]") FROM "orders"', [messy])],
-        "total Units": [_model_query(planner, 'SELECT SUM("Units") FROM "orders"', [messy])]}
-    asked = planner.serve([messy], "total Amount")
-    assert asked["clarify"] is True and not (asked.get("result") or {}).get("rows"), asked
-    assert "headed “Amount”" in asked["reason"] and asked["selection"]["eligible"] == 0, asked
-    assert planner.serve([messy], "total Amount in column C")["result"]["rows"] == [[60]]
-    assert planner.serve([messy], "total Units")["result"]["rows"] == [[5]]
-
-
-def test_the_readers_read_one_table_of_each_layout():
-    """A workbook of three subscription exports (NT, SI, FF: one layout) and their three reports: read against all six
-    tabs, every reading of "What is the total Amount broken down by Plan and Currency?" joined copies no key connects
-    (tests.test_scale, 2026-10-23). The readers read one copy of each layout, the one the question names or else the
-    first, and the answer names the others (``layout_copies``)."""
-    def export(name):
-        return {"name": name, "columns": ["id", "Plan", "Currency", "Amount"],
-                "rows": [[1, "basic", "usd", 10], [2, "pro", "eur", 30]]}
-
-    def report(name):
-        return {"name": name, "columns": ["Plan", "Subscriptions", "Total Amount"],
-                "rows": [["basic", 1, 10], ["pro", 1, 30]]}
-    workbook = [export("NT"), report("NT Report"), export("SI"), report("SI Report"), export("FF"), report("FF Report")]
-    planner = _hermetic_planner()
-    read = []
-
-    def pool(question, graph):
-        read.append(set(graph.tables))
-        table = "SI" if "SI" in question else "NT"
-        return [_model_query(planner, f'SELECT "Plan", SUM("Amount") FROM "{table}" GROUP BY "Plan"', workbook)]
-    planner.readers.pool = pool
-    served = planner.serve(workbook, "What is the total Amount broken down by Plan?")
-    assert read[-1] == {"NT", "NT_Report"}, read[-1]
-    assert served["layout_copies"] == {"read": ["NT"], "others": ["SI", "FF"]}, served.get("layout_copies")
-    planner.serve(workbook, "total Amount by Plan in SI")
-    assert "SI" in read[-1] and not read[-1] & {"NT", "FF"}, read[-1]
-
-
-def test_a_ranking_whose_order_ranks_its_rows_is_preferred():
-    """ "top 3 cities" (one customer per city) ranked first the cities by their number of rows: every city has one,
-    so its first three were three of four by name, Berlin among them (tests.test_geo, 2026-10-23). A ranking whose
-    order ranks none of the rows it keeps above the first it leaves out is served only when every eligible one is
-    (sql_rank.select_ranked_candidate, ``undecided``): the ranking by amount ranks them. Contrast: a ranking that ties
-    only at its cut ranks its first rows and stays first ("the five oldest people", calibration); when no ranking
-    ranks anything, the first is served."""
-    customers = {"name": "customers", "columns": ["name", "city", "amount"],
-                 "rows": [["Ada", "Paris", 100], ["Bob", "Lyon", 80], ["Eve", "Berlin", 40], ["Sam", "Tokyo", 50]]}
-    by_rows = 'SELECT "city" FROM "customers" GROUP BY "city" ORDER BY COUNT(*) DESC LIMIT 3'
-    by_amount = 'SELECT "city" FROM "customers" GROUP BY "city" ORDER BY SUM("amount") DESC LIMIT 3'
-    planner = _hermetic_planner()
-    planner.pool = [_model_query(planner, by_rows, [customers], score=1.0),
-                    _model_query(planner, by_amount, [customers])]
-    served = planner.serve([customers], "top 3 cities")
-    assert [row[0] for row in served["result"]["rows"]] == ["Paris", "Lyon", "Tokyo"], served["result"]
-    assert served["selection"]["selected"] == 1 and served["selection"]["undecided"] is False, served["selection"]
-    decided = _hermetic_planner()
-    decided.pool = [_model_query(decided, by_amount, [customers], score=1.0),
-                    _model_query(decided, by_rows, [customers])]
-    assert decided.serve([customers], "top 3 cities")["selection"]["selected"] == 0
-    cut_tie = {**customers, "rows": customers["rows"] + [["Max", "Madrid", 50]]}   # Tokyo and Madrid tie at the cut
-    tied_cut = _hermetic_planner()
-    tied_cut.pool = [_model_query(tied_cut, by_amount, [cut_tie], score=1.0),
-                     _model_query(tied_cut, by_amount.replace('SUM("amount")', 'MIN("name")'), [cut_tie])]
-    assert tied_cut.serve([cut_tie], "top 3 cities")["selection"]["selected"] == 0
-    tied = _hermetic_planner()
-    tied.pool = [_model_query(tied, by_rows, [customers], score=1.0),
-                 _model_query(tied, by_rows.replace("COUNT(*)", 'COUNT("name")'), [customers])]
-    assert tied.serve([customers], "top 3 cities")["selection"]["selected"] == 0
-
-
-def test_a_long_question_the_readers_decline_is_decomposed():
-    """In an analysis, a question longer than decomposition.ONE_QUERY_WORDS words that the readers decline asks for a
-    decomposition proposal (the complex demos' two-ranking prompts, which the readers read as one query they were not
-    confident of, 2026-10-20). Contrast: the same decline of a short question is asked about, and outside an analysis
-    a long one is too."""
-    from engine.decomposition import ONE_QUERY_WORDS
-    from engine.deterministic.context import analysis_execution_context
-
-    sql = "SELECT COUNT(*) FROM people WHERE Country = 'France'"
-    long_question = " ".join(["how many people come from France"] * (ONE_QUERY_WORDS // 6 + 1))
-    unsure = _hermetic_planner(confident=False)
-    unsure.pool = [_model_query(unsure, sql, read_as="the number of people whose Country is France")]
-    with analysis_execution_context({"slug": "people", "revision": 1}, "c_" + "7" * 32):
-        decomposed = unsure.serve([PEOPLE], long_question)
-        short = unsure.serve([PEOPLE], "how many people come from France?")
-    assert decomposed["decomposition_required"]["reason"].count("compound") == 1, decomposed
-    assert "clarify" not in decomposed and decomposed["result"] is None, decomposed
-    assert short["clarify"] is True and "decomposition_required" not in short, short
-    assert unsure.serve([PEOPLE], long_question)["clarify"] is True
-
-
-def test_a_question_past_the_calibrated_length_is_declined_however_confident():
-    """The choice's threshold was matched on calibration questions of at most 29 words, so its confidence says
-    nothing of a longer one: "Find the top 2 product categories by revenue and the top 2 customers by total spend,
-    then list each pair where ..." (44 words) was read as one ranking at 0.19, above the 0.1434 threshold
-    (2026-10-23). A confident choice of a question longer than decomposition.ONE_QUERY_WORDS words is declined: in
-    an analysis it asks for the decomposition proposal, outside one it is asked about. Contrast: the same confident
-    reading of the short question is served."""
-    from engine.decomposition import ONE_QUERY_WORDS
-    from engine.deterministic.context import analysis_execution_context
-
-    sql = "SELECT COUNT(*) FROM people WHERE Country = 'France'"
-    long_question = " ".join(["how many people come from France"] * (ONE_QUERY_WORDS // 6 + 1))
-    sure = _hermetic_planner(confident=True)
-    sure.pool = [_model_query(sure, sql, read_as="the number of people whose Country is France")]
-    with analysis_execution_context({"slug": "people", "revision": 1}, "c_" + "7" * 32):
-        decomposed = sure.serve([PEOPLE], long_question)
-        short = sure.serve([PEOPLE], "how many people come from France?")
-    assert decomposed["decomposition_required"]["reason"].count("compound") == 1, decomposed
-    assert decomposed["result"] is None and decomposed["selection"]["declined"] == 0, decomposed
-    assert decomposed["selection"]["confidence"] == 0.9, decomposed["selection"]
-    assert short["result"] is not None and short["selection"]["selected"] == 0, short
-    assert sure.serve([PEOPLE], long_question)["clarify"] is True
-
-
-def test_a_reading_the_readers_are_not_confident_of_is_asked_about():
-    """When the readers' learned refusal (ReadingSearch.confident) is not confident of the reading selection
-    chose, nothing is served, the selection records its confidence and the reading it declined, and the reply says
-    how that reading read the question so the person can ask again in the sheet's own terms (engine/tables.py
-    unsure_clarification). Contrast: a confident reading is served with the same read-as line and its confidence;
-    a reading with none is asked about without one."""
-    question = "how many people come from France?"
-    line = "the number of people whose Country is France"
-    unsure = _hermetic_planner(confident=False)
-    unsure.pool = [_model_query(unsure, "SELECT COUNT(*) FROM people WHERE Country = 'France'", read_as=line)]
-    served = unsure.serve([PEOPLE], question)
-    assert served["clarify"] is True and served["valid"] is False, served
-    assert served["error"] is None and served["result"] is None and served["sql"] is None
-    assert served["read_as"] == line and served["dropped"] == []
-    assert served["selection"]["selected"] is None and served["selection"]["declined"] == 0, served["selection"]
-    assert served["selection"]["confidence"] == 0.1, served["selection"]
-    assert served["reason"] == (f"I read this as “{line}”, but I'm not confident that is what you asked. "
-                                "Ask again with the column names as your sheet spells them."), served["reason"]
-    sure = _hermetic_planner()
-    sure.pool = [_model_query(sure, "SELECT COUNT(*) FROM people WHERE Country = 'France'", read_as=line)]
-    answered = sure.serve([PEOPLE], question)
-    assert answered["valid"] and answered["result"]["rows"] == [[2]] and answered["read_as"] == line
-    assert "clarify" not in answered and answered["model"] == READERS_MODEL
-    assert answered["selection"]["confidence"] == 0.9 and answered["selection"]["declined"] is None
-    unsure.pool = [ScoredQuery(unsure.pool[0].query, unsure.pool[0].sql, 0.0, ())]
-    unread = unsure.serve([PEOPLE], question)
-    assert unread["clarify"] is True and unread["read_as"] is None
-    assert unread["reason"] == ("I'm not confident I read this question right. "
-                                "Ask again with the column names as your sheet spells them."), unread["reason"]
-
-
-def test_serving_preserves_repeated_source_rows_in_aggregates():
-    """Repeated identical transactions are separate source observations; ingestion must not turn
-    a $300 source total into $100 by dropping two identical-looking payment rows."""
-    from engine.tables import normalize_tables
-
-    payments = {"name": "payments", "columns": ["customer", "amount"],
-                "rows": [["Ada", 100], ["Ada", 100], ["ada", 100]]}
-    normalized = normalize_tables([payments])
-    assert len(normalized[0]["rows"]) == 3
-    planner = _hermetic_planner()
-    planner.pool = [_model_query(planner, 'SELECT SUM("amount") FROM "payments"', [payments])]
-    served = planner.serve([payments], "total amount")
-    assert served["valid"], served
-    assert served["result"]["rows"] == [[300]], served
 
 
 def test_a_number_of_a_numeric_field_is_the_field():
@@ -3143,7 +1767,7 @@ def test_one_surrogate_key_rule_names_keys_not_measures_or_codes():
     for name in ("orders", "idea", "paid", "valid", "price index", "country_code", "Code", "keyboard"):
         assert not is_surrogate_key(name), name
     assert not is_surrogate_key("amount")                       # a measure
-    for module in ("engine.sql_expansion", "engine.sql_grounding", "engine.compose", "engine.encoder_overlay",
+    for module in ("engine.sql_expansion", "engine.compose", "engine.encoder_overlay",
                    "engine.knowledge_query", "engine.knowledge_tables", "engine.deterministic.lower"):
         assert importlib.import_module(module).is_surrogate_key is is_surrogate_key, module
 
@@ -3236,27 +1860,6 @@ def test_shared_spider_evaluation_contract():
         "from_table": "visits", "from_col": "person_id",
         "to_table": "people", "to_col": "id", "conf": 1.0,
     }]
-
-
-def test_live_table_query_ast_mode_executes_typed_candidate():
-    planner = _hermetic_planner()
-    line = "the Name of every person"
-    planner.pool = [_model_query(planner, 'SELECT "Name" FROM "people"', read_as=line)]
-    response = planner.serve([PEOPLE], "list person names")
-    assert response["valid"] is True
-    assert response["error"] is None
-    assert response["result"]["rows"] == [["Alice"], ["Bob"], ["Cara"]]
-    assert response["candidate_count"] == 1
-    assert response["ast"].startswith("SelectQuery(")
-    assert response["model"] == READERS_MODEL == "engine - learned readers + typed SQL AST builder"
-    assert response["read_as"] == line and "fallback" not in response
-    selection = response["selection"]
-    assert selection["executable"] == selection["pool_size"]
-    assert selection["eligible"] == selection["pool_size"] and selection["rank"] == 0
-    assert "served_by" not in selection and "fallback" not in selection
-    assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
-    assert not compare_spider_rows([[1, 2]], [[2, 1]])["strict"]
-    assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
 
 
 def test_weight_manifest_detects_tampered_bundle():
@@ -3472,97 +2075,239 @@ def test_the_table_a_list_names_after_its_items_by_its_last_word_owns_them():
     assert request_fields("What are the names and ids of all entries with more than 3 models?", graph) == ()
 
 
-def test_recursive_json_ast_codec_preserves_decimal_arithmetic_and_composite_join_scope():
+# ----------------------------------------------------------------------------- the one own-data selection (Decisions path)
+def _orders_csv(rows=None):
+    from tests.test_answer import ROWS
+    return "\n".join(",".join(str(cell) for cell in row) for row in (rows or ROWS))
+
+
+def _orders_request(name="orders"):
+    from engine.tables import csv_table
+    return [csv_table(_orders_csv(), name)]
+
+
+def _choice(first, none=0.0):
+    """A fake API (tests/test_answer.py) that reads "total amount for East" as a person would and gives the choice's
+    first listing ``first`` and its "none" option ``none``, the rest sharing what is left."""
+    from tests.test_answer import NONE, _reading_rule
+
+    def rule(name, question, state):
+        if name == "reading":
+            listed = sorted(option for option in question["criteria"] if option != NONE)
+            return {listed[0]: first, **({NONE: none} if none else {})}
+        return _reading_rule(name, question, state)
+    return rule
+
+
+def _decided(rule, call):
+    from tests.test_answer import FakeTransport, _use_fake_reader, _with_transport
+    _use_fake_reader()
+    transport = FakeTransport(rule)
+    return _with_transport(transport, call), transport
+
+
+def test_the_selection_is_the_decisions_paths_listed_candidates():
+    """select_query's pool is every candidate the Decisions path listed (each program that returned rows), as its
+    typed AST over the request's store tables with its read-as line as evidence, ranked by its answer's probability;
+    the likeliest answer is selected when the choice stands behind it."""
+    from engine.program.closed import T_FLAG
+    from tests.test_answer import NONE
+
+    planner = _hermetic_planner()
+    norm, _fks = planner.ingest(_orders_request())
+    selection, transport = _decided(_choice(0.9), lambda: planner.select_query("total amount for East", norm))
+    assert selection.pool and len(selection.pool) == len(selection.rows) == len(selection.programs)
+    assert selection.selected == 0 and selection.declined is None and not selection.warned, selection.record()
+    scores = [member.score for member in selection.pool]
+    assert list(selection.ranking) == sorted(range(len(scores)), key=lambda at: (-scores[at], at))
+    assert selection.confidence >= T_FLAG and selection.probabilities[NONE] < selection.confidence
+    assert all('"_t0"' in member.sql and member.evidence[0] for member in selection.pool)
+    assert selection.rows[0], "a listed candidate returned rows"
+    assert list(transport.bodies[-1]["questions"]) == ["reading"], "the choice is the last call"
+
+
+def test_a_question_the_path_asks_back_is_asked_about_with_its_reading():
+    """Below closed.T_ASK, or with "none of these" likelier, nothing is served: the reply says how the likeliest
+    reading read the question and asks (engine/tables.py unsure_clarification)."""
+    from engine.answer_presentation import unsure_reason
+
+    planner = _hermetic_planner()
+    response, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+    assert response["clarify"] is True and response["result"] is None and response["error"] is None, response
+    assert response["read_as"] and response["reason"] == unsure_reason(response["read_as"])
+    assert response["selection"]["selected"] is None and response["selection"]["declined"] == 0
+    assert "uncertain" not in response and response["model"] == PROGRAM_MODEL
+
+
+def test_a_warned_answer_is_served_with_what_else_it_may_mean():
+    """Between closed.T_ASK and T_FLAG the answer is served and the response says it is not sure (``uncertain``: the
+    coordinates the runner-up reads differently and its reading); the chat's reply says so. Contrast: an answer the
+    choice stands behind carries no such record."""
+    from engine.answer_presentation import terminal_reply
+    from mcp_server.engine_client import shape_reason_response
+
+    planner = _hermetic_planner()
+    response, _ = _decided(_choice(0.47, none=0.44), lambda: planner.serve(_orders_request(), "total amount for East"))
+    assert response["valid"] and response["result"]["rows"] and response["selection"]["warned"], response["selection"]
+    uncertain = response["uncertain"]
+    assert isinstance(uncertain["coordinates"], list) and all(":" in name for name in uncertain["coordinates"])
+    assert uncertain["also_read_as"] is None or isinstance(uncertain["also_read_as"], str)
+    shaped = shape_reason_response(response, None)
+    assert shaped["status"] == "answered" and shaped["uncertain"] == uncertain
+    assert "I'm not sure this is what you asked" in terminal_reply(shaped)
+    sure, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+    assert sure["valid"] and "uncertain" not in sure and not sure["selection"]["warned"]
+
+
+def test_an_analysis_runs_the_chosen_program_on_both_emitters():
+    """In an analysis, as every served request is, the chosen program's one plan runs through the deterministic
+    emitters on the request's database and the response carries its record; outside one the answer is the rows the
+    choice read, on the candidates' floats. Both are one answer."""
+    from engine.deterministic.context import analysis_execution_context
+
+    planner = _hermetic_planner()
+    plain, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+    with analysis_execution_context(None, "c_" + "0" * 32):
+        served, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+    assert served["deterministic"]["mode"] and served["views"] and served["sql"] != plain["sql"], served.get("error")
+    assert len(served["result"]["rows"]) == len(plain["result"]["rows"])
+    for exact, floats in zip(served["result"]["rows"], plain["result"]["rows"]):
+        assert [float(cell) if isinstance(cell, (int, float, str)) and str(cell).replace(".", "", 1).lstrip("-").isdigit()
+                else cell for cell in exact] == [float(cell) if isinstance(cell, (int, float)) else cell for cell in floats], (exact, floats)
+    assert served["result"]["columns"] == plain["result"]["columns"]
+
+
+def test_a_long_question_the_path_asks_back_asks_for_the_decomposition():
+    """A question longer than decomposition.ONE_QUERY_WORDS words that the Decisions path asks back about asks, in an
+    analysis, for the decomposition proposal, each subquestion short enough. Contrasts: the same long question the
+    path answers is answered, and a short question it asks back is asked about."""
+    from engine.decomposition import ONE_QUERY_WORDS
+    from engine.deterministic.context import analysis_execution_context
+
+    long_question = " ".join(["the total amount for East"] * (ONE_QUERY_WORDS // 5 + 1))
+    planner = _hermetic_planner()
+    with analysis_execution_context(None, "c_" + "0" * 32):
+        asked, transport = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), long_question))
+    assert transport.bodies, "a long question is read"
+    assert asked["decomposition_required"] and asked["error"] is None and asked["result"] is None, asked
+    with analysis_execution_context(None, "c_" + "1" * 32):
+        answered, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), long_question))
+    assert answered["valid"] and answered["result"]["rows"] and not answered.get("decomposition_required"), answered
+    with analysis_execution_context(None, "c_" + "2" * 32):
+        short, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+    assert short["clarify"] is True and not short.get("decomposition_required"), short
+
+
+def test_the_store_shares_the_request_database_with_a_table_named_like_its_own():
+    """The program's tables live on the request's one database beside the request's own tables, under names no request
+    table takes: a sheet sent with no name is the table "t0" (request_validation.canonical_table_name), and its copy in
+    main stays the upload's while the path reads catalog table t0 as "_t0"."""
+    from engine.prepared import scratch_database
+
+    planner = _hermetic_planner()
+    norm, fks = planner.ingest(_orders_request("t0"))
+    sch, _, tablemap = planner.schema(norm, fks)
+    with scratch_database() as database:
+        database.load(tablemap, sch)
+        selection, _ = _decided(_choice(0.9), lambda: planner.select_query("total amount for East", norm))
+        assert selection.selected is not None and selection.tables.connection is database.connection
+        names = {row[0] for row in database.connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        assert {"t0", "_t0", "_one"} <= names, names
+        assert database.connection.execute('SELECT COUNT(*) FROM main."t0"').fetchone()[0] == len(tablemap["t0"]["rows"])
+        assert [row[1] for row in database.connection.execute('PRAGMA table_info("t0")')] == sch_names(sch, "t0")
+
+
+def sch_names(sch, table):
+    return [column["name"] for column in sch if column["table"] == table]
+
+
+def test_one_question_is_answered_once_per_request():
+    """The compose probe, the delegate and the hybrid search's check ask the one selection the same question in one
+    request: its Decisions calls are made once (engine/prepared.py RequestDatabase.answered). A new request asks again;
+    the workbook's preparation is kept across requests (prepared_workbook)."""
+    from engine.prepared import scratch_database
+    from tests.test_answer import FakeTransport, _use_fake_reader, _with_transport
+
+    _use_fake_reader()
+    planner = _hermetic_planner()
+    norm, _fks = planner.ingest(_orders_request())
+    transport = FakeTransport(_choice(0.9))
+    with scratch_database():
+        first = _with_transport(transport, lambda: planner.select_query("total amount for East", norm))
+        calls = len(transport.bodies)
+        second = _with_transport(transport, lambda: planner.select_query("total amount for East", norm))
+        assert len(transport.bodies) == calls and second.selected == first.selected
+    _with_transport(transport, lambda: planner.select_query("total amount for East", norm))
+    assert len(transport.bodies) > calls, "a new request asks again"
+    assert not any("c000" in body["questions"] for body in transport.bodies[calls:]), "the workbook was prepared again"
+
+
+def test_the_tab_in_view_is_the_requests_active_sheet():
+    """On a workbook of several tabs both records name the tab the client has in view (engine/program/closed.py
+    sheet_state), as the request carries it (engine/prepared.py RequestDatabase.active_sheet); without one, the first
+    data table's tab."""
+    from engine.prepared import scratch_database
+    from engine.tables import csv_table
+    from tests.test_answer import FakeTransport, _use_fake_reader, _with_transport
+
+    _use_fake_reader()
+    planner = _hermetic_planner()
+    tables = [csv_table(_orders_csv(), "orders"), csv_table(_orders_csv(), "returns")]
+    norm, _fks = planner.ingest(tables)
+
+    def in_view(active):
+        transport = FakeTransport(_choice(0.9))
+        with scratch_database() as database:
+            database.active_sheet = active
+            _with_transport(transport, lambda: planner.select_query("total amount for East", norm))
+        return {json.loads(body["input"][len("STATE:\n"):]).get("tab in view") for body in transport.bodies if "reading" in body["questions"]}
+
+    assert in_view("returns") == {"returns"}
+    assert in_view(None) == {"orders"}
+
+
+def test_an_uploaded_sheets_grid_keeps_its_structure():
+    """The own-data path reads each request table's grid (engine/tables.py table_grid): an uploaded sheet's CSV as
+    plain rows, blank rows kept, cells typed as parse_rows types them and trailing blank columns trimmed, where the
+    table's own rows drop blank rows and canonicalize the header. A table built from rows reads as its header and
+    rows; a currency a conversation states is appended to the grid as it is to the table."""
     from decimal import Decimal
-    from engine.sql_ast import (Aggregate, BinaryExpr, ColumnRef, Comparison, Join, Literal, SelectItem,
-                                SelectQuery, SQLType, query_from_tree, query_to_tree, query_tree_schema)
-    from jsonschema import Draft202012Validator
 
-    a = ColumnRef("a", "amount", SQLType.REAL)
-    query = SelectQuery((SelectItem(BinaryExpr(Aggregate("SUM", a), "/", Literal(Decimal("3.0001")))),), "a",
-                        joins=(Join("b", ColumnRef("a", "id"), ColumnRef("b", "id"),
-                                    additional=((ColumnRef("a", "tenant"), ColumnRef("b", "tenant")),)),),
-                        where=Comparison(a, ">", Literal(Decimal("0.00000000000000000001"))))
-    tree = query_to_tree(query)
-    Draft202012Validator(query_tree_schema()).validate(tree)
-    recovered = query_from_tree(tree)
-    assert recovered == query and render_query(recovered) == render_query(query)
-    assert query_to_tree(recovered) == tree
+    from engine import dataset_semantics
+    from engine.tables import csv_table, normalize_tables, table_from_rows
 
-
-def test_recursive_json_ast_codec_rejects_unknown_fields_bad_tuples_and_nonfinite_values():
-    from copy import deepcopy
-    from engine.sql_ast import (ColumnRef, Join, Literal, SelectItem, SelectQuery,
-                                query_from_tree, query_to_tree)
-
-    q = SelectQuery((SelectItem(ColumnRef("a", "id")),), "a",
-                    joins=(Join("b", ColumnRef("a", "id"), ColumnRef("b", "id"),
-                                additional=((ColumnRef("a", "x"), ColumnRef("b", "x")),)),))
-    tree = query_to_tree(q)
-    corrupt = []
-    v = deepcopy(tree); v["raw_sql"] = "SELECT injected"; corrupt.append(v)
-    v = deepcopy(tree); v["limit"] = True; corrupt.append(v)
-    v = deepcopy(tree); v["joins"][0]["additional"][0].append({"node": "ColumnRef", "table": "a", "name": "z"}); corrupt.append(v)
-    v = deepcopy(tree); v["joins"][0]["kind"] = "left"; corrupt.append(v)
-    for value in (float("nan"), {"decimal": "NaN"}, {"decimal": "1_000"}, {"python": "run()"}):
-        corrupt.append({"node": "SelectQuery", "from_table": "a", "select": [
-            {"node": "SelectItem", "expression": {"node": "Literal", "value": value}}]})
-    for value in corrupt:
-        try:
-            query_from_tree(value)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("malformed typed AST document accepted")
-    try:
-        query_to_tree(SelectQuery((SelectItem(Literal(float("inf"))),), "a"))
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("nonfinite AST encoded")
-
-
-def test_recursive_json_ast_codec_enforces_resource_bounds_before_construction():
-    from engine.sql_ast import ColumnRef, SelectItem, SelectQuery, query_from_tree, query_to_tree
-
-    tree = query_to_tree(SelectQuery((SelectItem(ColumnRef("a", "id")),), "a"))
-    for limits in ({"max_depth": 1}, {"max_nodes": 1}):
-        try:
-            query_from_tree(tree, **limits)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("AST resource bound ignored")
+    text = "Report,,\n\nRegion,Amount,\n\"East\",1.50,\n,,\nWest,2,\n"
+    table = csv_table(text, "sales")
+    assert table["columns"][0] == "Report" and len(table["rows"]) == 3, table
+    assert table["grid"] == {"name": "sales", "rows": [["Report", ""], [], ["Region", "Amount"], ["East", Decimal("1.50")], ["", ""], ["West", 2]]}, table["grid"]
+    built = normalize_tables([table_from_rows("ref", ["Code", "Name"], [["A", "x"], ["B", "y"]])])[0]
+    assert built["grid"] == {"name": "ref", "rows": [["Code", "Name"], ["A", "x"], ["B", "y"]]}
+    assert normalize_tables([table])[0]["grid"] is table["grid"], "an uploaded sheet keeps its own grid"
+    shared = table["grid"]
+    upload = csv_table("Region,Amount\nEast,1\n\nWest,2\n", "orders")
+    op = {"op": "set_measure_metadata", "table": "orders", "column": "Amount", "metadata": {"currency": "EUR"},
+          "basis": {"source": "conversation", "text": "amounts are in euros", "attested": True}}
+    records = dataset_semantics.apply([upload], [op])
+    column = records[0]["currency_column"]
+    assert upload["grid"]["rows"] == [["Region", "Amount", column], ["East", 1, "EUR"], ["", "", ""], ["West", 2, "EUR"]], upload["grid"]
+    assert table["grid"] is shared
 
 
 TESTS = [
+    test_the_selection_is_the_decisions_paths_listed_candidates,
+    test_a_question_the_path_asks_back_is_asked_about_with_its_reading,
+    test_a_warned_answer_is_served_with_what_else_it_may_mean,
+    test_an_analysis_runs_the_chosen_program_on_both_emitters,
+    test_a_long_question_the_path_asks_back_asks_for_the_decomposition,
+    test_the_store_shares_the_request_database_with_a_table_named_like_its_own,
+    test_one_question_is_answered_once_per_request,
+    test_the_tab_in_view_is_the_requests_active_sheet,
+    test_an_uploaded_sheets_grid_keeps_its_structure,
     test_schema_graph_preserves_zero_padded_source_codes,
-    test_recursive_json_ast_codec_preserves_decimal_arithmetic_and_composite_join_scope,
-    test_recursive_json_ast_codec_rejects_unknown_fields_bad_tuples_and_nonfinite_values,
-    test_recursive_json_ast_codec_enforces_resource_bounds_before_construction,
     test_evaluator_shards_are_disjoint_complete_and_merge_only_matching_checkpoints,
     test_star_is_only_a_projection_or_count_operand,
-    test_named_serving_trace_replays_currency_grouping_ties_and_identity_and_rejects_tampering,
-    test_shared_ranking_rule_preserves_date_then_double_count_then_calculation_precedence,
     test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints,
-    test_select_query_serves_the_reading_that_keeps_the_named_date,
-    test_a_reading_that_finds_nothing_is_asked_about_and_never_answered,
-    test_a_reading_that_finds_something_is_served_as_before,
-    test_a_reading_that_finds_nothing_keeps_its_route,
-    test_select_query_never_chooses_a_query_that_does_not_run,
-    test_a_join_that_multiplies_two_tables_rows_stops_at_their_cells_budget,
-    test_select_query_copies_the_tables_once_and_runs_each_query_once,
     test_a_duration_is_how_long_rows_lasted_not_a_quantity_and_an_interval,
-    test_literal_grounding_names_the_column_a_value_actually_occupies,
-    test_select_query_never_serves_a_misgrounded_query,
-    test_select_query_never_serves_a_join_the_foreign_keys_contradict,
-    test_select_query_serves_the_bridge_join_the_foreign_keys_state,
-    test_join_grounding_leaves_joins_the_foreign_keys_do_not_contradict,
-    test_join_grounding_reads_every_equated_column_pair,
-    test_double_counting_reads_the_rows_each_join_repeats,
-    test_named_request_decomposes_a_compound_question_a_single_query_answers_in_part,
-    test_a_compound_named_request_asks_for_decomposition_before_selection_runs,
-    test_named_request_never_serves_or_decomposes_a_lower_read_set_operation,
     test_proposal_import_rejects_malformed_model_text,
     test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences,
     test_a_text_column_is_an_aggregate_operand_only_where_it_ends_the_aggregate_phrase,
@@ -3574,7 +2319,6 @@ TESTS = [
     test_a_field_named_with_its_tables_abbreviation,
     test_an_explicit_list_names_the_outputs_their_owner_and_order,
     test_a_list_item_that_is_only_the_count_asks_for_the_count,
-    test_a_superlative_over_the_shown_field_is_one_value,
     test_the_opening_sentence_lists_its_coordinated_outputs,
     test_a_list_verb_after_a_comma_lists_the_outputs,
     test_along_with_adds_an_item_to_a_list,
@@ -3591,14 +2335,11 @@ TESTS = [
     test_a_word_a_fields_name_abbreviates_spells_that_field_and_states_no_value,
     test_most_before_a_tables_name_counts_its_rows,
     test_a_comparison_symbol_is_its_word,
-    test_one_value_bounded_both_ways_is_contradictory,
-    test_a_value_bounded_away_from_its_equality_is_contradictory,
     test_a_count_counts_its_nouns_head,
     test_a_closed_opening_request_for_one_field_is_the_answer,
     test_and_past_a_condition_joins_conditions,
     test_declared_self_relationship_keeps_unrelated_queries_and_source_rows,
     test_spider_ingestion_keeps_discovered_and_declared_relationships,
-    test_evaluator_grades_the_served_selection,
     test_sql_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
     test_sql_import_preserves_arithmetic_over_aggregates,
     test_sql_import_refuses_semantics_the_ast_cannot_preserve,
@@ -3616,24 +2357,11 @@ TESTS = [
     test_arithmetic_expression_sum_renders_and_executes,
     test_arithmetic_division_preserves_real_semantics,
     test_currency_conversion_query_executes_end_to_end,
-    test_planner_discovers_and_executes_same_name_currency_edge,
-    test_currency_conversion_survives_uploaded_column_case,
     test_world_aggregate_currency_binding_is_typed_and_unambiguous,
     test_arithmetic_expression_validation,
     test_date_ranges_lists_and_quarters_filter_one_span,
     test_the_coverage_gate_reads_the_months_a_query_compares,
-    test_two_values_of_one_column_are_either,
-    test_a_value_compared_as_text_and_as_a_number_is_one_value,
     test_a_plural_reads_as_its_singular_everywhere,
-    test_tabs_of_one_layout_are_read_as_one,
-    test_a_sum_over_rows_its_joins_repeat_is_served_only_when_every_reading_is_one,
-    test_one_of_two_columns_that_share_a_header_is_asked_about,
-    test_the_readers_read_one_table_of_each_layout,
-    test_a_ranking_whose_order_ranks_its_rows_is_preferred,
-    test_a_long_question_the_readers_decline_is_decomposed,
-    test_a_question_past_the_calibrated_length_is_declined_however_confident,
-    test_a_reading_the_readers_are_not_confident_of_is_asked_about,
-    test_serving_preserves_repeated_source_rows_in_aggregates,
     test_a_number_of_a_numeric_field_is_the_field,
     test_number_used_as_a_column_label_is_not_a_count_request,
     test_a_number_that_ends_a_fields_name_asks_for_the_field,
@@ -3648,7 +2376,6 @@ TESTS = [
     test_recursive_ast_set_query_in_derived_table_executes,
     test_spider_comparison_keeps_nonfinite_spellings_as_stable_text,
     test_shared_spider_evaluation_contract,
-    test_live_table_query_ast_mode_executes_typed_candidate,
     test_weight_manifest_detects_tampered_bundle,
     test_world_own_data_route_preserves_ast_observability,
     test_world_target_uses_the_synced_iso_currency_column,

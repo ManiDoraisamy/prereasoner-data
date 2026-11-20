@@ -54,11 +54,13 @@ class RuntimeIdentity:
             raise RuntimeError(f"no engine sources under {engine_root}")
         build = (os.environ.get("K_REVISION") or os.environ.get("GIT_COMMIT")
                  or "source-sha256:" + canonical_json_sha256(source_identity))
-        # The own-data planner is the readers' package (engine/readers); its weights are in the manifest.
-        readers = {name: digest for name, digest in source_identity.items() if name.startswith("readers/")}
+        # The own-data planner is the Decisions path (engine/program and the sheet compiler engine/sheet); the stock
+        # reader's weights are pinned in the manifest.
+        planner = {name: digest for name, digest in source_identity.items()
+                   if name.startswith(("program/", "sheet/"))}
         return cls(
             build, model_hash,
-            planner_config="sha256:" + canonical_json_sha256(readers),
+            planner_config="sha256:" + canonical_json_sha256(planner),
             ranker_config="sha256:" + sha256_file(engine_root / "sql_rank.py"),
         )
 

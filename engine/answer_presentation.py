@@ -133,27 +133,20 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
         named = f" ({unmatched_names(unmatched)})" if unmatched.get("names") else ""
         notes.append(f"{unmatched['rows']} of {unmatched.get('of', '?')} source rows could not be matched{named} "
                      f"and {'was' if unmatched['rows'] == 1 else 'were'} excluded.")
-    copies = shaped.get("layout_copies") or {}
-    if isinstance(copies, dict) and copies.get("read") and copies.get("others"):
-        # One of several tables that could answer did: say which, so the answer is not taken for all of
-        # them together (2026-10-04). The engine names tables canonically ("nt_report"); the chat names them
-        # as the user did (`table_names`, "NT Report").
-        names = shaped.get("table_names") or {}
-
-        def named(table):
-            return str(names.get(table) or str(table).replace("_", " "))
-
-        read = _listed_names([named(name) for name in copies["read"]])
-        others = [named(name) for name in copies["others"]]
-        notes.append(f"From {read}. {_listed_names(others)} could answer this too; "
-                     f"name {'it' if len(others) == 1 else 'one'} in your question to read "
-                     f"{'it' if len(others) == 1 else 'that one'} instead.")
+    uncertain = shaped.get("uncertain")
+    if isinstance(uncertain, dict):
+        # A warned answer (engine/tables.py uncertain_answer): the choice gave it less probability than an answer it
+        # stands behind (engine/program/closed.py T_FLAG), so the reply gives it as one it is not sure of, and says
+        # what else the question may mean when another reading answered differently.
+        also = _data_text(uncertain.get("also_read_as") or "")
+        notes.append("I'm not sure this is what you asked" + (f": it may also mean “{also}”." if also
+                                                               else "; check how I read it."))
     # How the question was read is the turn's "read as" line (the engine's ``read_as``), never a paragraph here:
     # appended to the answer, it was a second answer to read (2026-10-04).
     suffix = ("\n\n" + " ".join(notes)) if notes else ""
     # A result that holds nothing is a reading to question, never a statement that the data is absent: on real sheets
-    # 34 of 186 replies said so while the rows existed (2026-11-01). The own-data selection asks before this
-    # (engine/tables.py:TableQuery._choose); this is the world and composed routes' empty result.
+    # 34 of 186 replies said so while the rows existed (2026-11-01). The own-data path lists only readings that return
+    # rows (engine/program/answer.py); this is the world and composed routes' empty result.
     if all(blank_cell(value) for row in rows for value in row):
         return clarify_reply({"reason": unsure_reason(shaped.get("read_as"))}) + suffix
     if len(rows) == 1 and len(rows[0]) == 1:
@@ -219,11 +212,6 @@ def _label(name: Any, currency: str) -> str:
     if currency:
         words = [currency if word.casefold() == currency.casefold() else word for word in words]
     return _data_text(' '.join(words)) or 'value'
-
-
-def _listed_names(names) -> str:
-    names = [_data_text(name) for name in names]
-    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
 def blank_cell(value: Any) -> bool:

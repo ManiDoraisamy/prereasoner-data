@@ -38,6 +38,11 @@ output "serving_db_password_secret" {
   value       = google_secret_manager_secret.serving_db_password.secret_id
 }
 
+output "gemini_api_key_secret" {
+  description = "Secret Manager secret id holding the engine's Gemini Developer API key (the Decisions API)."
+  value       = google_secret_manager_secret.gemini_api_key.secret_id
+}
+
 output "enrichment_active_datasets" {
   description = "Deterministic reference-enrichment deployment allowlist in effect (empty = enrichment off)."
   value       = var.enrichment_active_datasets

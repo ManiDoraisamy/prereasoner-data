@@ -862,22 +862,18 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         return {"table": table, "conn": conn, "unconn": unconn,
                 "freetext": max(unconn, key=lambda c: self._avglen(table, c))}
 
-    def _readers_decline(self, tables, question):
-        """Whether the readers have no answer to the question, the one case a semantic search stands in for them when
-        the question filters by no place. A word check sent every question it found no aggregate word in to the
-        search, before any reader saw it: "what are the priciest terms to advertise on" returned whole rows by
-        similarity (2026-10-30). "who ordered a trench coat in France" stays a search: the world filter is its point.
-        A reading declined over a value the column lacks or a result that holds nothing is an answer of a kind: the
-        reply asks about it, and rows ranked by similarity would not answer that question either."""
+    def _upload_declines(self, tables, question):
+        """Whether the own-data path decides no answer to the question (it asks back, or none of its readings ran),
+        the one case a semantic search stands in for it when the question filters by no place. A word check sent
+        every question it found no aggregate word in to the search, before any reading: "what are the priciest terms
+        to advertise on" returned whole rows by similarity (2026-10-30). "who ordered a trench coat in France" stays a
+        search: the world filter is its point. A question that needs a decomposition is not one a search answers."""
         from engine.decomposition import DecompositionError, search_probe
         try:
             probe = search_probe(self, tables, question)
         except DecompositionError:
             return True
-        return (probe.decomposition_required is None
-                and (probe.selection is None or (probe.selection.selected is None
-                                                 and probe.selection.absent_value is None
-                                                 and not probe.selection.found_nothing)))
+        return probe.decomposition_required is None and probe.selection.selected is None
 
     @staticmethod
     def _searchable(plan):
@@ -1218,7 +1214,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         pred = "" if is_agg else semantic_predicate(question, drop, sch, closed)
         plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred else None
         if plan and not (self._searchable(plan) and ((plan["conn"] and (cr or own))
-                                                     or self._readers_decline(tables, question))):
+                                                     or self._upload_declines(tables, question))):
             plan = None
         # The search reads one sheet; a filter on another sheet needs the structured path's joins.
         if plan and any(table != plan["table"]["name"] for table, _column, _value in own):

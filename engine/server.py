@@ -78,6 +78,7 @@ from engine.conversations import (
     sync_conversation_source,
 )
 from engine.dataset_semantics import DatasetOpError
+from engine.llm import LLMUnavailable
 from engine.numeric import wire_value, json_dumps
 from engine.pg import _pg
 from engine.provenance import ProvenanceContext
@@ -98,7 +99,7 @@ from engine.request_validation import (
     validate_import_metadata,
 )
 from engine.sheet_sessions import clear_sheet_session, restore_sheet_session, save_sheet_session
-from engine.tables import csv_table, normalize_tables, on_screen_first, table_name
+from engine.tables import csv_table, normalize_tables, table_name
 from engine.trace import drain_request, emitter, request_stream, stream_final
 
 # Questions run in parallel on these shared objects: each request's own state is request-local
@@ -175,8 +176,8 @@ DIM_ROUTE = "/api/dimension"
 
 
 def _parsed_tables(sheets, snapshot=None):
-    """The planner tables of uploaded sheets (csv_table), parsed once per content, as fresh copies: the
-    serving path adds dataset-semantics columns to them and appends reference tables to the list.
+    """The planner tables of uploaded sheets (csv_table, each with its grid), parsed once per content, as fresh copies:
+    the serving path adds dataset-semantics columns to them and appends reference tables to the list.
 
     A stored snapshot is also kept under its ``snapshot`` hash, in its stored order, so a question that
     names it is served without reading its rows again. With no ``sheets``, the snapshot's tables if this
@@ -213,7 +214,7 @@ def _parsed_tables(sheets, snapshot=None):
                 while sum(entry[1] for entry in _PARSED_TABLES.values()) > _PARSED_TABLES_MAX_CELLS:
                     _PARSED_TABLES.popitem(last=False)
     return [{"name": table["name"], "columns": list(table["columns"]),
-             "rows": [list(row) for row in table["rows"]],
+             "rows": [list(row) for row in table["rows"]], "grid": table["grid"],
              **({"import": deepcopy(table["import"])} if "import" in table else {})} for table in cached[0]]
 
 
@@ -946,8 +947,10 @@ class H(BaseHTTPRequestHandler):
                     analysis, conv, execution_mode=req.get("use")
                 ), request_timing.span("serve"):
                     res = MODEL.serve(
-                        on_screen_first(tabs, req.get("active_sheet")), req.get("question", ""), conv, req.get("as_of"),
-                        dataset_semantics=semantics, **serve_kwargs
+                        tabs, req.get("question", ""), conv, req.get("as_of"),
+                        dataset_semantics=semantics,
+                        active_sheet=table_name(req["active_sheet"]) if req.get("active_sheet") else None,
+                        **serve_kwargs
                     )
                     res = enforce_execution_response(res, req.get("use"))
                 # Python-by-default retreating to SQL must not be silent. Carry only the
@@ -1026,6 +1029,14 @@ class H(BaseHTTPRequestHandler):
             if emit is not None:
                 emit("error", str(exc)); emit("status", "error")
             self._send(503, json_dumps({"error": str(exc), "retryable": True}))
+        except LLMUnavailable as exc:
+            # A Decisions call the own-data path reads every question through failed (engine/llm.py): the question
+            # is not answered from a reading the API did not make, and asked again it may be.
+            discard_analysis()
+            if emit is not None:
+                emit("error", "the question could not be read right now"); emit("status", "error")
+            print(f"world request failed: LLMUnavailable ({exc})", flush=True)
+            self._send(503, json_dumps({"error": "the question could not be read right now", "retryable": True}))
         except Exception as e:                           # noqa: BLE001
             discard_analysis()
             if emit is not None:                         # don't leave the client stuck on 'running' — stream the error
@@ -1153,13 +1164,13 @@ def main():
         print(f"startup warmup note: {type(e).__name__}", flush=True)
     DIM_MODEL = startup_phase("dimension model (shared world encoder)",
                               lambda: DimensionModel(shared_encoder=MODEL.qw))
-    # The readers answer every own-data question. Loaded on the first one, they took 191 s on a fresh Cloud Run
-    # instance (2026-10-26) and the chat's engine call timed out at 180 s, so an instance is ready only with them.
-    # They load after the world reasoner, never beside it: building them in bfloat16 sets torch's default dtype for
-    # the whole process, and a world encoder built meanwhile came out in bfloat16 (3fa1b46, 2026-10-27: every
-    # own-data question failed "mat1 and mat2 must have the same dtype").
-    from engine.readers.search import reading_search
-    startup_phase("readers", reading_search)
+    # The Decisions path reads every own-data question with stock bge-m3 (engine/program/stock.py). Loaded on the
+    # first question it would hold that question for its load, so an instance is ready only with it. It loads after
+    # the world reasoner, never beside it: a model build touches process-wide torch state (a bfloat16 build set the
+    # default dtype for the whole process, and a world encoder built meanwhile came out in bfloat16: 3fa1b46,
+    # 2026-10-27).
+    from engine.program.stock import stock_reader
+    startup_phase("stock reader", stock_reader)
     # spaCy is lazy and is only needed by entity extraction on a subset of queries.
     # It is not part of model readiness: loading it synchronously here can consume
     # the last seconds of Cloud Run's startup-probe budget after the Qwen encoder and

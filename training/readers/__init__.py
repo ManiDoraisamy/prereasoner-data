@@ -1,8 +1,8 @@
-"""Training pipeline for the own-data readers (engine/readers): labels, examples, the two reader trainers, the
-re-scorer, refusal, and the GPU leases that run them. See README.md for the recipe of the shipped bundle.
+"""The experiments folder and the one GPU lease loop (lease.py) the training packages share. The readers' own
+pipeline (labels, examples, trainers, re-scorer, refusal, promotion) went with the readers when the Decisions path
+replaced them (DECISIONS.md, 2026-11-20); their measured runs stay under ``EXPERIMENTS_DIR``.
 
-Every run writes only under ``EXPERIMENTS_DIR/<experiment id>/`` (gitignored). Only the promotion step
-(training.readers.promote) writes engine/data/readers.
+Every run writes only under ``EXPERIMENTS_DIR/<experiment id>/`` (gitignored).
 """
 from pathlib import Path
 

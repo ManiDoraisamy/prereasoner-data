@@ -439,6 +439,8 @@ if ((!SKIP_BOOTSTRAP)); then
   runtime_sa="$(terraform -chdir="$ROOT/infra" output -raw runtime_service_account)"
   [[ "$runtime_sa" == *@*.gserviceaccount.com ]] || die "Terraform did not return the runtime service account"
   serving_secret="$(terraform -chdir="$ROOT/infra" output -raw serving_db_password_secret)"
+  # The smoke's own-data question reads through the Decisions API, as every served question does.
+  decisions_secret="$(terraform -chdir="$ROOT/infra" output -raw gemini_api_key_secret)"
   SMOKE_JOB="${DEPLOYMENT}-release-smoke"
   gcloud run jobs delete "$SMOKE_JOB" --project="$PROJECT_ID" --region="$REGION" --quiet >/dev/null 2>&1 || true
   gcloud run jobs create "$SMOKE_JOB" \
@@ -446,7 +448,7 @@ if ((!SKIP_BOOTSTRAP)); then
     --service-account="$runtime_sa" \
     --set-cloudsql-instances="$connection" \
     --set-env-vars="KB_PG_HOST=/cloudsql/${connection},KB_PG_DB=world,KB_PG_USER=${serving_role}" \
-    --set-secrets="KB_PG_PASSWORD=${serving_secret}:latest" \
+    --set-secrets="KB_PG_PASSWORD=${serving_secret}:latest,GOOGLE_API_KEY=${decisions_secret}:latest" \
     --command=python --args=-m,engine.release_smoke \
     --tasks=1 --max-retries=0 --task-timeout=900s --cpu=4 --memory=16Gi
   gcloud run jobs execute "$SMOKE_JOB" --project="$PROJECT_ID" --region="$REGION" --wait

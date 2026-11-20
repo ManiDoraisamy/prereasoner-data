@@ -883,7 +883,10 @@ def test_raw_csv_repeated_blank_and_long_headers_preserve_every_value():
     names = canonical_columns(headers)
     table = csv_table(','.join(headers)+'\n1,2,3,4', 'orders')
     assert table['columns'] == names and table['rows'] == [[1,2,3,4]]
-    assert table_from_rows('orders', headers, [[1,2,3,4]]) == table
+    # The planner reads a saved reference's cells as it reads an upload's; only an upload carries its sheet's own grid
+    # (engine/tables.py table_grid), the rows as the CSV holds them.
+    assert table_from_rows('orders', headers, [[1,2,3,4]]) == {key: value for key, value in table.items() if key != 'grid'}
+    assert table['grid'] == {'name': 'orders', 'rows': [headers[:3] + ['東京'*40], [1, 2, 3, 4]]}, table['grid']
     assert len(set(names)) == 4 and all(len(name.encode('utf-8')) <= 63 for name in names)
     # A pre-existing positional name must not create a truncation collision loop.
     names = canonical_columns(['x'*52+' [column C]', 'id', 'x'*100])

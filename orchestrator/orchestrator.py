@@ -37,7 +37,7 @@ from engine.analysis import (
 from engine.decomposition import DecompositionError, validate_decomposition
 # AsyncGeminiClient is the turn's model client; tests replace this module attribute with a fake.
 from engine.llm import AsyncGeminiClient
-from engine.request_validation import RequestValidationError, display_names, validate_question
+from engine.request_validation import RequestValidationError, validate_question
 from mcp_server import engine_client
 from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
 from orchestrator.system_prompt import SYSTEM_PROMPT
@@ -604,13 +604,6 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     that trace exactly as on the direct path. The model's final text + terminal status are emitted too.
     `emit` is best-effort (a no-op when RTDB is unset) — streaming must never break the answer."""
     traces: list[dict[str, Any]] = []
-    table_names: dict[str, str] = display_names(tables)
-
-    def with_names(shaped):
-        """The engine's facts with the tables' names as the request wrote them ("NT Report" for the engine's
-        nt_report), for the reply's own words (answer_presentation)."""
-        return {**shaped, "table_names": table_names} if table_names and isinstance(shaped, dict) else shaped
-
     call_idx = 0                                             # per-turn engine-call counter (drives the jobIds)
     decomposition_attempted = False
     decomposition_rejections = 0
@@ -644,7 +637,6 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
             tables = await engine_client.call_conversation_source(
                 conv, source_hash, principal=principal or "", base_url=engine_base_url,
                 token=bearer_token, client=http)
-            table_names = display_names(tables)
         catalog = []
         if conv:
             catalog = await engine_client.call_analysis_catalog(
@@ -716,7 +708,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     if unsettled is not None:
                         # The model asks the user instead: that is the engine's clarification,
                         # presented, and it may add no number of its own.
-                        text = _grounded_presentation(with_names(unsettled), text, asked=user_message)
+                        text = _grounded_presentation(unsettled, text, asked=user_message)
                     final_text = text if unsettled is not None or smalltalk else TOOL_EXHAUSTED_REPLY
                     break
                 if stream_buffer is not None and round_text:
@@ -1026,11 +1018,11 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     # different question. That was the production loop behind the misleading
                     # "step budget" response: five progressively weaker rewrites replaced a useful
                     # terminal result. Render facts locally from the engine result.
-                    final_text = _terminal_fallback(with_names(terminal_query))
+                    final_text = _terminal_fallback(terminal_query)
                     break
             else:
                 final_text = final_text or (
-                    _terminal_fallback(with_names(unsettled)) if unsettled is not None else TOOL_EXHAUSTED_REPLY
+                    _terminal_fallback(unsettled) if unsettled is not None else TOOL_EXHAUSTED_REPLY
                 )
         finally:
             if stream_buffer is not None:

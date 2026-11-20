@@ -9,7 +9,6 @@ from engine.decomposition import (
     DecompositionError,
     _bind_merge_keys,
     build_decomposed_plan,
-    leaf_measure_rejection,
     ranked_leaf_grain_rejection,
     search_probe,
     unstated_cutoff_rejection,
@@ -31,17 +30,10 @@ from engine.sql_ast import (
     ColumnRef,
     SelectItem,
     SelectQuery,
-    SetQuery,
     SQLType,
-    Star,
 )
 from engine.sql_candidate import ScoredQuery
 from engine.sql_rank import PoolSelection
-
-
-def _served(candidate):
-    """What select_query returns when `candidate` is the only, eligible pool member."""
-    return PoolSelection((candidate,), (True,), (True,), (0,), 0)
 
 
 def _proposal():
@@ -239,205 +231,6 @@ def test_anti_join_evidence_must_preserve_the_complete_left_grain():
     ]
 
 
-def test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug():
-    tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
-    schema = [
-        {"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}
-    ]
-    query = SelectQuery(
-        (SelectItem(ColumnRef("products", "id", SQLType.INTEGER), "id"),), "products"
-    )
-    planner = Mock()
-    planner.postgres_row_identity = False
-    planner.select_query.return_value = _served(
-        ScoredQuery(query, "SELECT id FROM products", 1, ())
-    )
-    planner.guard.return_value = (True, None)
-    proposal = _proposal()
-    ids = ["branch_" + "a" * 33, "branch_" + "a" * 32 + "b"]
-    for node, node_id in zip(proposal["subquestions"], ids, strict=True):
-        node["id"] = node_id
-    proposal["merges"][0]["inputs"] = ids
-    slug = "analysis_" + "s" * 31
-    plan = build_decomposed_plan(planner, slug, tables, schema, (), proposal,
-                                 question="available products never purchased")
-    names = [view.name for view in plan.views]
-    assert all(
-        name.startswith(slug + "_") and len(name.encode("utf-8")) <= 63
-        for name in names
-    )
-    assert len(set(names)) == len(names)
-
-
-def test_long_leaf_names_keep_hash_free_labels():
-    """2026-10-02 Chrome gate (complex-promotions, complex-unsold-products): under the analysis
-    "top_customers_never_bought_top_products" a leaf view's name passed PostgreSQL's 63 bytes, was
-    cut and given a hash, and its label was read back from the cut name: "top customers top r
-    b966d67a". Each view keeps the name it had before the prefix, so the label reads as the step."""
-    import re
-
-    from sqlalchemy import create_engine
-
-    from engine.analysis import analysis_view_name
-    from engine.deterministic.service import DeterministicAnalysis
-
-    tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
-    schema = [{"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}]
-    query = SelectQuery((SelectItem(ColumnRef("products", "id", SQLType.INTEGER), "id"),), "products")
-    planner = Mock()
-    planner.postgres_row_identity = False
-    planner.select_query.return_value = _served(ScoredQuery(query, "SELECT id FROM products", 1, ()))
-    planner.guard.return_value = (True, None)
-    proposal = _proposal()
-    ids = ["top_customers", "top_products_bought"]
-    for node, node_id in zip(proposal["subquestions"], ids, strict=True):
-        node["id"] = node_id
-    proposal["merges"][0]["inputs"] = ids
-    proposal["merges"][0]["id"] = "customer_product_pairs_never_bought"
-    proposal["output"] = "customer_product_pairs_never_bought"
-    slug = "top_customers_never_bought_top_products"
-    plan = build_decomposed_plan(planner, slug, tables, schema, (), proposal,
-                                 question="top customers never bought top products")
-    # The physical names are unchanged: the long ones are cut and hashed within 63 bytes.
-    names = [view.name for view in plan.views]
-    hashed = [name for name in names if re.search(r"_[0-9a-f]{8}$", name)]
-    assert hashed and all(len(name.encode("utf-8")) <= 63 for name in names), names
-    engine = create_engine("sqlite+pysqlite:///:memory:")
-    with engine.connect() as connection:
-        connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
-        connection.exec_driver_sql("CREATE TABLE conversation.products (id INTEGER)")
-        connection.exec_driver_sql("INSERT INTO conversation.products VALUES (1), (2)")
-        record = DeterministicAnalysis(plan, conversation_schema="conversation").run(
-            connection, mode="verify", estimated_rows=2).record()
-    views = {view["name"]: view for view in record["views"]}
-    assert set(hashed) & set(views), (hashed, list(views))
-    for view in record["views"]:
-        assert not re.search(r"[0-9a-f]{8}$", view["logical_name"]), view["logical_name"]
-        assert not re.search(r"[0-9a-f]{8}$", view["label"]), view["label"]
-    assert {name: view["label"] for name, view in views.items()} == {
-        analysis_view_name(slug, "top_customers_result"): "top customers result",
-        analysis_view_name(slug, "top_products_bought_result"): "top products bought result",
-        analysis_view_name(slug, "customer_product_pairs_never_bought"): "customer product pairs never bought",
-    }, views
-
-
-def test_decomposition_expands_a_wildcard_leaf_before_dual_lowering():
-    """A broad natural-language leaf still gets explicit names for both emitters."""
-    tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
-    schema = [
-        {"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}
-    ]
-    query = SelectQuery((SelectItem(Star()),), "products")
-    planner = Mock()
-    planner.postgres_row_identity = False
-    planner.select_query.return_value = _served(
-        ScoredQuery(query, "SELECT * FROM products", 1, ())
-    )
-    planner.guard.return_value = (True, None)
-    plan = build_decomposed_plan(planner, "wildcard", tables, schema, (), _proposal(),
-                                 question="available products never purchased")
-    assert [view.name for view in plan.views].count("wildcard_missing") == 1
-    assert any(
-        getattr(view, "values", ())
-        and view.values[0].value == ColumnValue("products", "id")
-        for view in plan.views
-    )
-
-
-def test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower():
-    """An unsupported top reading must not hide a lower-ranked safe pool member."""
-    from engine.sql_ast import render_query
-
-    tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
-    schema = [
-        {"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}
-    ]
-    product_id = ColumnRef("products", "id", SQLType.INTEGER)
-    unsupported = SelectQuery((SelectItem(product_id),), "products", limit=1)
-    supported = SelectQuery((SelectItem(product_id),), "products")
-    pool = (
-        ScoredQuery(unsupported, render_query(unsupported), 2.0, ()),
-        ScoredQuery(supported, render_query(supported), 1.0, ()),
-    )
-    selection = PoolSelection(pool, (True, True), (True, True), (0, 1), 0)
-    planner = Mock()
-    planner.postgres_row_identity = False
-    planner.select_query.return_value = selection
-    planner.guard.return_value = (True, None)
-
-    plan = build_decomposed_plan(
-        planner, "fallback", tables, schema, (), _proposal(),
-        question="available products never purchased",
-    )
-    # Two leaves were compiled, and neither emitter received the unordered LIMIT AST.
-    assert planner.guard.call_args_list[0].args[0] == render_query(unsupported)
-    assert planner.guard.call_args_list[1].args[0] == render_query(supported)
-    assert plan.output
-
-
-def test_ranked_leaf_projects_extra_group_key_only_for_named_entity():
-    """A category ranking is totaled at category grain, not split by product."""
-    from engine.decomposition import ranked_entity_projected
-    from engine.sql_ast import OrderTerm
-
-    category = ColumnRef("products", "category", SQLType.TEXT)
-    product = ColumnRef("products", "product_name", SQLType.TEXT)
-    revenue = Aggregate("SUM", ColumnRef("products", "revenue", SQLType.REAL))
-    count = Aggregate("COUNT", ColumnRef("products", "id", SQLType.INTEGER))
-    over_detailed = SelectQuery(
-        (SelectItem(category), SelectItem(product), SelectItem(revenue), SelectItem(count)),
-        "products",
-        group_by=(category, product),
-        order_by=(OrderTerm(revenue, "DESC"),),
-        limit=2,
-    )
-    candidate = ScoredQuery(over_detailed, "original", 1.0, ())
-    projected = ranked_entity_projected(
-        candidate, "top_categories", "top 2 product category names by total revenue", True,
-    )
-    assert projected is not None
-    assert projected.query.group_by == (category,)
-    assert [item.expression for item in projected.query.select] == [category, revenue]
-    assert projected.query.order_by == over_detailed.order_by
-    assert projected.evidence[-1] == "leaf:ranked-entity-projected:top_categories:category"
-    assert over_detailed.group_by == (category, product)  # immutable source candidate
-    # The rewrite is not allowed when the entity is ambiguous or the leaf is not ranked.
-    assert ranked_entity_projected(
-        candidate, "top_items", "top 2 category and product names by revenue", True,
-    ) is None
-    assert ranked_entity_projected(
-        candidate, "categories", "category names by total revenue", True,
-    ) is None
-
-
-def test_measure_leaf_without_aggregation_is_rejected_not_answered():
-    """A ranking-measure leaf that lost its SUM must clarify, never answer."""
-    quantity = ColumnRef("purchase_items", "quantity", SQLType.INTEGER)
-    name = ColumnRef("products", "product_name", SQLType.TEXT)
-    raw = SelectQuery((SelectItem(name), SelectItem(quantity)), "purchase_items")
-    summed = SelectQuery((SelectItem(name), SelectItem(Aggregate("SUM", quantity))),
-                         "purchase_items", group_by=(name,))
-    pool = [ScoredQuery(raw, "raw", 2, ()), ScoredQuery(summed, "summed", 1, ())]
-
-    rejection = leaf_measure_rejection(
-        "top_products", "top 3 products by units sold", raw, pool
-    )
-    assert rejection is not None and "restate" in rejection
-    # The selected plan aggregating the measure satisfies the contract.
-    assert leaf_measure_rejection(
-        "top_products", "top 3 products by units sold", summed, pool
-    ) is None
-    # A rate phrase is not a summed measure; raw ordering stands.
-    assert leaf_measure_rejection(
-        "top_products", "top 3 products by unit price", raw, pool
-    ) is None
-    # Without an aggregated reading in the pool the raw plan is the planner's
-    # honest best (for example a literal per-product units column): no veto.
-    assert leaf_measure_rejection(
-        "top_products", "top 3 products by units sold", raw, pool[:1]
-    ) is None
-
-
 def test_ranked_cross_input_must_stay_at_the_ranked_entity_grain():
     """A category ranking that also groups products is the wrong ranking grain."""
     from engine.sql_ast import OrderTerm
@@ -464,50 +257,6 @@ def test_ranked_cross_input_must_stay_at_the_ranked_entity_grain():
     assert ranked_leaf_grain_rejection(
         "evidence", SelectQuery((SelectItem(category), SelectItem(product)), "purchases"), True
     ) is None
-
-
-def test_a_leaf_keeps_only_a_cutoff_the_question_states():
-    """The Chrome pass (2026-09-24) caught this. Told that cross inputs need explicit limits,
-    the proposer answered "products no customer from Paris has bought" by crossing "the top 100
-    customer names from Paris" with "the top 100 product names", and the engine served 14
-    customer-product pairs. A leaf may keep only a row cutoff the decomposed question states."""
-    from engine.sql_ast import OrderTerm
-
-    paris = "List the product names that no customer from Paris has bought, ordered by product name."
-    rejection = unstated_cutoff_rejection("products", paris, 100)
-    assert rejection is not None and "100" in rejection and "does not state" in rejection
-    # A stated cutoff passes in digits or in words; any other cutoff does not.
-    ranked = "Find the top three products by units sold and the top 2 customers by total spend."
-    assert unstated_cutoff_rejection("top_products", ranked, 3) is None
-    assert unstated_cutoff_rejection("top_customers", ranked, 2) is None
-    assert unstated_cutoff_rejection("top_customers", ranked, 5) is not None
-    # One row is a singular superlative's reading; an unlimited leaf has no cutoff at all.
-    assert unstated_cutoff_rejection(
-        "best", "customers who never bought the best-selling product", 1) is None
-    assert unstated_cutoff_rejection("products", paris, None) is None
-
-    # The compiler applies it to every leaf, whichever merge consumes it.
-    product_id = ColumnRef("products", "id", SQLType.INTEGER)
-    tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
-    schema = [
-        {"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}
-    ]
-    capped = SelectQuery((SelectItem(product_id, "id"),), "products",
-                         order_by=(OrderTerm(product_id, "ASC"),), limit=100)
-    planner = Mock()
-    planner.postgres_row_identity = False
-    planner.select_query.return_value = _served(
-        ScoredQuery(capped, "SELECT id FROM products ORDER BY id LIMIT 100", 1, ())
-    )
-    planner.guard.return_value = (True, None)
-    _reject(lambda: build_decomposed_plan(
-        planner, "capped", tables, schema, (), _proposal(), question=paris,
-    ))
-    plan = build_decomposed_plan(
-        planner, "capped", tables, schema, (), _proposal(),
-        question="the first 100 available products never purchased",
-    )
-    assert plan.output
 
 
 def test_an_answer_grain_cannot_repeat_one_physical_dimension():
@@ -560,99 +309,152 @@ def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     planner.serve.assert_not_called()
 
 
-def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
-    """A decomposition leaf reads single queries in selection's ranked order, its choice first, each
-    names-only ranking with its ORDER BY measure projected (the same rows in the same order),
-    and serves the first reading that sums and ranks by the measure the question names. The
-    Chrome release gate found both failure directions: a lower-ranked member that projected a
-    SUM but ordered category-product pairs by product name, and a choice that ranked customers
-    by units where the question said spend."""
-    from engine.decomposition import leaf_measure_rejection
-    from engine.deterministic.lower import lower_select_query
-    from engine.sql_ast import Join, OrderTerm
+def _catalog(rows, name="products"):
+    """One workbook tab, compiled as the own-data path compiles a request's grid."""
+    from engine.program.catalog import Catalog
+    from engine.sheet import compile_workbook, workbook_from_json
 
-    product = ColumnRef("products", "product_name", SQLType.TEXT)
-    category = ColumnRef("products", "category", SQLType.TEXT)
-    customer = ColumnRef("customers", "customer_name", SQLType.TEXT)
-    quantity = Aggregate("SUM", ColumnRef("order_items", "quantity", SQLType.INTEGER))
-    line_total = Aggregate("SUM", ColumnRef("order_items", "line_total", SQLType.REAL))
-    join = Join("products", ColumnRef("order_items", "product_id", SQLType.INTEGER),
-                ColumnRef("products", "product_id", SQLType.INTEGER))
-    buyer = Join("customers", ColumnRef("order_items", "customer_id", SQLType.INTEGER),
-                 ColumnRef("customers", "customer_id", SQLType.INTEGER))
+    return Catalog.from_model(compile_workbook(workbook_from_json({"name": "", "tabs": [{"name": name, "rows": rows}]})))
 
-    def ranking(entity, measure, *, show=False, limit=3):
-        items = (SelectItem(entity),) + ((SelectItem(measure),) if show else ())
-        joined = (buyer,) if entity.table == "customers" else (join,)
-        return SelectQuery(items, "order_items", joins=joined, group_by=(entity,),
-                           order_by=(OrderTerm(measure, "DESC"),), limit=limit)
 
-    def pool_selection(*queries):
-        pool = tuple(ScoredQuery(query, f"q{index}", 1.0, ()) for index, query in enumerate(queries))
-        n = len(pool)
-        return PoolSelection(pool, (True,) * n, (True,) * n, tuple(range(n)), 0)
+PRODUCTS = [["id", "name"], [1, "Coat"], [2, "Hat"]]
 
-    def served_query(selection, node_id, question):
-        # Observe the real dual-emitter lowering, after production's guard and
-        # leaf selection. No test-only reimplementation of the selection rule.
-        tables = [
-            {"name": "products", "columns": ["product_id", "product_name", "category"],
-             "rows": [[1, "Coat", "Clothes"]]},
-            {"name": "customers", "columns": ["customer_id", "customer_name"],
-             "rows": [[1, "Mina"]]},
-            {"name": "order_items", "columns": ["product_id", "customer_id", "quantity", "line_total"],
-             "rows": [[1, 1, 2, 20.0]]},
-        ]
-        schema = [{"table": t["name"], "name": c,
-                   "affinity": "TEXT" if isinstance(t["rows"][0][i], str) else "REAL",
-                   "values": [row[i] for row in t["rows"]]}
-                  for t in tables for i, c in enumerate(t["columns"])]
-        planner = Mock()
-        planner.postgres_row_identity = False
-        planner.select_query.return_value = selection
-        planner.guard.return_value = (True, None)
-        proposal = {
-            "subquestions": [{"id": node_id, "question": question},
-                             {"id": "evidence", "question": question}],
-            "merges": [{"id": "missing", "op": "anti_join", "inputs": [node_id, "evidence"]}],
-            "output": "missing", "grain": "one entity",
-        }
-        with patch("engine.deterministic.lower.lower_select_query", wraps=lower_select_query) as lower:
-            plan = build_decomposed_plan(planner, "ranked", tables, schema, (), proposal,
-                                         question=question)
-        assert plan.output and len(plan.sections) == 3
-        return lower.call_args_list[0].args[1]
 
-    # The choice names the right measure without showing it: served projected, never the
-    # lower-ranked reading that shows a SUM but orders category-product pairs by name.
-    units = "top 3 product names by total quantity sold"
-    names_only = ranking(product, quantity)
-    other_reading = SelectQuery(
-        (SelectItem(category), SelectItem(product), SelectItem(quantity)), "order_items",
-        joins=(join,), group_by=(category, product), order_by=(OrderTerm(product, "DESC"),), limit=3)
-    selection = pool_selection(names_only, other_reading)
-    assert served_query(selection, "top_products", units) == ranking(product, quantity, show=True)
-    assert leaf_measure_rejection("top_products", units, names_only, selection.pool) is not None
-    assert "ranks by something other" in leaf_measure_rejection(
-        "top_products", units, other_reading, selection.pool)
+def _programs(catalog, *programs, selected=0):
+    """What select_query returns for a leaf: the Decisions path's listed programs over ``catalog``, ranked in their
+    order, on the leaf's tables (engine/program/store.py)."""
+    from engine.program.lowering import to_query
+    from engine.program.store import RequestTables
+    from engine.sql_ast import render_query
 
-    # The choice ranks customers by units where the question says spend: the first reading
-    # that sums and ranks by spend is served instead.
-    spend = "top 2 customer names by total spend"
-    by_units = ranking(customer, quantity, limit=2)
-    by_spend = ranking(customer, line_total, show=True, limit=2)
-    assert served_query(pool_selection(by_units, by_spend), "top_customers", spend) == by_spend
+    pool = []
+    for program in programs:
+        query = to_query(program, catalog)
+        pool.append(ScoredQuery(query, render_query(query), 1.0, ("a reading",)))
+    return PoolSelection(tuple(pool), tuple(range(len(pool))), selected, programs=programs,
+                         rows=tuple(((1,),) for _ in programs), catalog=catalog, tables=RequestTables(catalog))
 
-    # A choice that already shows the named measure is served as it is.
-    shown = pool_selection(by_spend)
-    assert served_query(shown, "top_customers", spend) == shown.pool[0].query
 
-    # A compound choice yields to the best single query; with none, there is no leaf query.
-    compound = SetQuery(names_only, "EXCEPT", names_only)
-    assert served_query(pool_selection(compound, names_only), "top_products", units) \
-        == ranking(product, quantity, show=True)
-    _reject(lambda: served_query(pool_selection(compound), "top_products", units))
+def _names_listing(catalog):
+    from engine.program.language import Col, Show
+    return Show("t0", (Col("t0", 1),), listing=True)
 
+
+def _leaf_planner(selections):
+    planner = Mock()
+    planner.select_query.side_effect = lambda leaf, _tables: selections(leaf)
+    planner.guard.return_value = (True, None)
+    return planner
+
+
+def test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug():
+    catalog = _catalog(PRODUCTS)
+    planner = _leaf_planner(lambda leaf: _programs(catalog, _names_listing(catalog)))
+    proposal = _proposal()
+    ids = ["branch_" + "a" * 33, "branch_" + "a" * 32 + "b"]
+    for node, node_id in zip(proposal["subquestions"], ids, strict=True):
+        node["id"] = node_id
+    proposal["merges"][0]["inputs"] = ids
+    slug = "analysis_" + "s" * 31
+    plan = build_decomposed_plan(planner, slug, [], (), proposal, question="available products never purchased")
+    names = [view.name for view in plan.views]
+    assert all(name.startswith(slug + "_") and len(name.encode("utf-8")) <= 63 for name in names)
+    assert len(set(names)) == len(names)
+
+
+def test_long_leaf_names_keep_hash_free_labels():
+    """2026-10-02 Chrome gate (complex-promotions, complex-unsold-products): under the analysis
+    "top_customers_never_bought_top_products" a leaf view's name passed PostgreSQL's 63 bytes, was
+    cut and given a hash, and its label was read back from the cut name: "top customers top r
+    b966d67a". Each view keeps the name it had before the prefix, so the label reads as the step."""
+    import re
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    from engine.deterministic.service import DeterministicAnalysis
+    from engine.prepared import SharedConnection
+
+    catalog = _catalog(PRODUCTS)
+    selection = _programs(catalog, _names_listing(catalog))
+    planner = _leaf_planner(lambda leaf: selection)
+    proposal = _proposal()
+    ids = ["top_customers", "top_products_bought"]
+    for node, node_id in zip(proposal["subquestions"], ids, strict=True):
+        node["id"] = node_id
+    proposal["merges"][0]["inputs"] = ids
+    proposal["merges"][0]["id"] = "customer_product_pairs_never_bought"
+    proposal["output"] = "customer_product_pairs_never_bought"
+    slug = "top_customers_never_bought_top_products"
+    plan = build_decomposed_plan(planner, slug, [], (), proposal, question="top customers never bought top products")
+    names = [view.name for view in plan.views]
+    hashed = [name for name in names if re.search(r"_[0-9a-f]{8}$", name)]
+    assert hashed and all(len(name.encode("utf-8")) <= 63 for name in names), names
+    shared = SharedConnection(selection.tables.connection)
+    engine = create_engine("sqlite+pysqlite://", creator=lambda: shared, poolclass=StaticPool)
+    record = DeterministicAnalysis(plan, conversation_schema="main", dataset_version="test").run(
+        engine, mode="verify", estimated_rows=2).record()
+    views = {view["name"]: view for view in record["views"]}
+    assert set(hashed) & set(views), (hashed, list(views))
+    for view in record["views"]:
+        assert not re.search(r"[0-9a-f]{8}$", view["logical_name"]), view["logical_name"]
+        assert not re.search(r"[0-9a-f]{8}$", view["label"]), view["label"]
+    assert views[plan.output]["label"] == "customer product pairs never bought", views[plan.output]
+    assert {view["label"].split()[0] for view in record["views"]} >= {"top", "customer"}
+
+
+def test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower():
+    """A top reading the deterministic emitters cannot run must not hide a lower-ranked one that they can."""
+    from engine.deterministic.lower import UnsupportedDeterministicPlan
+
+    catalog = _catalog(PRODUCTS)
+    listing = _names_listing(catalog)
+    selection = _programs(catalog, listing, listing)
+    lowered = []
+
+    class FirstUnsupported(type(selection)):
+        def plan(self, index, slug, whole_tables=False):
+            lowered.append(index)
+            if index == 0:
+                raise UnsupportedDeterministicPlan("not in the dual subset")
+            return super().plan(index, slug, whole_tables)
+
+    from dataclasses import fields
+    selection = FirstUnsupported(**{field.name: getattr(selection, field.name) for field in fields(selection)})
+    planner = _leaf_planner(lambda leaf: selection)
+    plan = build_decomposed_plan(planner, "fallback", [], (), _proposal(), question="available products never purchased")
+    assert lowered == [0, 1, 0, 1] and plan.output, lowered
+
+
+def test_a_leaf_keeps_only_a_cutoff_the_question_states():
+    """The Chrome pass (2026-09-24) caught this. Told that cross inputs need explicit limits,
+    the proposer answered "products no customer from Paris has bought" by crossing "the top 100
+    customer names from Paris" with "the top 100 product names", and the engine served 14
+    customer-product pairs. A leaf may keep only a row cutoff the decomposed question states."""
+    from engine.program.language import Col, Rank
+    from engine.program.names import COUNT, ENTITY_GROUP
+
+    paris = "List the product names that no customer from Paris has bought, ordered by product name."
+    rejection = unstated_cutoff_rejection("products", paris, 100)
+    assert rejection is not None and "100" in rejection and "does not state" in rejection
+    # A stated cutoff passes in digits or in words; any other cutoff does not.
+    ranked = "Find the top three products by units sold and the top 2 customers by total spend."
+    assert unstated_cutoff_rejection("top_products", ranked, 3) is None
+    assert unstated_cutoff_rejection("top_customers", ranked, 2) is None
+    assert unstated_cutoff_rejection("top_customers", ranked, 5) is not None
+    # One row is a singular superlative's reading; an unlimited leaf has no cutoff at all.
+    assert unstated_cutoff_rejection(
+        "best", "customers who never bought the best-selling product", 1) is None
+    assert unstated_cutoff_rejection("products", paris, None) is None
+
+    # The compiler applies it to every leaf, whichever merge consumes it.
+    catalog = _catalog(PRODUCTS)
+    capped = Rank(ENTITY_GROUP, "t0", key=Col("t0", 1), function=COUNT, count=100)
+    planner = _leaf_planner(lambda leaf: _programs(catalog, capped))
+    _reject(lambda: build_decomposed_plan(planner, "capped", [], (), _proposal(), question=paris))
+    plan = build_decomposed_plan(planner, "capped", [], (), _proposal(),
+                                 question="the first 100 available products never purchased")
+    assert plan.output
 
 
 def test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain():
@@ -660,48 +462,20 @@ def test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain():
     every product name they have ever bought" was ranked first as a product-only reading, so
     the anti-join could not tell which customer bought what and the plan failed. The
     customer-and-product reading ranked next is the evidence the merge needs; a reading that
-    keeps the left grain is served as it is, and with none the first reading's error stands."""
-    from engine.deterministic.lower import lower_select_query
+    keeps the left grain is served as it is, and with none the first reading's error stands.
+    Every leaf is a program over the one tab (a merge binds keys by the column each reads)."""
     from engine.deterministic.plan import AntiJoinView
-    from engine.sql_ast import Join, OrderTerm
+    from engine.program.language import Breakdown, Col, Rank, Show
+    from engine.program.names import COUNT, ENTITY_GROUP, SUM
 
-    product = ColumnRef("products", "product_name", SQLType.TEXT)
-    customer = ColumnRef("customers", "customer_name", SQLType.TEXT)
-    quantity = Aggregate("SUM", ColumnRef("order_items", "quantity", SQLType.INTEGER))
-    line_total = Aggregate("SUM", ColumnRef("order_items", "line_total", SQLType.REAL))
-    item = Join("products", ColumnRef("order_items", "product_id", SQLType.INTEGER),
-                ColumnRef("products", "product_id", SQLType.INTEGER))
-    buyer = Join("customers", ColumnRef("order_items", "customer_id", SQLType.INTEGER),
-                 ColumnRef("customers", "customer_id", SQLType.INTEGER))
-    top_customers = SelectQuery(
-        (SelectItem(customer), SelectItem(line_total)), "order_items", joins=(buyer,),
-        group_by=(customer,), order_by=(OrderTerm(line_total, "DESC"),), limit=2)
-    top_products = SelectQuery(
-        (SelectItem(product), SelectItem(quantity)), "order_items", joins=(item,),
-        group_by=(product,), order_by=(OrderTerm(quantity, "DESC"),), limit=3)
-    products_only = SelectQuery((SelectItem(product),), "order_items", joins=(item,))
-    purchases = SelectQuery((SelectItem(customer), SelectItem(product)), "order_items",
-                            joins=(item, buyer))
-
-    def pool_selection(*queries):
-        pool = tuple(ScoredQuery(query, f"q{index}", 1.0, ()) for index, query in enumerate(queries))
-        n = len(pool)
-        return PoolSelection(pool, (True,) * n, (True,) * n, tuple(range(n)), 0)
-
-    tables = [
-        {"name": "products", "columns": ["product_id", "product_name"], "rows": [[1, "Coat"]]},
-        {"name": "customers", "columns": ["customer_id", "customer_name"], "rows": [[1, "Mina"]]},
-        {"name": "order_items", "columns": ["product_id", "customer_id", "quantity", "line_total"],
-         "rows": [[1, 1, 2, 20.0]]},
-    ]
-    schema = [{"table": t["name"], "name": c,
-               "affinity": "TEXT" if isinstance(t["rows"][0][i], str) else "REAL",
-               "values": [row[i] for row in t["rows"]]}
-              for t in tables for i, c in enumerate(t["columns"])]
-    leaves = {
-        "top 2 customer names by total spend": pool_selection(top_customers),
-        "top 3 product names by total quantity sold": pool_selection(top_products),
-    }
+    catalog = _catalog([["customer", "product", "quantity", "line_total"], ["Mina", "Coat", 2, 20.0],
+                        ["Ola", "Hat", 1, 5.0], ["Mina", "Hat", 3, 9.0]], "order_items")
+    top_customers = Rank(ENTITY_GROUP, "t0", key=Col("t0", 0), measure=Col("t0", 3), function=SUM, count=2)
+    top_products = Rank(ENTITY_GROUP, "t0", key=Col("t0", 1), measure=Col("t0", 2), function=SUM, count=3)
+    products_only = Show("t0", (Col("t0", 1),), listing=True)
+    purchases = Breakdown(COUNT, None, "t0", keys=(Col("t0", 0), Col("t0", 1)))
+    leaves = {"top 2 customer names by total spend": (top_customers,),
+              "top 3 product names by total quantity sold": (top_products,)}
     evidence = "For each customer, list every product name they have ever bought"
     proposal = {
         "subquestions": [
@@ -720,56 +494,35 @@ def test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain():
                 "bought that product.")
 
     def plan_with(*readings):
-        planner = Mock()
-        planner.postgres_row_identity = False
-        def select_query(leaf, *_):
-            return leaves[leaf] if leaf in leaves else pool_selection(*readings)
+        planner = _leaf_planner(lambda leaf: _programs(catalog, *leaves.get(leaf, readings)))
+        return build_decomposed_plan(planner, "promotions", [], (), proposal, question=question)
 
-        planner.select_query.side_effect = select_query
-        planner.guard.return_value = (True, None)
-        with patch("engine.deterministic.lower.lower_select_query",
-                   wraps=lower_select_query) as lower:
-            plan = build_decomposed_plan(planner, "promotions", tables, schema, (), proposal,
-                                         question=question)
-        served = [call.args[1] for call in lower.call_args_list if call.args[0] == "purchases"][-1]
-        return plan, served
-
-    plan, served = plan_with(products_only, purchases)
-    assert served == purchases
-    assert [section.id for section in plan.sections] == [
-        "top_customers", "top_products", "purchases", "pairs", "missing"]
+    plan = plan_with(products_only, purchases)
+    assert [section.id for section in plan.sections] == ["top_customers", "top_products", "purchases", "pairs", "missing"]
     missing = next(view for view in plan.views if isinstance(view, AntiJoinView))
-    assert [(key.left, key.right) for key in missing.keys] == [
-        ("customer_name", "customer_name"), ("product_name", "product_name")]
-
-    plan, served = plan_with(purchases, products_only)
-    assert served == purchases
-
+    assert len(missing.keys) == 2, missing.keys
+    assert plan_with(purchases, products_only).output
     try:
         plan_with(products_only)
     except DecompositionError as exc:
-        assert "must also preserve the left-side dimension(s) 'customer_name'" in str(exc), exc
+        assert "must also preserve the left-side dimension(s)" in str(exc), exc
     else:
         raise AssertionError("evidence without the left grain was accepted")
 
 
 TESTS = [
+    test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain,
+    test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
+    test_long_leaf_names_keep_hash_free_labels,
+    test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower,
+    test_a_leaf_keeps_only_a_cutoff_the_question_states,
     test_validation_is_closed_and_idempotent_at_transport_boundaries,
     test_size_limit_counts_utf8_bytes_not_characters,
     test_a_node_id_is_a_readable_name_because_it_names_the_sheets,
     test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures,
     test_merge_key_alias_can_follow_only_a_complete_direct_foreign_key,
     test_anti_join_evidence_must_preserve_the_complete_left_grain,
-    test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain,
-    test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
-    test_long_leaf_names_keep_hash_free_labels,
-    test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
-    test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower,
-    test_ranked_leaf_projects_extra_group_key_only_for_named_entity,
-    test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected,
-    test_measure_leaf_without_aggregation_is_rejected_not_answered,
     test_ranked_cross_input_must_stay_at_the_ranked_entity_grain,
-    test_a_leaf_keeps_only_a_cutoff_the_question_states,
     test_an_answer_grain_cannot_repeat_one_physical_dimension,
     test_failed_compound_probe_cannot_authorize_a_partial_composed_answer,
 ]

@@ -1,20 +1,17 @@
-"""The own-data pool contract and selection record.
+"""The own-data selection record.
 
-``PoolSelection`` records the served choice among the readers' candidates (engine/readers/search.py): the
-best re-scored candidate that executes and is grounded, under the pool contract (``execution_op_limit``).
-``analyze_question`` reads the roles a question's words give the schema, for the registered calculations
-(engine/calculations).
+``PoolSelection`` records the served choice among the own-data path's candidates (engine/program/answer.py,
+engine/tables.py:TableQuery.select_query). ``analyze_question`` reads the roles a question's words give the schema, for
+the registered calculations (engine/calculations).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 import re
 from typing import Mapping, Sequence
 
-from engine.currency_intent import is_currency_measure_column, is_currency_source_column
-from engine.dataset_semantics import is_synthetic_currency_column
 from engine.sql_ast import (
-    Aggregate, ColumnRef, Comparison, SelectItem, SelectQuery, column_refs, keep_ties, named_groups, render_query,
+    ColumnRef, Comparison,
 )
 from engine.sql_dates import period_grouping
 from engine.sql_expansion import (
@@ -295,269 +292,86 @@ def _column_label(column: ColumnRef) -> str:
 
 
 # ---------------------------------------------------------------------------------------------
-# Pool selection: the served choice among the search's candidates.
+# Pool selection: the served choice among the own-data path's candidates.
 # ---------------------------------------------------------------------------------------------
-
-EXECUTION_OPS_PER_CELL = 20
-EXECUTION_OP_FLOOR = 10_000_000
-EXECUTION_OP_LIMIT = 100_000_000
-
-
-def execution_op_limit(query, tables) -> int:
-    """The SQLite VM steps pooled ``query`` may take: ``EXECUTION_OPS_PER_CELL`` for each cell of the
-    tables it reads, at least ``EXECUTION_OP_FLOOR`` and at most ``EXECUTION_OP_LIMIT``. ``tables`` maps
-    the request's table names to {"columns", "rows"}; a query naming a table it does not hold keeps the
-    ceiling."""
-    cells = 0
-    for name in query.referenced_tables():
-        table = tables.get(name)
-        if table is None:
-            return EXECUTION_OP_LIMIT
-        cells += len(table["rows"]) * len(table["columns"])
-    return min(EXECUTION_OP_LIMIT, max(EXECUTION_OP_FLOOR, EXECUTION_OPS_PER_CELL * cells))
-
 
 @dataclass(frozen=True)
 class PoolSelection:
-    """How one question's query was chosen. Serving, decomposition leaves, the Spider evaluator and
-    the offline regression gate read this record.
+    """How one question's query was chosen (engine/tables.py:TableQuery.select_query). Serving, decomposition leaves
+    and the evaluators read this record.
 
-    ``pool`` is the readers' candidates, most probable first (engine/readers/search.py). ``executable``
-    records which members ran within their SQLite step budget (``execution_op_limit``) and ``grounded``
-    which compare every text literal with a column that can hold it and join no two columns the foreign
-    keys keep apart (engine/sql_grounding.py). ``ranking`` lists the eligible members, where both hold, in
-    the re-scorer's order. ``selected`` is usually ``ranking[0]``; a query that keeps the question's dates,
-    counts no row twice in a SUM or AVG (``double_counted``), keeps rows its order ranks (``undecided``), finds
-    rows where a less probable member finds none (``outread``) or satisfies a registered calculation intent can
-    prefer a later eligible member (``select_ranked_candidate``),
-    and the readers' refusal leaves it
-    None when it is not confident of the choice, as does a choice whose served result holds nothing
-    (``found_nothing``). The first pool member is the readers' most probable
-    reading of the question (engine/decomposition.compound_candidate).
-    """
+    ``pool`` is the own-data path's listed candidates in its decoder's order (engine/program/answer.py): each program
+    that returned rows, as its typed AST (engine/program/lowering.py) and SQL, with its read-as line as ``evidence``
+    and as ``score`` the probability the choice gave its answer, summed over the candidates returning that answer
+    (engine/program/closed.py choose_answer). ``ranking`` orders the pool by that score, the first listing first among
+    equals. ``selected`` is the decided candidate, answered or, below closed.T_FLAG, ``warned``: ``uncertain`` then
+    names the coordinates the runner-up answer (first listed at ``runner_up``) reads differently
+    (engine/program/language.coordinates). When the path
+    asks back, ``selected`` is None and ``declined`` the likeliest candidate, the reading the reply asks about: None
+    when none returned rows.
+    ``confidence`` is the likeliest answer's probability and ``probabilities`` the choice's own, per listing (r00, r01,
+    ..., and none). ``programs``, ``rows`` and ``catalog`` hold each candidate's program, the rows it returned on the
+    candidates' floats (what the choice read) and the workbook it reads; ``tables`` the request's tables the programs
+    run on (engine/program/store.py, on the request's database)."""
     pool: tuple[ScoredQuery, ...]
-    executable: tuple[bool, ...]
-    grounded: tuple[bool, ...]
     ranking: tuple[int, ...]
     selected: int | None
-    calculation_satisfied: tuple[bool, ...] = ()
-    date_satisfied: tuple[bool, ...] = ()
-    # Which members SUM or AVG only rows their joins repeat (engine/sql_grounding.double_counted).
-    double_counted: tuple[bool, ...] = ()
-    # Which members' order ranks none of the rows they keep above the first row they leave out (``ranking_cut_probe``).
-    undecided: tuple[bool, ...] = ()
-    # The headers each member reads a column of that another column shares, the question not saying which
-    # (engine/sql_grounding.shared_headers): such a member is not eligible.
-    shared_headers: tuple[tuple[str, ...], ...] = ()
-    # The readers' refusal: its confidence in the choice, and the choice it declined when it was not confident.
     confidence: float | None = None
     declined: int | None = None
-    # Which members match no row while the readers found a more probable member that does (``outread_by_rows``).
-    outread: tuple[bool, ...] = ()
-    # The chosen reading's test of a column of few values against a value it does not hold (sql_grounding.absent_value):
-    # the choice is declined, and the reply asks which value was meant.
-    absent_value: tuple[str, str, tuple[str, ...]] | None = None
-    # table -> the column naming each row's currency, for tables that hold several currencies and a question that asks
-    # for no conversion (``mixed_currencies``): a total of money is served per currency (``per_currency``).
-    currencies: Mapping[str, ColumnRef] = field(default_factory=dict)
-    # Which eligible members' served form returns no row or only blank cells.
-    blank: tuple[bool, ...] = ()
-    # The choice was declined for that: it is the readers' reading of the upload, and the reply asks about it.
-    found_nothing: bool = False
+    warned: bool = False
+    uncertain: tuple[str, ...] = ()
+    runner_up: int | None = None
+    probabilities: dict | None = None
+    programs: tuple = ()
+    rows: tuple = ()
+    catalog: object = None
+    tables: object = None
 
     @property
     def candidate(self) -> ScoredQuery | None:
-        """The member served: the selected pool member in its served form (``served_member``). Ranking and evidence
-        read the pool member itself."""
-        return None if self.selected is None else served_member(self.pool[self.selected], self.currencies)
+        """The member served, or None when the path asks back."""
+        return None if self.selected is None else self.pool[self.selected]
 
-    def constrained(self, admissible) -> PoolSelection:
-        """This selection under a caller's contract, a filter on the ranking and never a rescore.
+    def plan(self, index: int, slug: str, whole_tables: bool = False):
+        """The one plan both deterministic emitters run for pool member ``index`` (engine/program/lowering.py to_plan),
+        with the tables it reads loaded on the request's database; ``whole_tables`` declares each table whole, as the
+        plans a decomposition fuses must (engine/decomposition.py)."""
+        from engine.program.execute import prepare
+        from engine.program.lowering import to_plan
 
-        Unchanged when the selected member satisfies ``admissible``; otherwise re-selected to the
-        best-ranked eligible member that does (``selected`` is None when none does), so the record
-        always describes the member that was actually served. A choice declined only because it found
-        nothing is filtered the same way, and a re-selected member whose result holds nothing is declined
-        as ``select_query`` declines one.
-        """
-        chosen = self.declined if self.found_nothing else self.selected
-        if chosen is not None and admissible(self.pool[chosen]):
-            return self
-        selected = next((index for index in self.ranking if admissible(self.pool[index])), None)
-        if selected is not None and self.blank and self.blank[selected]:
-            return replace(self, selected=None, declined=selected, found_nothing=True)
-        return replace(self, selected=selected, declined=None if self.found_nothing else self.declined,
-                       found_nothing=False)
+        prepare(self.programs[index], self.tables)
+        return to_plan(self.programs[index], self.catalog, slug, whole_tables)
+
+    def estimated_rows(self, index: int) -> int:
+        """The lines pool member ``index`` reads, for the deterministic run's row bound."""
+        from engine.program.language import tables_of
+
+        return sum(len(self.catalog.table(table_id).lines) for table_id in tables_of(self.programs[index]))
+
+    def shown(self, index: int, rows) -> tuple[tuple, ...]:
+        """Rows a deterministic run of pool member ``index`` returned, as its program shows them
+        (engine/program/execute.py displayed)."""
+        from engine.program.execute import displayed
+
+        return displayed(self.programs[index], rows, self.tables)
+
+    def columns(self, index: int) -> tuple[str, ...]:
+        """The names of pool member ``index``'s answer columns, in the sheet's words (engine/program/output.py)."""
+        from engine.program.output import answer_columns
+
+        return answer_columns(self.programs[index], self.catalog)
 
     def record(self) -> dict:
-        """JSON evidence: pool counts, the winner's place among the eligible members, its readers' log
-        probability, which preference chose it, and the refusal's confidence (with the member it declined)."""
+        """JSON evidence: the pool's size, the decided member and its place in the ranking, the likeliest answer's
+        probability, and the member asked about when the path asks back."""
         evidence = {
             "pool_size": len(self.pool),
-            "executable": sum(self.executable),
-            "misgrounded": sum(ran and not sound
-                               for ran, sound in zip(self.executable, self.grounded)),
             "eligible": len(self.ranking),
             "selected": self.selected,
             "confidence": None if self.confidence is None else round(self.confidence, 4),
             "declined": self.declined,
-            "found_nothing": self.found_nothing,
+            "warned": self.warned,
         }
         if self.selected is not None:
-            evidence.update(
-                rank=self.ranking.index(self.selected),
-                score=round(self.pool[self.selected].score, 6),
-                calculation_satisfied=bool(self.calculation_satisfied
-                                           and self.calculation_satisfied[self.selected]),
-                date_satisfied=bool(self.date_satisfied and self.date_satisfied[self.selected]),
-                double_counted=bool(self.double_counted and self.double_counted[self.selected]),
-                undecided=bool(self.undecided and self.undecided[self.selected]),
-            )
+            evidence.update(rank=self.ranking.index(self.selected), score=round(self.pool[self.selected].score, 6))
         return evidence
-
-
-def served_member(member: ScoredQuery, currencies: Mapping[str, ColumnRef]) -> ScoredQuery:
-    """Pool ``member`` as it is served: a total of mixed money per currency (``per_currency``), a ranking of groups over
-    the groups that have a name (sql_ast.named_groups), and a top-1 ranking keeping every tied row (sql_ast.keep_ties)."""
-    split = per_currency(member.query, currencies)
-    served = keep_ties(named_groups(split))
-    if served is member.query and member.named_trace is None:
-        return member
-    evidence = member.evidence
-    if split is not member.query and evidence:
-        evidence = (f"{evidence[0]}, for each {spaced_name(split.group_by[-1].name).lower()}", *evidence[1:])
-    trace = member.named_trace
-    if trace is not None:
-        from engine.sql_ast import query_to_tree
-        trace = {**trace, "served_transform": {"owner": "engine.sql_rank.served_member",
-                 "operations": ["per_currency", "named_groups", "keep_ties"],
-                 "currencies": {table: {"table": column.table, "name": column.name,
-                                        "type": column.type.value}
-                                for table, column in sorted(currencies.items())},
-                 "input_ast": query_to_tree(member.query), "output_ast": query_to_tree(served)}}
-    return ScoredQuery(served, render_query(served), member.score, evidence, member.features, trace)
-
-
-def replay_served_transform(query, graph, trace):
-    """Check and apply the serving owner's transforms to a replayed model AST.
-
-    Currency bindings are derived again from the request graph; a trace cannot
-    invent them. Identity transforms are recorded and checked as well.
-    """
-    from engine.sql_ast import query_to_tree
-
-    currencies = mixed_currencies(graph)
-    reproduced = served_member(ScoredQuery(query, render_query(query), 0.0, (), named_trace={}), currencies)
-    if trace.get("served_transform") != reproduced.named_trace["served_transform"]:
-        raise ValueError("served transform differs from the request graph or active serving owner")
-    if query_to_tree(query) != trace.get("model_ast"):
-        raise ValueError("served transform starts from another model AST")
-    return reproduced.query
-
-
-def replay_served_query_trace(turns, graph, trace):
-    """Replay named decisions and their served AST without running an encoder."""
-    from engine.readers.grammar import replay_query_trace
-
-    query = replay_query_trace(turns, graph, trace)
-    if query is None:
-        if "served_transform" in trace:
-            raise ValueError("a refused reading cannot have a served transform")
-        return None
-    return replay_served_transform(query, graph, trace)
-
-
-def mixed_currencies(graph) -> dict[str, ColumnRef]:
-    """Table -> the column naming each row's currency, for each table whose rows hold more than one currency."""
-    found = {}
-    for column in graph.columns:
-        if (is_currency_source_column(column.ref.name) and not is_synthetic_currency_column(column.ref.name)
-                and len({str(value).strip().lower() for value in column.values
-                         if value is not None and str(value).strip()}) > 1):
-            found.setdefault(column.ref.table, column.ref)
-    return found
-
-
-def per_currency(query, currencies: Mapping[str, ColumnRef]):
-    """The served form of a total or average of money over rows in several currencies: one row per currency, within each
-    group it has. Added up, 332,600 rupees and 205,194 dollars read as 545,337 of nothing, as "how much sales for long term
-    customers" did, and "total Amount broken down by Plan and Currency" read without the currency gave each plan such a sum
-    (2026-10-30). A question that names a currency filters or converts; one that groups by it asks for this already."""
-    if (not currencies or not isinstance(query, SelectQuery) or query.joins or query.limit is not None or query.distinct
-            or query.having is not None or not isinstance(query.from_table, str) or query.from_table not in currencies):
-        return query
-    measures = [item.expression for item in query.select if isinstance(item.expression, Aggregate)]
-    if not measures or not all(measure.function in ("SUM", "AVG") and isinstance(measure.operand, ColumnRef)
-                               and is_currency_measure_column(measure.operand.name) for measure in measures):
-        return query
-    currency = currencies[query.from_table]
-    labels = [index for index, item in enumerate(query.select) if not isinstance(item.expression, Aggregate)]
-    if currency in column_refs(query) or (labels and not query.group_by):
-        return query
-    at = labels[-1] + 1 if labels else 0
-    return replace(query, select=(*query.select[:at], SelectItem(currency), *query.select[at:]),
-                   group_by=(*query.group_by, currency))
-
-
-def outread_by_rows(pool: Sequence[ScoredQuery], ranking: Sequence[int],
-                    matched_nothing: Sequence[bool]) -> tuple[bool, ...]:
-    """Per pool member: whether it matches no row while an eligible member the readers found more probable does.
-
-    The re-scorer reads a question beside each reading, and a reading that repeats the question's words reads well:
-    "sales for long term customers (above 6 months)" ranked duration = 'above 6 months' over the value the column
-    holds, 'Greater than 6 months', which the readers found more probable, and the answer said no rows matched
-    (2026-10-30). A reading the readers rated highest stays the reading: "orders from Mars" matches nothing, no less
-    probable reading of another country or of no filter answers it instead, and the reply asks (``found_nothing``).
-    """
-    best = max((pool[i].score for i in ranking if not matched_nothing[i]), default=None)
-    return tuple(bool(matched_nothing[i] and best is not None and best > pool[i].score) for i in range(len(pool)))
-
-
-def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Sequence[bool],
-                            date_satisfied: Sequence[bool] = (),
-                            double_counted: Sequence[bool] = (),
-                            undecided: Sequence[bool] = (),
-                            outread: Sequence[bool] = ()) -> int | None:
-    """The shared post-ranking serving rule; inputs are gold-blind candidate facts.
-
-    A query that keeps the dates the question names (engine/sql_dates.realizes_dates) is served
-    when any does: an undated reading ranked first, and "how many contracts were signed before
-    July 10, 2026" was served undated and declined (2026-10-02). Among those, a query whose SUM or
-    AVG reads only rows its joins repeat (engine/sql_grounding.double_counted) is served only when
-    every one does: "the total Amount by Plan and Currency" ranked first a sum of a report's Total
-    Amount once per subscription it matched (2026-10-05). Among those, a ranking whose order ranks
-    none of the rows it keeps above the first row it leaves out (``undecided``: its first row ties
-    with that one) is served only when every one is: "top 3 cities" ranked first the cities by
-    their number of rows, one each, and served three of four by name (2026-10-23). A tie at the cut
-    alone is the data's: "the five oldest people" ties the fifth and sixth ages. Among those, a query that
-    matches no row while a more probable one finds rows (``outread_by_rows``) is served only when every one
-    does. Among those, prefer a satisfied calculation, if any.
-    """
-    if not ranking:
-        return None
-    ranking = [i for i in ranking if date_satisfied and date_satisfied[i]] or list(ranking)
-    ranking = [i for i in ranking if not (double_counted and double_counted[i])] or ranking
-    ranking = [i for i in ranking if not (undecided and undecided[i])] or ranking
-    ranking = [i for i in ranking if not (outread and outread[i])] or ranking
-    return next((i for i in ranking if calculation_satisfied[i]), ranking[0])
-
-
-def ranking_cut_probe(query):
-    """(probe, limit, terms) for a ranking whose LIMIT keeps more than one row, else None: ``probe`` is the same
-    query showing its ORDER BY terms after its own columns and keeping one row more, so the first row kept and the
-    first left out can be compared on the terms that order them (``ranks_nothing``). A top-1 ranking keeps its ties
-    when served (sql_ast.keep_ties); a DISTINCT one would change its rows by showing more."""
-    if (not isinstance(query, SelectQuery) or not query.order_by or not query.limit or query.limit < 2
-            or query.distinct or query.with_ties):
-        return None
-    terms = len(query.order_by)
-    probe = replace(query, select=query.select + tuple(SelectItem(term.expression) for term in query.order_by),
-                    limit=query.limit + 1)
-    return probe, query.limit, terms
-
-
-def ranks_nothing(rows, limit: int, terms: int) -> bool:
-    """Whether the probe's rows (``ranking_cut_probe``) show an order that ranks none of the rows kept above the first
-    one left out: the first row and the row after the cut sort equal on every ORDER BY term, so every row between
-    them ties too."""
-    return len(rows) > limit and tuple(rows[0][-terms:]) == tuple(rows[limit][-terms:])

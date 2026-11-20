@@ -417,37 +417,8 @@ def test_binding_unqualified_coordinates_do_not_decide():
     assert all(row["contributions"][1]["masked_reason"] == "unqualified" for row in result["candidates"])
 
 
-def test_expected_property_profiles_use_train_groups_and_do_not_assert_instance_absence():
-    from dataclasses import replace
-    from training.schema_org.instances import SemanticInstance
-    from training.schema_org.signatures import expected_observation_profiles
-
-    city, parent = "https://schema.org/City", "https://schema.org/Place"
-    name, geo = "https://schema.org/name", "https://schema.org/geo"
-    def item(identity, split, properties, classes=(city, parent), source="wikidata"):
-        return SemanticInstance(source, "snapshot", "relation", identity, "source description",
-                                classes, properties, split, "mapping")
-    train = [item("city/one", "train", (name,)), item("city/one#variant", "train", (geo,)),
-             item("city/two", "train", (name,))]
-    heldout = item("city/heldout", "test", (geo,))
-    result = expected_observation_profiles([*train, heldout], [name, geo], min_train_groups=2)
-    profile = result["profiles"][city]
-    assert profile["train_groups"] == 2
-    assert profile["probabilities"] == {name: 1.0, geo: 0.5}
-    assert expected_observation_profiles([*train, replace(heldout, properties=(name,))],
-                                         [name, geo], min_train_groups=2) == result
-    assert not result["calibrated"] and not result["servable"]
-    assert "not negative world facts" in result["meaning"]
-    assert not expected_observation_profiles(train, [name, geo], min_train_groups=3)["profiles"]
-    mixed = item("mixed", "train", (geo,), classes=(city, "https://schema.org/Country"))
-    templates = item("template", "train", (geo,), source="product_templates")
-    other = expected_observation_profiles([*train, mixed, templates], [name, geo], min_train_groups=2)
-    assert other["profiles"] == result["profiles"] and other["excluded_mixed_or_classless_groups"] == 1
-
-
 TESTS = [
     test_binding_qualification_cannot_transfer_between_input_roles,
-    test_expected_property_profiles_use_train_groups_and_do_not_assert_instance_absence,
     test_binding_contributions_are_exact_and_replayable,
     test_binding_intervention_changes_only_the_declared_contribution,
     test_binding_unknowns_are_masked_and_cannot_win_by_tiny_overlap,

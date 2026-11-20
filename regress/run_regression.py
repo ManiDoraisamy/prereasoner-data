@@ -56,20 +56,19 @@ class Engine:
         self.compose = ComposeEngine(reader=self.reader)
 
     def _ast(self, tabs, q):
-        """The production own-data path: the one served selection (engine/tables.py:select_query)."""
-        norm, fks = self.enc.ingest(tabs)
-        sch, _, tmap = self.enc.schema(norm, fks)
-        selection = self.enc.select_query(q, norm, fks, sch, tmap)
+        """The production own-data path: the one served selection (engine/tables.py:select_query, the Decisions path,
+        whose calls need the deployment's key) and the rows of the program it chose."""
+        norm, _fks = self.enc.ingest(tabs)
+        selection = self.enc.select_query(q, norm)
         if not selection.pool:
             raise RuntimeError("planner: no valid AST candidate")
         if selection.candidate is None:
-            raise RuntimeError("planner: no executable AST candidate")
+            raise RuntimeError("planner: the Decisions path asks back")
         sql = selection.candidate.sql
         ok, why = self.enc.guard(sql)
         if not ok:
             raise RuntimeError(f"guard: {why}")
-        _, rows = self.enc.execute(tmap, sch, sql)
-        return [list(r) for r in rows], sql
+        return [list(r) for r in selection.rows[selection.selected]], sql
 
     def run(self, tabs, q):
         try:

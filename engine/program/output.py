@@ -192,6 +192,33 @@ def read_as(program: Program, catalog: Catalog) -> str:
     return f"which of {span} is {way}{' by size' if program.by_size else ''} {place}{tail}"
 
 
+def _figure_name(program: Agg | Breakdown | Rank, catalog: Catalog) -> str:
+    if program.function == COUNT:
+        return _AGG_WORDS[COUNT]
+    if program.function == COUNT_DISTINCT:
+        return f"{_AGG_WORDS[COUNT_DISTINCT]} {_name(catalog, program.measure)}"
+    return f"{_AGG_WORDS[program.function]} {_measure_words(catalog, program.measure)}"
+
+
+def answer_columns(program: Program, catalog: Catalog) -> tuple[str, ...]:
+    """The names of a program's answer columns, in the order its query shows them (engine/program/lowering.py), in the
+    sheet's own words: a shown or key column by its header, the figure by what it computes."""
+    if isinstance(program, (Check, Calc)):
+        return ("answer",)
+    if isinstance(program, Show):
+        return tuple(_name(catalog, column) for column in (program.shown[:1] if program.listing else program.shown))
+    if isinstance(program, Agg):
+        return (_figure_name(program, catalog),)
+    if isinstance(program, Breakdown):
+        keys = tuple(f"month of {_name(catalog, column)}" if program.grain is not None and at == 0 else _name(catalog, column) for at, column in enumerate(program.groups))
+        return keys + (_figure_name(program, catalog),)
+    if program.entity == ENTITY_LINE:
+        return tuple(_name(catalog, column) for column in program.shown) + (_measure_words(catalog, program.measure),)
+    if program.entity == ENTITY_GROUP:
+        return (_name(catalog, program.key), _figure_name(program, catalog))
+    return ("column", f'count of "{program.mark}"' if program.mark is not None else "total")
+
+
 # ----------------------------------------------------------------------------------------------------------- cells
 def _units_added(program: Agg, table: CatalogTable, catalog: Catalog) -> str:
     """A figure over a table whose lines name their currency, no condition fixing one, adds amounts in several
@@ -636,4 +663,4 @@ def explain(scored: ScoredProgram, tables: RequestTables, rows: tuple[tuple, ...
     return Explanation(read_as(program, tables.catalog), compress(cells_used(program, tables, rows)), formula(program, tables), tuple(term.record() for term in scored.contributions), also)
 
 
-__all__ = ["Explanation", "cells_used", "compress", "explain", "formula", "read_as"]
+__all__ = ["Explanation", "answer_columns", "cells_used", "compress", "explain", "formula", "read_as"]

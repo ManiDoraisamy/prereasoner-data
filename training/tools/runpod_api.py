@@ -1,6 +1,6 @@
 """Cost-bounded RunPod client for the repository's GPU training: the Schema.org
-property head (training/schema_org) and the own-data readers (training/readers,
-whose ``training.readers.lease`` builds its jobs on this lease).
+property head (training/schema_org) and the named-reader experiments (training/named,
+whose jobs run through ``training.readers.lease``, the one lease loop on this client).
 
 The default ``lease`` command owns the complete pod lifecycle and terminates in
 ``finally``. A pod can outlive this process only when the operator explicitly
@@ -340,7 +340,7 @@ def _outputs(listing: dict[str, int]) -> dict[str, int]:
 
 def _compress_outputs(ssh: list[str], root: str, sizes: dict[str, int], remaining) -> dict[str, int]:
     """Gzip each large output beside itself on the pod; returns {path under ``root``: bytes of its gzip} for those it
-    made smaller. The originals stay, for pull_parts.sh, and a gzip appears under its name only whole. A gzip that fails
+    made smaller. The originals stay, for a pull by hand, and a gzip appears under its name only whole. A gzip that fails
     or does not finish in time only means that file travels as it is."""
     large = [relative for relative, size in sizes.items()
              if relative.endswith(COMPRESSED_SUFFIXES) and size >= COMPRESS_FROM_BYTES]
@@ -681,8 +681,8 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
         if keep or incomplete:
             print(
                 f"WARNING: {'an incomplete download' if incomplete else '--keep'} left billable pod {pid} running "
-                f"until its provider deadline (ssh root@{ip}); pull its files (training/readers/pull_parts.sh for a "
-                "stage-2 run, or this lease again with --resume and no command), then terminate it",
+                f"until its provider deadline (ssh root@{ip}); pull its files (this lease again with --resume and no "
+                "command), then terminate it",
                 file=sys.stderr,
             )
         else:

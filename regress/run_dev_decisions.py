@@ -4,20 +4,29 @@ questions:
 messy dev, the WikiTableQuestions dev sample, DataBench dev and the fresh dev twin. No frozen set is read, and no Enron
 sheet.
 
-Every question runs through engine/program/answer.py (prepare, answer; no active sheet, as measured) with
-engine.llm.DECISIONS_TRANSPORT replaced by a replay of the measurement's own cache (cache/<hash[:2]>/<hash>.json, keyed by
-engine.llm.decision_hash): the API is never called, no key is read, and a body the cache does not hold raises. A miss
-means the port built a request the measurement did not; its body is written to <out>/misses/<hash>.json for a diff. Each
-question is then compared with its set's measured outcome (REFERENCE_TAGS): the listed answers (answer hashes, in
-order), their grades, the choice probabilities and the per-answer label (summarize.decided at level "answer").
+Every question runs through the one own-data selection, engine/tables.py TableQuery.select_query (no active sheet, as
+measured), on the request tables of its workbook, each table's grid the tab its loader built; engine.llm.DECISIONS_TRANSPORT
+is replaced by a replay of the measurement's own cache (cache/<hash[:2]>/<hash>.json, keyed by engine.llm.decision_hash):
+the API is never called, no key is read, and a body the cache does not hold raises. A miss means the serving path built a
+request the measurement did not; its body is written to <out>/misses/<hash>.json for a diff. Each question is then
+compared with its set's measured outcome (REFERENCE_TAGS): the listed answers (answer hashes, in order), their grades,
+the choice probabilities and the per-answer label (summarize.decided at level "answer").
 
 The sets load exactly as the measurement's run_stock.py loaded them (its loaders, read from the experiment folders), and
-each workbook's payload is the one its loader compiles. The stock reader keeps the vectors of the texts it read before,
+each workbook's tabs are the wire-form tabs its loader compiles (header and typed rows for messy, WikiTableQuestions and
+DataBench; the xlsx reader's tabs for the fresh dev twin). A workbook's questions share one request database
+(engine/prepared.py scratch_database), as a conversation's turns share a prepared workbook. The stock reader keeps the vectors of the texts it read before,
 and a batch's padding can move a vector in its last bits, so a run keeps the measurement's history by its order, at
 --threads 4: --sets wtq and --sets messy,freshdev (as eor1 ran) and --sets freshdev,databench (as pgd1 ran), one process
 each. Results: regress/results/dev_decisions/<tag>/<set>.jsonl and summary_<sets>.json.
 
+--csv is a new measurement, not parity: production receives each tab as CSV, so each tab is rendered to CSV text (the
+cells as the loader read them) and read as an upload is (csv_table, canonical table names); its bodies differ from the
+measurement's, so it needs --record DIR, which sends a body neither cache holds to the Decisions API (the deployment's
+GOOGLE_API_KEY) and keeps the answer in DIR for a replay.
+
 usage: python -X utf8 -m regress.run_dev_decisions [--sets messy,freshdev] [--limit N] [--tag NAME] [--threads 4] [--resume]
+                                                   [--csv --record DIR]
 """
 from __future__ import annotations
 
@@ -30,11 +39,19 @@ import sys
 import time
 from pathlib import Path
 
+import contextlib
+import csv
+import io
+
 import torch
 
 import engine.llm as llm
 import engine.sheet
-from engine.program.answer import ASKED, WARNED, answer, prepare
+from engine.prepared import scratch_database
+from engine.program.answer import ANSWERED, ASKED, WARNED
+from engine.program.closed import answer_key
+from engine.request_validation import canonical_table_name
+from engine.tables import TableQuery, csv_table, normalize_tables
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENTS = Path("C:/work/prereasoner-data/training/readers/data/experiments")
@@ -51,15 +68,24 @@ class ReplayMiss(RuntimeError):
 
 
 class Replay:
-    """engine.llm's transport over the measurement's cache: the recorded answer of a body, by its hash; never the API."""
+    """engine.llm's transport over the measurement's cache: the recorded answer of a body, by its hash. Without
+    ``record`` it never calls the API; with it, a body neither cache holds is sent through engine.llm's own transport
+    and its answer kept in ``record`` (the same layout), so the run can be replayed."""
 
-    def __init__(self, cache: Path, misses: Path):
-        self.cache, self.misses = cache, misses
+    def __init__(self, cache: Path, misses: Path, record: Path | None = None):
+        self.cache, self.misses, self.record = cache, misses, record
+        self.send = llm.DECISIONS_TRANSPORT
         self.used: list[str] = []
 
     def __call__(self, payload: bytes) -> dict:
         digest = llm.decision_hash(payload)
         held = self.cache / digest[:2] / f"{digest}.json"
+        if not held.exists() and self.record is not None:
+            held = self.record / digest[:2] / f"{digest}.json"
+            if not held.exists():
+                answer = self.send(payload)
+                held.parent.mkdir(parents=True, exist_ok=True)
+                held.write_bytes((json.dumps({"answers": answer["answers"], "tokens": answer["tokens"]}) + "\n").encode("utf-8"))
         if not held.exists():
             self.misses.mkdir(parents=True, exist_ok=True)
             (self.misses / f"{digest}.json").write_bytes(payload)
@@ -70,24 +96,63 @@ class Replay:
 
 
 class _Payload(Exception):
-    """Raised in place of a compile: the workbook payload a set's loader built."""
+    """Raised in place of reading a workbook: the wire form a set's loader built."""
 
-    def __init__(self, workbook):
+    def __init__(self, raw):
         super().__init__("payload")
-        self.workbook = workbook
+        self.raw = raw
 
 
-def _capture(workbook, typed=None):
-    raise _Payload(workbook)
+def _capture(raw):
+    raise _Payload(raw)
 
 
-def payload_of(item):
-    """The workbook payload the item's loader compiles (each loader calls engine.sheet.compile_workbook)."""
+@contextlib.contextmanager
+def capturing():
+    """Every loader reads its workbook through engine.sheet.workbook_from_json before it compiles it: while this holds,
+    that raises the wire form instead. Messy's loader takes the function when its set loads, the others when an item
+    loads, so both run under it."""
+    held = engine.sheet.workbook_from_json
+    engine.sheet.workbook_from_json = _capture
     try:
-        item.load()
+        yield
+    finally:
+        engine.sheet.workbook_from_json = held
+
+
+def csv_text(rows) -> str:
+    """A tab's cells as CSV text, each written as the loader read it (engine/sheet/xlsx_reader.py: a number, a date as its
+    serial number, a text), an integral number without its ".0"."""
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    for row in rows:
+        writer.writerow(["" if cell is None else str(int(cell)) if isinstance(cell, float) and cell.is_integer() else str(cell)
+                         for cell in row])
+    return out.getvalue()
+
+
+def tables_of(item, as_csv=False):
+    """The request tables of the item's workbook: one per tab its loader built, each carrying that tab as its grid. With
+    as_csv, each grid tab is instead rendered to CSV text (csv_text) and read as an upload is read: named by its canonical
+    table name (engine/request_validation.py) and parsed by engine/tables.py csv_table, its grid the CSV's rows."""
+    try:
+        with capturing():
+            item.load()
     except _Payload as held:
-        return held.workbook
-    raise RuntimeError(f"{item.id}: the loader compiled nothing")
+        tables = []
+        for index, tab in enumerate(held.raw.get("tabs") or ()):
+            rows = [list(row) for row in tab.get("rows") or ()]
+            if as_csv:
+                if rows and (tab.get("sheetType") or "grid") == "grid":
+                    tables.append(csv_table(csv_text(rows), canonical_table_name(tab["name"], index)))
+                continue
+            tables.append({"name": tab["name"], "columns": [str(cell) for cell in rows[0]] if rows else [], "rows": rows[1:], "grid": tab})
+        return normalize_tables(tables)
+    raise RuntimeError(f"{item.id}: the loader read no workbook")
+
+
+def kind_of(selection) -> str:
+    return ASKED if selection.selected is None else WARNED if selection.warned else ANSWERED
 
 
 def _module(name: str, path: Path):
@@ -112,7 +177,9 @@ def experiment_modules():
 
 def items_of(name, run_e2e, limit):
     from training.named.evaluate import load_messy
-    source = (load_messy("dev") if name == "messy" else run_e2e.wtq_dev_sample() if name == "wtq" else run_e2e.fresh_dev_items() if name == "freshdev"
+    with capturing():
+        messy = load_messy("dev") if name == "messy" else None
+    source = (messy if name == "messy" else run_e2e.wtq_dev_sample() if name == "wtq" else run_e2e.fresh_dev_items() if name == "freshdev"
               else run_e2e.load_databench("dev", max_rows=60000))
     return [item for item in source if item.label == "gold"][:limit]
 
@@ -140,6 +207,8 @@ def main() -> int:
     parser.add_argument("--tag", default="parity")
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--resume", action="store_true", help="skip questions already recorded (the stock reader's history then differs)")
+    parser.add_argument("--csv", action="store_true", help="each tab rendered to CSV and read as an upload is (a new measurement, not parity)")
+    parser.add_argument("--record", type=Path, help="a cache folder: a body neither cache holds is sent to the Decisions API and kept here")
     args = parser.parse_args()
     names = args.sets.split(",")
     if any(name not in SETS for name in names):
@@ -147,9 +216,9 @@ def main() -> int:
     torch.set_num_threads(args.threads)
     out = ROOT / "regress" / "results" / "dev_decisions" / args.tag
     out.mkdir(parents=True, exist_ok=True)
-    replay = Replay(PROBE / "cache", out / "misses")
+    replay = Replay(PROBE / "cache", out / "misses", args.record)
     llm.DECISIONS_TRANSPORT = replay
-    engine.sheet.compile_workbook = _capture       # loaders compile through it; the port compiles the captured payload
+    planner = TableQuery()
     run_e2e, summarize = experiment_modules()
     totals = {}
     for name in names:
@@ -161,8 +230,9 @@ def main() -> int:
             done = {json.loads(line)["id"] for line in target.read_text(encoding="utf-8").splitlines() if line.strip()}
         counts = {"n": 0, "misses": 0, "errors": 0, "mismatches": 0, "labels": {}, "reference_labels": {}}
         started = time.time()
-        book, prepared = None, None
-        with open(target, "a" if args.resume else "w", encoding="utf-8", newline="\n") as sink:
+        book, tables = None, None
+        request = contextlib.ExitStack()
+        with request, open(target, "a" if args.resume else "w", encoding="utf-8", newline="\n") as sink:
             for at, item in enumerate(items):
                 if item.id in done:
                     continue
@@ -171,18 +241,26 @@ def main() -> int:
                 row = {"id": item.id, "set": name, "miss": None, "error": None}
                 try:
                     if item.book != book:
-                        book, prepared = None, None
-                        prepared = prepare(payload_of(item))
+                        book, tables = None, None
+                        request.close()
+                        tables = tables_of(item, args.csv)
+                        request.enter_context(scratch_database())
                         book = item.book
-                    said = answer(item.question, prepared)
-                    listed_right = [graded(item, rows) for rows in said.listed_rows]
-                    row.update(kind=said.kind, label=label_of(said.kind, graded(item, said.rows)), mass=said.mass, listed=len(said.listed_rows),
-                               listed_answer=list(said.listed_answers), listed_right=listed_right, choose_p=said.probabilities, read_as=said.read_as)
+                    selection = planner.select_query(item.question, tables)
+                    shown = selection.selected if selection.selected is not None else selection.declined
+                    rows = selection.rows[shown] if shown is not None else ()
+                    kind = kind_of(selection)
+                    listed_right = [graded(item, listed) for listed in selection.rows]
+                    row.update(kind=kind, label=label_of(kind, graded(item, rows)), mass=selection.confidence, listed=len(selection.rows),
+                               listed_answer=[answer_key(listed) for listed in selection.rows], listed_right=listed_right,
+                               choose_p=selection.probabilities, read_as=selection.pool[shown].evidence[0] if shown is not None else "")
                 except ReplayMiss as miss:
-                    book, prepared = None, None
+                    book, tables = None, None
+                    request.close()
                     row.update(kind=ASKED, label="asked", miss=str(miss), listed_answer=None, choose_p=None, listed_right=None)
                 except Exception as error:     # the measurement recorded a failed question as asked, with its error
-                    book, prepared = None, None
+                    book, tables = None, None
+                    request.close()
                     row.update(kind=ASKED, label="asked", error=f"{type(error).__name__}: {str(error)[:160]}", listed_answer=[], choose_p=None, listed_right=[])
                 row["calls"] = list(replay.used)
                 row["seconds"] = round(time.perf_counter() - clock, 3)

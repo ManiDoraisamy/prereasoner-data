@@ -61,14 +61,15 @@ python -m engine.fetch_weights
 The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public and
 requires no account or token. The fetch command pins an immutable repository commit and validates every
 file hash before installation. `HF_TOKEN` is only needed for an explicitly configured private replacement.
-The own-data readers in `engine/data/readers/` are installed only by `training/readers/promote.py`,
-which records each file's SHA-256 in the same manifest
-([../training/readers/README.md](../training/readers/README.md)). No model writes SQL.
+The own-data path loads stock bge-m3 (`engine/named/backbone.py`): a local copy named by
+`NAMED_BACKBONE_DIR/bge-m3`, else the hub cache at its pinned revision; the image bakes it, each file checked
+against the hashes `weights_manifest.json` pins under `base_models`. Its closed questions go to the Decisions
+API with the deployment's `GOOGLE_API_KEY`. No model writes SQL.
 
 ## 3. Run fast tests first
 
 ```powershell
-python -m tests.test_readers
+python -m tests.test_answer
 python -m tests.test_sql_ast
 python -m tests.test_deterministic_emitters
 python -m tests.test_calculations
@@ -231,9 +232,8 @@ release browser test.
 |---|---|---|
 | AST nodes/rendering | `engine/sql_ast.py` | `tests.test_sql_ast` |
 | Dual SQL/Python analysis emission | `engine/deterministic/` | `tests.test_deterministic_emitters` |
-| Own-data readers: schema text, decoding, readings form and builder | `engine/readers/` | `tests.test_readers` |
-| Own-data selection: pool execution, grounding, re-scoring, refusal | `engine/tables.py` (`select_query`), `engine/sql_rank.py` | `tests.test_sql_ast` |
-| Readers training and promotion | `training/readers/` | `tests.test_readers`, a fresh Spider evaluation |
+| The Decisions path: closed questions, decoding, verification, the per-answer decision | `engine/program/` | `tests.test_answer`, `tests.test_program`, `regress.run_dev_decisions` |
+| Own-data selection: the request's grids, the pool, served, warned or asked | `engine/tables.py` (`select_query`), `engine/prepared.py`, `engine/sql_rank.py` | `tests.test_sql_ast` |
 | FK inference | `engine/relations.py` | `tests.test_sql_ast`, `tests.test_master_ingest` |
 | Saved references | `engine/master.py` | `tests.test_master_ingest` |
 | Routing | `engine/routing.py` | `tests.test_routing` |

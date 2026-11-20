@@ -18,8 +18,8 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner`), `POST /api/dimension` (authenticated stateless readout on the shared world encoder), `POST /api/converse` (deterministic answer rendering), `GET /healthz`. Exact-origin CORS, body/rate/row limits. Requests run in parallel; Cloud Run bounds how many an instance serves. |
 | `auth.py` | `_verify_principal`, `_bearer` (security-critical). Test bypass via `AUTH_TEST_SUB`. |
 | `config.py` | the ONE env-var reader (see contract below). |
-| `tables.py` | `TableQuery`; the one own-data selection (`search_pool`, `select_query`), canonical `table_name`, `csv_table` / `table_from_rows`, SQL quoting and table parsing. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |
-| `readers/` | The own-data readers: `search.py` (`ReadingSearch`, loaded once per process by `reading_search()`), `text.py`, `models.py`, `layout.py`, `decode.py`, `readings.py` (the builder), `read_as.py`. |
+| `tables.py` | `TableQuery`; the one own-data selection (`select_query`), canonical `table_name`, `csv_table` / `table_from_rows` and the request table's grid (`table_grid`), SQL quoting and table parsing. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |
+| `program/` | The Decisions path: `answer.py` (`prepare`, `answer`), `closed.py` (the closed questions and the per-answer decision), `stock.py` (the stock reading, loaded once per process by `stock_reader()`), the program language, decoder, verifier and lowering, and the request's store tables (`store.py`). |
 | `knowledge_tables.py` | `KnowledgeTableQuery` (implicit world `word_*` tables, meaning graph, freshness). |
 | `pg.py` | `PgQuery`, `_TableQueryPg`; `_pg()` is fully config-driven (host/port/db/user/sslmode/password). |
 | `resolve_base.py` | `RoutedQuery` (generalized routing + country aliases + States/Elements configs). |
@@ -82,9 +82,8 @@ The engine is a proper package run from the repo root (no `sys.path` hacks).
 The serving path opens: `qwen_lora/` (PEFT adapter for the Qwen base), `encoder.pt`
 (the relational-content readout state_dict) + `encoder_meta.pt` (`{"alloc", "cfg"}`),
 `taxonomy.csv`, `anchor_assignment.npz`, `dim_thresholds.json`, `primitives.npz`, and the
-`word_*.json` world-table metadata. The own-data readers load from `engine/data/readers/` (`stage1/`,
-`stage2_*/`, `rescorer/`, `choice.json`), located relative to the package
-(`engine/readers/search.py:READERS_DIR`). `alloc.json`, `families.json`, and `props_thr.json` are training
+`word_*.json` world-table metadata. The own-data path's stock bge-m3 loads from `NAMED_BACKBONE_DIR/bge-m3` or the
+hub cache at its pinned revision (`engine/named/backbone.py`), which the image bakes. `alloc.json`, `families.json`, and `props_thr.json` are training
 outputs kept beside the bundle; no `engine/` module reads them (see engine/data/README.md). The `*.pt`, `*.npz`, and `qwen_lora/` weights are gitignored (a fresh clone
 has none) — the entrypoint gate reports missing weights at startup (see
 `infra/README.md`).

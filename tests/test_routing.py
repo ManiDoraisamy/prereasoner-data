@@ -214,24 +214,23 @@ def test_injected_attribute_cannot_make_its_own_join_necessary():
 _REPEAT_SCRIPT = (
     "import os, sys\n"
     "sys.path.insert(0, os.environ['PR_ROOT'])\n"
-    "from engine.readers.readings import build\n"
+    "from engine.program.catalog import Catalog\n"
+    "from engine.program.language import Agg, Col, Equals\n"
+    "from engine.program.lowering import to_query\n"
+    "from engine.program.names import SUM\n"
+    "from engine.sheet import compile_workbook, workbook_from_json\n"
     "from engine.sql_ast import render_query\n"
-    "from engine.sql_schema import SchemaGraph\n"
-    "from engine.tables import TableQuery\n"
-    "planner = TableQuery()\n"
-    "tables=[{'name':'t','columns':['city','amount'],'rows':[['Paris',100],['Lyon',80],['Paris',50]]}]\n"
-    "norm,fks=planner.ingest(tables)\n"
-    "block={'tables':['t'],'distinct':False,'select':[[0,'SUM','t.amount',False]],'where':[['t.city','=','Paris']],"
-    "'conj':'AND','group':[],'having':[],'order':[],'dir':None,'limit':None}\n"
-    "q=build({'structure':'single','blocks':[block]}, SchemaGraph.from_tables(norm,fks))\n"
+    "rows=[['city','amount'],['Paris',100],['Lyon',80],['Paris',50]]\n"
+    "catalog=Catalog.from_model(compile_workbook(workbook_from_json({'name':'b','tabs':[{'name':'t','rows':rows}]})))\n"
+    "q=to_query(Agg(SUM, Col('t0', 1), 't0', (Equals(Col('t0', 0), 'Paris'),)), catalog)\n"
     "print('SQL::' + render_query(q))\n"
 )
 
 
 def test_cross_process_sql_repeatability():
-    # Every own-data candidate is a reading the deterministic builder (engine/readers/readings.build) makes a typed
-    # AST, and that construction must be deterministic ACROSS processes (review Finding 4): two fresh interpreters,
-    # same input and reading, byte-identical SQL. Pin threads/hashseed so ordering can't drift.
+    # Every own-data candidate is a program the decoder builds, which lowering (engine/program/lowering.py) makes a
+    # typed AST, and that construction must be deterministic ACROSS processes (review Finding 4): two fresh
+    # interpreters, same sheet and program, byte-identical SQL. Pin threads/hashseed so ordering can't drift.
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     env = {**os.environ, "PR_ROOT": root, "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "PYTHONHASHSEED": "0"}
     outs, err = [], ""
@@ -253,6 +252,7 @@ def test_a_compose_refusal_is_the_answer_in_serving_and_evaluation_alike():
     from types import SimpleNamespace
 
     from engine.compose import ComposeEngine
+    from engine.sql_rank import PoolSelection
     from spider.probe import full_eval
     from tests.test_sql_ast import _hermetic_planner
 
@@ -263,7 +263,7 @@ def test_a_compose_refusal_is_the_answer_in_serving_and_evaluation_alike():
              "rows": [["Paris", "not-a-number"], ["Lyon", "310"], ["Paris", "95"]]}
     reader = SimpleNamespace(present=lambda question: {"GROUP"})
     planner = _hermetic_planner()
-    planner.pool = []                                    # the readers build no reading the upload answers
+    planner.select_query = lambda question, tables: PoolSelection((), (), None)   # no reading the upload answers
     record = full_eval.predict(planner, ComposeEngine(reader=None), reader, [sheet],
                                "total amount by city in Europe")
     assert record["stage"] == "compose_clarify" and record["ok"] is False, record

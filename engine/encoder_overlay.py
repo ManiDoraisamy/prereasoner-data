@@ -75,7 +75,7 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
 class EncoderQuery(TableQuery):
     """TableQuery with the complete runtime bundle loaded: the unified (LoRA-fine-tuned) Qwen encoder and
     the trained relational readout, whose named dimensions type columns and read the intent of composition
-    and world questions. Own-data SQL selection reads questions with the readers (engine/readers/)."""
+    and world questions. Own-data selection reads questions on the Decisions path (engine/program/)."""
 
     def __init__(self, deploy_dir=DATA_DIR):
         super().__init__(deploy_dir)

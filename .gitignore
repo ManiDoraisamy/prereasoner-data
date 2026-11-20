@@ -19,7 +19,7 @@ engine/data/*.npz
 engine/data/*.gguf
 engine/data/qwen_lora/
 engine/data/sql_proposer/
-# The readers' bundle: fetched by its manifest entries, installed only by training/readers/promote.py
+# The retired readers' bundle, still in old local copies: no code reads it and the manifest no longer names it
 engine/data/readers/
 engine/data/*.previous
 !engine/data/README.md

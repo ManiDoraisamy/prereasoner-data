@@ -1,19 +1,18 @@
 # Spider Benchmark — Diagnose and Measure
 
-> **Current planner note.** The own-data SQL layer is one typed-AST planner
-> (`engine/tables.py:select_query`): learned encoder readers (`engine/readers/`) read the question
-> beside the schema as named readings, a deterministic builder makes each reading a typed AST, each
-> candidate runs on an in-memory copy of the database and is grounded, a learned re-scorer orders the
-> eligible ones, and a learned refusal serves the first only when it is confident. No model writes SQL,
-> and selection calls no external model. Start with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the
+> **Current planner note.** The own-data SQL layer is the Decisions path
+> (`engine/tables.py:select_query`, `engine/program/answer.py`): each table of the database is read as a
+> tab of one workbook, the Decisions API (an external closed-choice model) answers closed questions whose
+> options the engine built, the decoder builds programs (each a typed AST over one table), the verifier runs
+> them, and one more closed question weighs those that returned rows, per answer: answered, warned or asked
+> back. No model writes SQL. The program language joins no tables, so a question whose gold joins tables is
+> right only when one table answers it, and every question makes live Decisions calls. Start with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the
 > implementation contract; this document explains the benchmark and its failure taxonomy. The probe
 > sections below come from earlier runs and describe the failure families of earlier planners.
 
 > **Current whole-database result.** [`results/RESULTS.md`](results/RESULTS.md) is the only place
 > accuracy numbers are maintained; it records each served pipeline's `whole_db` result with its source
-> commit, artifact hashes, and the `gold_tables` oracle ablation. The readers' training sources include
-> Spider's dev questions (all but 20 calibration databases; `training/readers/README.md`), so a DEV run
-> is not a held-out measurement of them; the Spider test set appears in no training step.
+> commit, artifact hashes, and the `gold_tables` oracle ablation. The Decisions path trains nothing on Spider.
 
 > **Audience: contributors.** This is both the reproducible benchmark contract and a diagnostic guide.
 > The goal is to localize *why* Prereasoner scores low on Spider before changing anything. This is
@@ -45,7 +44,7 @@ There are **two SQL routes** and a router between them (`engine/knowledge_compos
 | Path | File | Emits | Executes on |
 |---|---|---|---|
 | **Compose** (view-stacking) | `engine/compose.py` + `engine/primitives.py` | one flattened base (single table / FK star-join / world join) → `filter · time_filter · group_agg · having · topn · sort · yoy · running · share · divide`, agg ∈ COUNT/SUM/AVG/MIN/MAX | in-memory **SQLite** |
-| **Typed-AST planner** (own-data) | `engine/tables.py :: TableQuery.select_query` → `engine/readers/` | learned readers' readings built into typed ASTs: projections + `DISTINCT`, `WHERE`, aggregates, `GROUP BY`/`HAVING`, `ORDER BY`/`LIMIT`, FK joins, a nested condition (scalar subquery, `IN`/`NOT IN`), `UNION`/`INTERSECT`/`EXCEPT`, and shares — ordered by a learned re-scorer, with a learned refusal | in-memory **SQLite** (offline) / **Postgres** (live) |
+| **Decisions path** (own-data) | `engine/tables.py :: TableQuery.select_query` → `engine/program/` | programs over one table (a shown cell, an aggregate, a breakdown, a rank, a calculation of two, a check), each a typed AST, chosen per answer by the Decisions API: answered, warned or asked back | the request's **SQLite** database |
 
 Routing: a question whose **learned primitive head** fires a *depth* primitive
 (`EXCL/RATIO/TOPN/SHARE/TIME/HAVING/SORT/DIVIDE/RUNNING`) → **Compose**; everything else → the
@@ -146,7 +145,7 @@ v1's best idea, kept. Every example lands in exactly one bucket:
 
 - **answered-correct** — SQL emitted, executes to the gold denotation.
 - **answered-wrong** — SQL emitted, wrong denotation (or execution error).
-- **refused** — the readers' refusal declined (the evaluator records it as stage `refusal`), or the live
+- **refused** — the Decisions path asked back (the evaluator records it as stage `asked`), or the live
   clarify gate declined (live only; **not reproducible here** — noted, not faked).
 
 Report **answered-accuracy = correct/(correct+wrong)**, **coverage = (correct+wrong)/total**, and
@@ -197,7 +196,7 @@ shows it is inert on Spider — verify that claim, don't assume it.
 ## 6. Motivated-reasoning guard
 
 The three-outcome frame can flatter: every wrong answer reclassified as "correct refusal" inflates the
-honest number. Guards: (a) **no** refusal earns credit: the readers' refusal scores wrong, and the live
+honest number. Guards: (a) **no** refusal earns credit: a question asked back scores wrong, and the live
 clarify gate is not reproduced here; (b)
 the headline is the **scalar-gold** number (unambiguous) plus the strict↔lenient bracket, not a
 cherry-picked bound; (c) `whole_db` is reported next to `gold_tables` so oracle-table-selection advantage
@@ -230,8 +229,8 @@ is visible; (d) hand spot-checks gate the histogram.
 
 ```bash
 # from repo root; deps already present: torch(cpu), transformers, peft, sqlglot (requirements.lock.txt).
-# weights in engine/data/ (python -m engine.fetch_weights) and the readers in engine/data/readers/
-# (installed by training/readers/promote.py).
+# weights in engine/data/ (python -m engine.fetch_weights), stock bge-m3 (NAMED_BACKBONE_DIR or the hub cache),
+# and GOOGLE_API_KEY for the Decisions calls every question makes.
 python -m spider.probe.fetch_data          # dev.json, tables.json, 20 dev SQLite DBs -> spider/data
 python -m spider.probe.static_probe        # Probe A + B
 

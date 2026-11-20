@@ -1,149 +1,112 @@
 # From question to SQL
 
-This walkthrough follows one request through Prereasoner. The important boundary is simple:
-every query that runs is a typed AST the engine validated and rendered itself. Learned encoders read
-the question beside the schema and say what it asks for as named readings: which tables and columns,
-which aggregates, conditions, groups and orderings. A deterministic builder makes each reading a typed
-query, and the engine serves the one a learned re-scorer ranks first among those that run and fit the
-data, when a learned refusal is confident of it. No model writes SQL.
+This walkthrough follows one own-data request through Prereasoner. The important boundary is simple:
+every query that runs is a typed AST the engine built, validated and rendered itself. An external
+closed-choice model, the Decisions API (Gemini, called only through [`engine/llm.py`](../engine/llm.py)),
+answers closed questions whose options the engine built and returns probabilities only: it never writes
+text, SQL or a program. The engine's decoder builds every program from the reading, the verifier runs
+each one, and one more closed question weighs the programs that returned rows. No model writes SQL.
 
-We trace **`"total amount in France"`** through the stack. This happens to need public world data,
-but the own-data planning steps are the same for an ordinary table question.
-
-This world-data example follows the SQL serving path. Grounded world bindings and supported own-data winners also lower into
-one shared plan that emits a SQL view stack and readable ORM/Python stages. The backend is selected
-by request context, after planning. See [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md) for
-that path and its limits; the world example here does not demonstrate Python world execution.
+We trace **`"total amount for East"`** over an uploaded sheet of orders (Region, Product, Amount, Date).
 
 ---
 
-## Stage 1 - the schema is read beside the question
+## Stage 1 - the request's tables are one workbook
 
-[`engine/readers/text.py`](../engine/readers/text.py) writes the schema as the readers read it: each
-table's name and column names split into words, each column's inferred type, and a few of its values.
-The stage-1 model (XLM-R base, [`engine/readers/search.py:ReadingSearch.schema_items`](../engine/readers/search.py))
-reads the question beside one table at a time and scores the table's use and each column's
-(values illustrative):
+Every request table carries its **grid** ([`engine/tables.py:table_grid`](../engine/tables.py)): an
+uploaded sheet's CSV as plain rows, blank rows kept and every cell typed as the planner types cells, or a
+table built from rows (a saved reference, an enrichment table, a Spider database table) as its header and
+rows. The table's own rows are not it: they drop blank rows and canonicalize the header, which destroys the
+structure the sheet compiler reads. Each table is one tab of the workbook, named as the table is.
 
-```
-orders : order id [number] (101, 102, 103) | country [text] (France, Spain, Italy) | amount [number] (50, 80, 30) |
-```
+[`engine/prepared.py:prepared_workbook`](../engine/prepared.py) prepares the workbook once per content and
+keeps it: [`engine/sheet`](../engine/sheet) compiles the tabs into tables (headers, sections, printed
+totals, families of copies), one Decisions call types the text dates
+([`engine/program/dates.py`](../engine/program/dates.py)), the decoder's indexes are warmed and each
+table's targets are listed for the stock reading.
 
-The six most probable tables are kept, and for a table with more than 20 columns its 20 most probable
-columns (`ReadingSearch.prune`).
+## Stage 2 - the question is read
 
-## Stage 2 - the readers read the question as named readings
+The stock reading ([`engine/program/stock.py`](../engine/program/stock.py)) scores the program language's
+named coordinates: the engine's word reader (digits, periods, the sheet's own words) plus stock bge-m3's
+similarity of each target (a table, a column, a value, a printed line's label) to the question's phrases.
+It is a shortlist: it decides which options the reading record offers.
+[`engine/program/closed.py`](../engine/program/closed.py) builds the record (the sheet's description, and
+per slot a closed question over those options, plus the added questions on stated numbers, periods,
+written days, years, value counts and row formulas) and one Decisions call answers it; a second answers
+the value sets when the value question has an answer, and a third, beside them, reads the words the
+question offers as a comparison's two outcomes. The fused reading weighs each API probability against the
+stock reading.
 
-Each stage-2 reader (XLM-R large) reads the question beside the kept tables and scores every fact the
-builder uses ([`engine/readers/layout.py`](../engine/readers/layout.py)): the structure (one block, or two
-joined by `UNION`, `INTERSECT`, `EXCEPT` or a nested condition), and per block each column's select
-aggregate and position, condition operator, grouping, `HAVING`, ordering, each table's use, `DISTINCT`,
-`AND`/`OR`, direction and limit, plus pointers to the spans of the question that hold a value or a limit.
-A reader marked anchored also sees the question's own values listed first beside the columns that hold
-them, matched on the data ("players from college UCLA" lists UCLA beside the college).
+## Stage 3 - the decoder builds programs, the verifier runs them
 
-[`engine/readers/decode.py:candidates`](../engine/readers/decode.py) turns the scores into up to 16 of
-the most probable distinct readings, each with the log probability of the decisions it took:
-
-```
-structure: single
-block 0:   tables [orders]   select [SUM orders.amount]   where [orders.country = "France"]
-```
-
-Generic semantics shape them: a date the question names is read as the engine reads dates
-([`engine/sql_dates.py`](../engine/sql_dates.py)), a column an equality pins to one value is not shown
-again, and a pointed value drops the marks of the list it stood in.
-
-## Stage 3 - the builder makes each reading a typed AST
-
-[`engine/readers/readings.py:build`](../engine/readers/readings.py) assembles each reading out of the
-frozen dataclass nodes in [`engine/sql_ast.py`](../engine/sql_ast.py), joining the tables a block uses
-along the schema's foreign keys:
+The typed k-best decoder ([`engine/program/decoder.py`](../engine/program/decoder.py)) builds the 50 most
+probable programs of the reading in the program language
+([`engine/program/language.py`](../engine/program/language.py)): a shown cell, an aggregate, a breakdown,
+a rank, a calculation of two of them, or a check. Each program means one typed query
+([`engine/program/lowering.py:to_query`](../engine/program/lowering.py)) over the request's store tables
+([`engine/program/store.py`](../engine/program/store.py)), on the request's one database:
 
 ```
-SelectQuery(
-  select   = ( SelectItem( Aggregate("SUM", ColumnRef("orders","amount")) ), ),
-  from_table = "orders",
-  where    = Comparison( ColumnRef("orders","country"), "=", Literal("France") ),
-)
+SELECT SUM("_t0"."c2_n") AS "value" FROM "_t0"
+WHERE ("_t0"."_role" = 'record' AND "_t0"."c0_f" = 'east')
 ```
 
-The node types are a real grammar: `SelectQuery`, `SelectItem`, `Aggregate`, `ColumnRef`, `Comparison`,
-`BooleanExpr`, `OrderTerm`, `Join`, `ScalarSubquery`, `InPredicate`, `DatePart` (the month of a date column,
-for "signed in August", or its year-month, for "total amount by month"), … The builder adds nothing the
-reading does not say except the joins. Each candidate is wrapped as a
-[`ScoredQuery(query, sql, score, evidence, features)`](../engine/sql_candidate.py): the score is the
-decoder's log probability, and the evidence is the reading's plain-English "read as" line
-([`engine/readers/read_as.py`](../engine/readers/read_as.py)). The readers' candidates are pooled, each SQL
-once, most probable first, and the registered calculations (`engine/calculations`) add their expansions.
+The verifier ([`engine/program/verifier.py`](../engine/program/verifier.py)) runs each one and records
+named evidence on its result. The programs that returned rows are the **listed candidates**, each with its
+read-as line in the sheet's own words ([`engine/program/output.py:read_as`](../engine/program/output.py)):
+`the total of Amount on "orders" where Region is "East"`.
 
-## Stage 4 - run each candidate and check it against the data
+## Stage 4 - one choice, per answer
 
-[`engine/tables.py:select_query`](../engine/tables.py) runs every candidate on an in-memory copy of the
-tables, under the SELECT guard and a fixed budget of SQLite VM steps. A query that fails is out. So is one
-that compares a text column with a literal the column never holds while another column does
-(`customer_name = 'Lyon'` when `Lyon` is in the city column), and one that joins two columns the foreign
-keys keep apart ([`engine/sql_grounding.py`](../engine/sql_grounding.py)). The candidates that are
-left are *eligible*. Running is a validity check, not proof of meaning: an eligible query can still answer
-a different question.
+One more Decisions call weighs the listed candidates (each its read-as line and a preview of its answer,
+and "none of these"). Per answer, not per candidate: a candidate's probability is summed over the listed
+candidates returning the same answer ([`engine/program/closed.py:choose_answer`](../engine/program/closed.py)).
+The likeliest answer is **answered** at 0.575 or more, **warned** from 0.42, and **asked back** below that
+or when "none of these" is likelier.
 
-## Stage 5 - re-score, then serve or decline
+[`engine/tables.py:select_query`](../engine/tables.py) records the outcome as a
+[`PoolSelection`](../engine/sql_rank.py): the listed candidates as the pool (each a
+[`ScoredQuery`](../engine/sql_candidate.py): its typed AST, its SQL, its answer's probability and its
+read-as line as evidence), ranked by that probability; the decided candidate as `selected` (with
+`warned`, and the coordinates the runner-up answer reads differently as `uncertain`); the likeliest one as
+`declined` when the path asks back. A question longer than 30 words
+([`engine/decomposition.py:ONE_QUERY_WORDS`](../engine/decomposition.py)) that the path asks back about asks, in an
+analysis, for the decomposition proposal; one it answers is answered.
 
-The re-scorer (XLM-R base, `ReadingSearch.rescore`) reads the question beside each eligible candidate's
-read-as line and the shape of its result, with the decoder's log probability and rank, and orders them.
-Preferences can pick a later eligible candidate: a date the question names keeps the choice to the
-candidates that realize it; a candidate whose SUM or AVG reads only rows its joins repeat, such as a
-report's Total Amount summed once per subscription the report row matched, is served only when every
-eligible candidate does ([`engine/sql_grounding.py`](../engine/sql_grounding.py)); and a calculation intent
-takes the best-ranked candidate that realizes it (`engine/calculations`).
+## Stage 5 - serve, warn or ask
 
-The refusal (`ReadingSearch.confident`, a logistic model fitted on held-out databases) then decides.
-When it is confident, the choice is served and the response's `read_as` is shown as the turn's "read as"
-line. When it is not, nothing is served and the reply says how the best-ranked candidate read the
-question: "I read this as “…”, but I'm not confident that is what you asked"
-([`engine/tables.py:unsure_clarification`](../engine/tables.py)). The response's `planner.selection`
-records the pool counts (how many ran, how many were grounded), the served member's rank, and its log
-probability.
-
-## Stage 6 - render the tree to a SQL string
-
-The winning AST is rendered to `SELECT SUM("amount") FROM "orders" WHERE "country" = 'France'`, guarded
-(SELECT-only), and executed. A served top-1 ranking (`ORDER BY ... LIMIT 1`) is rendered with
-`RANK() OVER` so it keeps every row tied with the first (`sql_ast.keep_ties`).
+In an analysis, as every served request is, the chosen program's one plan
+([`engine/program/lowering.py:to_plan`](../engine/program/lowering.py)) runs through both deterministic
+emitters on the request's database (`TableQuery._execute_deterministic`), in exact decimals, and the rows
+are shown in the sheet's own spelling. The response's `read_as` is the turn's "read as" line. A warned
+answer carries `uncertain` (`coordinates`, `also_read_as`), and the reply gives it as one the engine is not
+sure of ([`engine/answer_presentation.py:terminal_reply`](../engine/answer_presentation.py)). When the path
+asks back, nothing is served and the reply says how the likeliest reading read the question
+([`engine/tables.py:unsure_clarification`](../engine/tables.py)).
 
 ---
 
-## Why this shape (the payoff)
+## Why this shape
 
-Because the models only **read the question**, and the engine **builds, checks and renders the tree**:
+- **Interpretable**: the reading behind the answer is shown as its "read as" line, and the selection
+  record shows how many candidates were listed and the probability of the answer served.
+- **Deterministic where it computes**: the decoder, the lowering and both emitters are deterministic; the
+  only external input is the Decisions API's probabilities over closed options.
+- **Valid by construction**: every candidate is a well-typed AST over the request's own tables, so the
+  planner cannot emit malformed SQL, and a value a filter names is one the sheet holds.
 
-- **Interpretable** — the reading behind the answer is shown as its "read as" line, and the selection
-  record shows how many candidates ran, were grounded, and where the served one ranked.
-- **Deterministic** — the same input and model files yield byte-identical SQL: the models run in fixed
-  precision with no sampling, and ties keep pool order. This is enforced by a cross-process repeatability
-  test in [`tests/test_routing.py`](../tests/test_routing.py).
-- **Valid by construction** — every candidate is a well-typed AST that passes validation before it can
-  win, so the planner cannot emit malformed SQL.
+What the path does not do: the program language reads one table at a time and joins none, so a question
+that needs two tables of a request joined (a saved reference beside an upload, a Spider schema's foreign
+keys) is answered from one table or asked back.
 
-Contrast with a pipeline that executes a model's SQL directly: a column the model invents, a clause it drops,
-or a join it guesses goes straight to the database. Here no model writes SQL; a reading the builder cannot
-make into a valid query is dropped, and one the readers are unsure of is declined with what they read.
+## World queries
 
-## The one caveat in this example: world queries
-
-`"total amount in France"` is a **world** query — `France` is *not* a value in the uploaded cities, so it can
-only be reached by resolving `city → country` against the Wikidata-backed entity store, with
-Schema.org-named typing evidence. The shared router
-([`engine/routing.py:route`](../engine/routing.py)) detects a **necessary world dependency** and lets the
-`ComposeEngine` build a **view-stack** (`world_join → world_filter → group_agg`) instead of a single
-`SelectQuery`. The selected world bindings then lower into the same deterministic plan used by SQL and Python.
-For a purely own-data prompt like `"how many customers in Paris"`, you get the single `SelectQuery` exactly as
-drawn above (`SELECT COUNT(*) … WHERE city = 'Paris'`). For an analytical own-data prompt such as a top-N or
-share, ComposeEngine may supply a multi-view binding; explicit `use=py` or `use=both` lowers that binding through
-the same Python/SQL emitter pair rather than accepting an opaque SQLite answer.
-
-See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for how routing decides own-data vs. world, and
-[`docs/SQL_AST.md`](SQL_AST.md) for the planner in depth.
+`"total amount in France"` over an upload of cities is a **world** query: `France` is not a value of the
+upload, so it can only be reached by resolving `city -> country` against the knowledgebase. The shared
+router ([`engine/routing.py:route`](../engine/routing.py)) detects a necessary world dependency and lets the
+`ComposeEngine` build a view stack (`world_join -> world_filter -> group_agg`); the world bindings lower into
+the same deterministic plan. See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ---
 
@@ -151,16 +114,12 @@ See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for how routing decides own-data v
 
 | Concern | File · symbol |
 |---|---|
-| The schema as the readers read it | `engine/readers/text.py` · `Schema`, `table_text`, `fit` |
-| Schema items, readings, re-scoring, refusal | `engine/readers/search.py` · `ReadingSearch` |
-| The models and their inputs | `engine/readers/models.py` |
-| Outputs to the most probable readings | `engine/readers/decode.py` · `candidates` |
-| Readings to a typed AST | `engine/readers/readings.py` · `build` |
-| The "read as" line | `engine/readers/read_as.py` · `read_as` |
-| The typed AST node grammar | `engine/sql_ast.py` · `SelectQuery`, `SelectItem`, `Aggregate`, `Comparison`, … |
-| One scored candidate | `engine/sql_candidate.py` · `ScoredQuery` |
-| Run and ground the candidates | `engine/tables.py` · `select_query`, `_executable`; `engine/sql_grounding.py` · `grounded_members` |
-| Choose among the eligible candidates | `engine/tables.py` · `_choose`; `engine/sql_rank.py` · `select_ranked_candidate`, `PoolSelection` |
-| Offline SQL → typed AST fixtures and training labels | `regress/sql_import.py` · `import_sql`; never used by serving |
-| Serving entry point (select, render, execute) | `engine/tables.py` · `select_query`, `_serve_ast` |
+| The request table's grid | `engine/tables.py` · `table_grid`, `grid_with_column`, `normalize_tables` |
+| The workbook's preparation, the request database | `engine/prepared.py` · `prepared_workbook`, `RequestDatabase.program_tables`, `RequestDatabase.answered` |
+| The question answered | `engine/program/answer.py` · `prepare`, `answer` |
+| Closed questions and the per-answer decision | `engine/program/closed.py` |
+| The one Decisions client | `engine/llm.py` · `decide` |
+| Programs, their typed AST and plan | `engine/program/language.py`, `decoder.py`, `lowering.py` |
+| The selection record | `engine/sql_rank.py` · `PoolSelection` |
+| Serving entry point (select, plan, execute) | `engine/tables.py` · `select_query`, `_serve_ast`, `serve` |
 | Own-data vs. world routing | `engine/routing.py` · `route`, `compose_owns`, `reads_upload_whole` |

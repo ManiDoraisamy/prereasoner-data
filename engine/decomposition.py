@@ -1,4 +1,5 @@
-"""Bounded natural-language decomposition fused through the one typed-AST planner."""
+"""Bounded natural-language decomposition fused through the one own-data selection (engine/tables.py select_query):
+each subquestion is a leaf the Decisions path answers, its program's plan fused with the others by validated merges."""
 
 from __future__ import annotations
 
@@ -130,239 +131,61 @@ def validate_decomposition(value: object) -> dict[str, Any] | None:
     }
 
 
-def single_branch(candidate) -> bool:
-    """Whether one dual-emitter branch can represent the candidate: a typed SELECT."""
-    from engine.sql_ast import SelectQuery
-
-    return isinstance(candidate.query, SelectQuery)
-
-
-# Questions longer than this many words lie past what the readers read as one query: 99% of their training
-# questions have at most 27 words, the longest calibration question has 29, so the choice's confidence and its
-# threshold say nothing of a longer one, and the multi-goal prompts the shipped complex datasets ask have 39 to 44.
+# The longest question one query is taken to answer when the Decisions path asks back about it: past it, an asked
+# question asks for the decomposition proposal, each subquestion short enough. A longer question the path answers
+# is answered: three of the 896 dev questions (31, 32 and 36 words) are, two of them right; the multi-goal prompts
+# the shipped complex datasets ask have 39 to 44.
 ONE_QUERY_WORDS = 30
 
 
 def one_query_length(question) -> bool:
-    """Whether ``question`` is no longer than the readers read as one query (``ONE_QUERY_WORDS`` words)."""
+    """Whether ``question`` is no longer than one query is taken to answer (``ONE_QUERY_WORDS`` words)."""
     return len(re.findall(r"[^\W_]+", str(question))) <= ONE_QUERY_WORDS
 
 
 def declined_compound(selection, question) -> dict[str, Any] | None:
-    """The decomposition a long question needs when the readers' refusal declined it, or None.
+    """The decomposition a long question needs, or None.
 
-    The readers decline every question longer than ``ONE_QUERY_WORDS`` words, however confident their choice
-    (engine/tables.py:TableQuery._choose); such a question is read as the bounded subquestions of a decomposition
-    proposal instead, each short enough to read. A short one they decline is asked about
-    (engine/tables.py:unsure_clarification)."""
-    if selection is None or selection.selected is not None or selection.declined is None:
+    A question longer than ``ONE_QUERY_WORDS`` words that the one own-data selection
+    (engine/tables.py:TableQuery.select_query) asks back about is read as the bounded subquestions of a decomposition
+    proposal instead, each short enough to read; one it answers is answered. A short one the Decisions path asks back
+    is asked about (engine/tables.py:unsure_clarification)."""
+    if selection is None or selection.selected is not None or one_query_length(question):
         return None
-    if one_query_length(question):
-        return None
-    return {"reason": "the readers read a question this long as a compound question, never as one query"}
+    return {"reason": "a question this long is read as a compound question, never as one query"}
 
 
-def selected_decomposition_required(candidate) -> dict[str, Any] | None:
-    """One selected-AST predicate, shared by the delegate and compose probe."""
-    if candidate is not None and not single_branch(candidate):
-        return {
-            "reason": "the selected typed AST is compound and cannot be represented by one dual-emitter branch"
-        }
-    return None
-
-
-def compound_candidate(searched):
-    """The readers' compound reading that makes a named request need decomposition, or None.
-
-    Compound structure is the readers' most probable reading of the question: the top candidate
-    of the pool (``search_pool``, engine/readers/search.py), whose readings form models set
-    operations, read before any candidate runs. A single-query answer to a multi-goal question is
-    only a fragment of it; the decomposition proposal owns such questions.
-    """
-    top = searched[0] if searched else None
-    return top if selected_decomposition_required(top) is not None else None
-
-
-def ranked_measure_projected(candidate):
-    """The same ranking with its ORDER BY aggregates projected, or None when none is hidden.
-
-    A names-only ranking ("top 2 categories by revenue" read as ``category ... ORDER BY
-    SUM(line_total)``) is the right reading with its measure hidden, and merges and the final
-    ordering need that measure. Projecting an aggregate the ORDER BY already computes changes
-    no row and no order, so this is the same query, not another reading.
-    """
-    from engine.sql_ast import (
-        Aggregate,
-        ASTValidationError,
-        SelectItem,
-        SelectQuery,
-        render_query,
-        validate_query,
-    )
-    from engine.sql_candidate import ScoredQuery
-
-    query = candidate.query
-    if not isinstance(query, SelectQuery) or not query.group_by:
-        return None
-    shown = {item.expression for item in query.select}
-    hidden = tuple(dict.fromkeys(
-        term.expression for term in query.order_by
-        if isinstance(term.expression, Aggregate) and term.expression not in shown
-    ))
-    if not hidden:
-        return None
-    projected = replace(query, select=query.select + tuple(SelectItem(measure) for measure in hidden))
-    try:
-        validate_query(projected)
-    except ASTValidationError:
-        return None
-    return ScoredQuery(projected, render_query(projected), candidate.score,
-                       candidate.evidence + ("leaf:ranked-measure-projected",))
-
-
-def ranked_entity_projected(candidate, node_id: str, question: str, feeds_cross: bool):
-    """Project an over-detailed grouped ranking to its explicitly named entity.
-
-    A cross-input ranking must represent one ranked entity plus its measure. If the typed
-    proposal groups a named category by both category and product, the leaf wording can
-    identify the requested head noun; dropping that extra group key computes the requested
-    category total rather than changing the merge grain. The rewrite is deliberately narrow:
-    exactly one group key must match the ranking head noun, the query must be a limited
-    aggregate ranking, and its projection/order must remain representable after projection.
-    """
-    from engine.sql_ast import (
-        Aggregate,
-        ASTValidationError,
-        ColumnRef,
-        SelectQuery,
-        render_query,
-        validate_query,
-    )
-    from engine.sql_candidate import ScoredQuery
-    from engine.sql_expansion import name_tokens, tokens
-
-    query = candidate.query
-    if (not feeds_cross or not isinstance(query, SelectQuery) or query.having is not None
-            or query.limit is None or len(query.group_by) <= 1
-            or not any(isinstance(term.expression, Aggregate) for term in query.order_by)):
-        return None
-    words = list(tokens(question))
-    rank_at = next((index for index, word in enumerate(words)
-                    if word in {"top", "bottom", "highest", "lowest", "most", "least"}), None)
-    if rank_at is None:
-        return None
-    by_at = next((index for index in range(rank_at + 1, len(words))
-                  if words[index] == "by"), None)
-    if by_at is None:
-        return None
-    entity_words = words[rank_at + 1:by_at]
-    while entity_words and (entity_words[0].isdigit()
-                            or entity_words[0] in {"the", "a", "an"}):
-        entity_words.pop(0)
-    if any(word in {"and", "or"} for word in entity_words):
-        return None
-    if entity_words and entity_words[-1] in {"name", "names", "entity", "entities"}:
-        entity_words.pop()
-    if not entity_words:
-        return None
-    head = entity_words[-1]
-    matches = [
-        group for group in query.group_by
-        if isinstance(group, ColumnRef) and head in name_tokens(group.name)
-    ]
-    if len(matches) != 1:
-        return None
-    entity = matches[0]
-    # Do not silently change an ordering or projection that depends on the discarded key.
-    if any(
-        not isinstance(term.expression, Aggregate) and term.expression != entity
-        for term in query.order_by
-    ):
-        return None
-    ranking_measures = {
-        term.expression for term in query.order_by
-        if isinstance(term.expression, Aggregate)
-    }
-    projected_items = tuple(
-        item for item in query.select
-        if item.expression == entity or item.expression in ranking_measures
-    )
-    if not any(item.expression == entity for item in projected_items):
-        return None
-    projected = replace(query, select=projected_items, group_by=(entity,))
-    try:
-        validate_query(projected)
-    except ASTValidationError:
-        return None
-    return ScoredQuery(
-        projected,
-        render_query(projected),
-        candidate.score,
-        candidate.evidence + (f"leaf:ranked-entity-projected:{node_id}:{entity.name}",),
-    )
-
-
-def leaf_candidates(selection, node_id: str, question: str, feeds_cross: bool):
-    """Return all single-query readings in selection order, with named measures projected.
-
-    Readings follow the selection's order, with its choice first and each names-only ranking
-    projected with its measure. A choice that found nothing stays first: a leaf is a step of the
-    plan, not the answer, and an empty one is sound ("customers who never ordered" takes nothing
-    away when none is missing). The caller must enforce the measure and ranking-grain
-    contracts separately: a lower-ranked pool member may be compatible even when the
-    preferred reading is not.
-    """
-    first = selection.declined if selection.found_nothing else selection.selected
-    order = [first] if first is not None else []
-    order += [index for index in selection.ranking if index != first]
-    readings = []
-    seen_sql = set()
-    for index in order:
-        candidate = selection.pool[index]
-        if not single_branch(candidate):
-            continue
-        reading = ranked_measure_projected(candidate) or candidate
-        for option in (reading, ranked_entity_projected(
-                reading, node_id, question, feeds_cross)):
-            if option is not None and option.sql not in seen_sql:
-                seen_sql.add(option.sql)
-                readings.append(option)
-    return readings
+def leaf_candidates(selection):
+    """A leaf's readings: (pool index, candidate) of every listed candidate in the selection's ranking, its likeliest
+    answer first. A leaf the path would ask back about keeps its readings: a leaf is a step of the plan, not the
+    answer, and its contracts below choose among them."""
+    return [(index, selection.pool[index]) for index in selection.ranking]
 
 
 @dataclass(frozen=True)
 class SearchProbe:
-    """The readers' reading of a question over a request's tables (``search_probe``): whether it is compound,
-    the one own-data selection over a single-query reading (None for a compound one), and the planner's column
-    records it was read on."""
+    """The one own-data selection over a request's tables (``search_probe``): the decomposition a long question needs,
+    the selection (None when the question needs one), and the planner's column records it was read on."""
     decomposition_required: dict[str, Any] | None
     selection: Any
     schema: tuple
 
 
 def search_probe(planner, tables, question) -> SearchProbe:
-    """Probe: do the readers read the question as compound, and do they read it from the upload?
+    """Probe: does the question need a decomposition, and does the upload answer it?
 
-    Compound is the same predicate the own-data serve path applies (``compound_candidate``: the
-    readers' most probable reading is a set operation). The compose path must consult it BEFORE
-    building a composition: a multi-goal question's surface ("top ...") can satisfy the
-    compose gate, and a composed top-N would then answer one fragment of the question.
-    A single-query reading runs the one own-data selection (``select_query``), whose accepted
-    reading tells routing that the upload answers the question (``engine.routing.reads_upload_whole``);
-    the delegate's own selection reuses the readers' pool and scores. A failed probe must not
-    authorize a partial composed answer.
-    """
-    from engine.sql_schema import SchemaGraph
-
+    A question longer than one query answers needs the decomposition proposal (``declined_compound``); the compose
+    path consults that BEFORE building a composition, since a multi-goal question's surface ("top ...") can satisfy
+    the compose gate and a composed top-N would answer one fragment of it. The one own-data selection
+    (``select_query``) answers a shorter one, and its decided reading tells routing that the upload answers the
+    question (``engine.routing.reads_upload_whole``); the delegate's selection is the same answer, once per request
+    (engine/prepared.py RequestDatabase.answered). A failed probe must not authorize a partial composed answer."""
     try:
         norm, inferred_fks = planner.ingest(tables)
-        schema, _, tablemap = planner.schema(norm, inferred_fks)
-        graph = SchemaGraph.from_planner(schema, inferred_fks)
-        searched = tuple(planner.search_pool(question, norm, inferred_fks, schema, graph=graph))
-        required = selected_decomposition_required(compound_candidate(searched))
-        selection = None if required is not None else planner.select_query(
-            question, norm, inferred_fks, schema, tablemap, searched=searched, graph=graph)
-        return SearchProbe(required or declined_compound(selection, question), selection, tuple(schema))
+        schema, _, _tablemap = planner.schema(norm, inferred_fks)
+        selection = planner.select_query(question, norm)
+        required = declined_compound(selection, question)
+        return SearchProbe(required, None if required is not None else selection, tuple(schema))
     except Exception as exc:
         raise DecompositionError(
             "could not check the selected query for decomposition"
@@ -392,50 +215,6 @@ def ranked_leaf_grain_rejection(node_id: str, selected, feeds_cross: bool) -> st
     )
 
 
-def leaf_measure_rejection(node_id: str, question: str, selected, pool) -> str | None:
-    """Model-facing rejection when a leaf does not sum, or rank by, the measure it names.
-
-    A leaf such as "top 3 products by units sold" names a transactional measure that must be
-    summed. When the candidate pool proves the named measure can be summed, a plan that sums
-    another column (units where the question says spend) or nothing, or a ranking ordered by
-    anything but that measure, would return a confident wrong answer; the proposal is rejected
-    instead so the proposer can restate the leaf with the aggregation explicit.
-    """
-    from engine.sql_ast import Aggregate, SelectQuery
-    from engine.sql_expansion import implicit_sum_measures, name_tokens, tokens
-
-    measures = implicit_sum_measures(tokens(question))
-    if not measures:
-        return None
-    wanted = frozenset().union(*(measure.column_words for measure in measures))
-
-    def named(expression) -> bool:
-        name = getattr(getattr(expression, "operand", None), "name", None)
-        return (isinstance(expression, Aggregate) and name is not None
-                and bool(set(name_tokens(name)) & wanted))
-
-    def sums_named(query) -> bool:
-        return any(named(item.expression) for item in query.select)
-
-    if not any(isinstance(getattr(candidate, "query", None), SelectQuery)
-               and sums_named(candidate.query) for candidate in pool):
-        return None
-    if not sums_named(selected):
-        return (
-            f"subquestion {node_id!r} names a summed measure but its selected "
-            "plan does not aggregate it; restate this subquestion with the "
-            "aggregation explicit (for example 'total quantity sold' or "
-            "'total revenue')"
-        )
-    if selected.limit is not None and selected.order_by and not any(
-            named(term.expression) for term in selected.order_by):
-        return (
-            f"subquestion {node_id!r} ranks by something other than the summed "
-            "measure it names; restate it as a ranking by that total"
-        )
-    return None
-
-
 def unstated_cutoff_rejection(node_id: str, question: str, limit: int | None) -> str | None:
     """Model-facing rejection when a leaf keeps a row cutoff the question never states.
 
@@ -463,7 +242,6 @@ def build_decomposed_plan(
     planner,
     slug: str,
     tables: list[dict],
-    schema: list[dict],
     foreign_keys: list[dict] | tuple[dict, ...],
     proposal: dict[str, Any],
     *,
@@ -532,7 +310,6 @@ def build_decomposed_plan(
         outputs[node_id] = str(child.output)
         row_bounds[node_id] = _row_bound(child, str(child.output))
 
-    tablemap = {table["name"]: table for table in tables}
     for node in proposal["subquestions"]:
         # Reject a proposed cutoff before leaf selection can hide its violation
         # behind an unrelated unsupported-plan error.
@@ -546,7 +323,7 @@ def build_decomposed_plan(
                     if rejection:
                         raise DecompositionError(rejection)
         readings = _leaf_readings(
-            planner, slug, node, tables, schema, foreign_keys, tablemap,
+            planner, slug, node, tables,
             feeds_cross=node["id"] in cross_inputs, question=question,
         )
         first = next(readings)
@@ -650,49 +427,33 @@ def build_decomposed_plan(
     )
 
 
-def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, *,
-                   feeds_cross: bool, question: str):
+def _leaf_readings(planner, slug, node, tables, *, feeds_cross: bool, question: str):
     """Yield a leaf's contract-compatible readings, lowered and named for the root slug.
 
-    Readings come in the selection's order (`leaf_candidates`). Raises DecompositionError,
-    naming the first reason a reading failed, when the leaf has none: the model restates the leaf
-    (a bounded correction).
+    Readings come in the selection's order (`leaf_candidates`), each its program's one plan with its tables declared
+    whole, so the leaves' plans over one table fuse (sql_rank.PoolSelection.plan). Raises DecompositionError, naming
+    the first reason a reading failed, when the leaf has none: the model restates the leaf (a bounded correction).
     """
     from engine.analysis import analysis_view_name
-    from engine.deterministic.lower import (
-        UnsupportedDeterministicPlan,
-        lower_select_query,
-    )
+    from engine.deterministic.lower import UnsupportedDeterministicPlan
 
-    selection = planner.select_query(node["question"], tables, foreign_keys, schema, tablemap)
-    candidates = selection.pool
-    if not candidates:
+    selection = planner.select_query(node["question"], tables)
+    if not selection.pool:
         raise DecompositionError(
             f"subquestion {node['id']!r} produced no typed AST candidate"
         )
-    options = leaf_candidates(selection, node["id"], node["question"], feeds_cross)
-    if not options:
-        raise DecompositionError(
-            f"subquestion {node['id']!r} requires an unsupported compound query"
-        )
+    options = leaf_candidates(selection)
     first_rejection = None
     first_guard_failure = None
     first_lowering_failure = None
     found = False
-    # Pool order is the selection's order, but compatibility with the typed AST does
-    # not imply compatibility with the stricter dual-emitter subset. Try each
-    # already-ranked, contract-compatible reading before clarifying. This preserves
-    # all semantic and deterministic guards while avoiding a false failure caused
-    # solely by an unsupported top-ranked representation.
-    for option in options:
+    for index, option in options:
         ok, reason = planner.guard(option.sql)
         if not ok:
             if first_guard_failure is None:
                 first_guard_failure = reason
             continue
-        rejection = leaf_measure_rejection(
-            node["id"], node["question"], option.query, candidates
-        ) or ranked_leaf_grain_rejection(
+        rejection = ranked_leaf_grain_rejection(
             node["id"], option.query, feeds_cross
         ) or unstated_cutoff_rejection(
             node["id"], question, option.query.limit
@@ -702,16 +463,7 @@ def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, 
                 first_rejection = rejection
             continue
         try:
-            child = lower_select_query(
-                node["id"],
-                option.query,
-                schema,
-                foreign_keys,
-                # A natural-language leaf such as "for each purchase" can be selected
-                # as a typed SELECT * even when its downstream merge only needs named
-                # dimensions. Normalize that AST before either emitter is built.
-                expand_stars=True,
-            )
+            child = selection.plan(index, node["id"], whole_tables=True)
         except UnsupportedDeterministicPlan as exc:
             if first_lowering_failure is None:
                 first_lowering_failure = exc
@@ -740,6 +492,7 @@ def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, 
             ),
             output=names[child.output],
         )
+
     if found:
         return
     if first_rejection is not None:
@@ -822,7 +575,10 @@ def _inherited_order(views, source: str):
 
     view = next(item for item in views if item.name == source)
     if isinstance(view, SortedView):
-        return view.order
+        # A sort that drops a value it ranks by (``shown``: a listing in the order its values first appear ranks by
+        # the line each first appears on) passes on its order over the values it keeps; its rows keep the rest.
+        return tuple(item for item in view.order
+                     if not view.shown or not isinstance(item.value, ViewValue) or item.value.name in view.shown)
     if isinstance(view, AntiJoinView):
         return view.order
     if isinstance(view, CrossView):

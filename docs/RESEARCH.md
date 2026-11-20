@@ -1,5 +1,7 @@
 # Prereasoner - research positioning
 
+> **Status (2026-11-20).** The trained own-data readers this document describes (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change. The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); what this document says of the readers is historical.
+
 This document explains the approach, the evidence behind it, and the limits of the claims. For
 the implementation, see [ARCHITECTURE.md](ARCHITECTURE.md). For model reproduction, see
 [../training/README.md](../training/README.md). Each claim should point to a test, artifact, or

@@ -2,11 +2,9 @@
 
 "How many transfers were signed in August?", "leads submitted after August 10, 2026" and "contracts
 signed before July 10, 2026" were planned without their date (2026-10-02): no month name was read, and
-"10" and "2026" were read as a number and a year. The readers' date condition on a date column becomes the
-typed comparisons of the phrase it names (engine/readers/decode.py), the served selection prefers a query
-that realizes them
-(TableQuery.select_query), and the coverage gate (KnowledgeQuery._uncovered) reads from the same
-comparisons which calendar words a query realized.
+"10" and "2026" were read as a number and a year. A phrase becomes the typed comparisons it names, the
+calculations read a question's months by them (``period_grouping``), and the coverage gate
+(KnowledgeQuery._uncovered) reads from the same comparisons which calendar words a query realized.
 
 A phrase names a day ("August 10, 2026", "August 10th, 2026", "10 August 2026", "the 10th of August
 2026", "2026-08-10"), a month ("August", "August 2026") or a quarter ("Q3 2026", "the third quarter of
@@ -30,12 +28,10 @@ import re
 from typing import Sequence
 
 from engine.sql_ast import (
-    BooleanExpr,
     ColumnRef,
     Comparison,
     DatePart,
     Literal,
-    SelectQuery,
     SQLType,
     month_of_date_sql,
     year_month_of_date_sql,
@@ -162,7 +158,7 @@ def _year(tokens: Sequence[str], index: int) -> int | None:
 
 
 def _mentions(question: str, tokens: tuple[str, ...]) -> list[_Mention]:
-    from engine.readers.numerals import number
+    from engine.sql_expansion import parse_number as number
 
     found: list[_Mention] = []
     claimed: set[int] = set()
@@ -451,57 +447,6 @@ def period_grouping(tokens: Sequence[str], schema) -> int | None:
         if token == "monthly" or (token == "month" and index > 0 and tokens[index - 1] in _PERIOD_LEADS):
             return index
     return None
-
-
-def served_date_phrases(question: str, tokens: Sequence[str], schema) -> tuple[DatePhrase, ...]:
-    """The phrases a query over ``schema`` (a SchemaGraph) can realize: only where a date column takes
-    their comparisons. A lone month that is a value of the data ("the first name April", a text month
-    column's "may") stays that value, and a quarter column keeps its quarters ("total points scored in
-    the first quarter" of a game read months 1-3, review 2026-10-02)."""
-    if not any(column.ref.type == SQLType.DATE for column in schema.columns):
-        return ()
-    quarter_column = any(word in {"quarter", "qtr"} for column in schema.columns
-                         for word in re.findall(r"[a-z]+", column.ref.name.lower()))
-    return tuple(phrase for phrase in date_phrases(question, tokens)
-                 if not (quarter_column and any(token in QUARTERS or token == "quarter"
-                                                for token in tokens[phrase.start:phrase.end]))
-                 and (phrase.year is not None or phrase.day is not None
-                      or not any(schema.value_index.get(token) for token in tokens[phrase.start:phrase.end]
-                                 if token in MONTHS or token in QUARTERS)))
-
-
-def _comparison_key(comparison: Comparison):
-    left = comparison.left
-    side = ((left.part,) + (left.operand.table, left.operand.name) if isinstance(left, DatePart)
-            else (left.table, left.name) if isinstance(left, ColumnRef) else None)
-    right = comparison.right
-    value = str(right.value) if isinstance(right, Literal) else None
-    return side, comparison.operator, value
-
-
-def _where_comparisons(predicate):
-    if isinstance(predicate, Comparison):
-        yield predicate
-    elif isinstance(predicate, BooleanExpr) and predicate.operator == "AND":
-        for term in predicate.terms:
-            yield from _where_comparisons(term)
-
-
-def realizes_dates(query, phrases: Sequence[DatePhrase]) -> bool:
-    """Whether ``query`` keeps the rows every phrase names: its WHERE holds each phrase's comparisons on
-    one date column, however a proposer typed the literal."""
-    if not phrases or not isinstance(query, SelectQuery):
-        return False
-    present = {_comparison_key(comparison) for comparison in _where_comparisons(query.where)}
-    columns = {comparison.left.operand if isinstance(comparison.left, DatePart) else comparison.left
-               for comparison in _where_comparisons(query.where)
-               if isinstance(comparison.left, (ColumnRef, DatePart))}
-    return all(
-        any((wanted := phrase.comparisons(column))
-            and all(_comparison_key(comparison) in present for comparison in wanted)
-            for column in columns)
-        for phrase in phrases
-    )
 
 
 def realized_month_words(question: str, sql: str) -> frozenset[str]:

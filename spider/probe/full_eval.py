@@ -4,10 +4,11 @@ The live stack routes each question (ComposedKnowledgeQuery._composed):
   * a question whose LEARNED primitive head fires a DEPTH primitive
     (EXCL/RATIO/TOPN/SHARE/TIME/HAVING/SORT/DIVIDE/RUNNING) -> the ComposeEngine view stack;
   * everything else -> the delegate, whose SQL for a self-contained (no-world) table is the own-data
-    planner (tables.py select_query -> engine/readers): learned encoder readers read the question beside the
-    schema, a deterministic builder makes each reading a typed SQL AST (FK joins, conditions, groups, order,
-    limits, set operations, nested conditions, shares), the pool runs, and a learned re-scorer and refusal
-    choose.
+    planner (tables.py select_query -> engine/program/answer.py): the Decisions path reads each table of the
+    database as a tab of one workbook, closed questions over options the engine built read the question, the
+    decoder builds programs (each a typed SQL AST over one table: the program language joins no tables), the
+    verifier runs them, and one choice call weighs those that returned rows; the likeliest answer is answered,
+    warned or asked back. A question whose gold joins tables can be right only when one table answers it.
 
 The default `--backend sql` preserves the established selected-SQL evaluation. `python` lowers the same
 selected typed AST to the shared deterministic plan and executes its generated ORM/Python program on an
@@ -17,12 +18,13 @@ model, candidate pool, ranking, gold query, input cap, or the existing `spider_e
 contract. World resolution is irrelevant to self-contained Spider and the live clarify gate remains omitted;
 a refusal would still score wrong, so that omission can only make the benchmark an upper bound.
 
-Selection is the served one: `TableQuery.select_query` (readers + pool execution + grounding + re-scorer), loaded
-from the same runtime bundle the service loads, so the evaluator measures the shipped pipeline and cannot
-drift from it. --selection pool_oracle runs that same selection, then executes the ENTIRE pool and scores the
-example by its best member: an explicitly labeled oracle ablation (like --config gold_tables) that measures
-candidate-pool recall — the ceiling any selection improvement can reach — and is never a serving mode; gold rows
-stay inside the evaluator and never reach prediction. Denotation is compared on the REAL gold rows; we report
+Selection is the served one: `TableQuery.select_query` (the Decisions path), with the same runtime bundle and stock
+reader the service loads, so the evaluator measures the shipped pipeline and cannot drift from it. Every question makes
+live Decisions calls (engine/llm.py: a key, and their cost), unless engine.llm.DECISIONS_TRANSPORT replays recorded
+ones. --selection pool_oracle scores the example by the best of the candidates that path listed (each ran to be listed):
+an explicitly labeled oracle ablation (like --config gold_tables) that measures candidate-pool recall — the ceiling any
+choice improvement can reach — and is never a serving mode; gold rows stay inside the evaluator and never reach
+prediction. Denotation is compared on the REAL gold rows; we report
 the clean SCALAR-gold accuracy (unambiguous), lenient containment (generous UB), and strict row-set equality
 (harsh LB) so the true number is bracketed.
 Spider's declared relationships enter `TableQuery.ingest` as explicit_fks; serving merges them with the
@@ -82,30 +84,6 @@ class _DeterministicCandidateError(RuntimeError):
         self.metadata = metadata
 
 
-def _lower_python_candidate(candidate, tables, schema, foreign_keys):
-    """Lower one selected AST and return its plan plus serving row estimate."""
-    from engine.deterministic import lower_select_query
-    from engine.deterministic.lower import UnsupportedDeterministicPlan
-    from engine.sql_ast import SelectQuery
-
-    if not isinstance(candidate.query, SelectQuery):
-        raise UnsupportedDeterministicPlan(
-            "deterministic Python requires a SELECT query"
-        )
-    plan = lower_select_query(
-        "spider_query",
-        candidate.query,
-        schema,
-        foreign_keys,
-    )
-    estimated_rows = sum(
-        len(table.get("rows") or ())
-        for table in tables
-        if table.get("name") in plan.views[0].tables
-    )
-    return plan, estimated_rows
-
-
 def _execute_python_candidate(enc, plan, tablemap, schema):
     """Execute one lowered generated ORM/Python program through serving's executor (TableQuery.execute on a
     request database, engine/prepared.py), with the Python program forced.
@@ -135,7 +113,7 @@ def _source_paths(root):
     return paths
 
 
-def _input_paths(data, dbs, db_ids, *, include_encoder=True):
+def _input_paths(data, dbs, db_ids):
     """Every file a run reads apart from the model bundle, which validate_weight_bundle fingerprints whole:
     the questions and schemas, the databases the picked examples read, the encoder and every source file.
     The databases were left out, so a changed row kept a --resume checkpoint valid (release review,
@@ -146,8 +124,8 @@ def _input_paths(data, dbs, db_ids, *, include_encoder=True):
     return {
         "dev": os.path.join(data, "dev.json"),
         "tables": os.path.join(data, "tables.json"),
-        **({"encoder": DATA_DIR / "encoder.pt", "encoder_meta": DATA_DIR / "encoder_meta.pt"}
-           if include_encoder else {}),
+        "encoder": DATA_DIR / "encoder.pt",
+        "encoder_meta": DATA_DIR / "encoder_meta.pt",
         **{f"dbs/{db_id}.sqlite": os.path.join(dbs, db_id + ".sqlite") for db_id in db_ids},
         **_source_paths(ROOT),
     }
@@ -227,195 +205,102 @@ def _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execu
         if schema_cache is not None:
             schema_cache[cache_key] = cached
     norm, fks, sch, tmap = cached
-    chosen = enc.select_query(question, norm, fks, sch, tmap)
+    chosen = enc.select_query(question, norm)
     candidates = chosen.pool
     evidence = {
         "candidate_count": len(candidates),
-        "executed_candidate_count": sum(chosen.executable),
         "selected_candidate_rank": chosen.selected,
         "selection": chosen.record(),
     }
-    if getattr(enc, "named_reader", None) is not None:
-        from engine.readers.grammar import replay_query_trace
-        result = enc.named_reader.last_named_result
-        evidence["named_trace"] = result["named_trace"]
-        replayed = replay_query_trace([{"role": "user", "content": question}],
-                                     enc.named_reader.last_named_graph, result["named_trace"])
-        evidence["named_trace_replayed"] = (replayed is None) == (result["query"] is None)
-        if chosen.candidate is not None:
-            evidence["served_named_trace"] = chosen.candidate.named_trace
-            from engine.sql_rank import replay_served_query_trace
-            from engine.sql_ast import query_to_tree
-            served = replay_served_query_trace(
-                [{"role": "user", "content": question}], enc.named_reader.last_named_graph,
-                chosen.candidate.named_trace)
-            evidence["served_named_trace_replayed"] = query_to_tree(served) == query_to_tree(chosen.candidate.query)
 
-    def execute(candidate):
-        ok, why = enc.guard(candidate.sql)
-        if not ok:
-            raise RuntimeError(f"guard: {why}")
-        # As serving executes a query it could not lower: its AST in the exact decimal dialect.
-        return enc.execute(tmap, sch, candidate.sql, query=candidate.query)
-
-    def execute_selected(candidate, sql_rows=None):
+    def execute_selected(index):
+        """The chosen program's rows, as the backend asks: sql, the rows the choice read on the candidates' floats
+        (what serving answers outside an analysis, engine/tables.py _serve_ast); python, auto and verify, its one plan
+        through the generated Python program (auto: the candidates' rows when it reads more rows than the limit)."""
         metadata = {
             "execution_backend_requested": execution_backend,
             "execution_backend_actual": "sql",
             "python_lowerable": None,
             "python_sql_equal": None,
         }
+        sql_rows = [list(row) for row in chosen.rows[index]]
         if execution_backend == "sql":
-            if sql_rows is None:
-                _, sql_rows = execute(candidate)
             return sql_rows, metadata
 
         from engine.deterministic.lower import UnsupportedDeterministicPlan
         from engine.deterministic.operators import PythonRowLimitExceeded
 
+        estimated_rows = chosen.estimated_rows(index)
         try:
-            plan, estimated_rows = _lower_python_candidate(
-                candidate, norm, sch, fks
-            )
+            plan = chosen.plan(index, "spider_query")
         except UnsupportedDeterministicPlan as exc:
-            metadata.update(
-                python_lowerable=False,
-                python_fallback_reason=str(exc),
-            )
+            metadata.update(python_lowerable=False, python_fallback_reason=str(exc))
             if execution_backend != "auto":
                 raise _DeterministicCandidateError(str(exc), metadata) from exc
-            if sql_rows is None:
-                _, sql_rows = execute(candidate)
             return sql_rows, metadata
-
-        metadata.update(
-            python_lowerable=True,
-            python_estimated_rows=estimated_rows,
-        )
+        metadata.update(python_lowerable=True, python_estimated_rows=estimated_rows)
         if execution_backend == "auto" and estimated_rows > python_row_limit:
-            metadata["python_fallback_reason"] = (
-                f"estimated rows {estimated_rows} exceed limit {python_row_limit}"
-            )
-            if sql_rows is None:
-                _, sql_rows = execute(candidate)
+            metadata["python_fallback_reason"] = f"estimated rows {estimated_rows} exceed limit {python_row_limit}"
             return sql_rows, metadata
-
         try:
-            python_rows = _execute_python_candidate(enc, plan, tmap, sch)
+            python_rows = [list(row) for row in chosen.shown(index, _execute_python_candidate(enc, plan, tmap, sch))]
         except PythonRowLimitExceeded as exc:
             metadata["python_fallback_reason"] = str(exc)
             if execution_backend != "auto":
                 raise _DeterministicCandidateError(str(exc), metadata) from exc
-            if sql_rows is None:
-                _, sql_rows = execute(candidate)
             return sql_rows, metadata
         except Exception as exc:
             metadata["python_execution_error"] = f"{type(exc).__name__}: {exc}"
             if execution_backend == "auto":
-                metadata["python_fallback_reason"] = metadata[
-                    "python_execution_error"
-                ]
-                if sql_rows is None:
-                    _, sql_rows = execute(candidate)
+                metadata["python_fallback_reason"] = metadata["python_execution_error"]
                 return sql_rows, metadata
-            raise _DeterministicCandidateError(
-                metadata["python_execution_error"], metadata
-            ) from exc
-
+            raise _DeterministicCandidateError(metadata["python_execution_error"], metadata) from exc
         metadata["execution_backend_actual"] = "python"
         if execution_backend in {"auto", "verify"}:
-            if sql_rows is None:
-                _, sql_rows = execute(candidate)
-            metadata["python_sql_equal"] = bool(
-                compare(sql_rows, python_rows).get("strict")
-            )
+            metadata["python_sql_equal"] = bool(compare(sql_rows, python_rows).get("strict"))
             if execution_backend == "verify" and not metadata["python_sql_equal"]:
-                raise _DeterministicCandidateError(
-                    "Python and selected SQL candidate disagree", metadata
-                )
-            # Observation must not change the graded answer. Serving AUTO does
-            # not execute the original candidate to override successful Python;
-            # doing that only here hides both tie-policy changes and real bugs.
+                raise _DeterministicCandidateError("Python and the candidates' rows disagree", metadata)
+            # Observation must not change the graded answer: serving answers the plan's rows.
         return python_rows, metadata
 
     if not candidates:
-        return {"ok": False, "error": "no connected AST candidate",
-                "stage": "ast_search", "path": "ast", **evidence}
+        return {"ok": False, "error": "no candidate returned rows", "stage": "ast_search", "path": "ast", **evidence}
     if selection == "pool_oracle":
-        # Oracle ablation (never serving): execute EVERY pooled candidate so the EVALUATOR can score
-        # the example by its best member: the pool's recall, separate from the served ranking. Gold rows
-        # stay in the evaluator; prediction never sees them.
-        import sqlite3
-
-        from engine.sql_rank import execution_op_limit
-
-        from engine.prepared import RequestDatabase
-
-        database = RequestDatabase()
-        connection = database.load(tmap, sch)
-        pool = []
-        for rank, candidate in enumerate(candidates):
-            entry = {"rank": rank, "sql": candidate.sql,
-                     "score": candidate.score,
-                     "features": dict(candidate.features),
-                     "evidence": list(candidate.evidence),
-                     "executable": chosen.executable[rank],
-                     "grounded": chosen.grounded[rank],
-                     "eligible": chosen.executable[rank] and chosen.grounded[rank],
-                     "calculation_satisfied": chosen.calculation_satisfied[rank],
-                     "date_satisfied": chosen.date_satisfied[rank],
-                     "double_counted": chosen.double_counted[rank]}
-            ok, why = enc.guard(candidate.sql)
-            if not ok:
-                entry["error"] = f"guard: {why}"
-            else:
-                # Each member under the step budget serving gives it (engine.sql_rank.execution_op_limit).
-                connection.set_progress_handler(lambda: 1, execution_op_limit(candidate.query, tmap))
-                try:
-                    entry["rows"] = [list(row) for row in connection.execute(candidate.sql).fetchall()]
-                except sqlite3.Error as exc:
-                    entry["error"] = f"{type(exc).__name__}: {exc}"
-            pool.append(entry)
-        database.close()
-        executed = sum(1 for entry in pool if "rows" in entry)
-        result = {"ok": executed > 0, "path": "ast", "pool_execution": pool, **evidence}
-        if not executed:
-            result.update(error=pool[0]["error"], stage="ast_search")
-        return result
-    candidate = chosen.candidate
-    if candidate is None:
-        # Why nothing is served: no candidate ran, none that ran is grounded, or the readers' refusal is not
-        # confident of the eligible ones or the one it chose found nothing.
-        if chosen.found_nothing:
-            error, stage = "the chosen candidate's result holds nothing", "refusal"
-        elif chosen.ranking:
-            error, stage = "the readers are not confident of any eligible candidate", "refusal"
-        elif any(chosen.executable):
-            error, stage = "no executable candidate is grounded", "grounding"
-        else:
-            error, stage = "no executable candidate", "ast_search"
-        return {"ok": False, "error": error, "stage": stage, "path": "ast", **evidence}
+        # Oracle ablation (never serving): every listed candidate's rows, which the Decisions path ran to list it,
+        # so the EVALUATOR can score the example by its best member: the pool's recall, separate from the choice.
+        # Gold rows stay in the evaluator; prediction never sees them.
+        pool = [{"rank": rank, "sql": candidate.sql, "score": candidate.score, "evidence": list(candidate.evidence),
+                 "eligible": True, "rows": [list(row) for row in chosen.rows[rank]]}
+                for rank, candidate in enumerate(candidates)]
+        return {"ok": True, "path": "ast", "pool_execution": pool, **evidence}
+    index = chosen.selected
+    if index is None:
+        # The Decisions path asks back: its likeliest answer is below closed.T_ASK, or none of its readings answers.
+        return {"ok": False, "error": "the Decisions path asks back", "stage": "asked", "path": "ast",
+                "declined": chosen.declined, **evidence}
+    candidate = chosen.pool[index]
     try:
-        rows, backend = execute_selected(candidate)
+        rows, backend = execute_selected(index)
     except _DeterministicCandidateError as exc:
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}",
                 "stage": "deterministic_execution", "path": "ast",
                 **exc.metadata, **evidence}
     except Exception as exc:                  # noqa: BLE001
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}",
-                "stage": ("ast_search" if execution_backend == "sql"
-                          else "deterministic_execution"), "path": "ast",
+                "stage": "deterministic_execution", "path": "ast",
                 "execution_backend_requested": execution_backend, **evidence}
     return {
         "ok": True,
         "sql": candidate.sql,
-        "rows": [list(row) for row in rows],
+        "rows": rows,
         "path": "ast",
         **backend,
         "plan": list(candidate.evidence),
         "candidate_score": round(candidate.score, 4),
+        "warned": chosen.warned,
         **evidence,
     }
+
 
 
 def _score_pool_oracle(record, gold_rows):
@@ -437,14 +322,8 @@ def _score_pool_oracle(record, gold_rows):
             eligible = bool(entry.get("eligible")) and "error" not in entry
             serving_facts = {
                 "score": entry.get("score"),
-                "features": dict(entry.get("features") or {}),
                 "evidence": list(entry.get("evidence") or ()),
-                "executable": bool(entry.get("executable")),
-                "grounded": bool(entry.get("grounded")),
                 "eligible": bool(entry.get("eligible")),
-                "calculation_satisfied": bool(entry.get("calculation_satisfied")),
-                "date_satisfied": bool(entry.get("date_satisfied")),
-                "double_counted": bool(entry.get("double_counted")),
             }
             if "rows" in entry:
                 comparison = compare(gold_rows, entry["rows"])
@@ -589,15 +468,25 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
     attributed to a stage.
 
     use_compose gates compose routing (ablation only; serving is always True). use_compose=False isolates
-    the own-data planner."""
+    the own-data planner. One question is one request database, as in serving, so the compose probe and the
+    selection share one set of Decisions calls (engine/prepared.py RequestDatabase.answered)."""
+    from engine.prepared import scratch_database
+
+    with scratch_database():
+        return _predict(enc, eng, reader, tabs, question, schema_fks, ast_schema_cache, selection, use_compose,
+                        execution_backend, python_row_limit)
+
+
+def _predict(enc, eng, reader, tabs, question, schema_fks, ast_schema_cache, selection, use_compose,
+             execution_backend, python_row_limit):
     if use_compose:
         try:
             depth = bool(reader.present(question) & DEPTH_PRIMS)
         except Exception:                        # noqa: BLE001
             depth = False
         if depth:
-            # As serving does: a question the readers read confidently from the upload builds no compose
-            # plan (engine.routing.reads_upload_whole).
+            # As serving does: a question the Decisions path answers from the upload builds no compose plan
+            # (engine.routing.reads_upload_whole).
             from engine.decomposition import search_probe
             from engine.routing import reads_upload_whole
             try:
@@ -665,7 +554,6 @@ def main():
     # --- ablation knob (NOT serving; serving always routes through compose). ---
     ap.add_argument("--no-compose", action="store_true",
                     help="ablation: isolate the own-data planner (skip DEPTH compose routing)")
-    ap.add_argument("--reader-candidate", help="unpromoted named readers bundle, through TableQuery.select_query")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table (bounds exec; only wta_1 is capped)")
     ap.add_argument("--timeout", type=float, default=12.0,
                     help="soft prediction latency budget; evaluation is never abandoned")
@@ -681,8 +569,6 @@ def main():
     ap.add_argument("--max-new", type=int, default=0,
                     help="checkpoint and exit cleanly after this many new predictions")
     args = ap.parse_args()
-    if args.reader_candidate and not args.no_compose:
-        ap.error("a named own-data candidate requires --no-compose; it has no promoted compose model")
     if args.checkpoint_every < 0 or args.max_new < 0 or args.python_row_limit < 0:
         ap.error("checkpoint cadence, max-new, and row limits must be nonnegative")
     if args.selection == "pool_oracle" and args.backend != "sql":
@@ -741,12 +627,9 @@ def main():
     # thresholds (anchor_assignment.npz) change answers without touching the encoder: any edit must
     # invalidate a --resume checkpoint, or stale predictions get silently reused.
     checkpoint_contract["artifacts"] = {
-        **fingerprint_paths(_input_paths(args.data, args.dbs, sorted({dev[i]["db_id"] for i in full_picked}),
-                                         include_encoder=not args.reader_candidate)),
-        **({"reader_candidate": fingerprint_paths({path.relative_to(args.reader_candidate).as_posix(): path
-                                                   for path in Path(args.reader_candidate).rglob("*") if path.is_file()})}
-           if args.reader_candidate else {"encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
-                                          "weight_bundle": validate_weight_bundle(DATA_DIR)}),
+        **fingerprint_paths(_input_paths(args.data, args.dbs, sorted({dev[i]["db_id"] for i in full_picked}))),
+        "encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
+        "weight_bundle": validate_weight_bundle(DATA_DIR),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
     }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}
@@ -769,17 +652,12 @@ def main():
     enc = eng = reader = None
     if len(completed) != len(picked):
         print("loading the runtime bundle (encoder)...", flush=True)
-        if args.reader_candidate:
-            from engine.readers.search import ReadingSearch
-            from engine.tables import TableQuery
-            enc = TableQuery(named_reader=ReadingSearch(args.reader_candidate))
-        else:
-            from engine.compose import ComposeEngine
-            from engine.encoder_overlay import EncoderQuery
-            from engine.primitive_head import PrimitiveReader
-            enc = EncoderQuery()
-            reader = PrimitiveReader(encoder=enc)
-            eng = ComposeEngine(reader=reader)
+        from engine.compose import ComposeEngine
+        from engine.encoder_overlay import EncoderQuery
+        from engine.primitive_head import PrimitiveReader
+        enc = EncoderQuery()
+        reader = PrimitiveReader(encoder=enc)
+        eng = ComposeEngine(reader=reader)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)
 
     db_cache = {}

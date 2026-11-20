@@ -52,26 +52,29 @@ def workbook_targets(catalog: Catalog) -> dict[str, tuple[list[Target], list[tup
 
 
 class StockReader:
-    """Stock bge-m3 similarity beside the word reader. One per process (stock_reader)."""
+    """Stock bge-m3 similarity beside the word reader. One per process (stock_reader); questions served at once share
+    it, so its cache is read and written under one lock."""
 
     def __init__(self, backbone: TextBackbone):
         self.backbone = backbone
         self.cache: dict[str, np.ndarray] = {}
+        self._lock = threading.Lock()
 
     def encode(self, texts: list[str]) -> np.ndarray:
         """Unit vectors of texts, [len(texts), dim] float32, read through the cache (stored as float16)."""
-        missing = [text for text in dict.fromkeys(texts) if text not in self.cache]
-        if missing:
-            if len(self.cache) + len(missing) > CACHE_MOST:
-                self.cache.clear()
-                missing = list(dict.fromkeys(texts))
-            with torch.inference_mode():
-                distinct, vectors = self.backbone.encode_texts(missing, max_tokens=TEXT_TOKENS, batch=ENCODE_BATCH)
-            vectors = torch.nn.functional.normalize(vectors, dim=-1).numpy().astype(np.float16)
-            self.cache.update(zip(distinct, vectors))
-        if not texts:
-            return np.zeros((0, self.backbone.dim), np.float32)
-        return np.stack([self.cache[text] for text in texts]).astype(np.float32)
+        with self._lock:
+            missing = [text for text in dict.fromkeys(texts) if text not in self.cache]
+            if missing:
+                if len(self.cache) + len(missing) > CACHE_MOST:
+                    self.cache.clear()
+                    missing = list(dict.fromkeys(texts))
+                with torch.inference_mode():
+                    distinct, vectors = self.backbone.encode_texts(missing, max_tokens=TEXT_TOKENS, batch=ENCODE_BATCH)
+                vectors = torch.nn.functional.normalize(vectors, dim=-1).numpy().astype(np.float16)
+                self.cache.update(zip(distinct, vectors))
+            if not texts:
+                return np.zeros((0, self.backbone.dim), np.float32)
+            return np.stack([self.cache[text] for text in texts]).astype(np.float32)
 
     def read(self, question: str, catalog: Catalog, decoder: Decoder, targets: dict[str, tuple[list[Target], list[tuple[str, ...]]]]) -> NamedReading:
         """The question's stock reading: the word reader's scores, each target's similarity added on the coordinates its

@@ -169,26 +169,19 @@ def test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation(
         assert len(result["traces"]) == 1
 
 
-def test_the_reply_names_tables_as_the_user_did():
-    """The engine names tables canonically, and the six-tab Stripe workbook's answer read "From nt. si and ff
-    could answer this too" (production, 2026-10-05). The chat writes the names the request carried."""
-    from engine.request_validation import display_names
-    names = display_names([{"name": "NT", "data": ""}, {"name": "SI.csv", "data": ""},
-                           {"name": " FF Report ", "data": ""}, {"name": "", "data": ""}, "not a table"])
-    assert names == {"nt": "NT", "si": "SI", "ff_report": "FF Report"}, names
-    copies = {"read": ["nt"], "others": ["si", "ff_report"]}
-    # The turn reads the names from the tables it was given (inline, or the conversation's stored copy).
-    sheets = [{"name": name, "data": "tier,amount\nGold,100\n"} for name in ("NT", "SI.csv", " FF Report ")]
-    result, _model_calls, _engine_calls = asyncio.run(_run(
-        "answered", shaped_extra={"layout_copies": copies}, tables=sheets))
-    assert result["reply"] == ("876.50\n\nFrom NT. SI and FF Report could answer this too; name one in your "
-                               "question to read that one instead."), result["reply"]
-    assert all("table_names" not in trace["engine"] for trace in result["traces"])
-    # Without the request's names (the MCP tool), the canonical names read as words.
-    bare = orchestrator._terminal_fallback({"status": "answered", "answer": {"columns": ["n"], "rows": [[1]]},
-                                            "layout_copies": copies})
-    assert bare.endswith("From nt. si and ff report could answer this too; name one in your question to read "
-                         "that one instead."), bare
+def test_a_warned_answer_says_the_engine_is_not_sure():
+    """A warned answer (engine/tables.py uncertain_answer: the Decisions path's choice below closed.T_FLAG) is given as
+    one the engine is not sure of, with the reading the runner-up answer read; with no runner-up it asks the person to
+    check the reading. An answer the path stands behind carries no note."""
+    uncertain = {"coordinates": ["value:t0.0=east"], "also_read_as": 'the total of Amount on "Orders"'}
+    result, _model_calls, _engine_calls = asyncio.run(_run("answered", shaped_extra={"uncertain": uncertain}))
+    assert result["reply"] == ("876.50\n\nI'm not sure this is what you asked: it may also mean "
+                               '“the total of Amount on "Orders"”.'), result["reply"]
+    alone = orchestrator._terminal_fallback({"status": "answered", "answer": {"columns": ["n"], "rows": [[1]]},
+                                             "uncertain": {"coordinates": [], "also_read_as": None}})
+    assert alone == "1\n\nI'm not sure this is what you asked; check how I read it.", alone
+    sure, _model_calls, _engine_calls = asyncio.run(_run("answered"))
+    assert sure["reply"] == "876.50", sure["reply"]
 
 
 def test_request_execution_mode_reaches_each_orchestrated_engine_call():
@@ -1838,7 +1831,7 @@ def test_the_tab_on_screen_reaches_every_engine_call():
 
 TESTS = [
     test_the_tab_on_screen_reaches_every_engine_call,
-    test_the_reply_names_tables_as_the_user_did,
+    test_a_warned_answer_says_the_engine_is_not_sure,
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
     test_the_intent_context_names_which_question_came_last,
     test_a_yes_can_accept_the_question_a_clarification_offered,

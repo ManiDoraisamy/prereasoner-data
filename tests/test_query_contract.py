@@ -1,7 +1,7 @@
 """Hermetic tests of the request-contract helpers the engine keeps (engine/query_contract.py: unreadable cells and
 operands, the Coverage certificate) and of the own-data adapters that carry the planner's records into a reply."""
 from engine.sql_schema import SchemaGraph
-from tests.test_sql_ast import _hermetic_planner, _model_query, _request
+from tests.test_sql_ast import _hermetic_planner, _request
 
 
 def test_model_numeric_prediction_does_not_erase_notes_or_formula_errors():
@@ -19,11 +19,26 @@ def test_model_numeric_prediction_does_not_erase_notes_or_formula_errors():
 
 
 def test_final_results_keep_more_than_fifty_rows():
+    """A served listing keeps every row its program returned: the choice reads a preview, the answer is whole."""
+    from engine.program.catalog import Catalog
+    from engine.program.language import Col, Show
+    from engine.program.lowering import to_query
+    from engine.sheet import compile_workbook, workbook_from_json
+    from engine.sql_ast import render_query
+    from engine.sql_candidate import ScoredQuery
+    from engine.sql_rank import PoolSelection
     table = {'name': 'orders', 'columns': ['Amount'], 'rows': [[i] for i in range(1000)]}
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json(
+        {'name': '', 'tabs': [{'name': 'orders', 'rows': [['Amount'], *table['rows']]}]})))
+    program = Show('t0', (Col('t0', 0),), listing=True)
+    query = to_query(program, catalog)
+    rows = tuple((i,) for i in range(1000))
     planner = _hermetic_planner()
-    planner.pool = [_model_query(planner, 'SELECT "Amount" FROM "orders"', [table])]
+    planner.select_query = lambda question, tables: PoolSelection(
+        (ScoredQuery(query, render_query(query), 0.9, ('the different Amount on "orders"',)),), (0,), 0, 0.9,
+        programs=(program,), rows=(rows,), catalog=catalog)
     result = planner.serve([table], 'show Amount')
-    assert result['valid'] and result['result']['rows'] == table['rows']
+    assert result['valid'] and result['result']['rows'] == table['rows'], result['result']['rows'][:3]
 
 
 def test_world_coverage_keeps_unicode_constraints():

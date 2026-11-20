@@ -10,9 +10,9 @@ rows and trace. For the supported own-data subset, one immutable plan emits both
 stack and readable SQLAlchemy/Python source; see
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md). One frozen encoder (Qwen2.5-0.5B with a LoRA
 adapter and a relational readout) supplies model evidence: it reads intent and schema signals as named
-coordinates. No model writes SQL. Learned encoder readers (XLM-R) read each own-data question beside its
-schema as named readings, a deterministic builder makes every own-data query a typed AST from them, and a
-learned re-scorer and choice choose among the ones that run (see [Own-Data SQL Planner](#own-data-sql-planner)).
+coordinates. No model writes SQL. Own-data questions take the Decisions path: an external closed-choice model
+answers closed questions whose options the engine built, the engine's decoder builds every program as a typed AST,
+and one more closed question chooses among the programs that run (see [Own-Data SQL Planner](#own-data-sql-planner)).
 No model writes Python or a numeric answer, and model text never reaches a database. AST construction,
 routing, joins, validation, selection, emission, and execution are deterministic for fixed inputs,
 configuration, database state, and model files.
@@ -135,7 +135,8 @@ Every question runs on one private SQLite database (`engine/prepared.py:RequestD
 starts and closed when it ends. `main` holds the request's tables as the planner types them (a REAL column as
 canonical decimal text ordered by the `decimal` collation, an INTEGER column as integers), the cell-to-QID bridges its
 world routes build, and the hybrid search's vectors; `knowledgebase` holds the part of the knowledgebase the request
-can reach. The readers' candidate pool, the decomposition probe, the deterministic plan of every route, compose's
+can reach. The own-data path's program tables (`_t0`, ... over the request's workbook: `program_tables`), its
+verification of every candidate, the decomposition probe, the deterministic plan of every route, compose's
 lowering, the world path's freshness, coverage and unmatched-row checks, the hybrid search and the resolution
 slides all read it. Nothing else writes it, so no question waits for another, on one conversation or across them.
 
@@ -270,8 +271,8 @@ replay. The legacy Wikidata schema migration is still pending.
 4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
    relationship detector used here and by planning (`relate` merges declared keys with it: a declaration blocks a
    discovered parent for its column only where its name names its own parent at least as well), and
-   `engine.relations.join_keys` is how it and join grounding (`engine/sql_grounding.py`) read a column's keys.
-   Discovery, the planner's schema, the schema graph and the readers' schema are each derived once for equal cells
+   `engine.relations.join_keys` is how it reads a column's keys.
+   Discovery, the planner's schema and the schema graph are each derived once for equal cells
    (`engine.relations.memoized`), and each process keeps the latest across requests, bounded by cells and by time
    since use.
 5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
@@ -280,9 +281,10 @@ replay. The legacy Wikidata schema migration is still pending.
 6. For named requests, `engine.analysis` validates the create/modify/inspect intent and
    `engine.conversations` reserves the engine-owned analysis id and revision. An inspect request loads an exact
    completed revision without invoking the planner.
-7. `engine.knowledge.KnowledgeReasoner` receives the complete working table set and the question. Tables that are
-   copies of one layout (an export kept per product or month) are searched as one, and the answer names the table
-   it read (`SchemaGraph.layout_copies`).
+7. `engine.knowledge.KnowledgeReasoner` receives the complete working table set, the question and the tab the
+   client has in view (`active_sheet`, a canonical table name), which the request database carries to the own-data
+   path's records. The sheet compiler reads tabs that are copies of one layout (an export kept per product or month)
+   as one family, and the read-as line names the tabs it read.
 8. `engine.routing.route()` makes the single world-composition ownership decision. A necessary world
     dependency may be owned by ComposeEngine; self-contained data remains authoritative in the typed AST,
     while selected local analytical compositions can still be lowered into the shared plan for explicit
@@ -324,151 +326,81 @@ correct interpretation of the question.
 
 ## Own-Data SQL Planner
 
-The own-data path serves one typed SQL AST chosen among the readers' candidates
-(`engine/tables.py:TableQuery.select_query`), reading a question's typographic apostrophes and quotes as the ASCII
-ones, a comparison symbol before a number as its words and "prior to" as "before" (`sql_expansion.plain_marks`).
-No model writes SQL: learned encoders read the question beside the schema as named readings, and a deterministic
-builder makes each reading a typed AST.
+The own-data path is the Decisions path (2026-11-20; it replaced the trained readers, `DECISIONS.md`). The one
+selection is `engine/tables.py:TableQuery.select_query`: the request's tables are read as one workbook, the question is
+answered by `engine/program/answer.py`, and every candidate is a typed SQL AST the engine built. An external
+closed-choice model, the Decisions API (Gemini's Developer API, called only through `engine/llm.py:decide`), answers
+closed questions whose options the engine built and returns probabilities only; it never writes text, SQL or a
+program. No model writes SQL.
 
 | Owner | Responsibility |
 |---|---|
-| `engine/readers/search.py` | `ReadingSearch`: schema items, the stage-2 readers' pooled candidates, re-scoring and the choice |
-| `engine/readers/text.py` | The schema as each model reads it: tables, columns, types, sample values, the question's values beside their columns (anchors), fitted to the token budget (a table's samples go before a table does) |
-| `engine/readers/models.py` | The three model kinds (schema items, readings, re-scorer) and their inputs; serving runs each encoder in bfloat16 |
-| `engine/readers/layout.py` | The readings' output layout, shared by training, serving and decoding |
-| `engine/readers/decode.py` | Outputs to the most probable distinct readings, with generic semantics (dates, a pinned column not shown again, a matched column not counted distinct, a referencing column counted once, list marks) |
-| `engine/readers/readings.py` | The readings form and the deterministic builder (`build`, foreign-key or explicit joins, groups, set operations, nested conditions, shares) and its inverse (`readings_of`, with optional exact join bindings for training labels) |
-| `engine/readers/read_as.py` | The plain-English "read as" line of a reading |
+| `engine/tables.py` | The request table's grid (`table_grid`, `grid_with_column`, given to every table by `normalize_tables`), the one selection (`select_query`), its run (`_serve_ast`), the response (`serve`), the SQL guard and the one executor (`execute`, `_execute_deterministic`, on the request's database) |
+| `engine/prepared.py` | The workbook's preparation, once per content (`prepared_workbook`); the request database's program tables (`RequestDatabase.program_tables`), the request's answer to a question, once (`RequestDatabase.answered`) and the tab in view (`RequestDatabase.active_sheet`) |
+| `engine/sheet/` | The sheet compiler: tabs to tables (headers, sections, printed lines, families of copies), the wire form a host sends (`payload.py`) |
+| `engine/program/answer.py` | `prepare` and `answer`: the stock reading, the closed-question calls, the decoder, the verifier, the choice and the per-answer decision |
+| `engine/program/closed.py` | The sheet's description, the closed questions per slot and the added ones, the fused reading, the choice record and the per-answer decision (`choose_answer`, `T_ASK` 0.42, `T_FLAG` 0.575) |
+| `engine/program/stock.py` | The stock reading: the word reader plus stock bge-m3 similarity (the shortlist of options) |
+| `engine/program/dates.py` | Text dates typed by one Decisions call when a workbook is prepared |
+| `engine/program/catalog.py`, `language.py`, `decoder.py`, `verifier.py` | The workbook's tables, the program language, the typed k-best decoder (50 programs) and the verifier's named evidence |
+| `engine/program/lowering.py`, `store.py`, `execute.py`, `output.py` | A program as a typed AST and one plan (`to_query`, `to_plan`) over the request's store tables (`_t0`, ... on the request database); its rows as the sheet spells them (`displayed`); its read-as line, answer column names and sheet formula |
+| `engine/named/` | The stock reading's backbone (`backbone.py`: bge-m3 by pinned revision) and shared reading types |
 | `engine/sql_ast.py` | Immutable query nodes, type/visibility validation, rendering |
-| `engine/sql_schema.py` | Typed schema graph and deterministic join-tree enumeration |
-| `engine/sql_dates.py` | Calendar phrases ("in August", "after August 10, 2026") as typed comparisons on a date column |
-| `engine/sql_durations.py` | Duration phrases ("more than 6 months") as comparisons of how long each row lasted (`DateSpan`) |
-| `engine/sql_rank.py` | The pool contract (`execution_op_limit`), the selection record (`PoolSelection`) and its post-ranking rule (`select_ranked_candidate`); `analyze_question` for the calculations |
-| `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column, and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference) |
-| `engine/calculations/` | Registered calculations (a currency conversion, a rate) expanded from the readers' candidates |
-| `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool runs and the one executor (`execute`, on the request's database) |
-| `engine/decomposition.py` | Closed model proposal validation and fusion of planner-selected leaf ASTs into one shared DAG |
+| `engine/sql_rank.py` | The selection record (`PoolSelection`); `analyze_question` for the calculations |
+| `engine/decomposition.py` | The length rule (`ONE_QUERY_WORDS`), closed proposal validation and fusion of the leaves' programs into one shared DAG |
 
-1. Stage 1 (`ReadingSearch.schema_items`, XLM-R base) reads the question beside each table and scores the table's
-   use and each column's; the six most probable tables are kept, and a wide table's 20 most probable columns.
-2. Each stage-2 reader (XLM-R large, `engine/data/readers/stage2_*`) reads the question beside the kept tables
-   and scores every reading the builder uses: the structure (one block, or two joined by UNION, INTERSECT, EXCEPT or
-   a nested condition), per block each column's select aggregate and position, condition operator, grouping,
-   having, ordering, whether its condition makes the part of a share, each table's use, the counts of each kind,
-   DISTINCT, AND/OR, direction and limit, and pointers to the question's value and limit spans. A reader with
-   `reader.json` `{"anchored": true}` also reads the question's values listed first beside the columns that hold
-   them (`Schema.anchors`, matched on the data). Decoding keeps the most probable distinct readings
-   (`decode.candidates`, up to 16 per reader, above a probability floor); its generic semantics: a date the
-   question names is read through `engine/sql_dates`, and so is a period it groups by ("per month" groups by the
-   date's year-month, `decode.periodic`, the one date column of the tables read when the readers group only by
-   surrogate keys or by nothing); a stored date literal is kept exact; a column an equality pins is not
-   shown, grouped or sorted by again; a column a condition matches with the question's value (= or LIKE) is
-   counted by its rows, never by its distinct values; ungrouped, a count of a column that references another table's
-   key counts each row it names once ("How many dogs have had a treatment?"); and a pointed value drops the marks of
-   the list it stood in. A reading that
-   compares one column with one value, when the question names more of that column's values (matched on the data),
-   also enters the pool read as either value (`search.either`: a row holds one value of a column). A membership
-   (`IN`, `NOT IN`) that compares a number column with a text column matches nothing as read, so the builder
-   refuses it; it enters the pool read on the column the listed values are values of: the listed column itself
-   when it belongs to the compared table, else the one column a foreign key pairs it with (`search.referenced`:
-   "product id is not among the product names Paris customers bought" is read on the product name).
-3. The builder (`readings.build`) makes each reading a typed AST: the tables a block uses are joined along
-   foreign keys; plain shown and sorted columns join a grouped block's GROUP BY, except a number column it sorts by
-   but neither groups nor shows, which is each group's total ("the top 2 customers by total spend"); groups with no
-   aggregate anywhere are the block's distinct rows; the first row of the one column a block shows and ranks is that
-   column's MAX or MIN; a contained text compares `LOWER(column)`; and a share divides the aggregate over the part's
-   conditions by the same aggregate over the whole (its read-as line says "share of …, out of …"). It refuses a
-   reading whose condition can hold for no row as written: a number column compared with a text that is no number
-   ("order id is 'non-empty'"), or a column compared with its own unfiltered values. The readers' candidates are
-   pooled, each SQL once, most probable first, and the registered calculations add their expansions
-   (`search_pool`). The readers read one table of each group of layout copies (the NT, SI and FF exports of one
-   layout): the copy the question names, else the tab the person has open (`on_screen_first`, from the request's
-   `active_sheet`), else the first, and the answer names the others (`one_of_each_layout`, `layout_copies`).
-4. Every candidate that passes the guard runs on the request's database (engine/prepared.py) under a step
-   budget that grows with the cells of the tables it reads (`execution_op_limit`). A candidate that fails, tests a
-   text column against a literal it never holds while another column does, joins two columns the foreign keys
-   keep apart, or reads one of two columns that share a header when the question does not name its column letter
-   is not eligible (`engine/sql_grounding.py`); when that last leaves nothing, the reply asks which column.
-5. Each re-scorer (`rescorer_a`, `rescorer_b`: XLM-R base, trained on different readers' cross-fold pools) reads
-   the question beside each eligible candidate's read-as line and result shape, with the decoder's log probability
-   and rank, and the readers' choice (`engine/data/readers/choice.json`, a logistic model fitted on held-out
-   databases) weighs their logits with what the pool says of the candidate: its log
-   probability, its best rank, the share of the readers' readings that build it (among the readers that build any
-   reading of the question: a reader whose every reading is refused has not read it), and whether its result is empty
-   (`search.choice_features`). The choice orders the candidates. A date the question names keeps the choice to the
-   candidates that realize it when one does, a candidate whose SUM or AVG reads only rows its joins repeat is
-   chosen only when every one does, so is a ranking whose order ranks none of the rows it keeps above the first
-   it leaves out ("top 3 cities" by their number of rows, one each; a tie at the cut alone is the data's), and a
-   registered calculation intent takes the best-ranked candidate that satisfies it (`select_ranked_candidate`).
-6. The choice's probability for the chosen candidate is its confidence: under the threshold fitted on held-out
-   databases nothing is selected, and the reply says how the
-   best-ranked candidate read the question: "I read this as “…”, but I'm not confident that is what you asked"
-   (`engine/tables.py:unsure_clarification`). In an analysis (the chat), a declined question longer than
-   `decomposition.ONE_QUERY_WORDS` words, past what the readers were trained to read as one query, asks for a
-   decomposition proposal instead (`decomposition.declined_compound`), as a set-operation reading does.
-7. A chosen candidate whose served result holds nothing, no row or only blank cells, gets the same reply
-   (`PoolSelection.found_nothing`), never a statement that the data is absent; a zero is a value and is answered. No
-   less probable candidate answers in its place: most pools hold one that drops the question's filter.
+1. Each request table carries its grid: an uploaded sheet's CSV as plain rows (blank rows kept, cells typed as the
+   planner types them, trailing blank columns trimmed), else its header and rows. A currency a conversation states is
+   appended to the grid as to the table (`dataset_semantics.apply`). The workbook is one tab per table, named as the
+   table is, in the request's order.
+2. `prepared_workbook` compiles it, types its text dates (one Decisions call), warms the decoder and lists each
+   table's targets, once per content, kept in the process (`WORKBOOK_CACHE_CELLS`).
+3. The stock reading scores the program language's coordinates; the reading record offers each slot its options and
+   one Decisions call answers it (a second answers the value sets, and a third, beside them, reads which of the
+   question's own words name a comparison's two outcomes). The fused reading feeds the decoder's 50 most probable
+   programs, each run by the verifier on the request's store tables.
+4. The programs that returned rows are listed. One Decisions call weighs them (each its read-as line and a preview
+   of its answer, and "none of these"); per answer, a candidate's probability is summed over the candidates returning
+   the same answer. The likeliest answer is answered at `T_FLAG` or more, warned from `T_ASK`, and asked back below
+   that or when "none of these" is likelier.
+5. `select_query` records it as a `PoolSelection`: the listed candidates (each its typed AST, SQL, answer probability
+   and read-as line), ranked by that probability; `selected` (answered or warned), `warned` and `uncertain` (the
+   coordinates the runner-up answer reads differently), or `declined` (the likeliest, when the path asks back). A
+   question longer than `decomposition.ONE_QUERY_WORDS` (30) words that the path asks back about asks, in an analysis,
+   for the decomposition proposal (`decomposition.declined_compound`); one it answers is answered.
+6. In an analysis, as every served request is, the chosen program's one plan runs through both deterministic
+   emitters on the request's database (`TableQuery._execute_deterministic`), in exact decimals, and its rows are
+   shown as the sheet spells them. Outside one (an evaluator), the answer is the rows the choice read.
 
-The served response carries `read_as`, the readers' plain reading of the served query, which the thread shows as
-the turn's "read as" line, and a `coverage` record certifying the reading (the readers' acceptance; the world
-routes keep their own wording gate in `KnowledgeQuery._uncovered`). A one-table reading of a workbook whose other
-tables share its layout says which table it read (`layout_copies`). A total or average of a named column whose
-cells are not all numbers is refused naming them (`engine/query_contract.unreadable_operand`) before any route
-reads it (`KnowledgeQuery.serve`), by compose and the currency check alike.
+The served response carries `read_as`, the chosen program's plain reading, which the thread shows as the turn's
+"read as" line, and a `coverage` record certifying the reading (the world routes keep their own wording gate in
+`KnowledgeQuery._uncovered`). A warned answer also carries `uncertain` (`coordinates`, `also_read_as`), and the reply
+gives it as one the engine is not sure of (`engine/answer_presentation.py:terminal_reply`). When the path asks back,
+the reply says how the likeliest reading read the question: "I read this as “…”, but I'm not confident that is what
+you asked" (`engine/tables.py:unsure_clarification`). A total or average of a named column whose cells are not all
+numbers is refused naming them (`engine/query_contract.unreadable_operand`) before any route reads it
+(`KnowledgeQuery.serve`), by compose and the currency check alike.
 
-The response's `planner.selection` records the pool counts (`pool_size`, `executable`, `misgrounded`, `eligible`),
-the served member's place among the eligible ones, its log probability, and whether a date, double-counting or
-calculation preference chose it. The winning AST then executes on the same database through the shared
-SQL/Python plan.
+The response's `planner.selection` records the pool's size, the served member and its rank, the likeliest answer's
+probability, whether it is warned, and the member asked about when the path asks back.
 
-The readers' pool and scores depend only on the question and the data, so a request reads them once
-(`ReadingSearch.pool`, `ReadingSearch.rescore` keep them) although the decomposition probe, compose's routing
-probe and the delegate each select. Selection is deterministic: the models run in fixed precision with no
-sampling, ties keep pool order, and nothing depends on hash order. The readers are trained by
-`training/readers/` and installed only by `training/readers/promote.py`.
+A request answers a question once (`RequestDatabase.answered`) although compose's routing probe, the hybrid search's
+check and the delegate each select. The program language reads one table at a time and joins none: a question that
+needs two of the request's tables joined (an upload beside a saved reference, an enrichment table, a Spider schema's
+foreign keys) is answered from one table or asked back. A decomposition's leaves are programs over one workbook; an
+anti-join binds the leaves' keys by the store column each reads (`_bind_merge_keys`), so leaves over different tabs
+bind only through a foreign key, which store tables do not have.
 
-The readings builder also accepts an explicit block root and ordered join bindings, including join kind and every
-column pair of a composite key. `readings_of(query, include_joins=True)` preserves these facts; supplied joins are
-scope-validated and never replaced by a foreign-key guess. This matters when the same two tables have several
-relationships. The bounded ACE view (`engine/readers/ace.py`) can encode these bindings as actual Attempto parse
-tree productions and reconstruct the same typed AST. The joint-decision interface (`engine/readers/decisions.py`)
-is candidate work; it is not selected by the production reader loader, and no CLEF bundle has been promoted.
-Its canonical ACE profile can hold more selections, conditions and order keys than the current neural readout;
-successful corpus encoding is not evidence that the trained head can predict those wider programs.
-
-The candidate's causal input encoder places shared option spans after the complete conversation/schema state,
-so an option representation can read the column's own following type and samples. Reusing a span inside the
-state prevented that access. The earlier 512- and 2,048-step trial weights retain their original serialization
-contract; moving their spans is an explicit input ablation, not a compatible model-loader update. A model
-manifest must bind the exact encoder source as well as the weights.
-
-The candidate generic AST format derives its recursive JSON schema and preorder productions from the current
-typed-AST classes. Its compiler view can reify the tree as application ACE facts, validated by the actual
-Attempto parser. This view is distinct from a natural English paraphrase. The recursive candidate now lives in
-the readers owner and covers the current typed grammar, including derived sources and correlated scopes.
-It remains unpromoted; parser acceptance, schema validation and target execution agreement do not certify
-learned English-to-program accuracy.
-
-Training source-program checks are shared in `training/readers/gold.py:read_program`, before the narrower
-readings codec. `read_gold` uses that same check and retains its existing readings labels. A source AST can
-therefore be audited as a recursive target even when named readings cannot represent it. Schema generation
-uses the AST annotations; comparison operands include arithmetic expressions and a literal left operand,
-which the existing validator and renderer already support. Draft 2020-12 fixed-tuple schemas require a
-validator that implements `prefixItems`; ignoring it can falsely reject composite join pairs.
-The offline importer rejects source semantics the AST cannot preserve, including OFFSET, ordering/limits
-on a compound query, and SQLite integer division. The AST's division remains real and zero-safe; source
-INTEGER/INTEGER arithmetic must not be silently converted to it. Changed-row audits retain strict
-disagreements even when original-data execution happened to match.
-
-The existing Spider evaluator can partition calibration by input position and merge only exhaustive, disjoint
-checkpoints with identical code, model, data and configuration fingerprints. Dependency fingerprints also bind
-injected reader predictions, their adapter and the question representation. Sharding changes scheduling only;
-the existing serving selector and grading code still own every result.
+The Spider evaluator (`spider/probe/full_eval.py`) and the dev replay (`regress/run_dev_decisions.py`) call the same
+`select_query`. The Spider evaluator can partition its questions by input position and merge only exhaustive,
+disjoint checkpoints with identical code, model, data and configuration fingerprints; sharding changes scheduling
+only. The offline importer (`regress/sql_import.py`) turns test fixtures' SQL into typed ASTs; serving never uses it.
 
 ## Shared Property Binding Migration
 
-This is the owner's required target, not the current production behavior. Noun, column and
+This is the owner's required target, not the current production behavior. It was written against the trained
+readers (`engine/readers`, `training/readers`), which the Decisions path replaced on 2026-11-20; the reader modules it
+names are in git history before that change. Noun, column and
 contextualized-value meanings share a compact, selected property basis. Reuse the existing selection
 in `engine/data/alloc.json` and its provenance in `training/props/`, rather than allocating all 1,521
 ontology properties. The original basis had 67 property coordinates; the current allocation has 71
@@ -961,10 +893,11 @@ The repository has one owner per decision:
 - routing: `engine.routing.route()`;
 - relationship discovery: `engine.relations.discover_fks()`;
 - own-data SQL representation: the typed AST;
-- own-data query selection (the readers' candidates, pool execution, grounding, re-scoring and the choice):
+- own-data query selection (the Decisions path's candidates and its per-answer decision):
   `engine.tables.TableQuery.select_query`;
-- the readers (schema items, readings, builder, re-scorer, choice): `engine.readers`; their training
-  `training.readers`, and their installation `training.readers.promote`;
+- the Decisions path (the stock reading, the closed questions, the decoder, the verifier and the choice):
+  `engine.program`, with the sheet compiler `engine.sheet`; the workbook's preparation and its program tables on the
+  request database: `engine.prepared`;
 - the one external model client (Gemini on Vertex AI and the Gemini Developer API's Decisions endpoint): `engine.llm`;
 - dual SQL/Python plan, source emission, and parity: `engine.deterministic`;
 - bounded compound-question proposal validation and typed-plan fusion: `engine.decomposition`;

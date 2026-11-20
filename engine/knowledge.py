@@ -48,11 +48,12 @@ class KnowledgeReasoner:
         self.qw = self.composed.qw                                              # expose KnowledgeQuery (server warmup: MODEL.qw._spacy())
 
     def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
-              decomposition=None):
+              decomposition=None, active_sheet=None):
         # Questions run concurrently on this one object: the request gets its own database (engine/prepared.py),
         # connections and question text (engine/request_state.py), and its paths derive its tables once
-        # (relations.memoized).
-        with request_scope(), request_memo(), request_database():
+        # (relations.memoized). active_sheet: the tab the client has in view, a table's name, which the own-data
+        # path's records name (engine/prepared.py RequestDatabase.active_sheet).
+        with request_scope(), request_memo(), request_database(active_sheet):
             try:
                 return self._serve(tables, question, sub, as_of=as_of, emit=emit, explicit_fks=explicit_fks,
                                    dataset_semantics=dataset_semantics, decomposition=decomposition)

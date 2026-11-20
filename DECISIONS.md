@@ -5,6 +5,62 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## The Decisions path replaces the trained readers as the own-data path (2026-11-20)
+
+On the owner's order for the v1 launch, production's own-data question answering moved from the trained readers
+(`engine/readers`: stage-1 schema items, four XLM-R large reading models, two re-scorers and the choice that ranked and
+refused, about 5.4 GB in `engine/data/readers`) to the Decisions path (`engine/program`), in one change: new path in,
+old path out. The chain stays: `engine/server.py` -> `KnowledgeReasoner.serve` -> the one `route()` ->
+`TableQuery.serve` -> `_serve_ast` -> `select_query` -> `PoolSelection`; only `select_query`'s inside changed, and
+decomposition leaves, compose's probe, the hybrid search's check and every evaluator call the same `select_query`.
+
+- **The workbook is each request table's grid.** `parse_rows` drops blank rows and canonicalizes the header, which
+  destroys the structure the sheet compiler reads, so every request table carries `grid`: an uploaded sheet's CSV as
+  plain rows (blank rows kept, cells typed exactly as `parse_rows` types them, trailing blank columns trimmed), else its
+  header and rows (`engine/tables.py:table_grid`, which `normalize_tables` gives a table that carries none). A currency
+  a conversation states is appended to the grid as to the table. Each tab is one request table, named as the table is.
+  Cells are typed as the planner types them, so "$1,234.50" and "25%" reach the compiler as numbers, where the measured
+  dev sets wrote them as text; the fresh-dev run on CSV payloads measures what that costs.
+- **One database per request.** The program's tables are built on the request database's connection
+  (`RequestDatabase.program_tables`), loaded on first use, under names no request table takes (`_t0`: a sheet sent
+  with no name is the table `t0`). Verification, the chosen plan through both emitters and decomposition all run there.
+  A workbook is prepared once per content and kept in the process (`prepared_workbook`); a question is answered once per
+  request (`RequestDatabase.answered`), although the compose probe, the hybrid check and the delegate each select.
+- **The pool is the listed candidates.** Each candidate that returned rows is a `ScoredQuery` (the program's typed AST,
+  its SQL, its answer's probability, its read-as line); the ranking is by the answer's probability; the decided candidate
+  is `selected` when answered or warned, and `declined` when the path asks back. In an analysis the chosen program's one
+  plan runs through both deterministic emitters (exact decimals); outside one an evaluator reads the rows the choice read.
+- **A warned answer says so.** Between `T_ASK` (0.42) and `T_FLAG` (0.575) the answer is served with an `uncertain`
+  record beside `read_as` and `clarify`: `coordinates`, what the runner-up answer reads differently, and `also_read_as`,
+  its reading. The tool passes it through and the one renderer gives the answer as one the engine is not sure of.
+- **The length rule asks only when the path does.** A question longer than `ONE_QUERY_WORDS` (30) words that the path
+  asks back about asks, in an analysis, for the decomposition proposal; one it answers is answered. The readers declined
+  every long question because they never read one in training; the Decisions path reads them: three of the 896 dev
+  questions are longer (31, 32 and 36 words) and two are answered right, and the three demo prompts of 39 to 44 words
+  are asked back, so they still reach the decomposition.
+- **The tab in view is passed, not ordered.** The request's `active_sheet` (a table's canonical name) rides on the request
+  database into both records; `on_screen_first`, which reordered the tables for the readers, is deleted, so switching
+  tabs does not prepare the workbook again.
+- **A failed Decisions call is a retryable 503** at the server; the question is not answered from a reading the API did
+  not make.
+
+Deleted with the readers: `engine/readers/*`, the readers' manifest entries, `search_pool`, the re-scorer and the
+refusal, `READERS_MODEL`, the readers' grounding and preferences (`engine/sql_grounding.py`, `sql_rank`'s served
+transforms and post-ranking rule, the date-realization helpers), the calculations' expansion search
+(`engine/calculations/search.py`, `select_calculation_candidate`), layout copies (`one_of_each_layout`,
+`_unread_copies`, the `layout_copies` response key and its reply note), the readers' training pipeline (all of
+`training/readers` but the lease loop `training/named` uses; its gitignored experiments stay on disk), the AST's JSON
+codec, `keep_ties`, `named_groups`, `conjunction` and `contradictory`, and their tests (`tests/test_readers.py` and the
+selection tests of the other suites). Stock bge-m3 ships in the image, pinned by hash under `base_models` in
+`weights_manifest.json` and loaded once at startup.
+
+Known gaps at the cut-over: the program language joins no tables, so a question that needs a saved reference, an
+enrichment table or a Spider schema's foreign keys joined to an upload is answered from one table or asked back (upload
+links are ported after parity, measured against the demo sets); a decomposition's anti-join binds keys only within one
+tab; registered calculation intents (ratio, rate application, currency) still gate every route's answer, and the
+program's arithmetic is assessed against them unchanged; the offline regression gate and the release smoke now need
+the Decisions key.
+
 ## Recursive named decisions remain inside the existing planner and selector (2026-11-07)
 
 The recursive candidate traverses `engine/sql_ast.py:query_tree_schema`, rather than maintaining a

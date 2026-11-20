@@ -666,7 +666,6 @@ class ComposedKnowledgeQuery:
             self.qw,
             context.slug,
             norm,
-            schema,
             inferred_fks,
             decomposition,
             question=question,

@@ -72,6 +72,12 @@ def _plain(cell):
     return cell.isoformat() if hasattr(cell, "isoformat") else str(cell) if cell is not None and not isinstance(cell, (str, int, float)) else cell
 
 
+def displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ...]:
+    """The rows a deterministic run of the program returned (each a sequence of cells), as the program shows them: exact
+    numbers as their decimal text, days as ISO text, and the sheet's own spelling restored (_displayed)."""
+    return _displayed(program, [tuple(_plain(cell) for cell in row) for row in rows], tables)
+
+
 def run_dual(program: Program, tables: RequestTables, *, slug: str = "program", python_row_limit: int = 10_000) -> Result:
     """The chosen program through both deterministic emitters: the SQL program and the Python program run on one snapshot, every stage compared. A disagreement raises VerificationMismatch."""
     prepare(program, tables)
@@ -80,8 +86,7 @@ def run_dual(program: Program, tables: RequestTables, *, slug: str = "program", 
     plan = to_plan(program, tables.catalog, slug)
     estimated = sum(len(tables.catalog.table(table_id).lines) for table_id in tables_of(program))
     result = DeterministicAnalysis(plan, conversation_schema="main", dataset_version="sheet").run(engine, mode=ExecutionMode.VERIFY, estimated_rows=estimated, python_row_limit=python_row_limit)
-    rows = [tuple(_plain(cell) for cell in row.values()) for row in result.rows]
-    return Result(_displayed(program, rows, tables))
+    return Result(displayed(program, [tuple(row.values()) for row in result.rows], tables))
 
 
-__all__ = ["Result", "SQL_DIALECT", "prepare", "run", "run_dual"]
+__all__ = ["Result", "SQL_DIALECT", "displayed", "prepare", "run", "run_dual"]

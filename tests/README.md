@@ -6,12 +6,13 @@ Run commands from the repository root.
 
 These need no PostgreSQL or network, and run in this order in `tests/run_all.py`. Install
 `requirements-ci.txt`; it includes spaCy's `en_core_web_md` tagger, which every served selection reads. Without the
-runtime bundle, `tests.test_complex_datasets` reports its model-backed cases as SKIP, which is not a pass.
+runtime bundle, or without the Decisions API's key (`GOOGLE_API_KEY`) for the cases that read a leaf,
+`tests.test_complex_datasets` reports those cases as SKIP, which is not a pass.
 
 | Command | Covers |
 |---|---|
-| `python -m tests.test_readers` | The readers' deterministic half (`engine/readers`): the readings form and its builder, the decoder's generic semantics, and the schema serialization; no weights load |
-| `python -m tests.test_sql_ast` | Typed AST validation/rendering and execution, grounding, SQL import, the planner's lexical helpers, and the own-data selection's plumbing over a stubbed readers' pool |
+| `python -m tests.test_answer` | The Decisions path (`engine/program/answer.py`, `closed.py`, `stock.py`, `dates.py`) with a fake transport and a fake backbone: records, fusion, the per-answer decision, date typing |
+| `python -m tests.test_sql_ast` | Typed AST validation/rendering and execution, SQL import, the planner's lexical helpers, and the own-data selection's plumbing: the request's grids, the Decisions path's candidates as the pool, served, warned or asked, the length rule, the one request database, the tab in view |
 | `python -m tests.test_calculations` | Typed calculation intent, operands, joins, grain, evidence, and abstention |
 | `python -m tests.test_analysis` | Slug/identity validation, effective table/relationship/semantic hashing, bounded unique view names, executed-SQL preservation, and HTTP/live-stream parity |
 | `python -m tests.test_deterministic_emitters` | Shared-plan validation, generated ORM execution, composite/missing-reference parity, mode policy, identity coercion, and full-result/preview separation |
