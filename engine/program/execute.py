@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
 from engine.deterministic import DeterministicAnalysis, ExecutionMode
+from engine.numeric import canonical_decimal
 from engine.prepared import SharedConnection
 from engine.program.language import Breakdown, Calc, Check, Col, Program, Rank, Show, tables_of
 from engine.program.lowering import to_plan, to_query
@@ -74,12 +76,16 @@ def run(program: Program, tables: RequestTables) -> Result:
 
 
 def _plain(cell):
+    """A cell as an answer prints it: an exact number as its canonical decimal text (engine/numeric.py), so the SQL and
+    the Python program print the same number alike ("6431836", never "6431836.0" from one of them); a day as ISO text."""
+    if isinstance(cell, Decimal):
+        return canonical_decimal(cell)
     return cell.isoformat() if hasattr(cell, "isoformat") else str(cell) if cell is not None and not isinstance(cell, (str, int, float)) else cell
 
 
 def displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ...]:
     """The rows a deterministic run of the program returned (each a sequence of cells), as the program shows them: exact
-    numbers as their decimal text, days as ISO text, and the sheet's own spelling restored (_displayed)."""
+    numbers as their canonical decimal text, days as ISO text, and the sheet's own spelling restored (_displayed)."""
     return _displayed(program, [tuple(_plain(cell) for cell in row) for row in rows], tables)
 
 
