@@ -93,6 +93,29 @@ def test_apply_synthesizes_a_private_constant_column():
     }]
 
 
+def test_a_stated_currency_is_the_sheets_unit_not_a_column_it_reads():
+    """The own-data path reads the request's sheet: a currency the conversation states ("This is in euros") is the
+    measure's unit there, never a column the sheet gains. formfacade-leads, Chrome gate 2026-11-21: the private column
+    appended to the grid was read as one of the sheet's own, and "total budget from August 11 to August 15" came back
+    split by it. A table that arrives without a grid gets the one it reads before the private column joins."""
+    from engine.sheet import compile_workbook, workbook_from_json
+    from engine.tables import table_grid
+
+    for tables in (_tables(), [{**_tables()[0], "grid": table_grid("responses", header=_tables()[0]["columns"], rows=_tables()[0]["rows"])}]):
+        before = [list(row) for row in table_grid("responses", header=tables[0]["columns"], rows=tables[0]["rows"])["rows"]]
+        ops = _validated(_set(), tables=tables)
+        apply(tables, ops)
+        apply(tables, ops)
+        grid = tables[0]["grid"]
+        assert grid["rows"] == before, grid["rows"]
+        assert grid["units"] == {"budget": "EUR"}, grid
+        assert synthetic_currency_column("budget") in tables[0]["columns"], "the table keeps the private column the world rate joins on"
+        model = compile_workbook(workbook_from_json({"name": "", "tabs": [grid]}))
+        columns = [column for tab in model.tabs for table in tab.tables for column in table.columns]
+        assert [column.name for column in columns] == ["submitted", "name", "country", "budget"], [c.name for c in columns]
+        assert {column.name: column.unit for column in columns}["budget"] == "EUR", columns
+
+
 def test_apply_is_idempotent_and_respects_clear():
     tables = _tables()
     ops = _validated(_set(), tables=tables)
@@ -341,6 +364,7 @@ def test_synthesized_currency_column_is_never_shown_as_a_world_lookup():
 
 
 TESTS = [
+    test_a_stated_currency_is_the_sheets_unit_not_a_column_it_reads,
     test_synthesized_currency_column_is_never_world_routed,
     test_synthesized_currency_column_is_never_shown_as_a_world_lookup,
     test_valid_set_normalizes_and_binds,

@@ -80,7 +80,7 @@ Extend these owners. Do not build parallel replacements.
 | Compose serving host + world-grounding lookup | `engine/knowledge_compose.py` |
 | World grounding and knowledge joins | `engine/knowledge_query.py` |
 | The selection record (`PoolSelection`) | `engine/sql_rank.py` |
-| Table normalization, canonical planner table names and the request table's grid (`table_grid`, `grid_with_column`) | `engine/tables.py` |
+| Table normalization, canonical planner table names and the request table's grid (`table_grid`) | `engine/tables.py` |
 | World-table maintenance catalog (what is maintained, its cadence, when it last refreshed) | `db/sync/schedule.py` — the ONE writer of `knowledgebase.schedule`, read at serving time by `engine/knowledge_tables.py:KnowledgeTableQuery._table_freshness` from the request database's copy |
 | The request database every question runs on (one private SQLite database: the request's tables, the own-data path's program tables, its bridges, the knowledgebase rows it reaches), table preparation (routes, cell candidates, reached rows; `chat.prepared_table`), the own-data workbook's preparation (`prepared_workbook`), the request's links (`RequestLinks`, built once per request by the linker the world layer registers) and the connected workbook's preparation (`connected_workbook`), and question-time knowledgebase reads | `engine/prepared.py` — every executor (the own-data path's verification and chosen plan, the deterministic plan, compose, the world checks, the hybrid search) runs on its database; PostgreSQL holds conversations and the shared knowledgebase |
 | Private reference validation, persistence, and request selection | `engine/master.py` |

@@ -124,7 +124,7 @@ the same deterministic plan. See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md).
 
 | Concern | File · symbol |
 |---|---|
-| The request table's grid | `engine/tables.py` · `table_grid`, `grid_with_column`, `normalize_tables` |
+| The request table's grid | `engine/tables.py` · `table_grid`, `normalize_tables` |
 | The workbook's preparation, the request database | `engine/prepared.py` · `prepared_workbook`, `RequestDatabase.program_tables`, `RequestDatabase.answered` |
 | The question answered | `engine/program/answer.py` · `prepare`, `answer` |
 | Closed questions and the per-answer decision | `engine/program/closed.py` |

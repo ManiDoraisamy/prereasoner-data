@@ -80,6 +80,7 @@ class TabPayload:
     hidden_rows: frozenset[int] = frozenset()
     hidden_columns: frozenset[int] = frozenset()
     style_read: bool = False
+    units: dict[str, str] = field(default_factory=dict)   # a column's header -> the unit a conversation states for it (engine/dataset_semantics.py)
 
 
 @dataclass(slots=True)
@@ -132,6 +133,7 @@ def tab_from_json(raw: dict) -> TabPayload:
         autofilter=_area(raw["autofilter"], r0, c0) if raw.get("autofilter") else None,
         hidden_rows=_runs(raw.get("hiddenRows"), r0),
         hidden_columns=_runs(raw.get("hiddenColumns"), c0),
+        units={str(header): str(unit) for header, unit in (raw.get("units") or {}).items()},
     )
 
 
@@ -145,7 +147,8 @@ def tab_hash(tab: TabPayload) -> str:
     rows = [[None if (r, c) in volatile else value for c, value in enumerate(row, 1)] for r, row in enumerate(tab.rows, 1)]
     identity = dict(name=tab.name, sheet_type=tab.sheet_type, hidden=tab.hidden, rows=rows, date1904=tab.date1904, formats=sorted(tab.formats.items()), format_exceptions=sorted(tab.format_exceptions.items()),
                     error_cells=sorted(tab.error_cells), merges=sorted(tab.merges), formulas=sorted(tab.formulas.items()), row_styles=sorted(tab.row_styles.items()), frozen=(tab.frozen_rows, tab.frozen_columns),
-                    autofilter=tab.autofilter, hidden_rows=sorted(tab.hidden_rows), hidden_columns=sorted(tab.hidden_columns), style_read=tab.style_read)
+                    autofilter=tab.autofilter, hidden_rows=sorted(tab.hidden_rows), hidden_columns=sorted(tab.hidden_columns), style_read=tab.style_read,
+                    units=sorted(tab.units.items()))
     return hashlib.sha256(json.dumps(identity, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
 
 

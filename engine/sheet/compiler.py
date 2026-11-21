@@ -898,6 +898,11 @@ def _notes_of(grid: Grid, tab: str, rows: list[int]) -> list[Note]:
     return notes
 
 
+def _same_header(a: str, b: str) -> bool:
+    """Whether two headers name one column, case, spaces and punctuation apart (a table's canonical name for a header)."""
+    return "".join(ch for ch in a.casefold() if ch.isalnum()) == "".join(ch for ch in b.casefold() if ch.isalnum())
+
+
 def compile_tab(tab: TabPayload, typed: Mapping[str, str] | None = None) -> TabModel:
     """One tab's model. typed: text cells read as days or months when the workbook was loaded (grid.read_cell)."""
     if tab.sheet_type == SHEET_CHART:
@@ -913,6 +918,11 @@ def compile_tab(tab: TabPayload, typed: Mapping[str, str] | None = None) -> TabM
             table = _table_of(grid, tab.name, len(tables), number, region, block, roles, tab_titles)
             if table is not None:
                 tables.append(table)
+    for table in tables:       # a unit the conversation states for a column ("this is in euros") is the column's unit
+        for column in table.columns:
+            stated = next((unit for header, unit in tab.units.items() if _same_header(header, column.name)), None)
+            if stated:
+                column.unit = stated
     repeated = {r for region in regions for rows in region.repeats for r in rows}
     lines: list[Line] = []
     for r in range(1, grid.last_row + 1):

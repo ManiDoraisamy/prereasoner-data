@@ -2304,7 +2304,7 @@ def test_an_uploaded_sheets_grid_keeps_its_structure():
     """The own-data path reads each request table's grid (engine/tables.py table_grid): an uploaded sheet's CSV as
     plain rows, blank rows kept, cells typed as parse_rows types them and trailing blank columns trimmed, where the
     table's own rows drop blank rows and canonicalize the header. A table built from rows reads as its header and
-    rows; a currency a conversation states is appended to the grid as it is to the table."""
+    rows; a currency a conversation states is the grid's unit for its column, never a column the grid gains."""
     from decimal import Decimal
 
     from engine import dataset_semantics
@@ -2322,8 +2322,9 @@ def test_an_uploaded_sheets_grid_keeps_its_structure():
     op = {"op": "set_measure_metadata", "table": "orders", "column": "Amount", "metadata": {"currency": "EUR"},
           "basis": {"source": "conversation", "text": "amounts are in euros", "attested": True}}
     records = dataset_semantics.apply([upload], [op])
-    column = records[0]["currency_column"]
-    assert upload["grid"]["rows"] == [["Region", "Amount", column], ["East", 1, "EUR"], ["", "", ""], ["West", 2, "EUR"]], upload["grid"]
+    assert records[0]["currency_column"] in upload["columns"], "the table carries the private column the world rate joins on"
+    assert upload["grid"]["rows"] == [["Region", "Amount"], ["East", 1], [], ["West", 2]], upload["grid"]
+    assert upload["grid"]["units"] == {"Amount": "EUR"}, upload["grid"]
     assert table["grid"] is shared
 
 

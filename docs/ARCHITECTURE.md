@@ -340,7 +340,7 @@ program. No model writes SQL.
 
 | Owner | Responsibility |
 |---|---|
-| `engine/tables.py` | The request table's grid (`table_grid`, `grid_with_column`, given to every table by `normalize_tables`), the one selection (`select_query`), its run (`_serve_ast`), the response (`serve`), the SQL guard and the one executor (`execute`, `_execute_deterministic`, on the request's database) |
+| `engine/tables.py` | The request table's grid (`table_grid`, given to every table by `normalize_tables`), the one selection (`select_query`), its run (`_serve_ast`), the response (`serve`), the SQL guard and the one executor (`execute`, `_execute_deterministic`, on the request's database) |
 | `engine/prepared.py` | The workbook's preparation, once per content (`prepared_workbook`), and once per what a request's links reach (`connected_workbook`); the request's links (`RequestLinks`, built by the linker the world layer registers, `RequestDatabase.link_with` and `links`); the request database's program tables (`RequestDatabase.program_tables`), the request's answer to a question, once (`RequestDatabase.answered`) and the tab in view (`RequestDatabase.active_sheet`) |
 | `engine/program/connected.py` | The connected catalog: the request's links placed on the workbook (`links_on`), what each reaches on the request's database (`reach`) and the columns it adds (`connect`) |
 | `engine/knowledge_bridges.py` | The request's links (`request_links`: routes and their bridges, entity columns, keys, money columns and their rates) and their registration per served request (`link_request`) |
@@ -358,7 +358,8 @@ program. No model writes SQL.
 
 1. Each request table carries its grid: an uploaded sheet's CSV as plain rows (blank rows kept, cells typed as the
    planner types them, trailing blank columns trimmed), else its header and rows. A currency a conversation states is
-   appended to the grid as to the table (`dataset_semantics.apply`). The workbook is one tab per table, named as the
+   the grid's unit for its column (`dataset_semantics.apply`; the compiler gives the column that unit), never a column
+   the grid gains. The workbook is one tab per table, named as the
    table is, in the request's order.
 2. `prepared_workbook` compiles it, types its text dates (one Decisions call), warms the decoder and lists each
    table's targets, once per content, kept in the process (`WORKBOOK_CACHE_CELLS`); in a served request the stock

@@ -123,7 +123,10 @@ decomposition leaves, compose's probe, the hybrid search's check and every evalu
   destroys the structure the sheet compiler reads, so every request table carries `grid`: an uploaded sheet's CSV as
   plain rows (blank rows kept, trailing blank columns trimmed), else its header and rows
   (`engine/tables.py:table_grid`, which `normalize_tables` gives a table that carries none). A currency a conversation
-  states is appended to the grid as to the table. Each tab is one request table, named as the table is. A text cell
+  states is the grid's unit for its column (`units`, which the compiler gives the column), never a column the grid
+  gains: appended as one (to 2026-11-21), the private column was read as the sheet's own and formfacade-leads' "total
+  budget from August 11 to August 15" after "This is in euros" came back split by it, in both browser gates. The table
+  keeps the private column the world rate joins on. Each tab is one request table, named as the table is. A text cell
   reaches the compiler as a sheet holds it (`sheet_cell`): a plain number a number, any other text ("$1,234.50",
   "25%") as written for the sheet's own reader, as the measured dev and demo sets wrote them. Typed as `parse_rows`
   types cells, "25%" was 25 and "$1,234.50" a bare amount; left all text (a host's rows, the gate's tables), a column

@@ -228,12 +228,14 @@ def apply(tables, ops):
         currency = metadata.get("currency")
         if currency:
             ccy_column = synthetic_currency_column(column)
+            if "grid" not in table:              # the sheet the own-data path reads (engine/tables.py), before the private column joins
+                from engine.tables import table_grid
+                table["grid"] = table_grid(table["name"], header=list(table["columns"]), rows=[list(row) for row in table["rows"]])
             if ccy_column not in table["columns"]:
                 table["columns"] = list(table["columns"]) + [ccy_column]
                 table["rows"] = [list(row) + [currency] for row in table["rows"]]
-                if "grid" in table:              # the sheet the own-data path reads carries it too (engine/tables.py)
-                    from engine.tables import grid_with_column
-                    table["grid"] = grid_with_column(table["grid"], ccy_column, currency)
+            grid = table["grid"]                 # the sheet states the measure's unit; the reading sees no added column
+            table["grid"] = {**grid, "units": {**(grid.get("units") or {}), column: currency}}
         records.append({
             "table": table_name, "column": column, "currency": currency,
             "date_column": metadata.get("date_column"),

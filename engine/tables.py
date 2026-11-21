@@ -210,26 +210,13 @@ def table_grid(name, csv_text=None, header=None, rows=None):
     unquotes it and given as ``sheet_cell`` gives a text cell, the trailing all-blank columns trimmed as parse_rows
     trims them. A table built from rows (``header`` and ``rows``: a saved reference, an enrichment table, a Spider
     database table, a host's rows): its header as written and its rows, each text cell as ``sheet_cell`` gives it: what
-    ``normalize_tables`` gives a table that carries no grid. ``grid_with_column`` carries a column the request appends
-    (dataset semantics) into an uploaded sheet's."""
+    ``normalize_tables`` gives a table that carries no grid. A unit the conversation states for a column (dataset
+    semantics) rides on the grid as its "units" (engine/sheet/payload.py), never as a column the reading sees."""
     if csv_text is None:
         return {"name": str(name), "rows": [list(header), *[[sheet_cell(cell) for cell in row] for row in rows]]}
     cells = list(_csv.reader(io.StringIO(csv_text or ""), skipinitialspace=True))
     width = max((index + 1 for row in cells for index, value in enumerate(row) if value.strip()), default=0)
     return {"name": str(name), "rows": [[sheet_cell(_unquote(value)) for value in row[:width]] for row in cells]}
-
-
-def grid_with_column(grid, header, value):
-    """``grid`` with one column appended: ``header`` on the first filled row (the row parse_rows reads as the header),
-    ``value`` on every filled row after it, blank on blank rows."""
-    width = max((len(row) for row in grid["rows"]), default=0)
-    out, seen_header = [], False
-    for row in grid["rows"]:
-        filled = any(cell not in (None, "") for cell in row)
-        cell = "" if not filled else value if seen_header else header
-        seen_header = seen_header or filled
-        out.append(list(row) + [""] * (width - len(row)) + [cell])
-    return {**grid, "rows": out}
 
 
 def csv_table(csv_text, name):
