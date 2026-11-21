@@ -5,6 +5,42 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## v1 is live: the Decisions path serves production at 80.0% right of the 896 dev questions, 7.5% unwarned wrong; served Spider falls to 371 strict (2026-11-21)
+
+- Release: `1d9929b2` (`48abf835` plus opentelemetry-api 1.45.2): engine `prereasoner-api-00338-qek`, chat
+  `prereasoner-chat-00237-siy`, Hosting `683ad0df3900b817`; the release build passed all four stages (image, offline
+  gate, boot smoke, live product suite). Rollback: `00334-pil` / `00233-fon` (eb40c4c), Hosting `0b7f024baac27cc4`.
+- The 896 dev questions, replayed through the served selection (`regress/run_dev_decisions.py`, every Decisions call a
+  cache hit, every outcome equal to the measurement's layers): WikiTableQuestions 300/300, messy 120/120, fresh dev
+  176/176, DataBench 299/300 (db/057_Spain/0 reproduces its pgd1 choice request: the value-token bound shrinks three
+  earlier workbooks, so the stock reader's history differs; same label). Served per answer at T_ASK 0.42 / T_FLAG 0.575:
+
+  | Set | Right | Warned right | Asked | Warned wrong | Unwarned wrong |
+  |---|---|---|---|---|---|
+  | WikiTableQuestions (300) | 193 | 21 | 38 | 16 | 32 |
+  | messy (120) | 91 | 9 | 10 | 8 | 2 |
+  | fresh dev (176) | 118 | 7 | 21 | 13 | 17 |
+  | DataBench (300) | 248 | 9 | 19 | 8 | 16 |
+  | **All (896)** | **650** | **46** | **88** | **45** | **67** |
+
+  The launch bar: the always-answering pick 717 of 896 (80.0%, 717 needed), unwarned wrong 67 (7.5%, at most 71),
+  warned and asked 179 (19.98%, at most 20%). Kept since the previous entry: tied lines in sheet order, a cell on one
+  line, a listing of several columns, an absence across a link, the value-token bound, the every-column listing (pick
+  718 -> 717 on an asked question, unwarned wrong 68 -> 67) and the served reading among equal answers.
+- Demo gate: `tests.test_datasets` (live, all four execution modes) passes; the browser gate on production (every demo
+  dataset's prompt and eval.txt, chat follow-ups included) passes 101 of 102 in fresh conversations and 78 of 79 in
+  the conversations the eb40c4c gate left. Both miss formfacade-leads "What is the total budget from August 11 to
+  August 15, 2026?" after "This is in euros": split by the knowledgebase's country -> currency instead of one total.
+- Spider calibration, 1,053 questions, `whole_db`, served, fresh: answered 831, strict **371** (35.2%), lenient 578
+  (54.9%), scalar gold 279 of 377; the Python and SQL programs verified alike on all 831; prediction median 2.5 s,
+  p95 4.7 s. The trained readers it replaces read 727 strict / 808 lenient (2026-10-27 below). The program language
+  reads sheets; Spider's multi-table SQL questions are not its measure, and v1's bar is the 896.
+- Offline regression gate: 8 passed, 5 known limitations (a two-column projection asked back; a conversion at a
+  sheet's own rates needs the knowledgebase-side links offline; per capita, tax percent and commission fraction not
+  read), DECISIONS.md.
+- Decisions API spend: the measurement cache holds $15.08; the release's live runs (suites, builds, browser gate,
+  Spider) are outside it.
+
 ## Two checks on the served confidence fail to add anything a threshold does not; the pick, not the unwarned wrong, is what holds the Decisions path below the bar (693 right of 896 when always answering, 717 needed)
 
 - Continues the entry below, on the same orders. Stack: next-engine `271111b`, flags as `pg1` (the kept stack, listed
