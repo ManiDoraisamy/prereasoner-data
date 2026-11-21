@@ -40,10 +40,27 @@ path's internals, and fixed where it lives:
   production never builds, and the choice between "no Paris line holds it" and "no line other than Paris holds it"
   turned on the columns it held).
 
-`tests.test_scale` stays open at this entry: "show all rows ordered by id" picks the listing of the id column (0.80,
-unwarned) where production asked back, and the first question on the 30,000-line sheet takes about 70 s locally
-against the suite's 90 s, which Cloud Run's slower CPUs exceed (the sheet is compiled, twice when it writes dates as
-text, and its value targets encoded).
+`tests.test_scale` measured cold first questions the readers answered in under 90 s; three changes make it pass:
+
+- **A listing that names no column shows every column.** "show all rows ordered by id" picked the listing of the id
+  column (0.80, unwarned). The fused reading carries listing:every, the shown slot's "none" against its uniform share,
+  and the decoder builds the every-column listing (every data line of the table's own columns, in sheet order, no
+  condition) where it is above zero, the form is a show and the reading asks for a list. On the 896: served right 650
+  unchanged, unwarned wrong 68 -> 67, the always-answering pick 718 -> 717 (messy111, asked before and after); kept
+  against its fixed gate's one pick for the wrong answer it removes. The answer is served by the listing the choice
+  gave the most probability among those returning it.
+- **The upload prepares the workbook a question reads.** The Decisions path compiles a sheet and encodes its value
+  targets once per snapshot, when its upload syncs (`engine/prepared.py:prepare_sheets`). It kept the stock vectors of
+  each table alone (six tabs: six compiles, six token bounds, 132 s of a 171 s preparation); it keeps those of the one
+  workbook a question reads (`vectors_key` over the tables in order), compiled once, and a question arriving during the
+  preparation waits for it (`prepared_workbook` runs one preparation of a workbook at a time). At 4 threads: 30,000
+  lines prepare in about 85 s and their first question takes 12-19 s; six tabs (34,536 lines) 65-75 s and 27-30 s.
+  The gate prepares each upload as its sync does and holds the upload and its first question within the chat's wait for
+  the engine (`mcp_server/engine_client.py:DEFAULT_TIMEOUT`), each question within 90 s as before.
+- **Two columns under one header are asked about.** "total Amount" on a sheet headed id, Amount, Amount, Units was
+  answered from the first Amount column at 0.87: the compiler names the second "Amount [C]". The decision compares the
+  offered readings in the sheet's own header words (`output.in_header_words`), where both read "the total of Amount",
+  and asks back. No dev or demo listing names a column by its letter.
 
 ## The own-data path reads what a request's links reach (2026-11-20)
 
