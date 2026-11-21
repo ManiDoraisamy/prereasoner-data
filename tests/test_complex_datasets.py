@@ -1,7 +1,8 @@
 """Release gate for the shipped non-linear decomposition fixtures.
 
 The production own-data selection (the Decisions path, engine/tables.py select_query) answers every leaf, so a test
-that reads a leaf needs the runtime bundle and the Decisions API's key, and is skipped, as skipped, without them. The
+that reads a leaf needs the runtime bundle and the Decisions API's key, and one served through the production entry
+also the live knowledgebase; each is skipped, as skipped, without them. The
 compiler fuses the leaves' programs once, emits SQL and readable Python from that one DAG, and executes both on the
 request's database. Expected rows are fixture-authored gold values, not values copied from either backend.
 """
@@ -244,15 +245,18 @@ def test_the_serving_entry_point_carries_the_proposal_to_the_compose_layer():
 def test_a_negated_existence_prompt_is_answered_as_one_query():
     """"List the product names that no customer from Paris has bought" asks for the rows no referencing row matches:
     one query, the products whose name is not among the names Paris customers bought, answered directly with the
-    rows derived from the CSVs, with no decomposition and no clarification."""
-    from engine.prepared import link_tables, scratch_database
+    rows derived from the CSVs, with no decomposition offered or asked for and no clarification. Served through the
+    production entry (engine/knowledge.py KnowledgeReasoner.serve, as engine/server.py serves it: regress/live_schema.py
+    served), so the request's key and world links are registered as serving registers them; a request that links only
+    the keys reads a workbook production never builds, and the choice between "no Paris line holds it" and "no line
+    other than Paris holds it" turns on the columns the workbook holds."""
+    from engine.knowledge import KnowledgeReasoner
+    from regress.live_schema import live_schema, served
 
-    planner = EncoderQuery()
     directory = DATASET_DIR / "complex-unsold-products"
     question = (directory / "prompt.txt").read_text(encoding="utf-8").strip()
-    with scratch_database() as database:
-        link_tables(database, planner)        # the tables connect by their keys, as serving connects them
-        response = planner.serve(_tables(directory), question)
+    schema = live_schema().name
+    response = served(schema, KnowledgeReasoner().serve, _tables(directory), question, schema)
     assert not response.get("decomposition_required") and not response.get("clarify"), response
     _, expected = EXPECTED["complex-unsold-products"]
     assert [list(row) for row in response["result"]["rows"]] == expected["rows"], response["result"]
@@ -274,7 +278,6 @@ MODEL_BACKED = (
 )
 DECISIONS_BACKED = (     # each serves a question through the one selection, which reads it through the Decisions API
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
-    test_a_negated_existence_prompt_is_answered_as_one_query,
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_compose_surface_does_not_swallow_a_compound_question,
 )
@@ -297,6 +300,18 @@ def runtime_bundle_missing() -> str | None:
     return None
 
 
+LIVE_BACKED = (     # served through the production entry on the live knowledgebase (the Cloud SQL proxy) and the Decisions API
+    test_a_negated_existence_prompt_is_answered_as_one_query,
+)
+
+
+def live_missing() -> str | None:
+    """Why the live knowledgebase cannot be read here, or None."""
+    import os
+
+    return None if os.environ.get("KB_PG_PASSWORD") else "the live knowledgebase is not reachable here (KB_PG_PASSWORD)"
+
+
 def decisions_missing() -> str | None:
     """Why the Decisions API cannot be called here, or None (engine/llm.py reads the deployment's key)."""
     from engine.config import decisions_key
@@ -309,7 +324,8 @@ def main() -> int:
     missing = runtime_bundle_missing()
     unread = missing or decisions_missing()
     for test in TESTS:
-        why = missing if test in MODEL_BACKED else unread if test in DECISIONS_BACKED else None
+        why = (missing if test in MODEL_BACKED else unread if test in DECISIONS_BACKED
+               else (unread or live_missing()) if test in LIVE_BACKED else None)
         if why:
             skipped.append(test.__name__)
             print(f"  SKIP {test.__name__}: {why}")
