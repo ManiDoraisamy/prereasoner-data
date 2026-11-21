@@ -130,6 +130,21 @@ def test_the_answer_is_served_by_the_reading_the_choice_preferred() -> None:
     assert choose_answer({"r00": 0.5, "r01": 0.2, "r02": 0.1}, ["a", "b", "a"]).pick == 0
 
 
+def test_an_answer_worded_like_another_is_asked_back() -> None:
+    """tests.test_scale: "total Amount" on a sheet with two columns headed Amount was answered 40 at 0.87, unwarned: both
+    columns' totals read "the total of Amount on orders", so neither the choice nor the person could tell which was
+    computed. An answer one of whose readings reads word for word like an offered reading of another answer is asked
+    back (none of the 896 dev questions nor the 91 demo questions has one)."""
+    lines = ['the total of Amount on "orders"', 'the total of Amount on "orders"', 'the number of lines on "orders"']
+    assert choose_answer({"r00": 0.87, "r01": 0.1, "r02": 0.01}, ["a", "b", "c"], lines).kind == ASKED
+    # contrastive: the same words for the same answer, and different words for different answers, are answered
+    assert choose_answer({"r00": 0.87, "r01": 0.1}, ["a", "a"], lines[:2]).kind == ANSWERED
+    assert choose_answer({"r00": 0.87, "r01": 0.1}, ["a", "b"], ['the total of Amount on "orders"', 'the total of Units on "orders"']).kind == ANSWERED
+    # negative: a reading past the choice's offer (CHOOSE_K) is no clash
+    far = ["x"] + ["y"] * (CHOOSE_K - 1) + ["x"]
+    assert choose_answer({"r00": 0.9}, ["a"] + ["b"] * CHOOSE_K, far).kind == ANSWERED
+
+
 def test_ties_go_to_the_earlier_listing() -> None:
     choice = choose_answer({"r00": 0.25, "r01": 0.25, "r02": 0.25, "r03": 0.25}, ["a", "b", "a", "b"])
     assert choice.pick == 0 and choice.runner_up == 1
@@ -421,7 +436,7 @@ def test_the_dev_replay_holds_each_question_to_its_latest_kept_measurement() -> 
 
 
 TESTS = [
-    test_a_candidates_probability_is_summed_over_the_same_answer, test_the_answer_is_served_by_the_reading_the_choice_preferred, test_ties_go_to_the_earlier_listing, test_thresholds_ask_warn_and_answer,
+    test_a_candidates_probability_is_summed_over_the_same_answer, test_the_answer_is_served_by_the_reading_the_choice_preferred, test_an_answer_worded_like_another_is_asked_back, test_ties_go_to_the_earlier_listing, test_thresholds_ask_warn_and_answer,
     test_none_likelier_than_the_best_answer_asks, test_nothing_listed_asks, test_answer_key_tells_rows_apart,
     test_sheet_state_describes_every_column_with_three_examples, test_sheet_state_names_a_family_table_by_all_its_tabs, test_a_workbook_of_several_tabs_names_the_tab_in_view,
     test_reading_record_offers_each_slot_its_coordinates, test_written_day_questions_need_a_year_and_a_day_number,

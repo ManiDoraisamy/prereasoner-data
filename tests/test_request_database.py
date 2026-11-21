@@ -399,11 +399,101 @@ def test_a_synced_sheets_vectors_are_kept_once_and_read_by_a_question_on_any_ins
                 prepared.hold_sheet_vectors(tables, RequestDatabase())
             stock._READER.read("how many orders were returned?", workbook.catalog, workbook.decoder, workbook.targets)
             assert "returned" in scratch.read, "a scratch database reads nothing stored"
+
+            # A workbook of several tabs is kept as the one workbook a question reads (test_scale's six tabs encoded
+            # each tab under its own token bound, six times what the question reads, in 132 s), compiled once.
+            customers = normalize_tables([{"name": "customers", "columns": ["Customer", "Tier"],
+                                           "rows": [[f"c{i}", ["Gold", "Silver"][i % 2]] for i in range(12)]}])
+            both = tables + customers
+            compiled = []
+            held_prepare = prepared.prepared_workbook
+            stored.clear()
+            with patch.object(prepared, "prepared_workbook", lambda chosen: compiled.append(len(chosen)) or held_prepare(chosen)):
+                stock._READER = stock.StockReader(background := Counting())
+                assert prepared.keep_sheet_vectors(both, "conv-2") == 1 and compiled == [2] and len(stored) == 1, (compiled, len(stored))
+            assert {"returned", "gold", "Tier"} <= set(background.read), sorted(set(background.read))[:40]
+            stock._READER = stock.StockReader(question := Counting())     # another instance, the same two tables
+            _key, workbook = prepared.prepared_workbook(both)
+            served = RequestDatabase(_base({}))
+            try:
+                with analysis_execution_context(None, "conv-2"):
+                    prepared.hold_sheet_vectors(both, served)
+                stock._READER.read("which gold customers returned orders?", workbook.catalog, workbook.decoder, workbook.targets)
+            finally:
+                served.close()
+            kept, _vectors = prepared.vector_entries(next(iter(stored.values())))
+            assert not set(question.read) & set(kept), "the question reads the kept workbook's vectors"
     finally:
         stock._READER, llm.DECISIONS_TRANSPORT = held_reader, held_transport
 
 
+def test_a_workbook_is_prepared_once_while_requests_wait_for_it():
+    """A synced 30,000-line sheet's background preparation compiles its workbook (prepare_sheets), and a question that
+    arrived meanwhile compiled it again beside it on the same CPUs. One preparation of a workbook runs at a time: a
+    request that finds it in progress waits and reads its result. A different workbook prepares at once, and a
+    preparation that fails leaves the waiting request to prepare it itself."""
+    import threading
+    import engine.program.answer as answer
+    from engine.tables import normalize_tables
+
+    tables = normalize_tables([{"name": "orders", "columns": ["Order", "Amount"], "rows": [["a", "1"], ["b", "2"]]}])
+    other = normalize_tables([{"name": "orders", "columns": ["Order", "Amount"], "rows": [["c", "3"]]}])
+    calls, started, release = [], threading.Event(), threading.Event()
+
+    def slow(workbook):
+        calls.append(workbook)
+        started.set()
+        release.wait(5)
+        return object()
+
+    with patch.object(answer, "prepare", slow), patch.dict(prepared._WORKBOOKS, clear=True):
+        results = []
+        first = threading.Thread(target=lambda: results.append(prepared.prepared_workbook(tables)))
+        first.start()
+        assert started.wait(5)
+        second = threading.Thread(target=lambda: results.append(prepared.prepared_workbook(tables)))
+        second.start()
+        time.sleep(0.2)
+        assert len(calls) == 1, "the second request waits for the preparation in progress"
+        prepared.prepared_workbook(other)     # contrastive: another workbook does not wait
+        release.set()
+        first.join(5); second.join(5)
+        assert len(calls) == 2 and results[0] == results[1], (len(calls), results)
+
+    failures = []
+
+    def failing(workbook):
+        failures.append(workbook)
+        if len(failures) == 1:
+            started.set()
+            release.wait(5)
+            raise RuntimeError("the date-typing call failed")
+        return "prepared by the waiter"
+
+    started.clear(); release.clear()
+    with patch.object(answer, "prepare", failing), patch.dict(prepared._WORKBOOKS, clear=True):
+        errors, results = [], []
+
+        def first_request():
+            try:
+                prepared.prepared_workbook(tables)
+            except RuntimeError as error:
+                errors.append(error)
+
+        first = threading.Thread(target=first_request)
+        first.start()
+        assert started.wait(5)
+        second = threading.Thread(target=lambda: results.append(prepared.prepared_workbook(tables)))
+        second.start()
+        time.sleep(0.2)
+        release.set()
+        first.join(5); second.join(5)
+        assert errors and results and results[0][1] == "prepared by the waiter" and len(failures) == 2, (errors, results)
+    assert not prepared._PREPARING
+
+
 TESTS = [
+    test_a_workbook_is_prepared_once_while_requests_wait_for_it,
     test_a_decimal_result_compares_with_an_untyped_number,
     test_every_value_is_held_exactly_as_the_planner_types_it,
     test_large_identifier_and_scientific_decimal_use_exact_storage,

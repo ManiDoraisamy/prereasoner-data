@@ -54,7 +54,17 @@ def write_fixture(path):
         writer=csv.writer(stream);writer.writerow(table['columns']);writer.writerows(table['rows'])
 
 
+def prepared_upload(Q, tables, conversation):
+    """Prepare ``tables`` as their upload's sync does for ``conversation`` (engine/prepared.py prepare_sheets); returns
+    the seconds it took."""
+    from engine.prepared import prepare_sheets
+    start = time.perf_counter()
+    prepare_sheets(Q.qw, tables, conversation)
+    return time.perf_counter() - start
+
+
 def main():
+    from mcp_server.engine_client import DEFAULT_TIMEOUT as ENGINE_WAIT     # how long the chat waits for one engine call
     if not os.environ.get('KB_PG_PASSWORD'):
         raise RuntimeError('Scale gate requires the isolated seeded PostgreSQL runtime')
     from engine.knowledge import KnowledgeReasoner
@@ -74,6 +84,14 @@ def main():
                 assert not result.get('error') and not result.get('clarify'), result
                 assert len(answer)==1 and len(answer[0])==1 and Decimal(str(answer[0][0]))==expected, (question,answer)
         print('PASS numeric storage: oversized identifiers and scientific decimals preserved', flush=True)
+        # The own-data path prepares a sheet when its upload syncs (engine/prepared.py prepare_sheets: the table's
+        # preparation, its workbook compiled, the stock reading's vectors kept for the conversation), as engine/server.py
+        # does in the background after /api/conversation/sync; a question that arrives during it waits for it. The
+        # upload's preparation and the first question together stay within the chat's wait for the engine
+        # (mcp_server/engine_client.py DEFAULT_TIMEOUT), and each question within 90 s.
+        upload = prepared_upload(Q, [table], lease.name)
+        print('scale', json.dumps({'rows': 30000, 'upload_preparation_seconds': round(upload, 3)}), flush=True)
+        first = True
         for mode in ('sql', None):
             for question, expected in [('How many subscriptions?', Decimal(30000)),
                                        ('total Amount', gold), ('total Amount for canceled', canceled)]:
@@ -84,6 +102,8 @@ def main():
                 assert not result.get('error') and not result.get('clarify'), result
                 assert len(answer)==1 and len(answer[0])==1 and Decimal(str(answer[0][0]))==expected, (question,answer,expected)
                 assert elapsed<90, (question,elapsed)
+                assert not first or upload+elapsed<ENGINE_WAIT, ('the upload and its first question', upload, elapsed)
+                first = False
                 records.append({'rows':30000,'columns':12,'question':question,'mode':mode or 'auto',
                                 'seconds':round(elapsed,3),'gold':str(expected),'execution':result.get('execution')})
                 print('scale',json.dumps(records[-1]),flush=True)
@@ -138,9 +158,11 @@ def main():
         for row in workbook[0]['rows']:
             by_plan[(row[2], row[4])] = by_plan.get((row[2], row[4]), Decimal(0)) + Decimal(row[5])
         question = 'What is the total Amount broken down by Plan and Currency?'
+        upload = prepared_upload(Q, workbook, lease.name)
         start = time.perf_counter()
         result = served(lease.name, Q.serve, workbook, question, lease.name)
         elapsed = time.perf_counter() - start
+        assert upload + elapsed < ENGINE_WAIT, ('the six-tab upload and its first question', upload, elapsed)
         answer = (result.get('result') or {}).get('rows') or []
         # The six tabs are three exports of one layout and their reports: the sheet compiler reads the exports as one
         # family (engine/sheet), and the Decisions path answers from the copy the question names or asks back, never
@@ -151,7 +173,7 @@ def main():
             assert result.get('clarify') or result.get('error'), result
         assert elapsed < 120, (question, elapsed)
         print('scale', json.dumps({'tabs': 6, 'rows': sum(len(tab['rows']) for tab in workbook), 'question': question,
-                                   'seconds': round(elapsed, 3)}), flush=True)
+                                   'upload_preparation_seconds': round(upload, 3), 'seconds': round(elapsed, 3)}), flush=True)
         # Messy import acceptance: ambiguity/errors are column-specific, never a
         # reason to discard an unrelated measure or all the records.
         from engine.tables import csv_table

@@ -971,6 +971,7 @@ def scratch_database():
 
 _WORKBOOKS: OrderedDict = OrderedDict()      # workbook identity -> (its preparation, its cells), oldest use first
 _WORKBOOKS_LOCK = threading.Lock()
+_PREPARING: dict[str, threading.Event] = {}     # workbook identity -> set when its preparation in progress ends
 _GRID_KEYS: OrderedDict = OrderedDict()     # ids of a request's grids -> (those grids, identity, cells)
 _GRID_KEYS_LOCK = threading.Lock()
 GRID_KEYS_KEPT = 64
@@ -1000,19 +1001,32 @@ def prepared_workbook(tables):
     """(identity, preparation) of the workbook the own-data path reads for a request's tables: one tab per table, in
     the tables' order, each the table's grid (engine/tables.py table_grid). Prepared once per content
     (engine/program/answer.py prepare) and kept, least recently used first out, while ``WORKBOOK_CACHE_CELLS`` hold.
-    Raises LLMUnavailable when the preparation's Decisions call fails."""
+    One preparation of a workbook runs at a time: a request that finds it in progress (a synced sheet's background
+    preparation, prepare_sheets) waits and reads it, and prepares it itself only when it was not kept (it failed, or
+    the workbook is past the cache). Raises LLMUnavailable when the preparation's Decisions call fails."""
     from engine.program.answer import prepare
     from engine.sheet import workbook_from_json
     tabs = [table["grid"] for table in tables]
     key, cells = workbook_key(tabs)
-    with _WORKBOOKS_LOCK:
-        held = _WORKBOOKS.get(key)
-        if held is not None:
-            _WORKBOOKS.move_to_end(key)
-            return key, held[0]
-    with request_timing.span("prepare_workbook"):
-        prepared = prepare(workbook_from_json({"name": "", "tabs": tabs}))
-    _keep_workbook(key, prepared, cells)
+    while True:
+        with _WORKBOOKS_LOCK:
+            held = _WORKBOOKS.get(key)
+            if held is not None:
+                _WORKBOOKS.move_to_end(key)
+                return key, held[0]
+            in_progress = _PREPARING.get(key)
+            if in_progress is None:
+                _PREPARING[key] = threading.Event()
+                break
+        with request_timing.span("prepare_workbook_wait"):     # one preparation per workbook at a time: read its result
+            in_progress.wait()
+    try:
+        with request_timing.span("prepare_workbook"):
+            prepared = prepare(workbook_from_json({"name": "", "tabs": tabs}))
+        _keep_workbook(key, prepared, cells)
+    finally:
+        with _WORKBOOKS_LOCK:
+            _PREPARING.pop(key).set()
     return key, prepared
 
 
@@ -1252,10 +1266,10 @@ _HELD_VECTORS = set()             # (record key, version, the reader's cache gen
 _HELD_VECTORS_LOCK = threading.Lock()
 
 
-def vectors_key(table) -> str:
-    """The key of a table's stock-reading vectors in chat.prepared_table: its content's (table_key), apart from its
-    preparation's."""
-    return hashlib.sha256(f"stock-vectors|{table_key(table)}".encode("utf-8")).hexdigest()
+def vectors_key(tables) -> str:
+    """The key in chat.prepared_table of the stock-reading vectors of the workbook a question reads of ``tables``
+    (prepared_workbook: a tab per table, in their order): their contents' (table_key), apart from a preparation's."""
+    return hashlib.sha256(("stock-vectors|" + "|".join(table_key(table) for table in tables)).encode("utf-8")).hexdigest()
 
 
 def vectors_version() -> str:
@@ -1283,32 +1297,29 @@ def vector_entries(blob) -> tuple[list[str], np.ndarray]:
 
 
 def keep_sheet_vectors(tables, conversation) -> int:
-    """Encode the stock reading's vectors of each table's targets and keep them for ``conversation``, a table already
-    kept skipped; returns the tables encoded. Each table is read as its own workbook (prepared_workbook), so its
-    targets are the cells, columns and labels a question's workbook reads of it; a text a question reads that no table
-    held alone (a family of tabs read as one) is encoded by the question."""
+    """Encode the stock reading's vectors of the workbook a question reads of ``tables`` (prepared_workbook, compiled
+    once, its value targets under one token bound) and keep them for ``conversation``; returns 1 when encoded, 0 when
+    already kept or with no conversation. A text a question reads that the workbook did not (a knowledgebase column a
+    link reaches) is encoded by the question."""
     from engine.program.stock import stock_reader, workbook_texts
     if not conversation:
         return 0
     version = vectors_version()
-    keys = {vectors_key(table): table for table in tables}
-    kept = read_stored_records(conversation, list(keys), version)
-    encoded = 0
-    for key, table in keys.items():
-        if key in kept:
-            continue
-        _workbook, prepared = prepared_workbook([table])
-        texts, vectors = stock_reader().vectors(workbook_texts(prepared.catalog, prepared.targets))
-        if texts:
-            store_record(conversation, key, version, vector_record(texts, vectors))
-            encoded += 1
-    return encoded
+    key = vectors_key(tables)
+    if read_stored_records(conversation, [key], version):
+        return 0
+    _workbook, prepared = prepared_workbook(tables)
+    texts, vectors = stock_reader().vectors(workbook_texts(prepared.catalog, prepared.targets))
+    if not texts:
+        return 0
+    store_record(conversation, key, version, vector_record(texts, vectors))
+    return 1
 
 
 def hold_sheet_vectors(tables, database) -> None:
-    """Before a question's reading, hold in the stock reader the vectors the request's conversation keeps for its tables
-    (keep_sheet_vectors), each record once per process and reader cache. Outside a served request's conversation
-    (``database`` a scratch one, or no conversation), nothing is read."""
+    """Before a question's reading, hold in the stock reader the vectors the request's conversation keeps for the
+    workbook of its tables (keep_sheet_vectors), each record once per process and reader cache. Outside a served
+    request's conversation (``database`` a scratch one, or no conversation), nothing is read."""
     from engine.deterministic.context import current_analysis_context
     from engine.program.stock import stock_reader
     context = current_analysis_context()
@@ -1318,8 +1329,7 @@ def hold_sheet_vectors(tables, database) -> None:
     reader = stock_reader()
     version = vectors_version()
     with _HELD_VECTORS_LOCK:
-        wanted = [key for key in dict.fromkeys(vectors_key(table) for table in tables)
-                  if (key, version, reader.generation) not in _HELD_VECTORS]
+        wanted = [key for key in (vectors_key(tables),) if (key, version, reader.generation) not in _HELD_VECTORS]
     if not wanted:
         return
     with request_timing.span("prepare_vectors"):
@@ -1331,26 +1341,33 @@ def hold_sheet_vectors(tables, database) -> None:
                 _HELD_VECTORS.add((key, version, reader.generation))
 
 
-def prepare_sheets_in_background(resolver, tables, conversation):
-    """Prepare a conversation's tables after its sheets sync, so its first question finds them prepared: each table's
-    preparation, then the stock reading's vectors of its targets (keep_sheet_vectors). A question that arrives first
-    waits for the preparation in progress rather than starting another."""
-    def run():
-        from engine.request_state import request_scope
+def prepare_sheets(resolver, tables, conversation):
+    """Prepare a conversation's synced tables as their upload does: each table's preparation, then the workbook a
+    question reads of them, compiled once, with the stock reading's vectors of its targets (keep_sheet_vectors). A
+    question that arrives during it waits for the preparation in progress rather than starting another."""
+    from engine.request_state import request_scope
+    try:
+        with request_scope():
+            norm, _fks = resolver.ingest(tables)
+            for table in norm:
+                preparations().get(resolver, table, conversation)
+            with request_timing.span("prepare_vectors_keep"):
+                keep_sheet_vectors(norm, conversation)
+    finally:
         try:
-            with request_scope():
-                norm, _fks = resolver.ingest(tables)
-                for table in norm:
-                    preparations().get(resolver, table, conversation)
-                with request_timing.span("prepare_vectors_keep"):
-                    keep_sheet_vectors(norm, conversation)
+            resolver.end_request()
+        except Exception:                            # noqa: BLE001
+            pass
+
+
+def prepare_sheets_in_background(resolver, tables, conversation):
+    """``prepare_sheets`` after a conversation's sheets sync, in a thread of its own, so its first question finds them
+    prepared."""
+    def run():
+        try:
+            prepare_sheets(resolver, tables, conversation)
         except Exception as error:                   # noqa: BLE001 - the first question prepares instead
             print(f"[prepared] background preparation skipped: {type(error).__name__}", flush=True)
-        finally:
-            try:
-                resolver.end_request()
-            except Exception:                        # noqa: BLE001
-                pass
 
     worker = threading.Thread(target=run, name="prepare-sheets", daemon=True)
     worker.start()

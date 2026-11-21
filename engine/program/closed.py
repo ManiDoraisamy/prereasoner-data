@@ -843,12 +843,14 @@ def answer_masses(probabilities: Mapping[str, float] | None, answers: Sequence[s
     return mass, first
 
 
-def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[str]) -> AnswerChoice:
+def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[str], lines: Sequence[str] = ()) -> AnswerChoice:
     """Per answer, not per candidate: the API spreads its probability over readings that return the same answer (a right
     answer at ranks 0, 5, 9 and 12 read 0.33, 0.28 and 0.13 on three of them), so a candidate's probability is summed over
     the listed candidates whose answer (answers[i], answer_key) is the same (answer_masses). The likeliest answer, ties to
     the earlier listing, is asked back when none is likelier or it is below T_ASK, warned below T_FLAG, and answered
-    otherwise."""
+    otherwise. It is asked back too when a reading of it reads, word for word (``lines``, each listing's read-as), like a
+    reading the choice was offered of another answer: "total Amount" on a sheet with two columns headed Amount read
+    "the total of Amount" twice, 40 and 60, and neither the choice nor the person can tell which was computed."""
     probabilities = probabilities or {}
     none = probabilities.get(NONE, 0.0)
     mass, first = answer_masses(probabilities, answers)
@@ -857,7 +859,9 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
     ranked = sorted(mass, key=lambda answer: (-mass[answer], first[answer]))
     best = ranked[0]
     runner_up = first[ranked[1]] if len(ranked) > 1 else None
-    if none > mass[best] or mass[best] < T_ASK:
+    offered = [(answer, lines[at]) for at, answer in enumerate(answers[:CHOOSE_K]) if at < len(lines)]
+    worded = {line for answer, line in offered if answer == best}
+    if none > mass[best] or mass[best] < T_ASK or any(answer != best and line in worded for answer, line in offered):
         kind = ASKED
     else:
         kind = WARNED if mass[best] < T_FLAG else ANSWERED

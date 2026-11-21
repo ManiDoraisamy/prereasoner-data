@@ -147,7 +147,7 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
             state, questions = choice_record(catalog, question, [(line, candidate.rows) for line, candidate in zip(lines, listed)], in_view)
             choice = decide(state, questions)
         probabilities, tokens = choice.fields["reading"], tokens + choice.tokens
-    decision = choose_answer(probabilities, answers)
+    decision = choose_answer(probabilities, answers, lines)
     chosen = listed[decision.pick] if decision.pick is not None else None
     uncertain: tuple[str, ...] = ()
     if decision.kind == WARNED and decision.runner_up is not None:
