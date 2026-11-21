@@ -62,6 +62,17 @@ path's internals, and fixed where it lives:
   offered readings in the sheet's own header words (`output.in_header_words`), where both read "the total of Amount",
   and asks back. No dev or demo listing names a column by its letter.
 
+The offline regression gate (`regress/run_regression.py --offline`, the release build's `regress-offline` step) read
+each case's tables unconnected; it now registers the request's keys as serving does (`link_tables`), so "total revenue
+by title" through Manager_ID answers 9,000 and 16,000. Five of its 13 golden cases are v1 known limitations, reported
+and not blocking: "what are the names and countries of all singers" is asked back; "total order amount in US
+dollars" beside a rate table reads the sheet's rates only through the knowledgebase-side request links (answered
+791.20 through the production entry, `tests/test_geo.py`); and the rate and ratio family is not read: "GDP per
+capita" and "total commission amount" are asked back and "total tax amount" is warned at 0.54 with the total of
+Tax_Percent (39 against 58). The old path's calculation registry built these from the column names; the Decisions
+path's reading builds no amount times its rate or ratio of two totals for them. Removal condition: a reading of that
+family, measured on the 896 and the demo, that answers these cases.
+
 ## The own-data path reads what a request's links reach (2026-11-20)
 
 The demo gate's measurement (demo25: 86 right, 2 wrong, 3 asked of 91) ran the Decisions path on a connected catalog:

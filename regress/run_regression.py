@@ -57,9 +57,15 @@ class Engine:
 
     def _ast(self, tabs, q):
         """The production own-data path: the one served selection (engine/tables.py:select_query, the Decisions path,
-        whose calls need the deployment's key) and the rows of the program it chose."""
+        whose calls need the deployment's key) and the rows of the program it chose, on a request database whose
+        tables connect by their keys as serving connects them (engine/prepared.py link_tables; this tier has no
+        knowledgebase, so no place, entity or money link)."""
+        from engine.prepared import link_tables, scratch_database
+
         norm, _fks = self.enc.ingest(tabs)
-        selection = self.enc.select_query(q, norm)
+        with scratch_database() as database:
+            link_tables(database, self.enc)
+            selection = self.enc.select_query(q, norm)
         if not selection.pool:
             raise RuntimeError("planner: no valid AST candidate")
         if selection.candidate is None:

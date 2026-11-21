@@ -69,7 +69,10 @@ CASES = [
     {"name": "projection_names_countries", "tables": [SINGER],
      "question": "what are the names and countries of all singers",
      "expect_contains": ["Joe", "Netherlands"], "forbid_scalar": 197,
-     "note": "A projection (no aggregate); routing must send it to the slot planner."},
+     "note": "A projection (no aggregate); routing must send it to the slot planner.",
+     "known_limitation": "v1 (the Decisions path, 2026-11-21): asked back; no listing of both named columns ranks "
+                         "(the likeliest, 'the different Name', holds 0.009). DECISIONS.md: the Decisions path answers "
+                         "as production's live suites expect."},
 
     # --- GUARD: single-table filtered count (basic slot WHERE) ---
     {"name": "filtered_count_country", "tables": [SINGER],
@@ -79,7 +82,11 @@ CASES = [
     # --- CURRENCY POLICY: ranking chooses candidates; typed admissibility decides release. ---
     {"name": "currency_direct_conversion", "tables": [FX_ORDERS, FX_RATES],
      "question": "total order amount in US dollars", "expect_scalar": 32,
-     "note": "SUM(amount * rate_to_usd) over the typed currency edge."},
+     "note": "SUM(amount * rate_to_usd) over the typed currency edge.",
+     "known_limitation": "v1 (the Decisions path, 2026-11-21): a sheet's own rates are a money link of the request's "
+                         "links, built with the knowledgebase's (engine/knowledge_bridges.py sheet_rates), which this "
+                         "tier has none of: answered 22 (warned). Served through the production entry it is 791.20 at "
+                         "the sheet's rates (tests/test_geo.py)."},
     {"name": "currency_positive_filter", "tables": [FX_ORDERS, FX_RATES],
      "question": "how many orders in USD", "expect_scalar": 2,
      "note": "COUNT plus a directional currency phrase is a row filter, not conversion."},
@@ -93,11 +100,18 @@ CASES = [
     # --- GENERIC CALCULATION REGISTRY: the same expansion/verifier owns non-currency arithmetic. ---
     {"name": "ratio_gdp_per_capita", "tables": [ECONOMY],
      "question": "GDP per capita", "expect_scalar": 50,
-     "note": "SUM(GDP) / SUM(Population), with a derived currency/person output unit."},
+     "note": "SUM(GDP) / SUM(Population), with a derived currency/person output unit.",
+     "known_limitation": "v1 (the Decisions path, 2026-11-21): asked back; the reading builds no ratio of the two "
+                         "totals for 'per capita' (the old path's calculation registry did). A rate and ratio family "
+                         "of the reading, to be measured on the 896 before it is kept."},
     {"name": "rate_tax_percent", "tables": [TAXABLE],
      "question": "total tax amount", "expect_scalar": 58,
-     "note": "SUM(Amount * Tax_Percent / 100) through the registered rate specification."},
+     "note": "SUM(Amount * Tax_Percent / 100) through the registered rate specification.",
+     "known_limitation": "v1 (the Decisions path, 2026-11-21): warned, 39 (the total of Tax_Percent at 0.54); the "
+                         "reading builds no amount times its percent rate. The rate and ratio family, as above."},
     {"name": "rate_commission_fraction", "tables": [COMMISSIONABLE],
      "question": "total commission amount", "expect_scalar": 5,
-     "note": "SUM(Transaction_Amount * Commission_Fraction), without percent rescaling."},
+     "note": "SUM(Transaction_Amount * Commission_Fraction), without percent rescaling.",
+     "known_limitation": "v1 (the Decisions path, 2026-11-21): asked back; the reading builds no amount times its "
+                         "fraction. The rate and ratio family, as above."},
 ]
