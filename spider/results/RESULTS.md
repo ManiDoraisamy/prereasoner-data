@@ -5,6 +5,54 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## A stated currency is the sheet's unit, not a column; v1 replayed as released is over the warned-and-asked bar by 3 (2026-11-21)
+
+- Released 2026-11-21 (16:55 UTC): engine `prereasoner-api-00340-xaz` (`engine@sha256:d8060b55...`, build 140af411,
+  all four stages), chat `prereasoner-chat-00239-zil` (`chat@sha256:4977c6be...`), smoke `sczqk` passed, both jobs on
+  the image; Hosting unchanged. Rollback: `00338-qek` / `00237-siy`. Browser check on chat.prereasoner.com:
+  formfacade-leads in a fresh conversation 8 of 8 (62,000; 33,000; 36,267 USD; Africa asked; 68,138 USD; 5; 4;
+  **37,000**), and in the v1 gate's existing conversation the same question now 37,000 where it read EUR 18,000 and
+  GBP 4,000; customer-orders' prompt 1,066.03 USD (expected 1,126.66 within the FX tolerance; every EUR conversion
+  today reads 0.946 of its expectation). No other demo dataset states a unit in conversation.
+- Change (`1a442963`): `dataset_semantics.apply` no longer appends the private `__currency_for_<hash>` column to the grid
+  the Decisions path reads; the grid states the column's unit (`units`, `TabPayload.units`) and the compiler gives the
+  column that unit. formfacade-leads after "This is in euros", "What is the total budget from August 11 to August 15,
+  2026?": production read two days grouped by country -> currency (0.654; EUR 18,000 and GBP 4,000 in both browser
+  gates); now the span, one total, **37,000** at 0.968 (the CSV's 37,000). With the claim, Germany and Europe in USD
+  read 36,267 and 68,138, as production does today; the standalone question still reads 37,000 (0.858).
+- **Correction to the v1 entry below.** Its dev table is the replay of 04:47-05:20 (tags tip3_wtq, tip3_mf, tip3_fd,
+  in the release worktree's `regress/results/dev_decisions/`), before `65658636` and `a64bc830` (an answer worded like
+  another, and two readings that differ only in which of two same-headed columns they read, are asked back), which
+  the release carries. Replayed as released (`1d9929b2`, the cache's every call a hit; tags prod_wtq, prod_fd): WTQ
+  nt-10343 wrong -> asked, nt-3012 warned right -> asked, nt-11106 right -> asked; fresh dev FD-0172 right -> asked.
+  The change above replays to the same records (tags units_dev and units_mf): FD-0057's choice probabilities differ
+  only when every set runs in one process (the stock reader's history) and equal in the measurement's order, and
+  db/057_Spain/0's differ as they did at release (same label).
+
+  | Set | Right | Warned right | Asked | Warned wrong | Unwarned wrong | Pick |
+  |---|---|---|---|---|---|---|
+  | WikiTableQuestions (300) | 192 | 20 | 41 | 16 | 31 | 225 |
+  | messy (120) | 91 | 9 | 10 | 8 | 2 | 105 |
+  | fresh dev (176) | 117 | 7 | 22 | 13 | 17 | 126 |
+  | DataBench (300) | 248 | 9 | 19 | 8 | 16 | 261 |
+  | **All (896)** | **648** | **45** | **92** | **45** | **66** | **717** |
+
+  The bar: pick 717 (80.0%, met), unwarned wrong 66 (7.4%, met), warned and asked **182 (20.3%, at most 179: not
+  met)**. Two of the four new asks were right answers.
+- The demo set's replay (`--sets demo`) misses 38 of its bodies against the 2026-11-18 measurement on the released
+  code and on this change alike (the upload's grid and the value-token bound changed what the workbooks send); the 53
+  it holds match. The demo gate is `tests.test_datasets` (passes) and the browser gate.
+- Spider calibration's drop (371 strict against the readers' 727), by the gold query's shape (per example, the readers'
+  fd63f2b run against v1's): one table 393 -> 245 of 518, one join 179 -> 77 of 280, two or more joins 48 -> 25 of 91,
+  nested 52 -> 8 of 89, set operations 55 -> 16 of 75. Of the 420 the readers had right and v1 does not, 139 are right
+  in content but not in shape (a count or measure column shown beside the answer, a listing's order), 138 asked (no
+  program for a sorted listing, two aggregates at once, a substring match, a two-column grouping, a nesting or a set
+  operation) and 143 wrong (whole_db reads all tables as one workbook and reaches a column through a link from the
+  wrong table; an OR of two values read as one). v1 gains 64 the readers missed.
+- Tests: `tests.run_all` passes, the live suites included; `tests.test_orchestrator` (skipped there: no
+  GOOGLE_CLOUD_PROJECT) passes 44/44 run apart twice, and failed once in three on "yes accepts the specific
+  Europe-to-GBP offer" (Gemini sent the earlier question instead).
+
 ## v1 is live: the Decisions path serves production at 80.0% right of the 896 dev questions, 7.5% unwarned wrong; served Spider falls to 371 strict (2026-11-21)
 
 - Release: `1d9929b2` (`48abf835` plus opentelemetry-api 1.45.2): engine `prereasoner-api-00338-qek`, chat
@@ -24,7 +72,8 @@ been removed, and that commit holds the code that ran.
   | **All (896)** | **650** | **46** | **88** | **45** | **67** |
 
   The launch bar: the always-answering pick 717 of 896 (80.0%, 717 needed), unwarned wrong 67 (7.5%, at most 71),
-  warned and asked 179 (19.98%, at most 20%). Kept since the previous entry: tied lines in sheet order, a cell on one
+  warned and asked 179 (19.98%, at most 20%). (Corrected in the entry above: this table predates two of the release's
+  commits; replayed as released, warned and asked is 182, 20.3%, and unwarned wrong 66.) Kept since the previous entry: tied lines in sheet order, a cell on one
   line, a listing of several columns, an absence across a link, the value-token bound, the every-column listing (pick
   718 -> 717 on an asked question, unwarned wrong 68 -> 67) and the served reading among equal answers.
 - Demo gate: `tests.test_datasets` (live, all four execution modes) passes; the browser gate on production (every demo
