@@ -7,6 +7,13 @@ been removed, and that commit holds the code that ran.
 
 ## Never asked back: an answer most likely wrong is retried by Gemini 4 Neon's written query; 757 of 896 served right (84.5%), 4 asked (2026-11-21)
 
+- Released 2026-11-21 (21:10 UTC), `6d239ad1`: engine `prereasoner-api-00342-mer` (`engine@sha256:b61683e5...`, build
+  c82c88b3, all four stages), chat `prereasoner-chat-00241-zas` (`chat@sha256:0fca2d73...`), smoke `hjvfk` passed,
+  both jobs on the image, Hosting deployed. Rollback: `00340-xaz` / `00239-zil`. Chrome on chat.prereasoner.com
+  (formfacade-bank-deposits): "which bank has deposits closest to the average deposit?" erred (33%) and was answered
+  by the retry, Deutsche Bank 700 (the CSV's mean is 750; right), its mark opening the reason, the query and Retry;
+  Retry answered it again marked as asked; confident answers carry no mark. The Sheets sidebar shows the mark once
+  the Apps Script version that forwards `check` (sheets-addon/Code.js) is published in the Marketplace SDK.
 - Owner's order (DECISIONS.md, the same day): never ask back unless the question is wrong; mark an answer the engine
   is unsure of (warning) or that is most likely wrong (error); a click shows the reason and Retry; Retry has Gemini
   Neon write the query, automatically for an error. `closed.choose_answer` now answers, warns (below `T_FLAG`, or
