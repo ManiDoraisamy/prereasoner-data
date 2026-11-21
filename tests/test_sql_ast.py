@@ -2420,16 +2420,37 @@ TESTS = [
 ]
 
 
+# These serve a question through the Decisions path, whose stock reading imports torch: the engine image installs it,
+# the public CI's hermetic environment does not, and there they are skipped, as skipped.
+NEEDS_TORCH = (
+    test_the_selection_is_the_decisions_paths_listed_candidates,
+    test_a_question_the_path_asks_back_is_asked_about_with_its_reading,
+    test_a_warned_answer_is_served_with_what_else_it_may_mean,
+    test_an_analysis_runs_the_chosen_program_on_both_emitters,
+    test_a_long_question_the_path_asks_back_asks_for_the_decomposition,
+    test_the_decisions_paths_reading_certifies_its_calculation_but_a_conversion_it_could_not_make,
+    test_the_store_shares_the_request_database_with_a_table_named_like_its_own,
+    test_one_question_is_answered_once_per_request,
+    test_the_tab_in_view_is_the_requests_active_sheet,
+)
+
+
 def main():
-    failed = []
+    import importlib.util
+
+    failed, skipped = [], 0
     for test in TESTS:
+        if test in NEEDS_TORCH and importlib.util.find_spec("torch") is None:
+            skipped += 1
+            print(f"  SKIP {test.__name__}: needs torch (the engine image installs it)")
+            continue
         try:
             test()
             print(f"  ok   {test.__name__}")
         except Exception as exc:  # noqa: BLE001
             failed.append(test.__name__)
             print(f"  FAIL {test.__name__}: {type(exc).__name__}: {exc}")
-    print(f"\nSQL AST: {len(TESTS) - len(failed)} passed, {len(failed)} failed")
+    print(f"\nSQL AST: {len(TESTS) - len(failed) - skipped} passed, {len(failed)} failed" + (f", {skipped} skipped" if skipped else ""))
     sys.exit(1 if failed else 0)
 
 

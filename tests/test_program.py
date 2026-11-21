@@ -2000,14 +2000,23 @@ TESTS = [
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,
 ]
 
+# These read the stock reading's targets (engine/named/units.py), which import torch: the engine image installs it, the
+# public CI's hermetic environment does not, and there they are skipped, as skipped.
+NEEDS_TORCH = (test_a_workbook_reads_its_values_within_a_token_bound, test_a_rank_by_words_prints_the_word_counts)
+
 if __name__ == "__main__":
+    import importlib.util
     print("=== program language: one sheet per semantic, the k-best, the verifier, the proof ===")
-    failed = 0
+    failed = skipped = 0
     for t in TESTS:
+        if t in NEEDS_TORCH and importlib.util.find_spec("torch") is None:
+            skipped += 1
+            print(f"  SKIP  {t.__name__}: needs torch (the engine image installs it)")
+            continue
         try:
             t()
         except Exception as exc:                                     # noqa: BLE001
             failed += 1
             print(f"  FAIL  {t.__name__}: {type(exc).__name__}: {str(exc)[:600]}")
-    print(f"test_program: {len(TESTS) - failed} passed, {failed} failed")
+    print(f"test_program: {len(TESTS) - failed - skipped} passed, {failed} failed" + (f", {skipped} skipped" if skipped else ""))
     sys.exit(1 if failed else 0)

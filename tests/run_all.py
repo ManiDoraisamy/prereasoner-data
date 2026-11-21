@@ -34,6 +34,9 @@ SUITES = ["tests.test_sheet_compile", "tests.test_program", "tests.test_named", 
           "tests.test_conversations", "tests.test_sheet_sessions", "tests.test_provenance",
           "tests.test_release", "tests.test_promotion_gate", "tests.test_community_deploy",
           "tests.test_mcp", "tests.test_orchestrator_unit", "tests.test_orchestrator"]
+# Whole suites of the Decisions path's model-backed code (engine/named, the stock reading): the engine image installs the
+# model stack, the public CI's hermetic job does not; there they are skipped, as skipped, never counted as passes.
+TORCH_SUITES = {"tests.test_named", "tests.test_answer", "tests.test_connected"}
 ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_joins",
                  "tests.test_route_wired", "tests.test_geo", "tests.test_schema_probes",
                  "tests.test_datasets", "tests.test_question_families", "tests.test_scale", "tests.test_request_replay_live",
@@ -60,8 +63,14 @@ def main():
         if os.environ.get("RUN_ENGINE_TESTS", "1") != "0":
             suites += ENGINE_SUITES
 
-    results = []
+    import importlib.util
+
+    results, skipped = [], []
     for mod in suites:
+        if mod in TORCH_SUITES and importlib.util.find_spec("torch") is None:
+            print(f"\n{'='*70}\n# {mod}\n{'='*70}\nSKIP  {mod}: needs torch (the engine image installs it)", flush=True)
+            skipped.append(mod)
+            continue
         suite_timeout = suite_timeout_seconds(mod)
         print(f"\n{'='*70}\n# {mod}\n{'='*70}", flush=True)
         try:
@@ -80,6 +89,8 @@ def main():
     failed = [m for m, rc in results if rc != 0]
     for mod, rc in results:
         print(f"  {'OK  ' if rc == 0 else 'FAIL'}  {mod}  (exit {rc})")
+    for mod in skipped:
+        print(f"  SKIP  {mod}  (needs torch)")
     if failed:
         print(f"\n{len(failed)} suite(s) FAILED: {', '.join(failed)}")
         sys.exit(1)

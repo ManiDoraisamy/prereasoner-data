@@ -512,16 +512,28 @@ TESTS = [
 ]
 
 
+# These prepare a workbook through the Decisions path (engine/program/answer.py), whose stock reading imports torch: the
+# engine image installs it, the public CI's hermetic job does not, and there they are skipped, as skipped.
+NEEDS_TORCH = {test_a_workbook_is_prepared_once_while_requests_wait_for_it,
+               test_a_synced_sheets_vectors_are_kept_once_and_read_by_a_question_on_any_instance}
+
+
 def main():
-    failures = 0
+    import importlib.util
+
+    failures = skipped = 0
     for test in TESTS:
+        if test in NEEDS_TORCH and importlib.util.find_spec("torch") is None:
+            skipped += 1
+            print(f"  SKIP {test.__name__}: needs torch (the engine image installs it)")
+            continue
         try:
             test()
             print(f"  ok   {test.__name__}")
         except Exception as error:                         # noqa: BLE001 - report every test
             failures += 1
             print(f"  FAIL {test.__name__}: {type(error).__name__}: {error}")
-    print(f"{len(TESTS) - failures}/{len(TESTS)} passed")
+    print(f"{len(TESTS) - failures - skipped}/{len(TESTS)} passed" + (f", {skipped} skipped" if skipped else ""))
     return 1 if failures else 0
 
 

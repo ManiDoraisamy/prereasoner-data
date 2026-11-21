@@ -2118,7 +2118,8 @@ TESTS = [
 
 
 # CI's hermetic job installs no model stack; the engine image does.
-NEEDS_TORCH = {test_a_gpu_deployment_without_a_gpu_refuses_to_serve}
+NEEDS_TORCH = {test_a_gpu_deployment_without_a_gpu_refuses_to_serve, test_the_engine_loads_the_stock_reader_before_it_serves,
+               test_public_weight_bundle_is_manifested_and_documented}
 
 
 def main():
