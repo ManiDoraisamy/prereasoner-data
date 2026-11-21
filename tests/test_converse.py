@@ -172,19 +172,21 @@ def test_a_listed_answer_reads_as_a_one_number_answer_does():
     assert terminal_reply(bare) == 'order year: 2026; count: 1200'
 
 
-def test_a_warned_answer_is_given_as_one_the_engine_is_not_sure_of():
-    """The Decisions path serves an answer it gives less probability than closed.T_FLAG with an ``uncertain`` record
-    (engine/tables.py uncertain_answer): the reply gives the answer, says it is not sure, and names what else the
-    question may mean when another reading answered differently. An answer it stands behind reads as before."""
-    from engine.answer_presentation import terminal_reply
+def test_a_warned_answer_says_so_by_its_mark_not_its_reply():
+    """A warned, erred or retried answer (the response's ``check``, engine/tables.py answer_check) says so by its mark,
+    whose reason opens on a click beside a Retry (owner, 2026-11-21): the reply is the answer alone. The reasons say how
+    it was read, how sure the choice was and what else it may mean."""
+    from engine.answer_presentation import erred_reason, retried_reason, terminal_reply, warned_reason
     answer = {'columns': ['Plan', 'total Amount'], 'rows': [['price_a', 20]]}
-    uncertain = {'coordinates': ['value:t0.3=price_a'], 'also_read_as': 'the total of Amount on "NT"'}
-    assert terminal_reply({'status': 'answered', 'answer': answer, 'uncertain': uncertain}) == (
-        'Plan: price_a; total Amount: 20\n\nI\'m not sure this is what you asked: it may also mean '
-        '“the total of Amount on "NT"”.')
-    alone = {'status': 'answered', 'answer': answer, 'uncertain': {'coordinates': [], 'also_read_as': None}}
-    assert terminal_reply(alone).endswith("\n\nI'm not sure this is what you asked; check how I read it.")
-    assert terminal_reply({'status': 'answered', 'answer': answer}) == 'Plan: price_a; total Amount: 20'
+    check = {'state': 'warned', 'reason': warned_reason('the total of Amount', 'the total of Amount on "NT"', 0.5, False)}
+    assert terminal_reply({'status': 'answered', 'answer': answer, 'check': check}) == 'Plan: price_a; total Amount: 20'
+    assert check['reason'] == 'I read this as “the total of Amount”, 50% sure; it may also mean “the total of Amount on "NT"”.'
+    assert warned_reason('the total of Amount', 'the total of Amount [C]', 0.87, True).endswith(
+        '“the total of Amount [C]” reads the same way and gives another answer; the question does not say which.')
+    assert erred_reason('the total of Amount', 0.3, True) == (
+        'This answer is most likely wrong. I read this as “the total of Amount”, 30% sure. '
+        'The retry could not answer it either.')
+    assert retried_reason(None, None, 'Adds Amount.', True) == 'Retried: Gemini 4 Neon wrote this query. Adds Amount.'
 
 
 def test_a_malformed_converse_body_is_a_client_error_not_a_500():
@@ -368,7 +370,7 @@ TESTS = [
     test_an_engine_failure_is_one_sentence_the_user_can_act_on,
     test_a_blank_answer_or_a_link_in_a_cell_is_shown_as_data,
     test_a_listed_answer_reads_as_a_one_number_answer_does,
-    test_a_warned_answer_is_given_as_one_the_engine_is_not_sure_of,
+    test_a_warned_answer_says_so_by_its_mark_not_its_reply,
     test_a_malformed_converse_body_is_a_client_error_not_a_500,
     test_unavailable_gemini_reaches_reference_generation_as_llm_unavailable,
     test_preserves_existing_and_fills_empty,

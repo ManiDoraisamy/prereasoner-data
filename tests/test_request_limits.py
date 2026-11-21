@@ -409,8 +409,17 @@ def test_chat_validation_normalizes_and_bounds_inputs():
     cid = "c_" + "2" * 32
     reference = validate_chat_request({"message": "total", "conversation_id": cid, "source_hash": "a" * 64})
     assert reference[1] == [] and reference[4] == cid and reference[7] == "a" * 64
-    assert out[8] is None
+    assert out[8] is None and out[9] is False
     assert validate_chat_request({"message": "total", "active_sheet": " Checklist "})[8] == "Checklist"
+    # The person's Retry of an answer (engine/retry.py) is a flag on the turn and on the engine call, nothing else.
+    assert validate_chat_request({"message": "total", "retry": True})[9] is True
+    assert validate_reason_request({"question": "total", "data": "a\n1\n", "retry": True})["retry"] is True
+    for bad in ({"message": "x", "retry": "yes"}, {"message": "x", "retry": 1}):
+        try:
+            validate_chat_request(bad)
+            raise AssertionError(f"accepted {bad}")
+        except RequestValidationError:
+            pass
     assert validate_reason_request({"question": "total", "data": "a\n1\n", "active_sheet": "Checklist"})["active_sheet"] == "Checklist"
     for bad in ({"message": "x", "active_sheet": 3}, {"message": "x", "active_sheet": "x" * 1000}):
         try:

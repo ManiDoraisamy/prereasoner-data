@@ -107,7 +107,7 @@ class _HTTP:
 
 async def _run(status: str, *, fail_presentation=False, use=None, query_input=None,
                user_message=None, tables=None, catalog=None, analysis_override=None, shaped_extra=None,
-               active_sheet=None, **client_options):
+               active_sheet=None, retry=False, **client_options):
     model_calls, engine_calls = [], []
     shaped = {"status": status, **(shaped_extra or {})}
     if status == "answered":
@@ -147,6 +147,7 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
             conversation_id="c_test" if catalog is not None else None,
             analysis_override=analysis_override,
             active_sheet=active_sheet,
+            retry=retry,
         )
     finally:
         orchestrator.AsyncGeminiClient = original_client
@@ -169,19 +170,18 @@ def test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation(
         assert len(result["traces"]) == 1
 
 
-def test_a_warned_answer_says_the_engine_is_not_sure():
-    """A warned answer (engine/tables.py uncertain_answer: the Decisions path's choice below closed.T_FLAG) is given as
-    one the engine is not sure of, with the reading the runner-up answer read; with no runner-up it asks the person to
-    check the reading. An answer the path stands behind carries no note."""
-    uncertain = {"coordinates": ["value:t0.0=east"], "also_read_as": 'the total of Amount on "Orders"'}
-    result, _model_calls, _engine_calls = asyncio.run(_run("answered", shaped_extra={"uncertain": uncertain}))
-    assert result["reply"] == ("876.50\n\nI'm not sure this is what you asked: it may also mean "
-                               '“the total of Amount on "Orders"”.'), result["reply"]
-    alone = orchestrator._terminal_fallback({"status": "answered", "answer": {"columns": ["n"], "rows": [[1]]},
-                                             "uncertain": {"coordinates": [], "also_read_as": None}})
-    assert alone == "1\n\nI'm not sure this is what you asked; check how I read it.", alone
-    sure, _model_calls, _engine_calls = asyncio.run(_run("answered"))
-    assert sure["reply"] == "876.50", sure["reply"]
+def test_a_warned_answer_says_so_by_its_mark_and_a_retry_reaches_the_engine():
+    """A warned answer (engine/tables.py answer_check: the Decisions path's choice below closed.T_FLAG) says so by its
+    mark, which the trace carries to the client with its reason; the reply is the answer alone (owner, 2026-11-21).
+    The person's Retry is a flag on the turn that every engine call of it carries (engine/retry.py)."""
+    check = {"state": "warned", "reason": "I read this as “the total of Amount”, 50% sure.",
+             "coordinates": ["value:t0.0=east"], "also_read_as": 'the total of Amount on "Orders"'}
+    result, _model_calls, engine_calls = asyncio.run(_run("answered", shaped_extra={"check": check}))
+    assert result["reply"] == "876.50", result["reply"]
+    assert result["traces"][0]["engine"]["check"] == check
+    assert engine_calls[0][1]["retry"] is False
+    retried, _model_calls, engine_calls = asyncio.run(_run("answered", retry=True))
+    assert retried["reply"] == "876.50" and engine_calls[0][1]["retry"] is True
 
 
 def test_request_execution_mode_reaches_each_orchestrated_engine_call():
@@ -1831,7 +1831,7 @@ def test_the_tab_on_screen_reaches_every_engine_call():
 
 TESTS = [
     test_the_tab_on_screen_reaches_every_engine_call,
-    test_a_warned_answer_says_the_engine_is_not_sure,
+    test_a_warned_answer_says_so_by_its_mark_and_a_retry_reaches_the_engine,
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
     test_the_intent_context_names_which_question_came_last,
     test_a_yes_can_accept_the_question_a_clarification_offered,

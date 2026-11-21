@@ -5,6 +5,40 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Never asked back: an answer most likely wrong is retried by Gemini 4 Neon's written query; 757 of 896 served right (84.5%), 4 asked (2026-11-21)
+
+- Owner's order (DECISIONS.md, the same day): never ask back unless the question is wrong; mark an answer the engine
+  is unsure of (warning) or that is most likely wrong (error); a click shows the reason and Retry; Retry has Gemini
+  Neon write the query, automatically for an error. `closed.choose_answer` now answers, warns (below `T_FLAG`, or
+  another answer's reading worded alike) or errs (below `T_ERR` 0.42, or "none of these" likelier); an erred answer
+  is retried (`engine/retry.py`, `gemini-4-neon` at low thinking, one SQLite SELECT over typed copies of the
+  request's tables, one tab unless the question asks across them).
+- Measured on the 896 dev questions, the measurement's cache replaying every Decisions call (tags neon_wtq, neon_mf,
+  neon_fd; the retry model's answers recorded once and replayed), the retry run on each erred question as
+  `TableQuery.serve` runs it, its rows graded as the set grades them:
+
+  | Set | Right | Warned right | Warned wrong | Unwarned wrong | Erred | Engine's pick right | Retry right / wrong / cannot answer / failed |
+  |---|---|---|---|---|---|---|---|
+  | WikiTableQuestions (300) | 192 | 22 | 17 | 31 | 38 | 11 | 29 / 7 / 2 / 0 |
+  | messy (120) | 91 | 9 | 8 | 2 | 10 | 5 | 7 / 2 / 1 / 0 |
+  | fresh dev (176) | 117 | 8 | 13 | 17 | 21 | 1 | 18 / 2 / 0 / 1 |
+  | DataBench (300) | 248 | 9 | 8 | 16 | 19 | 4 | 7 / 11 / 1 / 0 |
+  | **All (896)** | **648** | **48** | **46** | **66** | **88** | **21** | **61 / 22 / 4 / 1** |
+
+  Served right: **757 of 896 (84.5%)** (648 + 48 warned + 61 retried; the one failed retry's pick was wrong), against
+  717 (80.0%) when the erred were asked back and their picks counted right. Unwarned wrong 66 (7.4%). Marked: 94
+  warned (10.5%) and 84 retried or erred (9.4%); asked: 4 (0.4%), each the retry's word that the sheet does not hold
+  what is asked. On the erred questions the retry is right on 61 of 88 where the engine's own pick is right on 21;
+  it is better on every set (DataBench 7 against 4 of 19).
+- The two readings worded alike that 65658636 / a64bc830 asked back are warned: nt-11106 right, FD-0172 right,
+  nt-10343 wrong, nt-3012 warned right as before.
+- Latency: an erred question takes 11.9 s at the median and 24.8 s at p90 with its retry (live calls), the others
+  2.0 s and 9.7 s. Retry spend for the measurement: 499,000 input and 75,000 output tokens, about $2.6 at $3 / $15
+  per million; fresh dev's wide workbooks read 18,000 input tokens per retry.
+- On the first 30 messy questions the retry first unioned every tab of multi-tab workbooks: 0 of 3 right; told to
+  answer from one tab (the tab in view, else the first that holds what is asked) unless asked across tabs, 2 of 3
+  and one "the sheet has no CPC column".
+
 ## A stated currency is the sheet's unit, not a column; v1 replayed as released is over the warned-and-asked bar by 3 (2026-11-21)
 
 - Released 2026-11-21 (16:55 UTC): engine `prereasoner-api-00340-xaz` (`engine@sha256:d8060b55...`, build 140af411,

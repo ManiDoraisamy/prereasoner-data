@@ -73,10 +73,16 @@ def test_shape():
         {"question": "q", "result": {"columns": ["sum"], "rows": [[46]]}, "unmatched": unmatched,
          "warnings": ["1 of the 5 rows name a hospital that could not be matched"]}, "job4")
     ok(partial.get("unmatched") == unmatched, "answer carries the rows whose entity matched nothing")
-    uncertain = {"coordinates": ["value:t0.3=price_a"], "also_read_as": "the total of Amount"}
+    check = {"state": "warned", "reason": "I read this as “the total of Amount”, 50% sure.",
+             "coordinates": ["value:t0.3=price_a"], "also_read_as": "the total of Amount"}
     warned = engine_client.shape_reason_response(
-        {"question": "q", "result": {"columns": ["sum"], "rows": [[20]]}, "uncertain": uncertain}, "job6")
-    ok(warned.get("uncertain") == uncertain, "a warned answer carries what the engine is not sure of")
+        {"question": "q", "result": {"columns": ["sum"], "rows": [[20]]}, "check": check}, "job6")
+    ok(warned.get("check") == check, "a warned answer carries its mark and the reason it opens on")
+    erred = engine_client.shape_reason_response(
+        {"question": "q", "error": "The retry could not write a query that runs on this sheet.",
+         "check": {"state": "erred", "reason": "r"}}, "job7")
+    ok(erred["status"] == "error" and erred.get("check", {}).get("state") == "erred",
+       "a failed retry carries its mark, so the person can retry it")
     declined = engine_client.shape_reason_response(
         {"question": "q", "clarify": True, "reason": "3 of the 5 hospital names could not be matched",
          "unmatched": {**unmatched, "rows": 3}}, "job5")

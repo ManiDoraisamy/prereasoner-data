@@ -279,9 +279,10 @@ def _ast_predict(enc, tabs, question, schema_fks, schema_cache, selection, execu
         return {"ok": True, "path": "ast", "pool_execution": pool, **evidence}
     index = chosen.selected
     if index is None:
-        # The Decisions path asks back: its likeliest answer is below closed.T_ASK, or none of its readings answers.
-        return {"ok": False, "error": "the Decisions path asks back", "stage": "asked", "path": "ast",
-                "declined": chosen.declined, **evidence}
+        # The Decisions path decides nothing: its likeliest answer is below closed.T_ERR, or none of its readings
+        # answers (most likely wrong). Serving retries it (engine/retry.py); this measures the one selection.
+        return {"ok": False, "error": "the Decisions path's answer is most likely wrong", "stage": "asked", "path": "ast",
+                "erred": chosen.erred, **evidence}
     candidate = chosen.pool[index]
     try:
         rows, backend = execute_selected(index)

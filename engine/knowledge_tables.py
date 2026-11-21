@@ -768,8 +768,8 @@ class KnowledgeTableQuery:
                 response["calculations"] = r["calculations"]
             if r.get("currency") is not None:  # compatibility projection of calculations
                 response["currency"] = r["currency"]
-            for key in ("views", "deterministic", "read_as", "unit", "coverage", "selection", "uncertain",
-                        "clarify", "reason", "dropped"):
+            for key in ("views", "deterministic", "read_as", "unit", "coverage", "selection", "check",
+                        "clarify", "reason", "dropped", "retry"):
                 if r.get(key) is not None:
                     response[key] = r[key]
             return response

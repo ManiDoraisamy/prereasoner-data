@@ -52,7 +52,7 @@ _ANALYSIS_RESPONSE_FIELDS = (
     "question", "as_of", "sql", "result", "views", "model", "meaning_join",
     "provenance", "warnings", "calculations", "computation", "currency", "analysis",
     "dataset_semantics", "reference", "present", "deterministic", "read_as", "selection", "coverage",
-    "unit", "unmatched", "uncertain",
+    "unit", "unmatched", "check",
 )
 
 

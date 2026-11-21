@@ -946,12 +946,16 @@ class H(BaseHTTPRequestHandler):
                 with analysis_execution_context(
                     analysis, conv, execution_mode=req.get("use")
                 ), request_timing.span("serve"):
-                    res = MODEL.serve(
-                        tabs, req.get("question", ""), conv, req.get("as_of"),
-                        dataset_semantics=semantics,
-                        active_sheet=table_name(req["active_sheet"]) if req.get("active_sheet") else None,
-                        **serve_kwargs
-                    )
+                    active = table_name(req["active_sheet"]) if req.get("active_sheet") else None
+                    if req.get("retry"):
+                        # The person retried an answer (engine/retry.py): the retry's written query answers it.
+                        res = MODEL.retry(tabs, req.get("question", ""), active_sheet=active)
+                    else:
+                        res = MODEL.serve(
+                            tabs, req.get("question", ""), conv, req.get("as_of"),
+                            dataset_semantics=semantics, active_sheet=active,
+                            **serve_kwargs
+                        )
                     res = enforce_execution_response(res, req.get("use"))
                 # Python-by-default retreating to SQL must not be silent. Carry only the
                 # exception CLASS onto the request's one timing line; the rest of the

@@ -196,6 +196,7 @@ function askPrereasoner(request) {
     source_hash: sourceHash,
     active_sheet: activeSpreadsheet_().getActiveSheet().getName()
   };
+  if (request.retry === true) payload.retry = true;   // the person retried an answer: the engine's retry writes the query
   if (!payload.conversation_id) {
     throw new Error('The conversation expired. Start a new conversation and try again.');
   }
@@ -491,6 +492,8 @@ function traceSummary_(raw) {
     return {
       jobId: String((trace && trace.jobId) || ''),
       question: String((trace && trace.question) || ''),
+      // The answer's mark (warned, erred, retried) and the reason it opens on, beside a Retry (owner, 2026-11-21).
+      check: engine.check && typeof engine.check === 'object' ? engine.check : null,
       analysis: engine.analysis && typeof engine.analysis === 'object' ? engine.analysis : null,
       execution: engine.execution && typeof engine.execution === 'object' ? engine.execution : null,
       views: (Array.isArray(engine.views) ? engine.views : []).map(function(view) {

@@ -422,13 +422,14 @@ class TableQuery:
         database (engine/program/answer.py), once per request (RequestDatabase.answered), naming the tab the client has
         in view (RequestDatabase.active_sheet): the stock reading and one closed-question call read the question, the
         decoder builds the programs, the verifier runs each one, one choice call weighs those that returned rows, and
-        the likeliest answer is answered, warned or asked back (engine/program/closed.py). No model writes SQL or a
-        program. The candidates that returned rows are the pool, each its program's typed AST
-        (engine/program/lowering.py) and SQL with its read-as line as evidence. A question longer than
-        ONE_QUERY_WORDS words that the path asks back about asks, in an analysis, for the decomposition proposal
+        the likeliest answer is answered, warned or most likely wrong (engine/program/closed.py ERRED: nothing is
+        decided, and ``erred`` holds it). No model writes a program; the retry of an erred answer (``serve``,
+        engine/retry.py) is the one written query. The candidates that returned rows are the pool, each its program's
+        typed AST (engine/program/lowering.py) and SQL with its read-as line as evidence. A question longer than
+        ONE_QUERY_WORDS words whose answer is most likely wrong asks, in an analysis, for the decomposition proposal
         (engine/decomposition.py declined_compound). Raises LLMUnavailable when a Decisions call fails."""
         from engine.prepared import connected_workbook, hold_sheet_vectors, prepared_workbook, scratch_database
-        from engine.program.answer import ASKED, WARNED, answer, convert_target
+        from engine.program.answer import ERRED, WARNED, answer, convert_target
         from engine.program.closed import answer_masses
         from engine.program.connected import conversion_targets
         from engine.program.lowering import to_query
@@ -462,27 +463,33 @@ class TableQuery:
             query = to_query(program, prepared.catalog)
             pool.append(ScoredQuery(query, render_query(query), score, (line,)))
         ranking = tuple(sorted(range(len(pool)), key=lambda index: (-scores[index], index)))
-        asked = said.kind == ASKED
-        return PoolSelection(tuple(pool), ranking, None if asked else said.pick, said.mass,
-                             said.pick if asked else None, said.kind == WARNED, said.uncertain, said.runner_up,
-                             said.probabilities, said.listed_programs, said.listed_rows, prepared.catalog, store, bool(targets))
+        erred = said.kind == ERRED
+        return PoolSelection(tuple(pool), ranking, None if erred else said.pick, said.mass,
+                             said.pick if erred else None, said.kind == WARNED, said.uncertain, said.runner_up,
+                             said.probabilities, said.listed_programs, said.listed_rows, prepared.catalog, store, bool(targets),
+                             said.alike)
 
     def _serve_ast(self, question, norm, tablemap):
         """Select the own-data query (``select_query``) and run it. In an analysis, as every served request is, the
         chosen program's one plan runs through both deterministic emitters on the request's database
         (``_execute_deterministic``, which records it); outside one (an evaluator, a test) the answer is the rows the
-        choice read. Returns (candidate, result, error, selection); a question the path asks back has neither a
-        candidate nor an error."""
+        choice read. Returns (candidate, result, error, selection); a question whose answer is most likely wrong has
+        neither a candidate nor an error."""
+        selection = self.select_query(question, norm)
+        if selection.candidate is None:
+            return None, None, None, selection
+        candidate, result, err = self._run_member(selection, selection.selected, tablemap)
+        return candidate, result, err, selection
+
+    def _run_member(self, selection, index, tablemap):
+        """Run pool member ``index`` of ``selection`` as ``_serve_ast`` runs the decided one: (candidate, result,
+        error)."""
         from engine.deterministic.context import current_analysis_context
 
-        selection = self.select_query(question, norm)
-        candidate = selection.candidate
-        if candidate is None:
-            return None, None, None, selection
+        candidate = selection.pool[index]
         ok, why = self.guard(candidate.sql)
         if not ok:
-            return candidate, None, "guard: " + why, selection
-        index = selection.selected
+            return candidate, None, "guard: " + why
         context = current_analysis_context()
         try:
             if context is None:
@@ -492,10 +499,37 @@ class TableQuery:
                     tablemap, selection.plan(index, context.slug), estimated_rows=selection.estimated_rows(index))
                 rows = selection.shown(index, rows)
         except Exception as exc:  # execution errors are returned in the serving envelope
-            return candidate, None, f"{type(exc).__name__}: {exc}", selection
+            return candidate, None, f"{type(exc).__name__}: {exc}"
         result = {"columns": list(selection.columns(index)),
                   "rows": [["" if value is None else value for value in row] for row in rows]}
-        return candidate, result, None, selection
+        return candidate, result, None
+
+    def retry_answer(self, tables, question, explicit_fks=()):
+        """The person's retry of an answer (engine/retry.py): Gemini 4 Neon writes the query over the request's tables,
+        whatever the Decisions path read. The response has ``serve``'s shape: the retry's rows and query (``check``
+        retried, asked), its word that the sheet cannot answer the question (the one question back), or the error its
+        query met."""
+        from engine.prepared import scratch_database
+        from engine.query_contract import Coverage
+        from engine.retry import retry
+
+        norm, _fks = self.ingest(tables, explicit_fks=explicit_fks)
+        with scratch_database():
+            retried = retry(question, norm, self.guard)
+        response = {"question": question, "sql": retried.sql or None, "valid": retried.answered, "error": None,
+                    "result": None, "read_as": retried.reason or None, "model": retried_model(),
+                    "tables": [{"name": table["name"], "columns": table["columns"], "n_rows": len(table["rows"])}
+                               for table in norm]}
+        if retried.answered:
+            response.update(result=retried_result(retried), check=retried_check(retried, None, None, asked=True),
+                            coverage=Coverage(True).record())
+        elif not retried.answerable:
+            response.update({"clarify": True, "reason": retried.reason or UNANSWERABLE, "dropped": [],
+                             "retry": retried.record()})
+        else:
+            response.update(error=RETRY_FAILED, check={"state": "erred", "confidence": None, "reason": RETRY_FAILED,
+                                                       "retry": retried.record()})
+        return response
 
     # ---------- guard + execute ----------
     def guard(self, sql):
@@ -665,6 +699,7 @@ class TableQuery:
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, colidx, tablemap = self.schema(norm, fks)
         graph = SchemaGraph.from_planner(sch, fks)
+        clarification = declined = retried = check = None
         with scratch_database():
             try:
                 candidate, result, err, selection = self._serve_ast(question, norm, tablemap)
@@ -673,18 +708,37 @@ class TableQuery:
             except Exception as exc:
                 candidate, result, selection = None, None, None
                 err = f"{type(exc).__name__}: {exc}"
-        clarification = declined = None
-        if candidate is None and err is None:
-            from engine.decomposition import declined_compound
-            from engine.deterministic.context import current_analysis_context
+            if candidate is None and err is None:
+                # The likeliest answer is most likely wrong (engine/program/closed.py ERRED): a long question asks, in
+                # an analysis, for its decomposition; any other is retried (engine/retry.py), never asked back. The
+                # retry's query answers it; the retry's word that the sheet cannot answer it is the one question
+                # back (the question is wrong); a retry that cannot answer leaves the likeliest reading served,
+                # marked as most likely wrong.
+                from engine.decomposition import declined_compound
+                from engine.deterministic.context import current_analysis_context
+                from engine.retry import retry
 
-            if current_analysis_context() is not None:
-                declined = declined_compound(selection, question)
-            if declined is None and selection.declined is not None:
-                clarification = unsure_clarification(selection.pool[selection.declined])
-            elif declined is None:
-                err = NO_CANDIDATE
-        sql = candidate.sql if candidate is not None else None
+                if current_analysis_context() is not None:
+                    declined = declined_compound(selection, question)
+                if declined is None:
+                    retried = retry(question, norm, self.guard)
+                    likeliest = selection.pool[selection.erred] if selection.erred is not None else None
+                    if retried.answered:
+                        result = retried_result(retried)
+                        check = retried_check(retried, read_as_of(likeliest), selection.confidence, asked=False)
+                    elif not retried.answerable:
+                        clarification = {"clarify": True, "reason": retried.reason or UNANSWERABLE, "dropped": [],
+                                         "read_as": read_as_of(likeliest), "retry": retried.record()}
+                    elif likeliest is not None:
+                        candidate, result, err = self._run_member(selection, selection.erred, tablemap)
+                        check = {"state": "erred", "confidence": _rounded(selection.confidence),
+                                 "reason": erred_reason(read_as_of(likeliest), selection.confidence, True),
+                                 "retry": retried.record()}
+                    else:
+                        err = NO_CANDIDATE
+                        check = {"state": "erred", "confidence": None, "reason": erred_reason(None, None, True),
+                                 "retry": retried.record()}
+        sql = candidate.sql if candidate is not None else (retried.sql if retried is not None and retried.answered else None)
         computation = None
         if candidate is not None:
             from engine.calculations import describe_computation
@@ -692,7 +746,7 @@ class TableQuery:
         response = {
             "question": question,
             "sql": sql,
-            "valid": candidate is not None and err is None,
+            "valid": result is not None and err is None,
             "error": err,
             "result": result,
             "tables": [{
@@ -716,18 +770,23 @@ class TableQuery:
             "features": {},
             "computation": computation.record() if computation is not None else None,
             "selection": selection.record() if selection is not None else None,
-            "read_as": read_as_of(candidate),
-            "model": PROGRAM_MODEL,
+            "read_as": read_as_of(candidate) if candidate is not None else (retried.reason if check and check["state"] == "retried" else None),
+            "model": PROGRAM_MODEL if check is None or check["state"] != "retried" else retried_model(),
         }
         if clarification is not None:
             response.update(clarification)
+        if check is not None:
+            response["check"] = check
+            if check["state"] == "retried":
+                from engine.query_contract import Coverage
+                response["coverage"] = Coverage(True).record()     # the retry's query read the whole question
         if candidate is not None:
             # The Decisions path chose this reading of the whole question: it is the own-data planner's certificate
             # (engine/knowledge_query.py keeps its residual wording gate for the routes without one).
             from engine.query_contract import Coverage
             response['coverage'] = Coverage(True).record()
-            if selection.warned:
-                response["uncertain"] = uncertain_answer(selection)
+            if check is None:
+                response["check"] = answer_check(selection, candidate)
             from engine.sql_ast import share_output
             if share_output(candidate.query):
                 response["unit"] = "percent"         # a share of a whole: 0.3 is stated as 30%
@@ -796,21 +855,50 @@ def read_as_of(candidate):
     return first if isinstance(first, str) and first else None
 
 
-def uncertain_answer(selection):
-    """The response's ``uncertain`` record of a warned answer (``PoolSelection.warned``): the coordinates the
-    runner-up answer reads differently (engine/program/language.coordinates), and the runner-up's reading, so the
-    reply can say the answer is one the path is not sure of and what else the question may mean."""
+UNANSWERABLE = "The sheet does not hold what this question asks."
+RETRY_FAILED = "The retry could not write a query that runs on this sheet."
+
+
+def _rounded(value):
+    return None if value is None else round(float(value), 4)
+
+
+def answer_check(selection, candidate):
+    """The response's ``check`` of a decided answer: answered, or warned (``PoolSelection.warned``: below
+    closed.T_FLAG, or another answer's reading reads word for word like it) with the reason its mark opens on (how it was
+    read, how sure the choice was, what else the question may mean: the runner-up's reading) and the coordinates the
+    runner-up reads differently (engine/program/language.coordinates)."""
+    if not selection.warned:
+        return {"state": "answered", "confidence": _rounded(selection.confidence)}
     other = selection.runner_up
-    return {"coordinates": list(selection.uncertain),
-            "also_read_as": read_as_of(selection.pool[other]) if other is not None else None}
+    also = read_as_of(selection.pool[other]) if other is not None else None
+    from engine.answer_presentation import warned_reason
+    return {"state": "warned", "confidence": _rounded(selection.confidence),
+            "reason": warned_reason(read_as_of(candidate), also, selection.confidence, selection.alike),
+            "coordinates": list(selection.uncertain), "also_read_as": also}
 
 
-def unsure_clarification(candidate):
-    """The reply when the Decisions path asks back: how it read the question, by its likeliest reading
-    (engine/answer_presentation.py:unsure_reason)."""
-    from engine.answer_presentation import unsure_reason
-    read_as = read_as_of(candidate)
-    return {"clarify": True, "reason": unsure_reason(read_as), "dropped": [], "read_as": read_as}
+def erred_reason(read_as, confidence, retried):
+    from engine.answer_presentation import erred_reason as reason
+    return reason(read_as, confidence, retried)
+
+
+def retried_model():
+    from engine import config
+    return f"{config.QUERY_MODEL} (retry: a written SQLite query)"
+
+
+def retried_result(retried):
+    """A retry's rows as the response's result."""
+    return {"columns": list(retried.columns), "rows": [["" if value is None else value for value in row] for row in retried.rows]}
+
+
+def retried_check(retried, read_as, confidence, asked):
+    """The ``check`` of an answer the retry wrote (engine/retry.py): the person asked for it, or the path's likeliest
+    reading (``read_as``, ``confidence``) was most likely wrong; its reason, and the retry's own record."""
+    from engine.answer_presentation import retried_reason
+    return {"state": "retried", "confidence": _rounded(confidence), "asked": asked,
+            "reason": retried_reason(read_as, confidence, retried.reason, asked), "retry": retried.record()}
 
 
 def sch_col_of(agg, sch):

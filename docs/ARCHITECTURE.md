@@ -346,7 +346,7 @@ program. No model writes SQL.
 | `engine/knowledge_bridges.py` | The request's links (`request_links`: routes and their bridges, entity columns, keys, money columns and their rates) and their registration per served request (`link_request`) |
 | `engine/sheet/` | The sheet compiler: tabs to tables (headers, sections, printed lines, families of copies), the wire form a host sends (`payload.py`) |
 | `engine/program/answer.py` | `prepare` and `answer`: the stock reading, the closed-question calls, the decoder, the verifier, the choice and the per-answer decision |
-| `engine/program/closed.py` | The sheet's description, the closed questions per slot and the added ones, the fused reading, the choice record and the per-answer decision (`choose_answer`, `T_ASK` 0.42, `T_FLAG` 0.575) |
+| `engine/program/closed.py` | The sheet's description, the closed questions per slot and the added ones, the fused reading, the choice record and the per-answer decision (`choose_answer`, `T_ERR` 0.42, `T_FLAG` 0.575) |
 | `engine/program/stock.py` | The stock reading: the word reader plus stock bge-m3 similarity (the shortlist of options) |
 | `engine/program/dates.py` | Text dates typed by one Decisions call when a workbook is prepared |
 | `engine/program/catalog.py`, `language.py`, `decoder.py`, `verifier.py` | The workbook's tables, the program language, the typed k-best decoder (50 programs) and the verifier's named evidence |
@@ -388,28 +388,37 @@ program. No model writes SQL.
    programs, each run by the verifier on the request's store tables.
 5. The programs that returned rows are listed. One Decisions call weighs them (each its read-as line and a preview
    of its answer, and "none of these"); per answer, a candidate's probability is summed over the candidates returning
-   the same answer. The likeliest answer is answered at `T_FLAG` or more, warned from `T_ASK`, and asked back below
-   that or when "none of these" is likelier.
+   the same answer. The likeliest answer is answered at `T_FLAG` or more, warned from `T_ERR` (or when another
+   answer's reading reads word for word like it), and most likely wrong (`ERRED`) below that or when "none of these"
+   is likelier. It is never asked back for (owner, 2026-11-21).
 6. `select_query` records it as a `PoolSelection`: the listed candidates (each its typed AST, SQL, answer probability
    and read-as line), ranked by that probability; `selected` (answered or warned), `warned` and `uncertain` (the
-   coordinates the runner-up answer reads differently), or `declined` (the likeliest, when the path asks back). A
-   question longer than `decomposition.ONE_QUERY_WORDS` (30) words that the path asks back about asks, in an analysis,
-   for the decomposition proposal (`decomposition.declined_compound`); one it answers is answered.
+   coordinates the runner-up answer reads differently), or `erred` (the likeliest, when it is most likely wrong:
+   nothing is decided, so compose and the search may answer it). A question longer than
+   `decomposition.ONE_QUERY_WORDS` (30) words whose answer is most likely wrong asks, in an analysis, for the
+   decomposition proposal (`decomposition.declined_compound`); one it answers is answered.
+8. Any other erred answer is retried (`engine/retry.py`): Gemini 4 Neon (`engine/llm.py:write_query`, the Developer
+   API, low thinking) reads the request's tables (columns typed by their cells, row counts, first lines, a text
+   column's few values, the tab in view) and writes one SQLite SELECT, which the one guard checks and the request's
+   database runs read-only over TEMP typed copies (a failed query goes back once with its error). Its rows are the
+   answer; its word that the tables cannot answer the question is the one question back; a retry that cannot answer
+   leaves the likeliest reading served, marked most likely wrong. The person's Retry (`retry: true` on `/chat` and
+   `/api/reason`, `TableQuery.retry_answer`) runs the same retry.
 7. In an analysis, as every served request is, the chosen program's one plan runs through both deterministic
    emitters on the request's database (`TableQuery._execute_deterministic`), in exact decimals, and its rows are
    shown as the sheet spells them. Outside one (an evaluator), the answer is the rows the choice read.
 
 The served response carries `read_as`, the chosen program's plain reading, which the thread shows as the turn's
 "read as" line, and a `coverage` record certifying the reading (the world routes keep their own wording gate in
-`KnowledgeQuery._uncovered`). A warned answer also carries `uncertain` (`coordinates`, `also_read_as`), and the reply
-gives it as one the engine is not sure of (`engine/answer_presentation.py:terminal_reply`). When the path asks back,
-the reply says how the likeliest reading read the question: "I read this as “…”, but I'm not confident that is what
-you asked" (`engine/tables.py:unsure_clarification`). A total or average of a named column whose cells are not all
+`KnowledgeQuery._uncovered`). Every own-data answer carries its mark, `check` (`engine/tables.py:answer_check`,
+`retried_check`): `answered`, `warned` (with `coordinates`, `also_read_as`), `erred` or `retried` (with the retry's
+query, model and reason), each with the reason its icon opens on beside a Retry (`web/public/lib/turn-renderer.js`
+`renderCheck`, in the web rail, the Sheets sidebar and the Excel pane); the reply is the answer alone. A total or average of a named column whose cells are not all
 numbers is refused naming them (`engine/query_contract.unreadable_operand`) before any route reads it
 (`KnowledgeQuery.serve`), by compose and the currency check alike.
 
 The response's `planner.selection` records the pool's size, the served member and its rank, the likeliest answer's
-probability, whether it is warned, and the member asked about when the path asks back.
+probability, whether it is warned, and the likeliest member when its answer is most likely wrong.
 
 A request answers a question once (`RequestDatabase.answered`) although compose's routing probe, the hybrid search's
 check and the delegate each select. The program language reads one table at a time; what a served request's links

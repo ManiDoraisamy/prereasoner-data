@@ -103,7 +103,7 @@ function renderTurns() {
   thread.querySelectorAll('.turn-pair,.empty').forEach(el => el.remove());
   // Starter questions belong to an empty conversation only.
   suggestions.setActive(!state.turns.length);
-  for (const turn of state.turns) {
+  state.turns.forEach((turn, index) => {
     const analysisUrl = turn.conversationId ? `https://chat.prereasoner.com/reason/${encodeURIComponent(turn.conversationId)}` : '';
     const reasoningBody = renderer.renderReasoningTree(turn.reasoning || [], {
       renderStep: (step, index) => renderer.renderStepLink(step, index,
@@ -113,9 +113,11 @@ function renderTurns() {
     const assistantHtml = turn.error
       ? `<div class="turn-content"><div class="answer error" role="alert">${renderer.escapeHtml(turn.reply)}</div></div>`
       : renderer.renderAssistantTurn({reply: turn.reply, reasoningHtml,
+        // The answer's mark and its Retry (engine check, owner 2026-11-21): the delegated click below re-asks.
+        checkHtml: renderer.renderCheck ? renderer.renderCheck(turn.check, `data-retry="${index}"`) : '',
         afterHtml: renderer.renderResultLink(turn.reply, analysisUrl)});
     thread.insertAdjacentHTML('beforeend', renderer.renderTurn({question: turn.question, assistantHtml}));
-  }
+  });
   thread.scrollTop = thread.scrollHeight;
 }
 
@@ -215,7 +217,7 @@ function awaitStream(turnId) {
   return {promise, cancel};
 }
 
-async function ask(question) {
+async function ask(question, retry = false) {
   setBusy(true);
   let baseHistory = state.history.slice();
   try {
@@ -239,7 +241,8 @@ async function ask(question) {
     const activeSheet = await readActiveSheet();
     const chat = () => api('/chat', {
       message: question, history: baseHistory,
-      conversation_id: state.conversationId, source_hash: state.sourceHash, active_sheet: activeSheet, turnId
+      conversation_id: state.conversationId, source_hash: state.sourceHash, active_sheet: activeSheet, turnId,
+      ...(retry ? {retry: true} : {})
     }, [409]);
     try {
       response = await chat();
@@ -265,7 +268,8 @@ async function ask(question) {
     state.conversationId = response.conversation_id || state.conversationId;
     state.turns[state.turns.length - 1] = {
       question, reply: response.reply || 'No answer was returned.', reasoning: mapReasoning(response),
-      conversationId: state.conversationId
+      conversationId: state.conversationId,
+      check: renderer.turnCheck ? renderer.turnCheck(response.traces) : null
     };
     state.history.push({role: 'assistant', content: response.reply || ''});
     renderTurns();
@@ -413,6 +417,12 @@ async function init() {
     } catch (error) { notice(error.message, true); }
   });
   $('previousChats').addEventListener('click', () => showHistory($('history').hidden));
+  $('thread').addEventListener('click', event => {        // an answer mark's Retry: the turn's question, retried
+    const button = event.target.closest('[data-retry]');
+    if (!button || !auth.currentUser || state.busy) return;
+    const turn = state.turns[Number(button.dataset.retry)];
+    if (turn && turn.question) ask(turn.question, true).catch(error => notice(error.message, true));
+  });
   $('composer').addEventListener('submit', event => {
     event.preventDefault(); const question = $('question').value.trim();
     if (!question || !auth.currentUser || state.busy) return;

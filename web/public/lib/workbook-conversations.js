@@ -234,8 +234,8 @@ function conversationListError(message){
    history) so a reload RESTORES what the user saw instead of re-running the model from scratch. Input sheets come
    from the stored `tables`; master (per-user) reloads via loadMaster; only the derivation + rail are snapshotted. */
 function convSnapshot(){
-  const turns=CHAT.map(t=>({q:t.q, reply:t.reply||'', analysis:t.analysis||null}));
-  if(SETTLED && turnReply()) turns.push({q:question, reply:turnReply(), analysis:TURN_ANALYSIS||null});   // the live (settled) turn isn't archived yet
+  const turns=CHAT.map(t=>({q:t.q, reply:t.reply||'', analysis:t.analysis||null, check:t.check||null}));
+  if(SETTLED && turnReply()) turns.push({q:question, reply:turnReply(), analysis:TURN_ANALYSIS||null, check:CHECK||null});   // the live (settled) turn isn't archived yet
   if(!turns.length) return null;
   const sheets=BOOK.filter(s=>s.cls==='deriv'||s.cls==='ref'||(s.cls==='master'&&(!s.saved||s.dirty))).map(s=>({
     id:s.id, cls:s.cls, name:s.name, cols:s.cols||[],
@@ -357,10 +357,10 @@ function restoreConvState(st){                               // render a stored 
   }
   const turns=st.turns.slice(), last=turns.pop();
   VIEWED_ANALYSIS=st.viewedAnalysis||((last&&last.analysis)||null); ANALYSIS_ERROR=null;
-  CHAT=turns.map(t=>({q:t.q, reply:t.reply||'', analysis:t.analysis||null,
+  CHAT=turns.map((t,i)=>({q:t.q, reply:t.reply||'', analysis:t.analysis||null, check:t.check||null,
     html:(t.analysis?'<div class="cot archived"><div class=cotbar>'+analysisHeading(t.analysis)+'</div></div>':'')
-      +'<div class=convmsg>'+conv2html(t.reply||'')+'</div>'}));
-  if(last){ question=last.q; TURN_ANALYSIS=last.analysis||null;
+      +'<div class=convmsg>'+checkMark(t.check||null,i)+conv2html(t.reply||'')+'</div>'}));
+  if(last){ question=last.q; TURN_ANALYSIS=last.analysis||null; CHECK=last.check||null;
     try{ sessionStorage.setItem(SS.Q, last.q); }catch(_){}; CONV=last.reply||''; }
   if(Array.isArray(st.history)) HISTORY=st.history;
   if(Array.isArray(st.datasetSemantics)) DS_META=st.datasetSemantics;

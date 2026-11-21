@@ -31,8 +31,13 @@ cells as the loader read them) and read as an upload is (csv_table, canonical ta
 measurement's, so it needs --record DIR, which sends a body neither cache holds to the Decisions API (the deployment's
 GOOGLE_API_KEY) and keeps the answer in DIR for a replay.
 
+--retry DIR measures serving's retry (engine/retry.py, owner 2026-11-21): each question whose answer is most likely wrong
+(closed.ERRED, which serving never asks back) is retried over its workbook's tables as TableQuery.serve retries it, and
+the retry's rows are graded (right, wrong, the sheet cannot answer it, or the retry failed); the retry model's answers
+are kept in DIR by their body's hash (a body DIR lacks is sent to the model, so a second run replays them).
+
 usage: python -X utf8 -m regress.run_dev_decisions [--sets messy,freshdev] [--limit N] [--tag NAME] [--threads 4] [--resume]
-                                                   [--csv --record DIR] [--sets demo [--demo-maps DIR]]
+                                                   [--csv --record DIR] [--sets demo [--demo-maps DIR]] [--retry DIR]
 """
 from __future__ import annotations
 
@@ -56,7 +61,7 @@ import torch
 import engine.llm as llm
 import engine.sheet
 from engine.prepared import scratch_database
-from engine.program.answer import ANSWERED, ASKED, WARNED
+from engine.program.answer import ANSWERED, ERRED, WARNED
 from engine.program.closed import answer_key
 from engine.request_validation import canonical_table_name
 from engine.tables import TableQuery, csv_table, normalize_tables
@@ -113,6 +118,41 @@ class Replay:
         self.used.append(digest)
         recorded = json.loads(held.read_text(encoding="utf-8"))
         return {"answers": recorded["answers"], "tokens": recorded["tokens"]}
+
+
+class QueryReplay:
+    """engine.llm's retry transport (QUERY_TRANSPORT) over a folder of recorded answers by body hash: a body the folder
+    lacks is sent to the retry model and its answer kept. ``tokens`` sums the input and output tokens sent anew."""
+
+    def __init__(self, folder: Path):
+        self.folder, self.send = folder, llm.QUERY_TRANSPORT
+        self.tokens = [0, 0]
+
+    def __call__(self, payload: bytes) -> dict:
+        digest = llm.decision_hash(payload)
+        held = self.folder / digest[:2] / f"{digest}.json"
+        if not held.exists():
+            answer = self.send(payload)
+            usage = answer.get("usage") or {}
+            self.tokens[0] += int(usage.get("promptTokenCount") or 0)
+            self.tokens[1] += int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0)
+            held.parent.mkdir(parents=True, exist_ok=True)
+            held.write_bytes((json.dumps(answer) + "\n").encode("utf-8"))
+        return json.loads(held.read_text(encoding="utf-8"))
+
+
+def retry_row(planner, item, tables) -> dict:
+    """Serving's retry of an erred question (engine/retry.py over the planner's ingest of its tables, as
+    TableQuery.serve retries it), graded: right, wrong, unanswerable (the model says the sheet cannot answer it) or
+    failed (no query ran)."""
+    from engine.retry import retry
+
+    norm, _fks = planner.ingest(tables)
+    retried = retry(item.question, norm, planner.guard)
+    outcome = ("right" if graded(item, retried.rows) else "wrong") if retried.answered else (
+        "unanswerable" if not retried.answerable else "failed")
+    return {"outcome": outcome, "sql": retried.sql, "reason": retried.reason, "error": retried.error,
+            "rows": [list(row) for row in retried.rows[:5]]}
 
 
 class _Payload(Exception):
@@ -172,7 +212,7 @@ def tables_of(item, as_csv=False):
 
 
 def kind_of(selection) -> str:
-    return ASKED if selection.selected is None else WARNED if selection.warned else ANSWERED
+    return ERRED if selection.selected is None else WARNED if selection.warned else ANSWERED
 
 
 def _module(name: str, path: Path):
@@ -210,7 +250,9 @@ def graded(item, rows) -> bool:
 
 
 def label_of(kind: str, right: bool) -> str:
-    if kind == ASKED:
+    """The measurement's per-answer label (summarize.decided at level "answer"), whose name for an answer most likely
+    wrong (closed.ERRED, retried in serving) is "asked"."""
+    if kind == ERRED:
         return "asked"
     return ("flagged_" if kind == WARNED else "") + ("right" if right else "wrong")
 
@@ -365,6 +407,7 @@ def main() -> int:
     parser.add_argument("--csv", action="store_true", help="each tab rendered to CSV and read as an upload is (a new measurement, not parity)")
     parser.add_argument("--record", type=Path, help="a cache folder: a body neither cache holds is sent to the Decisions API and kept here")
     parser.add_argument("--demo-maps", type=Path, help="the demo set on the request databases demo25 read (build_maps.py's maps folder)")
+    parser.add_argument("--retry", type=Path, help="retry each erred question as serving does; the retry model's answers are kept here")
     args = parser.parse_args()
     names = args.sets.split(",")
     if any(name not in SETS for name in names):
@@ -374,6 +417,10 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     replay = Replay(PROBE / "cache", out / "misses", args.record)
     llm.DECISIONS_TRANSPORT = replay
+    query_replay = None
+    if args.retry is not None:
+        query_replay = QueryReplay(args.retry)
+        llm.QUERY_TRANSPORT = query_replay
     planner = TableQuery()
     run_e2e, summarize = experiment_modules()
     totals = {}
@@ -408,21 +455,23 @@ def main() -> int:
                             request.enter_context(scratch_database())
                             book = item.book
                         selection = planner.select_query(item.question, tables)
-                    shown = selection.selected if selection.selected is not None else selection.declined
+                    shown = selection.selected if selection.selected is not None else selection.erred
                     rows = selection.rows[shown] if shown is not None else ()
                     kind = kind_of(selection)
                     listed_right = [graded(item, listed) for listed in selection.rows]
                     row.update(kind=kind, label=label_of(kind, graded(item, rows)), mass=selection.confidence, listed=len(selection.rows),
                                listed_answer=[answer_key(listed) for listed in selection.rows], listed_right=listed_right,
                                choose_p=selection.probabilities, read_as=selection.pool[shown].evidence[0] if shown is not None else "")
+                    if query_replay is not None and kind == ERRED and name != "demo":
+                        row["retry"] = retry_row(planner, item, tables)
                 except ReplayMiss as miss:
                     book, tables = None, None
                     request.close()
-                    row.update(kind=ASKED, label="asked", miss=str(miss), listed_answer=None, choose_p=None, listed_right=None)
+                    row.update(kind=ERRED, label="asked", miss=str(miss), listed_answer=None, choose_p=None, listed_right=None)
                 except Exception as error:     # the measurement recorded a failed question as asked, with its error
                     book, tables = None, None
                     request.close()
-                    row.update(kind=ASKED, label="asked", error=f"{type(error).__name__}: {str(error)[:160]}", listed_answer=[], choose_p=None, listed_right=[])
+                    row.update(kind=ERRED, label="asked", error=f"{type(error).__name__}: {str(error)[:160]}", listed_answer=[], choose_p=None, listed_right=[])
                 row["calls"] = list(replay.used)
                 row["seconds"] = round(time.perf_counter() - clock, 3)
                 theirs = held.get(item.id)
@@ -454,6 +503,9 @@ def main() -> int:
                 counts["errors"] += row["error"] is not None
                 counts["mismatches"] += bool(differs) and row["miss"] is None
                 counts["labels"][row["label"]] = counts["labels"].get(row["label"], 0) + 1
+                if "retry" in row:
+                    retried = counts.setdefault("retry", {})
+                    retried[row["retry"]["outcome"]] = retried.get(row["retry"]["outcome"], 0) + 1
                 sink.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
                 sink.flush()
                 if row["miss"] is not None:
@@ -463,6 +515,8 @@ def main() -> int:
                 if (at + 1) % 25 == 0:
                     print(f"{name} {at + 1}/{len(items)} {round(time.time() - started)}s misses {counts['misses']} mismatches {counts['mismatches']}", flush=True)
         counts["seconds"] = round(time.time() - started, 1)
+        if query_replay is not None:
+            counts["retry_tokens_sent"] = list(query_replay.tokens)
         totals[name] = counts
         print(json.dumps({"set": name, **counts}), flush=True)
     (out / f"summary_{'_'.join(names)}.json").write_bytes((json.dumps(totals, indent=1) + "\n").encode("utf-8"))

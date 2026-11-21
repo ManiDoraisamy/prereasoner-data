@@ -77,6 +77,7 @@ const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
 // routing control that runs the deterministic /api/reason path without the orchestrator.
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
+let CHECK=null,RETRY_ASK=false;                   // the turn's answer mark (engine check: warned / erred / retried); the next turn is a Retry
 let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
 let EDITED=false,LASTQ=null;                     // the user edited an input cell (-> offer Recalculate); the last question run
 let RECALCULATING=false,SOURCE_RECALC_ERROR=false;
@@ -529,12 +530,27 @@ function turnHtml(){                                          // the CURRENT (li
   if(FAILMSG) return notice+'<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
   return notice+turnHtmlBody();
 }
+// An answer's mark and its Retry (turn-renderer.js renderCheck): ``index`` is the archived turn's place in CHAT, none
+// for the live turn. Retry asks the turn's question again with retry:true (engine/retry.py), owner 2026-11-21.
+function checkMark(check,index){
+  const shared=window.PrereasonerTurnRenderer;
+  return shared&&shared.renderCheck?shared.renderCheck(check,'onclick="retryTurn('+(index==null?'':index)+')"'):'';
+}
+function retryTurn(index){
+  if(!SETTLED&&!FAILMSG)return;
+  const q=index==null?question:(CHAT[index]&&CHAT[index].q);
+  if(!q)return;
+  archiveTurn(); question=q; RETRY_ASK=true;
+  try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
+  resetRun(); paint(); startRun();
+}
 function turnHtmlBody(){
   if(CONV){ let h='';
     const reasoning=ORCH?cotHtml():'';
     const after=!ORCH&&PRESENT?derivLinks():'';
     h=window.PrereasonerTurnRenderer
-      ? window.PrereasonerTurnRenderer.renderAssistantTurn({reasoningHtml:reasoning,answerHtml:conv2html(CONV),afterHtml:after})
+      ? window.PrereasonerTurnRenderer.renderAssistantTurn({reasoningHtml:reasoning,answerHtml:conv2html(CONV),afterHtml:after,
+          checkHtml:SETTLED?checkMark(CHECK):''})
       : reasoning+'<div class=convmsg>'+conv2html(CONV)+'</div>'+after;
     if(CONVPROP) h+='<div class=convrun><button onclick="runProposed()">Run &ldquo;'+esc(CONVPROP)+'&rdquo;</button></div>';
     return h; }
@@ -569,10 +585,10 @@ function archiveTurn(){                                       // freeze the turn
   const archivedMeta=(archivedHeading||archivedAsks)
     ? '<div class="cot archived">'+(archivedHeading?'<div class=cotbar>'+archivedHeading+'</div>':'')+archivedAsks+'</div>' : '';
   if(FAILMSG) h='<div class=statusline>&#9888; '+esc(FAILMSG)+'</div>';
-  else if(CONV) h=(ORCH?archivedMeta:'')+'<div class=convmsg>'+conv2html(CONV)+'</div>';
+  else if(CONV) h=(ORCH?archivedMeta:'')+'<div class=convmsg>'+checkMark(CHECK,CHAT.length)+conv2html(CONV)+'</div>';
   else{ const rs=resultSummary(); const n=BOOK.filter(s=>s.cls==='deriv').length;
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
-  CHAT.push({q:question, html:h, reply:reply, analysis:TURN_ANALYSIS?Object.assign({},TURN_ANALYSIS):null});
+  CHAT.push({q:question, html:h, reply:reply, analysis:TURN_ANALYSIS?Object.assign({},TURN_ANALYSIS):null, check:CHECK});
 }
 async function loadAnalysis(analysisId,revision,options){
   if(!SETTLED||!convId()||!/^a_[0-9a-f]{32}$/.test(String(analysisId))
@@ -1067,10 +1083,11 @@ async function startTurn(){
   catch(e){ if(RUN===myRun) fail((e&&e.message)||'the sheets could not be uploaded'); return; }
   // The question names the conversation's stored sheets. A 409 means they were replaced since: upload the
   // page's sheets again and ask once more.
+  const retrying=RETRY_ASK; RETRY_ASK=false;
   const ask=()=>fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
     body:JSON.stringify(Object.assign({message:question, history:HISTORY, turnId:turnId},
-      source, executionRequestFields(ONESHOT_USE)))});
+      source, executionRequestFields(ONESHOT_USE), retrying?{retry:true}:{}))});
   const httpPromise=ask().then(async r=>{ if(r&&r.status===409){ source=await uploadedSource(token,question,true); return ask(); } return r; })
     .then(parseBody).catch(()=>null);
   // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
@@ -1092,6 +1109,8 @@ async function startTurn(){
     if(j&&j.conversation_id) setConversation(j.conversation_id);
     if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
+    const shared=window.PrereasonerTurnRenderer, check=shared&&shared.turnCheck?shared.turnCheck(j.traces):null;
+    if(check){ CHECK=check; if(SETTLED){ renderRail(); saveConvState(); } }
     if(Array.isArray(j.traces)) j.traces.forEach(t=>{ const engine=t.engine||{};
       const call=CALLS.find(c=>c.jobId===t.jobId); if(call&&t.read_as)call.read_as=t.read_as;
       noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis);
@@ -1124,6 +1143,7 @@ function addCall(uid,c){                                      // an engine call 
       if(!BOOK.some(s=>s.cls==='deriv'&&!s.stale)) dropStale();   // a data result with no fresh derivation of its own -> retire the prior turn's stale steps; NEVER graft this answer onto them
       const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale&&s.executionKey===c.jobId).pop();
       if(last){ if(r.columns&&r.columns.length)last.cols=r.columns; last.rows=r.rows; last.columnProvenance=r.column_provenance||last.columnProvenance||[]; last.result=true; if(last.id===ACTIVE)paint(); } else paint(); },
+    onCheck:v=>{ CHECK=v; renderRail(); },
     onStatus:()=>{}, onClarify:()=>{}, onLowConfidence:()=>{}, onPresent:()=>{}, onError:()=>{},
   });
   callSubs.push(sub);
@@ -1296,7 +1316,7 @@ function resetRun(){
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;TRANSPORT_ERROR=null;
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null; EXEC=null; SRCOPEN=false; SRC_PINNED=false; SRC='py';
   EXEC_BY_KEY=new Map();
-  CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false;  // orchestrated turn state (HISTORY persists across turns)
+  CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false; CHECK=null;  // orchestrated turn state (HISTORY persists across turns)
   TURN_ANALYSIS=null; ANALYSIS_ERROR=null;
   callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;

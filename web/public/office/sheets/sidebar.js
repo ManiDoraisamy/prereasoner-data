@@ -240,11 +240,13 @@
         // What the engine read, when it differs from what was typed (a follow-up made whole, or a question
         // Gemini reworded so the search could read it): the line the live "Reading as" status becomes.
         // It was appended to the answer as "Gemini reworded the question as: ..." (2026-10-04).
-        function turnHtml(turn) {
+        // `index`: the turn's place in state.turns, which the mark's Retry names (a delegated click on the thread).
+        function turnHtml(turn, index) {
           if (turn.error) return failedHtml(turn);
           var reading = R.renderAsks(turn.asks || [], turn.question);
           return R.renderTurn({question: turn.question, assistantHtml: (reading ? '<div class="turn-reading">' + reading + '</div>' : '') +
             R.renderAssistantTurn({reasoningHtml: reasoningHtml(turn, false), reply: turn.reply || 'No answer was returned.',
+              checkHtml: R.renderCheck ? R.renderCheck(turn.check, 'data-retry="' + index + '"') : '',
               afterHtml: R.renderResultLink(turn.reply, analysisUrl(turn))})});
         }
 
@@ -433,7 +435,8 @@
             });
           });
           return {question: question, reply: response.reply || 'No answer was returned.', asks: asks, analysis: analysis,
-            steps: R.stepsFromViews(views, {sourceName: sourceName()}), conversationId: state.conversationId};
+            steps: R.stepsFromViews(views, {sourceName: sourceName()}), conversationId: state.conversationId,
+            check: R.turnCheck ? R.turnCheck((response.traces || []).map(function (trace) { return {engine: trace}; })) : null};
         }
 
         function snapshot() {
@@ -534,8 +537,8 @@
           }).catch(function () {}).then(function () { state.uploading = null; });
         }
 
-        // `asked`: a starter question, asked without taking the draft out of the composer.
-        async function submit(asked) {
+        // `asked`: a starter question, asked without taking the draft out of the composer. `retry`: an answer's Retry.
+        async function submit(asked, retry) {
           var question = (asked || questionEl.value).trim();
           if (!question || state.busy) return;
           if (!asked) questionEl.value = '';
@@ -604,9 +607,9 @@
             var ask = function () {
               return callServer('askPrereasoner', state.uploadOnce
                 ? {question: question, conversationId: state.conversationId, sourceHash: state.sourceHash,
-                   history: state.history, turnId: live.turnId}
+                   history: state.history, turnId: live.turnId, retry: retry === true}
                 : {question: question, tables: tables, conversationId: state.conversationId,
-                   history: state.history, turnId: live.turnId});
+                   history: state.history, turnId: live.turnId, retry: retry === true});
             };
             var response;
             try {
@@ -663,6 +666,12 @@
         document.getElementById('composer').addEventListener('submit', function (event) {
           event.preventDefault();
           submit();
+        });
+        threadEl.addEventListener('click', function (event) {   // an answer mark's Retry: the turn's question, retried
+          var button = event.target.closest('[data-retry]');
+          if (!button || state.busy) return;
+          var turn = state.turns[Number(button.getAttribute('data-retry'))];
+          if (turn && turn.question) submit(turn.question, true);
         });
         questionEl.addEventListener('keydown', function (event) {
           if (!state.busy && event.key === 'Enter' && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {

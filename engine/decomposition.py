@@ -146,10 +146,10 @@ def one_query_length(question) -> bool:
 def declined_compound(selection, question) -> dict[str, Any] | None:
     """The decomposition a long question needs, or None.
 
-    A question longer than ``ONE_QUERY_WORDS`` words that the one own-data selection
-    (engine/tables.py:TableQuery.select_query) asks back about is read as the bounded subquestions of a decomposition
-    proposal instead, each short enough to read; one it answers is answered. A short one the Decisions path asks back
-    is asked about (engine/tables.py:unsure_clarification)."""
+    A question longer than ``ONE_QUERY_WORDS`` words whose answer the one own-data selection
+    (engine/tables.py:TableQuery.select_query) holds most likely wrong is read as the bounded subquestions of a
+    decomposition proposal instead, each short enough to read; one it answers is answered. A short one is retried
+    (engine/retry.py), never asked about."""
     if selection is None or selection.selected is not None or one_query_length(question):
         return None
     return {"reason": "a question this long is read as a compound question, never as one query"}

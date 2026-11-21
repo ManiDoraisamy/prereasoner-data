@@ -389,13 +389,40 @@
       '" target="_blank" rel="noopener noreferrer">See all ' + escapeHtml(match[1]) + ' rows in Prereasoner &#8599;</a>';
   }
 
+  // An answer's mark: the engine's ``check`` (engine/tables.py answer_check), on the turn's last engine call. A warned
+  // answer is one the engine is not sure of, an erred one most likely wrong, a retried one Gemini 4 Neon's written
+  // query (engine/retry.py). A click opens its reason and a Retry (owner, 2026-11-21: never ask back; show the mark).
+  var CHECK_MARKS = {
+    warned: {icon: '&#9888;', label: 'Not sure'},
+    erred: {icon: '&#9940;', label: 'Most likely wrong'},
+    retried: {icon: '&#8635;', label: 'Retried'}
+  };
+
+  function turnCheck(traces) {
+    var list = (traces || []).filter(function (trace) { return trace && trace.engine && trace.engine.check; });
+    return list.length ? list[list.length - 1].engine.check : null;
+  }
+
+  // ``retryAttrs``: the attributes the Retry button carries (a client's own handler); none, no button.
+  function renderCheck(check, retryAttrs) {
+    var mark = check && CHECK_MARKS[check.state];
+    if (!mark) return '';
+    var retry = check.retry || {};
+    var sql = retry.sql ? '<pre class="checksql">' + escapeHtml(retry.sql) + '</pre>' : '';
+    var button = retryAttrs != null ? '<button type="button" class="checkretry" ' + retryAttrs + '>Retry</button>' : '';
+    return '<details class="turn-check check-' + escapeAttribute(check.state) + '">' +
+      '<summary class="checkmark" title="' + mark.label + '" aria-label="' + mark.label + '">' + mark.icon + '</summary>' +
+      '<div class="checkbody"><p class="checkreason">' + escapeHtml(check.reason || mark.label) + '</p>' + sql + button +
+      '</div></details>';
+  }
+
   function renderAssistantTurn(options) {
     options = options || {};
     var answer = options.answerHtml != null
       ? String(options.answerHtml)
       : renderMarkdown(options.reply || '');
     return '<div class="turn-content">' + String(options.reasoningHtml || '') +
-      '<div class="turn-answer convmsg answer">' + answer + '</div>' +
+      '<div class="turn-answer convmsg answer">' + String(options.checkHtml || '') + answer + '</div>' +
       String(options.afterHtml || '') + '</div>';
   }
 
@@ -413,6 +440,8 @@
     executionRan: executionRan,
     renderAsks: renderAsks,
     renderAssistantTurn: renderAssistantTurn,
+    renderCheck: renderCheck,
+    turnCheck: turnCheck,
     renderExecutionBadge: renderExecutionBadge,
     renderMarkdown: renderMarkdown,
     renderReasoningPanel: renderReasoningPanel,

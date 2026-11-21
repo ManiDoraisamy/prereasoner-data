@@ -22,10 +22,11 @@ its header, kind and three example cells; on a workbook of several tabs, the tab
 option's term W * (log p - log 1/n) replaces the stock score (the value slot is read against none: W * (log p - log
 p(none))); an added question's option joins the reading only when the API holds it likelier than none. ``choose_answer``
 is the decision: a candidate's probability is summed over the listed candidates that return the same answer; the
-likeliest answer is given when none is not likelier and its probability reaches T_ASK, with a warning below T_FLAG, and
-asked back otherwise.
+likeliest answer is given when none is not likelier and its probability reaches T_ERR, with a warning below T_FLAG, and
+is most likely wrong (ERRED) otherwise: it is never asked back for (owner, 2026-11-21: "never ask back unless the
+question is wrong"), it is retried (engine/retry.py) and, when the retry cannot answer, served marked as such.
 
-W, T_ASK and T_FLAG are the CLEF path's own, fixed before the Decisions measurement (decisions-probe-20261118): W was
+W, T_ERR and T_FLAG are the CLEF path's own, fixed before the Decisions measurement (decisions-probe-20261118): W was
 picked on Enron, the thresholds on factory validation; none is tuned for the API.
 """
 from __future__ import annotations
@@ -52,12 +53,12 @@ from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
 
 W = 2.0                    # an API probability's weight on the decoder's reading
-T_ASK = 0.42               # below this, the likeliest answer is asked back
+T_ERR = 0.42               # below this, the likeliest answer is most likely wrong: retried, never asked back
 T_FLAG = 0.575             # below this, the likeliest answer is given with a warning
 CHOOSE_K = 50              # candidates the choice offers
 P_FLOOR = 1e-4             # a probability is read no smaller than this
 SCORE_DIGITS = 4
-ANSWERED, WARNED, ASKED = "answered", "warned", "asked"
+ANSWERED, WARNED, ERRED = "answered", "warned", "erred"
 
 # ------------------------------------------------------------------------------------------- the sheet's description
 EXAMPLES, CELL_CHARS, MAX_COLUMNS = 3, 30, 60
@@ -823,12 +824,14 @@ class AnswerChoice:
     """The decision over the choice's probabilities. pick: the listed candidate served for the likeliest answer, of the
     listings returning it the one the choice gave the most probability (the first among equals), so the read-as served
     is the reading the choice preferred; runner_up: the first listing of the next likeliest answer; mass: the likeliest
-    answer's probability, summed over the candidates returning it."""
+    answer's probability, summed over the candidates returning it; alike: the listing of another answer that reads word
+    for word like a reading of this one (in the sheet's header words), or None."""
     kind: str
     pick: int | None
     runner_up: int | None
     mass: float | None
     none: float
+    alike: int | None = None
 
 
 def answer_masses(probabilities: Mapping[str, float] | None, answers: Sequence[str]) -> tuple[dict[str, float], dict[str, int]]:
@@ -847,29 +850,33 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
     """Per answer, not per candidate: the API spreads its probability over readings that return the same answer (a right
     answer at ranks 0, 5, 9 and 12 read 0.33, 0.28 and 0.13 on three of them), so a candidate's probability is summed over
     the listed candidates whose answer (answers[i], answer_key) is the same (answer_masses). The likeliest answer, ties to
-    the earlier listing, is asked back when none is likelier or it is below T_ASK, warned below T_FLAG, and answered
-    otherwise. It is asked back too when a reading of it reads, word for word (``lines``: each listing's read-as in the
-    sheet's own header words, output.in_header_words), like a reading the choice was offered of another answer: "total
-    Amount" on a sheet with two columns headed Amount read "the total of Amount" for both, 40 and 60, and neither the
-    choice nor the person can tell which was computed."""
+    the earlier listing, is most likely wrong (ERRED) when none is likelier or it is below T_ERR, warned below T_FLAG,
+    and answered otherwise; it is served in every case, and ERRED with no answer when nothing was listed. It is warned
+    too when a reading of it reads, word for word (``lines``: each listing's read-as in the sheet's own header words,
+    output.in_header_words), like a reading the choice was offered of another answer (``alike``): "total Amount" on a
+    sheet with two columns headed Amount read "the total of Amount" for both, 40 and 60, and the question cannot tell
+    which it means; the served reading names its column by the sheet's letter ("Amount [C]")."""
     probabilities = probabilities or {}
     none = probabilities.get(NONE, 0.0)
     mass, first = answer_masses(probabilities, answers)
     if not mass:
-        return AnswerChoice(ASKED, None, None, None, none)
+        return AnswerChoice(ERRED, None, None, None, none)
     ranked = sorted(mass, key=lambda answer: (-mass[answer], first[answer]))
     best = ranked[0]
     runner_up = first[ranked[1]] if len(ranked) > 1 else None
     offered = [(answer, lines[at]) for at, answer in enumerate(answers[:CHOOSE_K]) if at < len(lines)]
     worded = {line for answer, line in offered if answer == best}
-    if none > mass[best] or mass[best] < T_ASK or any(answer != best and line in worded for answer, line in offered):
-        kind = ASKED
+    alike = next((at for at, (answer, line) in enumerate(offered) if answer != best and line in worded), None)
+    if none > mass[best] or mass[best] < T_ERR:
+        kind = ERRED
+    elif alike is not None or mass[best] < T_FLAG:
+        kind = WARNED
     else:
-        kind = WARNED if mass[best] < T_FLAG else ANSWERED
+        kind = ANSWERED
     served = min((key for key in probabilities if key != NONE and answers[int(key[1:])] == best), key=lambda key: (-probabilities[key], int(key[1:])))
-    return AnswerChoice(kind, int(served[1:]), runner_up, mass[best], none)
+    return AnswerChoice(kind, int(served[1:]), alike if alike is not None else runner_up, mass[best], none, alike)
 
 
-__all__ = ["ANSWERED", "ASKED", "CHOOSE_K", "T_ASK", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses",
+__all__ = ["ANSWERED", "CHOOSE_K", "ERRED", "T_ERR", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses",
            "choice_record", "choose_answer", "convert_choice", "convert_record", "fused_reading", "reading_record", "said_record", "sheet_state",
            "value_set_question", "value_set_scores"]

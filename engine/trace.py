@@ -287,6 +287,10 @@ def stream_final(emit, res):
         # the workbook never has to infer Python-versus-SQL from source availability.
         if res.get("execution") is not None:
             emit("execution", res["execution"])
+        if res.get("check") is not None:
+            emit("check", res["check"])                       # the answer's mark: answered, warned, erred or retried
+        if res.get("read_as"):
+            emit("read_as", res["read_as"])
         if res.get("low_confidence"):
             emit("low_confidence", True); emit("status", "clarify")   # conversational (not a data query) -> in-chat fallback
         elif res.get("clarify"):

@@ -75,6 +75,8 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
     out: dict[str, Any] = {"status": status, "model": j.get("model")}
     if j.get("execution") is not None:
         out["execution"] = j["execution"]
+    if j.get("check") is not None:
+        out["check"] = j["check"]                  # the answer's mark and its reason (engine/tables.py answer_check)
 
     if status == "answered":
         out["answer"] = j.get("result")            # {columns, rows}
@@ -84,7 +86,7 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
             out["views"] = j.get("views")           # the reasoning stack the player renders
         for k in ("meaning_join", "provenance", "warnings", "as_of", "reference",
                   "dataset_semantics", "analysis", "deterministic", "decomposition", "calculations",
-                  "read_as", "unit", "unmatched", "uncertain"):
+                  "read_as", "unit", "unmatched"):
             if j.get(k) is not None:
                 out[k] = j.get(k)
         # trace coordinates: the browser knows its own uid; we return the jobId the engine streamed under.
@@ -223,7 +225,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                      decomposition: dict[str, Any] | None = None,
                      use: str | None = None,
                      source_hash: str | None = None,
-                     active_sheet: str | None = None) -> dict[str, Any]:
+                     active_sheet: str | None = None,
+                     retry: bool = False) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
     `tables` is [{name, data}] where data is raw CSV text — exactly the engine's inline shape (no dataset_id).
@@ -234,7 +237,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
 
     ASYNC because both callers are async: the MCP tool (FastMCP awaits it) and the orchestrator's chat
     loop, which runs on one shared event loop and would stall every concurrent turn on a blocking POST.
-    One implementation serves both; pass `client` to reuse a connection across a turn's calls."""
+    One implementation serves both; pass `client` to reuse a connection across a turn's calls. `retry`: the person
+    retried an answer, and the engine's retry writes the query (engine/retry.py)."""
     base = (base_url or _engine_base_url()).rstrip("/")
     body: dict[str, Any] = ({"source_hash": source_hash} if source_hash else {"tables": tables})
     body["question"] = question
@@ -252,6 +256,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
         body["decomposition"] = decomposition
     if use:
         body["use"] = use
+    if retry:
+        body["retry"] = True
     try:
         async with _http(client, timeout) as http:
             for attempt in (1, 2):

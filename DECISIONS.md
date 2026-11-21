@@ -5,6 +5,36 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## Never ask back for the engine's own uncertainty: every answer is marked, and an answer most likely wrong is retried by a written query (2026-11-21)
+
+The owner's order: "never ask back unless the question is wrong. You can't push your failure to users. Show warning
+icon if you are unsure or error icon if the answer is most likely wrong ... when the user clicks on the icons, show the
+reason and ask to Retry. If I click on the retry, it should use Gemini Neon to generate the query and execute and get
+the answer. Retry can be automatic if it's an error." It replaces the ask-back of the Decisions path (below `T_ASK`,
+"none of these" likelier, or two readings worded alike) and the "I'm not sure" sentence in the reply.
+
+- **One decision, three marks.** `closed.choose_answer` answers at `T_FLAG` (0.575) or more, warns from `T_ERR` (0.42,
+  the former `T_ASK`) or when another answer's reading reads word for word like the answer's own (`alike`: two
+  columns headed Amount, the read-as naming each by its sheet letter), and errs below or when "none of these" is
+  likelier. An erred selection decides nothing (`selected` None, `erred` its likeliest), so compose and the search
+  still take questions the upload does not answer ("total amount in Europe").
+- **One retry, one written query.** `engine/retry.py` is the only place a model writes SQL (CLAUDE.md, the owner's
+  exception): Gemini 4 Neon (`gemini-4-neon`, on the Developer API only, at its low thinking level; 5.3 s on a probe)
+  reads the request's tables as typed TEMP copies built from their rows (the request database's own tables are not
+  touched; the planner's decimal text would have compared "9" > "100"), told to answer from one tab (the tab in
+  view, else the first that holds what is asked) unless the question asks across tabs: on the first 30 messy
+  questions it unioned every tab and got 0 of 3 erred questions, with the rule 2 of 3 and one "the sheet has no
+  CPC column". The query passes `TableQuery.guard`, runs read-only with a time and row bound, and goes back once
+  with its error. Serving retries an erred answer at once; the person's Retry (`retry: true` on `/chat`, every
+  engine call of the turn, `/api/reason`) runs the same retry through `TableQuery.retry_answer`.
+- **Asked only when the question is wrong.** The retry's word that the tables cannot answer the question is the one
+  question back; a retry that cannot answer serves the likeliest reading marked most likely wrong. A long question
+  still asks, in an analysis, for its decomposition (the orchestrator's, not the person's).
+- **The mark is the response's `check`** (`answered`, `warned`, `erred`, `retried`, each with its reason, the
+  retry's query and model when one ran), passed by the tool, the trace stream (`check`, `read_as`) and the analysis
+  record; `web/public/lib/turn-renderer.js` `renderCheck` draws it in the web rail, the Sheets sidebar (whose Apps
+  Script forwards it from the next published script version) and the Excel pane, a click opening the reason and Retry.
+
 ## The Decisions path answers as production's live suites expect (2026-11-21)
 
 The release build's live suites (`LIVE_ENGINE_ONLY=1 tests.run_all`) had not run on the cut-over. Their first run
@@ -138,11 +168,11 @@ decomposition leaves, compose's probe, the hybrid search's check and every evalu
   request (`RequestDatabase.answered`), although the compose probe, the hybrid check and the delegate each select.
 - **The pool is the listed candidates.** Each candidate that returned rows is a `ScoredQuery` (the program's typed AST,
   its SQL, its answer's probability, its read-as line); the ranking is by the answer's probability; the decided candidate
-  is `selected` when answered or warned, and `declined` when the path asks back. In an analysis the chosen program's one
+  is `selected` when answered or warned, and `erred` when it is most likely wrong (retried; see the 2026-11-21 entry). In an analysis the chosen program's one
   plan runs through both deterministic emitters (exact decimals); outside one an evaluator reads the rows the choice read.
-- **A warned answer says so.** Between `T_ASK` (0.42) and `T_FLAG` (0.575) the answer is served with an `uncertain`
-  record beside `read_as` and `clarify`: `coordinates`, what the runner-up answer reads differently, and `also_read_as`,
-  its reading. The tool passes it through and the one renderer gives the answer as one the engine is not sure of.
+- **A warned answer says so.** Between `T_ERR` (0.42) and `T_FLAG` (0.575) the answer is served warned (its `check`
+  since 2026-11-21, `uncertain` before): `coordinates`, what the runner-up answer reads differently, and
+  `also_read_as`, its reading, with the reason its mark opens on.
 - **The length rule asks only when the path does.** A question longer than `ONE_QUERY_WORDS` (30) words that the path
   asks back about asks, in an analysis, for the decomposition proposal; one it answers is answered. The readers declined
   every long question because they never read one in training; the Decisions path reads them: three of the 896 dev

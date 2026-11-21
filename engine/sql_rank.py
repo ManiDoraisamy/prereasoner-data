@@ -306,9 +306,11 @@ class PoolSelection:
     (engine/program/closed.py choose_answer). ``ranking`` orders the pool by that score, the first listing first among
     equals. ``selected`` is the decided candidate, answered or, below closed.T_FLAG, ``warned``: ``uncertain`` then
     names the coordinates the runner-up answer (first listed at ``runner_up``) reads differently
-    (engine/program/language.coordinates). When the path
-    asks back, ``selected`` is None and ``declined`` the likeliest candidate, the reading the reply asks about: None
-    when none returned rows.
+    (engine/program/language.coordinates); ``alike`` when that reading reads word for word like the answer's own (in
+    the sheet's header words). When the likeliest answer is most likely wrong (engine/program/closed.py ERRED) the path
+    decides nothing (``selected`` is None, so compose and the search may answer it) and ``erred`` is the likeliest
+    candidate, served marked as most likely wrong when its retry (engine/retry.py) cannot answer: None when none
+    returned rows.
     ``confidence`` is the likeliest answer's probability and ``probabilities`` the choice's own, per listing (r00, r01,
     ..., and none). ``programs``, ``rows`` and ``catalog`` hold each candidate's program, the rows it returned on the
     candidates' floats (what the choice read) and the workbook it reads; ``tables`` the request's tables the programs
@@ -319,7 +321,7 @@ class PoolSelection:
     ranking: tuple[int, ...]
     selected: int | None
     confidence: float | None = None
-    declined: int | None = None
+    erred: int | None = None
     warned: bool = False
     uncertain: tuple[str, ...] = ()
     runner_up: int | None = None
@@ -329,10 +331,11 @@ class PoolSelection:
     catalog: object = None
     tables: object = None
     converts: bool = False
+    alike: bool = False
 
     @property
     def candidate(self) -> ScoredQuery | None:
-        """The member served, or None when the path asks back."""
+        """The member decided, or None when the likeliest answer is most likely wrong."""
         return None if self.selected is None else self.pool[self.selected]
 
     def plan(self, index: int, slug: str, whole_tables: bool = False):
@@ -366,13 +369,13 @@ class PoolSelection:
 
     def record(self) -> dict:
         """JSON evidence: the pool's size, the decided member and its place in the ranking, the likeliest answer's
-        probability, and the member asked about when the path asks back."""
+        probability, and the likeliest member when its answer is most likely wrong."""
         evidence = {
             "pool_size": len(self.pool),
             "eligible": len(self.ranking),
             "selected": self.selected,
             "confidence": None if self.confidence is None else round(self.confidence, 4),
-            "declined": self.declined,
+            "erred": self.erred,
             "warned": self.warned,
         }
         if self.selected is not None:

@@ -117,6 +117,46 @@ def unsure_reason(read_as: Any) -> str:
             "Ask again with the column names as your sheet spells them.")
 
 
+def _sure(confidence: Any) -> str:
+    try:
+        return f", {round(float(confidence) * 100)}% sure" if confidence is not None else ""
+    except (TypeError, ValueError):
+        return ""
+
+
+def warned_reason(read_as: Any, also_read_as: Any, confidence: Any, alike: bool) -> str:
+    """Why a warned answer carries its warning (engine/tables.py answer_check): how it was read and how sure the choice
+    was, and what else the question may mean. A reading another column reads word for word like says the question does
+    not tell the two apart; the read-as names each column by the sheet's letter."""
+    read = f"I read this as “{_data_text(read_as)}”{_sure(confidence)}" if read_as else f"I'm not sure of this answer{_sure(confidence)}"
+    also = _data_text(also_read_as or "")
+    if alike and also:
+        return f"{read}, but “{also}” reads the same way and gives another answer; the question does not say which."
+    return f"{read}; it may also mean “{also}”." if also else f"{read}."
+
+
+def erred_reason(read_as: Any, confidence: Any, retried: bool) -> str:
+    """Why an answer is marked most likely wrong: how it was read and how sure the choice was; whether its retry could
+    not answer."""
+    read = f"I read this as “{_data_text(read_as)}”{_sure(confidence)}" if read_as else "I could not read this question from the sheet"
+    tail = " The retry could not answer it either." if retried else ""
+    return f"This answer is most likely wrong. {read}.{tail}"
+
+
+def retried_reason(read_as: Any, confidence: Any, reason: Any, asked: bool) -> str:
+    """Why an answer came from the retry (engine/retry.py): the person asked for it, or the path's own reading was most
+    likely wrong; and how the retry's query reads the question."""
+    how = _data_text(reason or "")
+    if asked:
+        lead = "Retried: Gemini 4 Neon wrote this query."
+    elif read_as:
+        lead = (f"My reading (“{_data_text(read_as)}”{_sure(confidence)}) was most likely wrong, "
+                "so Gemini 4 Neon wrote this query.")
+    else:
+        lead = "I could not read this question from the sheet, so Gemini 4 Neon wrote this query."
+    return f"{lead} {how}".strip()
+
+
 def terminal_reply(shaped: dict[str, Any]) -> str:
     """Render the engine's terminal facts, without an external presentation model."""
     if shaped.get("status") == "clarify":
@@ -133,14 +173,8 @@ def terminal_reply(shaped: dict[str, Any]) -> str:
         named = f" ({unmatched_names(unmatched)})" if unmatched.get("names") else ""
         notes.append(f"{unmatched['rows']} of {unmatched.get('of', '?')} source rows could not be matched{named} "
                      f"and {'was' if unmatched['rows'] == 1 else 'were'} excluded.")
-    uncertain = shaped.get("uncertain")
-    if isinstance(uncertain, dict):
-        # A warned answer (engine/tables.py uncertain_answer): the choice gave it less probability than an answer it
-        # stands behind (engine/program/closed.py T_FLAG), so the reply gives it as one it is not sure of, and says
-        # what else the question may mean when another reading answered differently.
-        also = _data_text(uncertain.get("also_read_as") or "")
-        notes.append("I'm not sure this is what you asked" + (f": it may also mean “{also}”." if also
-                                                               else "; check how I read it."))
+    # A warned, erred or retried answer says so by its mark (the response's ``check``, engine/tables.py answer_check),
+    # whose reason opens on a click beside a Retry: the reply is the answer alone (owner, 2026-11-21).
     # How the question was read is the turn's "read as" line (the engine's ``read_as``), never a paragraph here:
     # appended to the answer, it was a second answer to read (2026-10-04).
     suffix = ("\n\n" + " ".join(notes)) if notes else ""

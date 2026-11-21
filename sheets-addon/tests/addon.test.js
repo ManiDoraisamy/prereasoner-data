@@ -322,9 +322,23 @@ equal(chat.body, {message: 'What are total sales in France?', history: [{role: '
   conversation_id: 'c_0123456789abcdef0123456789abcdef', source_hash: stored, active_sheet: 'Notes', turnId: 'turn_1'});
 equal(answer.reply, 'Total sales in France are **US$840**.');
 equal(answer.history, [{role: 'user', content: 'total'}], 'only user and assistant history returns');
-equal(answer.traces, [{jobId: 'job-1', question: 'total amount in France', analysis: {slug: 'france_sales'},
+equal(answer.traces, [{jobId: 'job-1', question: 'total amount in France', check: null, analysis: {slug: 'france_sales'},
   execution: {actual: 'python'}, views: [{name: 'france_orders', op: 'filter', label: "where country = 'France'", inputs: ['c_x']}]}],
   'steps travel without their rows');
+// An answer's mark travels with its trace, and the person's Retry is a flag on the chat request (owner, 2026-11-21).
+{
+  const check = {state: 'warned', reason: 'I read this as “total amount”, 50% sure.'};
+  const marked = load(book([notes]), {
+    'https://identitytoolkit.googleapis.com/': [200, {idToken: 'firebase-id-token'}],
+    'https://prereasoner-chat-271377281957.us-central1.run.app/chat': [200, {
+      reply: '840', conversation_id: 'c_0123456789abcdef0123456789abcdef', history: [],
+      traces: [{jobId: 'job-2', question: 'total amount', engine: {check, answer: {rows: [[840]]}}}]}]
+  });
+  const retried = marked.askPrereasoner({question: 'total amount', sourceHash: stored,
+    conversationId: 'c_0123456789abcdef0123456789abcdef', turnId: 'turn_2', retry: true});
+  equal(retried.traces[0].check, check, 'the mark and its reason reach the sidebar');
+  equal(marked.fetches.find(call => call.url.endsWith('/chat')).body.retry, true, 'a Retry asks the engine to retry');
+}
 assert.throws(() => api.askPrereasoner({question: 'x', sourceHash: stored,
   conversationId: 'c_0123456789abcdef0123456789abcdef', turnId: 'bad id!'}), /live request id is invalid/); checks++;
 assert.throws(() => api.askPrereasoner({question: 'x', conversationId: 'c_0123456789abcdef0123456789abcdef'}),

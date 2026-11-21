@@ -61,6 +61,12 @@ class KnowledgeReasoner:
             finally:
                 self.qw.end_request()       # close the resolution connection this request opened
 
+    def retry(self, tables, question, active_sheet=None):
+        """The person's retry of an answer: the own-data planner's retry (engine/tables.py TableQuery.retry_answer,
+        engine/retry.py), on the request's own database."""
+        with request_scope(), request_memo(), request_database(active_sheet):
+            return self.qw.q11.retry_answer(tables, question)
+
     def _serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
                decomposition=None):
         self.qw.begin_request()             # fresh request-scoped memo for shared-knowledge lookups

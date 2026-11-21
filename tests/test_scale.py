@@ -186,9 +186,17 @@ def main():
                 assert not result.get('error') and not result.get('clarify') and rows, (question, result)
                 assert Decimal(str(rows[0][0])) == expected, (question, rows)
             result = served(lease.name, Q.serve, [fixture_table], 'total Amount', lease.name, mode='sql')
-            assert not (result.get('result') or {}).get('rows'), 'An ambiguous/invalid amount produced an authoritative total'
-            assert result.get('clarify') or result.get('error'), result
-        print('PASS messy sheets: all rows and unrelated measures work; affected totals need clarification', flush=True)
+            if fixture_table is messy:
+                # Two columns headed Amount: never asked back (owner, 2026-11-21), served with its warning mark, whose
+                # reason names the other column's reading (the sheet's letter tells them apart).
+                check = result.get('check') or {}
+                assert (result.get('result') or {}).get('rows') and check.get('state') == 'warned', result
+                assert 'reads the same way' in check.get('reason', '') and '[C]' in check.get('reason', ''), check
+            else:
+                # A cell that is no number (#DIV/0!) is the data's own error: the total is refused, naming it.
+                assert not (result.get('result') or {}).get('rows'), 'An invalid amount produced an authoritative total'
+                assert result.get('clarify') or result.get('error'), result
+        print('PASS messy sheets: all rows and unrelated measures work; a same-headed total is warned, a broken one refused', flush=True)
     finally:
         lease.close()
 

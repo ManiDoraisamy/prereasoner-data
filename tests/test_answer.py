@@ -15,9 +15,9 @@ import torch
 
 import engine.llm as llm
 import engine.program.stock as stock
-from engine.program.answer import ANSWERED, ASKED, WARNED, answer, prepare
+from engine.program.answer import ANSWERED, ERRED, WARNED, answer, prepare
 from engine.program.catalog import Catalog
-from engine.program.closed import (CHOICE_NONE, CHOOSE_K, NONE, SAID_OPTIONS_MOST, T_ASK, T_FLAG, TAB_IN_VIEW_CONVENTION, W, answer_key, choice_record, choose_answer, fused_reading, preview,
+from engine.program.closed import (CHOICE_NONE, CHOOSE_K, NONE, SAID_OPTIONS_MOST, T_ERR, T_FLAG, TAB_IN_VIEW_CONVENTION, W, answer_key, choice_record, choose_answer, fused_reading, preview,
                                    reading_record, said_record, said_scores, said_spans, sheet_state, value_set_question)
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
@@ -81,13 +81,23 @@ class FakeTransport:
         return {"answers": answers, "tokens": 7}
 
 
+def _no_retry_call(_payload):
+    """A hermetic test's retry model (engine/llm.py QUERY_TRANSPORT): none, so a retry fails as an outage would, and no
+    test reaches the network; a test of the retry sets its own (tests/test_sql_ast.py _neon)."""
+    raise llm.LLMUnavailable("no retry model in a hermetic test")
+
+
 def _with_transport(transport, call):
     held = llm.DECISIONS_TRANSPORT
+    held_query = llm.QUERY_TRANSPORT
     llm.DECISIONS_TRANSPORT = transport
+    if llm.QUERY_TRANSPORT is llm._post_query:
+        llm.QUERY_TRANSPORT = _no_retry_call
     try:
         return call()
     finally:
         llm.DECISIONS_TRANSPORT = held
+        llm.QUERY_TRANSPORT = held_query
 
 
 def _option(question, needle):
@@ -130,13 +140,16 @@ def test_the_answer_is_served_by_the_reading_the_choice_preferred() -> None:
     assert choose_answer({"r00": 0.5, "r01": 0.2, "r02": 0.1}, ["a", "b", "a"]).pick == 0
 
 
-def test_an_answer_worded_like_another_is_asked_back() -> None:
+def test_an_answer_worded_like_another_is_warned_never_asked_back() -> None:
     """tests.test_scale: "total Amount" on a sheet with two columns headed Amount was answered 40 at 0.87, unwarned: both
-    columns' totals read "the total of Amount on orders", so neither the choice nor the person could tell which was
-    computed. An answer one of whose readings reads word for word like an offered reading of another answer is asked
-    back (none of the 896 dev questions nor the 91 demo questions has one)."""
+    columns' totals read "the total of Amount on orders", so the question could not tell which was computed. It was
+    asked back (65658636) until the owner's order of 2026-11-21, "never ask back unless the question is wrong": an
+    answer one of whose readings reads word for word like an offered reading of another answer is served warned, its
+    ``alike`` the other answer's listing (the reason names it). Asked back, it moved four dev answers, two of them right
+    (nt-11106, FD-0172)."""
     lines = ['the total of Amount on "orders"', 'the total of Amount on "orders"', 'the number of lines on "orders"']
-    assert choose_answer({"r00": 0.87, "r01": 0.1, "r02": 0.01}, ["a", "b", "c"], lines).kind == ASKED
+    alike = choose_answer({"r00": 0.87, "r01": 0.1, "r02": 0.01}, ["a", "b", "c"], lines)
+    assert alike.kind == WARNED and alike.pick == 0 and alike.alike == 1 and alike.runner_up == 1
     # contrastive: the same words for the same answer, and different words for different answers, are answered
     assert choose_answer({"r00": 0.87, "r01": 0.1}, ["a", "a"], lines[:2]).kind == ANSWERED
     assert choose_answer({"r00": 0.87, "r01": 0.1}, ["a", "b"], ['the total of Amount on "orders"', 'the total of Units on "orders"']).kind == ANSWERED
@@ -150,21 +163,22 @@ def test_ties_go_to_the_earlier_listing() -> None:
     assert choice.pick == 0 and choice.runner_up == 1
 
 
-def test_thresholds_ask_warn_and_answer() -> None:
-    assert choose_answer({"r00": T_ASK - 0.01, "r01": 0.2, NONE: 0.1}, ["a", "b"]).kind == ASKED
-    assert choose_answer({"r00": T_ASK, "r01": 0.2, NONE: 0.1}, ["a", "b"]).kind == WARNED
+def test_thresholds_err_warn_and_answer() -> None:
+    erred = choose_answer({"r00": T_ERR - 0.01, "r01": 0.2, NONE: 0.1}, ["a", "b"])
+    assert erred.kind == ERRED and erred.pick == 0, "most likely wrong, still served (retried in serving), never asked"
+    assert choose_answer({"r00": T_ERR, "r01": 0.2, NONE: 0.1}, ["a", "b"]).kind == WARNED
     assert choose_answer({"r00": T_FLAG - 1e-9, NONE: 0.1}, ["a"]).kind == WARNED
     assert choose_answer({"r00": T_FLAG, NONE: 0.1}, ["a"]).kind == ANSWERED
 
 
-def test_none_likelier_than_the_best_answer_asks() -> None:
+def test_none_likelier_than_the_best_answer_errs() -> None:
     choice = choose_answer({"r00": 0.45, NONE: 0.55}, ["a"])
-    assert choice.kind == ASKED and choice.pick == 0 and choice.none == 0.55
+    assert choice.kind == ERRED and choice.pick == 0 and choice.none == 0.55
 
 
-def test_nothing_listed_asks() -> None:
-    assert choose_answer(None, []).kind == ASKED and choose_answer(None, []).pick is None
-    assert choose_answer({NONE: 1.0}, []).kind == ASKED
+def test_nothing_listed_errs() -> None:
+    assert choose_answer(None, []).kind == ERRED and choose_answer(None, []).pick is None
+    assert choose_answer({NONE: 1.0}, []).kind == ERRED
 
 
 def test_answer_key_tells_rows_apart() -> None:
@@ -436,8 +450,8 @@ def test_the_dev_replay_holds_each_question_to_its_latest_kept_measurement() -> 
 
 
 TESTS = [
-    test_a_candidates_probability_is_summed_over_the_same_answer, test_the_answer_is_served_by_the_reading_the_choice_preferred, test_an_answer_worded_like_another_is_asked_back, test_ties_go_to_the_earlier_listing, test_thresholds_ask_warn_and_answer,
-    test_none_likelier_than_the_best_answer_asks, test_nothing_listed_asks, test_answer_key_tells_rows_apart,
+    test_a_candidates_probability_is_summed_over_the_same_answer, test_the_answer_is_served_by_the_reading_the_choice_preferred, test_an_answer_worded_like_another_is_warned_never_asked_back, test_ties_go_to_the_earlier_listing, test_thresholds_err_warn_and_answer,
+    test_none_likelier_than_the_best_answer_errs, test_nothing_listed_errs, test_answer_key_tells_rows_apart,
     test_sheet_state_describes_every_column_with_three_examples, test_sheet_state_names_a_family_table_by_all_its_tabs, test_a_workbook_of_several_tabs_names_the_tab_in_view,
     test_reading_record_offers_each_slot_its_coordinates, test_written_day_questions_need_a_year_and_a_day_number,
     test_a_sheet_without_days_or_years_asks_no_period, test_fused_reading_reads_the_api_against_the_uniform_share_and_values_against_none,

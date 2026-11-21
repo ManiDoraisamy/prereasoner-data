@@ -68,6 +68,11 @@ verification. See the execution contract for the transient direct-request slug a
 - `clarify`: the engine rejected a query that would drop or ambiguously realize part of the question;
 - `error`: transport, server, or malformed-response failure.
 
+Each carries the engine's `check` when it has one: the answer's mark (`answered`, `warned`, `erred`, `retried`) and
+the reason its icon opens on. The engine never asks back for its own uncertainty (2026-11-21): an answer most likely
+wrong is retried by a written query (`engine/retry.py`), and `clarify` then means the question is wrong. A tool call
+with `retry: true` (the person's Retry, `/chat` `retry`) has the engine's retry answer it.
+
 The orchestrator's `prereasoner_query` schema also has an optional `dataset_ops` array for a fact the user
 states about their own data's meaning, such as "these amounts are in euros". Each item is a closed
 `set_measure_metadata` or `clear_measure_metadata` op naming an uploaded `table` and measure `column`, with

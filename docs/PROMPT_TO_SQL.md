@@ -79,11 +79,12 @@ analysis, for the decomposition proposal; one it answers is answered.
 In an analysis, as every served request is, the chosen program's one plan
 ([`engine/program/lowering.py:to_plan`](../engine/program/lowering.py)) runs through both deterministic
 emitters on the request's database (`TableQuery._execute_deterministic`), in exact decimals, and the rows
-are shown in the sheet's own spelling. The response's `read_as` is the turn's "read as" line. A warned
-answer carries `uncertain` (`coordinates`, `also_read_as`), and the reply gives it as one the engine is not
-sure of ([`engine/answer_presentation.py:terminal_reply`](../engine/answer_presentation.py)). When the path
-asks back, nothing is served and the reply says how the likeliest reading read the question
-([`engine/tables.py:unsure_clarification`](../engine/tables.py)).
+are shown in the sheet's own spelling. The response's `read_as` is the turn's "read as" line. Every answer
+carries its mark, `check` ([`engine/tables.py:answer_check`](../engine/tables.py)): answered, warned (with
+`coordinates`, `also_read_as`), or, when the choice holds it most likely wrong, retried: Gemini 4 Neon writes one
+SQLite query over the request's tables ([`engine/retry.py`](../engine/retry.py)), served with its query and reason.
+The path never asks back for its own uncertainty; it asks only when the retry says the sheet cannot answer the
+question.
 
 ---
 

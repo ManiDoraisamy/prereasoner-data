@@ -27,7 +27,7 @@ from engine.llm import decide
 from engine.named.chooser import PRIOR, score_candidates
 from engine.named.units import Target
 from engine.program.catalog import Catalog
-from engine.program.closed import (ANSWERED, ASKED, WARNED, answer_key, choice_record, choose_answer, convert_choice, convert_record, fused_reading,
+from engine.program.closed import (ANSWERED, ERRED, WARNED, answer_key, choice_record, choose_answer, convert_choice, convert_record, fused_reading,
                                    reading_record, said_record, value_set_question)
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
@@ -60,8 +60,9 @@ class Prepared:
 @dataclass(frozen=True)
 class Answer:
     """What the path says back. kind: answered, warned (given, with the coordinates the runner-up answer reads differently
-    in uncertain) or asked (program, rows and read_as are then the likeliest reading, to ask back about; empty when no
-    candidate ran). mass: the likeliest answer's probability, summed over the candidates returning it.
+    in uncertain; alike when the runner-up's reading reads word for word like it) or erred (most likely wrong: program,
+    rows and read_as are then the likeliest reading, served when its retry cannot answer; empty when no candidate ran).
+    mass: the likeliest answer's probability, summed over the candidates returning it.
 
     For serving, evaluation and display: listed_* hold every candidate that returned rows, in decoder order (the choice's
     r00, r01, ...): its program, read-as line, rows and its answer's identity (closed.answer_key); pick is the likeliest
@@ -81,6 +82,7 @@ class Answer:
     listed_programs: tuple[Program, ...] = ()
     pick: int | None = None
     runner_up: int | None = None
+    alike: bool = False
 
 
 def prepare(workbook: WorkbookPayload) -> Prepared:
@@ -156,7 +158,8 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
     return Answer(decision.kind, chosen.verified.scored.program if chosen else None, chosen.rows if chosen else (),
                   lines[decision.pick] if chosen else "", decision.mass, uncertain, lines,
                   tuple(candidate.rows for candidate in listed), answers, probabilities, tokens,
-                  tuple(candidate.verified.scored.program for candidate in listed), decision.pick, decision.runner_up)
+                  tuple(candidate.verified.scored.program for candidate in listed), decision.pick, decision.runner_up,
+                  decision.alike is not None)
 
 
-__all__ = ["ANSWERED", "ASKED", "DECODE_K", "WARNED", "Answer", "Prepared", "answer", "convert_target", "prepare", "prepare_catalog"]
+__all__ = ["ANSWERED", "DECODE_K", "ERRED", "WARNED", "Answer", "Prepared", "answer", "convert_target", "prepare", "prepare_catalog"]

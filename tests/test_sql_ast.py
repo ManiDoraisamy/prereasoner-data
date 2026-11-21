@@ -2117,7 +2117,7 @@ def test_the_selection_is_the_decisions_paths_listed_candidates():
     norm, _fks = planner.ingest(_orders_request())
     selection, transport = _decided(_choice(0.9), lambda: planner.select_query("total amount for East", norm))
     assert selection.pool and len(selection.pool) == len(selection.rows) == len(selection.programs)
-    assert selection.selected == 0 and selection.declined is None and not selection.warned, selection.record()
+    assert selection.selected == 0 and selection.erred is None and not selection.warned, selection.record()
     scores = [member.score for member in selection.pool]
     assert list(selection.ranking) == sorted(range(len(scores)), key=lambda at: (-scores[at], at))
     assert selection.confidence >= T_FLAG and selection.probabilities[NONE] < selection.confidence
@@ -2126,37 +2126,145 @@ def test_the_selection_is_the_decisions_paths_listed_candidates():
     assert list(transport.bodies[-1]["questions"]) == ["reading"], "the choice is the last call"
 
 
-def test_a_question_the_path_asks_back_is_asked_about_with_its_reading():
-    """Below closed.T_ASK, or with "none of these" likelier, nothing is served: the reply says how the likeliest
-    reading read the question and asks (engine/tables.py unsure_clarification)."""
-    from engine.answer_presentation import unsure_reason
+def _neon(answers):
+    """A fake retry model (engine/llm.py QUERY_TRANSPORT): each call's answer is the next of ``answers`` (a dict the
+    model's JSON holds, or an exception to raise); the prompts it was sent are kept."""
+    import json
+
+    from engine import llm
+
+    prompts = []
+
+    def transport(payload):
+        body = json.loads(payload.decode("utf-8"))
+        prompts.append(body["contents"][0]["parts"][0]["text"])
+        answer = answers[min(len(prompts), len(answers)) - 1]
+        if isinstance(answer, Exception):
+            raise answer
+        return {"text": json.dumps(answer), "usage": {"promptTokenCount": 10, "candidatesTokenCount": 5}}
+
+    held = llm.QUERY_TRANSPORT
+    llm.QUERY_TRANSPORT = transport
+    return prompts, lambda: setattr(llm, "QUERY_TRANSPORT", held)
+
+
+EAST = 'SELECT SUM("Amount") AS "total amount" FROM "orders" WHERE "Region" = \'East\''
+
+
+def test_an_answer_most_likely_wrong_is_retried_never_asked_back():
+    """Owner, 2026-11-21: "never ask back unless the question is wrong". Below closed.T_ERR, or with "none of these"
+    likelier, the Decisions path decides nothing (compose and the search may answer it) and serving retries it
+    (engine/retry.py): Gemini 4 Neon writes one SQLite query over typed copies of the request's tables, guarded and
+    run read-only, and its rows are the answer, marked retried with its reason and query. The retry's word that the
+    sheet cannot answer is the one question back; a retry that cannot answer leaves the likeliest reading served,
+    marked most likely wrong. Asked back until then, the reply was "I read this as …, but I'm not confident"."""
+    from engine import config
+    from engine.llm import LLMUnavailable
 
     planner = _hermetic_planner()
-    response, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
-    assert response["clarify"] is True and response["result"] is None and response["error"] is None, response
-    assert response["read_as"] and response["reason"] == unsure_reason(response["read_as"])
-    assert response["selection"]["selected"] is None and response["selection"]["declined"] == 0
-    assert "uncertain" not in response and response["model"] == PROGRAM_MODEL
+    prompts, restore = _neon([{"answerable": True, "sql": EAST, "reason": "Adds Amount over the East rows."}])
+    try:
+        response, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+    finally:
+        restore()
+    assert "clarify" not in response and response["valid"] and response["error"] is None, response
+    assert response["result"] == {"columns": ["total amount"], "rows": [[240.5]]}, response["result"]
+    check = response["check"]
+    assert check["state"] == "retried" and check["asked"] is False and check["retry"]["sql"] == EAST, check
+    assert check["retry"]["model"] == config.QUERY_MODEL and "most likely wrong" in check["reason"], check
+    assert response["sql"] == EAST and response["read_as"] == "Adds Amount over the East rows."
+    assert response["selection"]["selected"] is None and response["selection"]["erred"] == 0
+    assert 'TABLE "orders" (7 rows)' in prompts[0] and '"Amount" REAL' in prompts[0] and "'East'" in prompts[0], prompts[0]
+    assert prompts[0].endswith("QUESTION: total amount for East")
+    # the question is wrong: the retry says the sheet cannot answer it, and that is asked
+    _p, restore = _neon([{"answerable": False, "sql": "", "reason": "The sheet has no column of costs."}])
+    try:
+        wrong, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total cost for East"))
+    finally:
+        restore()
+    assert wrong["clarify"] is True and wrong["reason"] == "The sheet has no column of costs." and wrong["result"] is None
+    # the retry cannot answer (a query the guard refuses, twice; then a failed call): the likeliest reading, marked
+    for answers in ([{"answerable": True, "sql": 'DELETE FROM "orders"', "reason": "r"}] * 2, [LLMUnavailable("down")]):
+        _p, restore = _neon(answers)
+        try:
+            served, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+        finally:
+            restore()
+        assert served["valid"] and served["result"]["rows"] and served["check"]["state"] == "erred", served
+        assert "most likely wrong" in served["check"]["reason"] and served["read_as"], served["check"]
+        assert served["model"] == PROGRAM_MODEL and "clarify" not in served
+    # the person's Retry: the retry answers whatever the path read
+    _p, restore = _neon([{"answerable": True, "sql": EAST, "reason": "Adds Amount over the East rows."}])
+    try:
+        retried = planner.retry_answer(_orders_request(), "total amount for East")
+    finally:
+        restore()
+    assert retried["result"]["rows"] == [[240.5]] and retried["check"]["state"] == "retried" and retried["check"]["asked"]
+
+
+def test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alone():
+    """The retry (engine/retry.py) shows the model, and runs its query over, TEMP copies of the request's tables typed by
+    their own cells: a column of plain numbers is numbers, so "Amount > 50" is a number comparison (the planner's
+    decimal text would read "9" > "50"), and a zero-padded code stays text ("007"). The copies are dropped and the
+    database's own tables untouched; on a workbook of several tabs the prompt names the tab in view; the one guard
+    refuses a query that writes, and a refused query goes back once with the guard's reason."""
+    import contextvars
+
+    from engine import prepared
+    from engine.retry import retry
+
+    tables = [{"name": "orders", "columns": ["Code", "Amount", "Note"], "rows": [["007", "9", "x"], ["010", "100", None]]},
+              {"name": "returns", "columns": ["Code", "Qty"], "rows": [["007", 1]]}]
+    guard = TableQuery.guard.__get__(_hermetic_planner())
+    prompts, restore = _neon([{"answerable": True, "sql": 'SELECT "Code" FROM "orders" WHERE "Amount" > 50', "reason": "r"}])
+
+    def run():
+        database = prepared.RequestDatabase(None, "orders")
+        token = prepared._DATABASE.set(database)
+        try:
+            outcome = retry("which codes are over 50", tables, guard)
+            left = database.connection.execute("SELECT name FROM temp.sqlite_master").fetchall()
+            return outcome, left
+        finally:
+            prepared._DATABASE.reset(token)
+            database.close()
+    try:
+        outcome, left = contextvars.copy_context().run(run)
+    finally:
+        restore()
+    assert outcome.answered and outcome.rows == (("010",),), outcome
+    assert left == [], "the TEMP copies are dropped"
+    assert '"Code" TEXT' in prompts[0] and '"Amount" INTEGER' in prompts[0] and '"Qty" INTEGER' in prompts[0], prompts[0]
+    assert 'TAB IN VIEW: "orders"' in prompts[0]
+    prompts, restore = _neon([{"answerable": True, "sql": 'DELETE FROM "orders"', "reason": "r"}] * 2)
+    try:
+        with prepared.scratch_database():
+            refused = retry("drop the orders", tables, guard)
+    finally:
+        restore()
+    assert not refused.answered and refused.error.startswith("guard:") and len(prompts) == 2 and "IT FAILED: guard:" in prompts[1]
 
 
 def test_a_warned_answer_is_served_with_what_else_it_may_mean():
-    """Between closed.T_ASK and T_FLAG the answer is served and the response says it is not sure (``uncertain``: the
-    coordinates the runner-up reads differently and its reading); the chat's reply says so. Contrast: an answer the
-    choice stands behind carries no such record."""
+    """Between closed.T_ERR and T_FLAG the answer is served and its ``check`` is warned: the reason its mark opens on
+    says how it was read, how sure the choice was and what else the question may mean, with the coordinates the
+    runner-up reads differently. The reply is the answer alone (the reason moved from the reply to the mark,
+    2026-11-21). Contrast: an answer the choice stands behind is answered."""
     from engine.answer_presentation import terminal_reply
     from mcp_server.engine_client import shape_reason_response
 
     planner = _hermetic_planner()
     response, _ = _decided(_choice(0.47, none=0.44), lambda: planner.serve(_orders_request(), "total amount for East"))
     assert response["valid"] and response["result"]["rows"] and response["selection"]["warned"], response["selection"]
-    uncertain = response["uncertain"]
-    assert isinstance(uncertain["coordinates"], list) and all(":" in name for name in uncertain["coordinates"])
-    assert uncertain["also_read_as"] is None or isinstance(uncertain["also_read_as"], str)
+    check = response["check"]
+    assert check["state"] == "warned" and check["reason"].startswith("I read this as “") and "% sure" in check["reason"]
+    assert isinstance(check["coordinates"], list) and all(":" in name for name in check["coordinates"])
+    assert check["also_read_as"] is None or isinstance(check["also_read_as"], str)
     shaped = shape_reason_response(response, None)
-    assert shaped["status"] == "answered" and shaped["uncertain"] == uncertain
-    assert "I'm not sure this is what you asked" in terminal_reply(shaped)
+    assert shaped["status"] == "answered" and shaped["check"] == check
+    assert "not sure" not in terminal_reply(shaped)
     sure, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
-    assert sure["valid"] and "uncertain" not in sure and not sure["selection"]["warned"]
+    assert sure["valid"] and sure["check"]["state"] == "answered" and not sure["selection"]["warned"]
 
 
 def test_an_analysis_runs_the_chosen_program_on_both_emitters():
@@ -2178,9 +2286,10 @@ def test_an_analysis_runs_the_chosen_program_on_both_emitters():
 
 
 def test_a_long_question_the_path_asks_back_asks_for_the_decomposition():
-    """A question longer than decomposition.ONE_QUERY_WORDS words that the Decisions path asks back about asks, in an
+    """A question longer than decomposition.ONE_QUERY_WORDS words whose answer the Decisions path holds most likely wrong asks, in an
     analysis, for the decomposition proposal, each subquestion short enough. Contrasts: the same long question the
-    path answers is answered, and a short question it asks back is asked about."""
+    path answers is answered, and a short question whose answer is most likely wrong is retried (here the retry's
+    call fails, so the likeliest reading is served marked), never asked about."""
     from engine.decomposition import ONE_QUERY_WORDS
     from engine.deterministic.context import analysis_execution_context
 
@@ -2193,9 +2302,14 @@ def test_a_long_question_the_path_asks_back_asks_for_the_decomposition():
     with analysis_execution_context(None, "c_" + "1" * 32):
         answered, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), long_question))
     assert answered["valid"] and answered["result"]["rows"] and not answered.get("decomposition_required"), answered
-    with analysis_execution_context(None, "c_" + "2" * 32):
-        short, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
-    assert short["clarify"] is True and not short.get("decomposition_required"), short
+    from engine.llm import LLMUnavailable
+    _p, restore = _neon([LLMUnavailable("down")])
+    try:
+        with analysis_execution_context(None, "c_" + "2" * 32):
+            short, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+    finally:
+        restore()
+    assert short["check"]["state"] == "erred" and "clarify" not in short and not short.get("decomposition_required"), short
 
 
 def test_the_decisions_paths_reading_certifies_its_calculation_but_a_conversion_it_could_not_make():
@@ -2330,7 +2444,8 @@ def test_an_uploaded_sheets_grid_keeps_its_structure():
 
 TESTS = [
     test_the_selection_is_the_decisions_paths_listed_candidates,
-    test_a_question_the_path_asks_back_is_asked_about_with_its_reading,
+    test_an_answer_most_likely_wrong_is_retried_never_asked_back,
+    test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alone,
     test_a_warned_answer_is_served_with_what_else_it_may_mean,
     test_an_analysis_runs_the_chosen_program_on_both_emitters,
     test_a_long_question_the_path_asks_back_asks_for_the_decomposition,
@@ -2425,7 +2540,8 @@ TESTS = [
 # the public CI's hermetic environment does not, and there they are skipped, as skipped.
 NEEDS_TORCH = (
     test_the_selection_is_the_decisions_paths_listed_candidates,
-    test_a_question_the_path_asks_back_is_asked_about_with_its_reading,
+    test_an_answer_most_likely_wrong_is_retried_never_asked_back,
+    test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alone,
     test_a_warned_answer_is_served_with_what_else_it_may_mean,
     test_an_analysis_runs_the_chosen_program_on_both_emitters,
     test_a_long_question_the_path_asks_back_asks_for_the_decomposition,

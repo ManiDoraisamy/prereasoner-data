@@ -346,6 +346,9 @@ def validate_reason_request(req: object) -> dict:
     normalized["conversation_id"] = _optional_id(req, "conversation_id", conversation=True)
     normalized["as_of"] = validate_as_of(req.get("as_of"))
     normalized["use"] = validate_execution_use(req.get("use"))
+    if not isinstance(req.get("retry", False), bool):
+        raise RequestValidationError("retry must be true or false")
+    normalized["retry"] = req.get("retry", False)
     normalized["dataset_ops"] = _validate_dataset_ops_shape(req.get("dataset_ops"))
     try:
         from engine.decomposition import DecompositionError, validate_decomposition
@@ -431,6 +434,9 @@ def validate_chat_request(req: object):
         if analysis["action"] != "modify":
             raise RequestValidationError("chat analysis override must modify an existing analysis")
 
+    retry = req.get("retry", False)
+    if not isinstance(retry, bool):
+        raise RequestValidationError("retry must be true or false")
     return (message, tables, normalized_history, _optional_id(req, "turnId"),
             _optional_id(req, "conversation_id", conversation=True),
-            validate_execution_use(req.get("use")), analysis, source_hash, validate_active_sheet(req))
+            validate_execution_use(req.get("use")), analysis, source_hash, validate_active_sheet(req), retry)

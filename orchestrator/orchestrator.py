@@ -587,11 +587,13 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     use: str | None = None,
                     analysis_override: dict[str, Any] | None = None,
                     source_hash: str | None = None,
-                    active_sheet: str | None = None) -> dict[str, Any]:
+                    active_sheet: str | None = None,
+                    retry: bool = False) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
     session's inline CSVs, or, with `source_hash`, the sheets `conversation_id` stores: the turn reads them
     from the engine for its own checks and each engine call names them instead of carrying them.
-    `active_sheet` is the tab the person has open, when their client has tabs.
+    `active_sheet` is the tab the person has open, when their client has tabs. `retry`: the person retried an
+    answer, and every engine call of the turn is answered by the engine's retry (engine/retry.py).
     Returns {reply, traces, history, conversation_id}.
 
     `conversation_id` keeps every engine call on ONE conversation schema; the FIRST call mints one if none
@@ -885,6 +887,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 analysis=analysis_spec,
                                 decomposition=decomposition,
                                 use=use,
+                                retry=retry,
                             )
                         if not conv and shaped.get("conversation_id"):
                             conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session

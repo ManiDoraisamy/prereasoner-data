@@ -141,9 +141,8 @@ their columns; matching is on the data, not on a word list. The weights live in 
 The choice is a logistic model over the re-scorer's logit, the decoder's log probability, the best rank, the
 share of the readers' readings that build the candidate, and whether its result is empty, fitted with its
 threshold on held-out databases (`training/readers/choice.py`). It ranks the candidates, and its probability
-for the best is the confidence. Under the threshold nothing is selected and the reply
-is a clarification: "I read this as “…”, but I'm not confident that is what you asked"
-(`engine/tables.py:unsure_clarification`). A served answer carries `read_as`, the readers' plain reading
+for the best is the confidence. Under the threshold nothing is selected; since 2026-11-21 such an answer is retried
+by a written query (`engine/retry.py`), never asked back. A served answer carries `read_as`, the readers' plain reading
 of the served query (`engine/readers/read_as.py`), which the thread shows as the turn's "read as" line.
 
 ## Public API

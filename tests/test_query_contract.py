@@ -123,9 +123,9 @@ def test_the_coverage_gate_passes_an_error_through():
 
 
 def test_the_own_data_adapter_carries_a_clarification():
-    """The planner's clarification when the readers are not confident of their reading (engine/tables.py
-    unsure_clarification) reaches the reply through the own-data branch of KnowledgeTableQuery.serve, which copies
-    the planner's keys it knows, the reading's read-as line among them."""
+    """The planner's clarification (since 2026-11-21 only the retry's word that the sheet cannot answer the question,
+    engine/retry.py) reaches the reply through the own-data branch of KnowledgeTableQuery.serve, which copies the
+    planner's keys it knows, the reading's read-as line among them."""
     from types import SimpleNamespace
     from engine.knowledge_tables import KnowledgeTableQuery
     asked = {'sql': None, 'result': None, 'error': None, 'clarify': True, 'dropped': [],

@@ -127,6 +127,40 @@ def test_a_decision_sends_one_sorted_body_and_returns_each_questions_options():
         raise AssertionError("a question with one option was sent")
 
 
+def test_the_retry_query_sends_one_sorted_body_and_reads_its_json_answer():
+    """write_query() sends the retry (engine/retry.py) as one generateContent body to QUERY_MODEL on the Developer API:
+    the system instruction, the prompt, the answer's JSON schema and the low thinking level, with no temperature (Gemini
+    4 Neon refuses one), keys sorted so a prompt gives one body. Its answer's thought parts are not the answer; a query,
+    or the model's word that the tables cannot answer, comes back with the tokens billed; an answer that is not its
+    JSON, a failed call and a missing key reach the caller as LLMUnavailable."""
+    import json
+    from urllib.parse import urlparse
+
+    sent = []
+
+    def post(url, payload, timeout, attempts, label):
+        sent.append((url, json.loads(payload.decode("utf-8"))))
+        return {"candidates": [{"content": {"parts": [{"text": "thinking...", "thought": True},
+                                                      {"text": json.dumps({"answerable": True, "sql": " SELECT 1 ", "reason": "One."})}]}}],
+                "usageMetadata": {"promptTokenCount": 30, "candidatesTokenCount": 7, "thoughtsTokenCount": 5}}
+
+    with patch.object(llm, "_post_developer", post), patch.object(llm, "QUERY_TRANSPORT", llm._post_query):
+        written = llm.write_query("rules", "TABLES: ...")
+    assert written == llm.WrittenQuery(True, "SELECT 1", "One.", 30, 12), written
+    url, body = sent[0]
+    assert urlparse(url).path.endswith(f"/models/{config.QUERY_MODEL}:generateContent") and "model" not in body
+    generation = body["generationConfig"]
+    assert generation["thinkingConfig"] == {"thinkingLevel": "low"} and "temperature" not in generation
+    assert generation["responseJsonSchema"]["required"] == ["answerable", "sql", "reason"]
+    assert llm.query_payload("rules", "p") == llm.query_payload("rules", "p")
+    with patch.object(llm, "QUERY_TRANSPORT", lambda payload: {"text": json.dumps({"answerable": False, "sql": "", "reason": "No costs."})}):
+        assert llm.write_query("rules", "p") == llm.WrittenQuery(False, "", "No costs.")
+    with patch.object(llm, "QUERY_TRANSPORT", lambda payload: {"text": "SELECT 1"}):
+        _unavailable(lambda: llm.write_query("rules", "p"))
+    with patch.dict("os.environ", {"GOOGLE_API_KEY": ""}), patch.object(llm, "QUERY_TRANSPORT", llm._post_query):
+        _unavailable(lambda: llm.write_query("rules", "p"))
+
+
 def test_json_request_is_deterministic_and_carries_the_schema():
     models = _Models(reply='{"sql": "SELECT 1"}')
     with _gemini(), _serving(models):
@@ -382,6 +416,7 @@ TESTS = [
     test_unconfigured_gemini_is_unavailable_without_a_call,
     test_a_decision_sends_one_sorted_body_and_returns_each_questions_options,
     test_json_request_is_deterministic_and_carries_the_schema,
+    test_the_retry_query_sends_one_sorted_body_and_reads_its_json_answer,
     test_failures_reach_callers_only_as_unavailable,
     test_stream_yields_chunks_and_fails_as_unavailable,
     test_one_client_per_process_is_created_under_a_lock,

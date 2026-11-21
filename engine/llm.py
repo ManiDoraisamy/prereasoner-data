@@ -6,6 +6,11 @@ Gemini is the only external model, and it is always on: there is no switch. Thre
   question and the sheet's description) is the input; each of its questions is a closed choice among options the
   engine built, answered as a probability for every option. It returns probabilities only, never text, SQL or a
   program. It authenticates with GOOGLE_API_KEY (the Developer API; the endpoint is not on Vertex AI).
+- ``write_query``: the own-data retry (engine/retry.py). One generateContent call to QUERY_MODEL (Gemini 4 Neon, on
+  the Developer API only) that writes one SQLite SELECT over the request's tables, or says the tables cannot answer
+  the question, as a JSON document; the caller guards and runs it. Owner's decision, 2026-11-21: the Decisions path
+  never asks back for its own uncertainty, and its answer most likely wrong, or one the person retries, is retried
+  by this call. It authenticates as ``decide`` does.
 
 - The synchronous calls: ``generate_text`` (starter questions, orchestrator/suggestions.py) and
   ``stream_text`` (reference generation, /api/master/generate). One ``genai.Client`` per process, created lazily under a lock.
@@ -101,44 +106,126 @@ def decision_hash(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _post_decisions(payload: bytes) -> dict:
-    """The endpoint's answer to one body: {"answers": {...}, "tokens": n}. Raises LLMUnavailable."""
+def _post_developer(url: str, payload: bytes, timeout_seconds: float, attempts: int, label: str) -> dict:
+    """One body POSTed to a Gemini Developer API endpoint with the deployment's key, sent again on a stall, a 429 or a
+    5xx (with the server's Retry-After) within the request's time; the parsed JSON answer. Raises LLMUnavailable."""
     from engine.request_deadline import remaining
 
     key = config.decisions_key()
     if not key:
-        raise LLMUnavailable("the Decisions API has no key for this deployment")
+        raise LLMUnavailable(f"the {label} call has no key for this deployment")
     wait = 1.0
-    for attempt in range(DECISIONS_ATTEMPTS):
+    for attempt in range(attempts):
         budget = remaining()
-        timeout = DECISIONS_TIMEOUT_SECONDS if budget is None else max(0.1, min(DECISIONS_TIMEOUT_SECONDS, budget))
-        request = urllib.request.Request(DECISIONS_ENDPOINT, data=payload, method="POST",
+        timeout = timeout_seconds if budget is None else max(0.1, min(timeout_seconds, budget))
+        request = urllib.request.Request(url, data=payload, method="POST",
                                          headers={"Content-Type": "application/json", "x-goog-api-key": key})
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                result = json.loads(response.read().decode("utf-8"))
-            tokens = int((result.get("usage") or {}).get("total_input_tokens") or 0)
-            return {"answers": result["answers"], "tokens": tokens}
+                return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            if exc.code not in DECISIONS_RETRY_STATUS_CODES or attempt + 1 == DECISIONS_ATTEMPTS:
-                raise LLMUnavailable(f"Decisions call failed ({exc.code})") from None
+            if exc.code not in DECISIONS_RETRY_STATUS_CODES or attempt + 1 == attempts:
+                raise LLMUnavailable(f"{label} call failed ({exc.code})") from None
             after = exc.headers.get("Retry-After") if exc.headers else None
             pause = float(after) if after and after.replace(".", "", 1).isdigit() else wait
-        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, ValueError, KeyError) as exc:
-            if attempt + 1 == DECISIONS_ATTEMPTS:
-                raise LLMUnavailable(f"Decisions call failed ({type(exc).__name__})") from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, ValueError) as exc:
+            if attempt + 1 == attempts:
+                raise LLMUnavailable(f"{label} call failed ({type(exc).__name__})") from None
             pause = wait
         budget = remaining()
         if budget is not None and budget <= pause:
-            raise LLMUnavailable("Decisions call ran out of the request's time")
+            raise LLMUnavailable(f"{label} call ran out of the request's time")
         time.sleep(pause)
         wait = min(wait * 2, 8.0)
-    raise LLMUnavailable("Decisions call failed")
+    raise LLMUnavailable(f"{label} call failed")
+
+
+def _post_decisions(payload: bytes) -> dict:
+    """The endpoint's answer to one body: {"answers": {...}, "tokens": n}. Raises LLMUnavailable."""
+    result = _post_developer(DECISIONS_ENDPOINT, payload, DECISIONS_TIMEOUT_SECONDS, DECISIONS_ATTEMPTS, "Decisions")
+    try:
+        return {"answers": result["answers"], "tokens": int((result.get("usage") or {}).get("total_input_tokens") or 0)}
+    except (KeyError, TypeError, ValueError) as exc:
+        raise LLMUnavailable(f"Decisions call failed ({type(exc).__name__})") from None
 
 
 # The transport ``decide`` sends a body through. An evaluation may set it to replay recorded answers by
 # ``decision_hash``; serving never changes it.
 DECISIONS_TRANSPORT = _post_decisions
+
+
+QUERY_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# Gemini 4 Neon at its low thinking level wrote a probe's query in 5.3 s (2026-11-21); high, its default, thinks far
+# longer. It takes no temperature or seed: the same body may be answered with another query.
+QUERY_THINKING = "low"
+QUERY_MAX_OUTPUT_TOKENS = 8192
+QUERY_TIMEOUT_SECONDS = 60.0
+QUERY_ATTEMPTS = 2
+QUERY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answerable": {"type": "boolean", "description": "whether the tables hold what the question asks"},
+        "sql": {"type": "string", "description": "one SQLite SELECT statement answering the question; empty when not answerable"},
+        "reason": {"type": "string", "description": "one sentence: how the query reads the question, or why the tables cannot answer it"},
+    },
+    "required": ["answerable", "sql", "reason"],
+}
+
+
+@dataclass(frozen=True)
+class WrittenQuery:
+    """The retry model's answer: one SQLite SELECT, or that the tables cannot answer the question, with its one-sentence
+    reason; the tokens billed (input, output with thinking)."""
+    answerable: bool
+    sql: str
+    reason: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+def query_payload(system: str, prompt: str) -> bytes:
+    """The generateContent body of one retry: the system instruction, the prompt, the JSON schema of its answer and the
+    thinking level. Keys are sorted, so a prompt gives one body (``decision_hash`` keys a recorded answer)."""
+    body = {"model": config.QUERY_MODEL,
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"responseMimeType": "application/json", "responseJsonSchema": QUERY_SCHEMA,
+                                 "thinkingConfig": {"thinkingLevel": QUERY_THINKING},
+                                 "maxOutputTokens": QUERY_MAX_OUTPUT_TOKENS}}
+    return json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def _post_query(payload: bytes) -> dict:
+    """The model's answer to one retry body: {"text": its JSON answer, "usage": {...}}. Raises LLMUnavailable."""
+    body = json.loads(payload.decode("utf-8"))
+    model = body.pop("model")
+    result = _post_developer(QUERY_ENDPOINT.format(model=model), json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                             QUERY_TIMEOUT_SECONDS, QUERY_ATTEMPTS, "Retry query")
+    try:
+        parts = result["candidates"][0]["content"]["parts"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LLMUnavailable(f"Retry query call failed ({type(exc).__name__})") from None
+    text = "".join(part.get("text", "") for part in parts if not part.get("thought"))
+    return {"text": text, "usage": result.get("usageMetadata") or {}}
+
+
+# The transport ``write_query`` sends a body through; an evaluation may replay recorded answers by ``decision_hash``.
+QUERY_TRANSPORT = _post_query
+
+
+def write_query(system: str, prompt: str) -> WrittenQuery:
+    """One retry call: the query the model writes for ``prompt`` (engine/retry.py builds it), or its word that the
+    tables cannot answer the question. Raises LLMUnavailable and nothing else."""
+    answer = QUERY_TRANSPORT(query_payload(system, prompt))
+    try:
+        parsed = json.loads(answer.get("text") or "")
+        answerable, sql, reason = bool(parsed["answerable"]), str(parsed.get("sql") or ""), str(parsed.get("reason") or "")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise LLMUnavailable(f"Retry query answer is not its JSON ({type(exc).__name__})") from None
+    usage = answer.get("usage") or {}
+    return WrittenQuery(answerable and bool(sql.strip()), sql.strip(), reason.strip(),
+                        int(usage.get("promptTokenCount") or 0),
+                        int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0))
 
 
 def decide(state: dict, questions: dict) -> Decision:

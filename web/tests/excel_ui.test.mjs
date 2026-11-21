@@ -46,6 +46,11 @@ for (const [file, text] of addonSources) {
 }
 // Upload once (2026-10-02): the workbook goes to the conversation when it changes, and a question names it.
 assert.match(pane, /api\('\/api\/conversation\/sync', \{id: state\.conversationId \|\| '', question, tables\}\)/);
-assert.match(pane, /api\('\/chat', \{\s*message: question, history: baseHistory,\s*conversation_id: state\.conversationId, source_hash: state\.sourceHash, active_sheet: activeSheet, turnId\s*\}, \[409\]\)/);
+assert.match(pane, /api\('\/chat', \{\s*message: question, history: baseHistory,\s*conversation_id: state\.conversationId, source_hash: state\.sourceHash, active_sheet: activeSheet, turnId,\s*\.\.\.\(retry \? \{retry: true\} : \{\}\)\s*\}, \[409\]\)/);
+// An answer's mark (engine check) and its Retry: the turn keeps its check, the thread's delegated click re-asks it
+// with retry:true (engine/retry.py, owner 2026-11-21).
+assert.match(pane, /check: renderer\.turnCheck \? renderer\.turnCheck\(response\.traces\) : null/);
+assert.match(pane, /renderer\.renderCheck\(turn\.check, `data-retry="\$\{index\}"`\)/);
+assert.match(pane, /ask\(turn\.question, true\)/);
 assert.doesNotMatch(pane, /api\('\/chat', \{[^}]*tables/);
 console.log('Excel and shared conversation UI: 18 checks passed');
