@@ -188,6 +188,21 @@ def absent_lines(program: Show, catalog: Catalog, kept: list[int]) -> list[int]:
     return [i for i in kept if keys[i] is not None and keys[i] not in held]
 
 
+def in_header_words(program: Program, catalog: Catalog) -> str:
+    """The program's read-as line in the sheet's own header words: a column the compiler named apart from an earlier
+    one of the same header by its sheet letter ("Amount [C]", engine/sheet/compiler.py) by that header alone. Two
+    readings that differ only in which of two same-headed columns they read then read alike, as a question naming the
+    header reads them (closed.choose_answer asks it back)."""
+    from engine.program.language import tables_of
+    line = read_as(program, catalog)
+    for table_id in tables_of(program):
+        for column in catalog.table(table_id).table.columns:
+            words = " ".join(column.path)
+            if words and column.letter and column.name == f"{words} [{column.letter}]":
+                line = line.replace(column.name, words)
+    return line
+
+
 def read_as(program: Program, catalog: Catalog) -> str:
     """The program in the sheet's own words."""
     if isinstance(program, Check):
@@ -754,4 +769,4 @@ def explain(scored: ScoredProgram, tables: RequestTables, rows: tuple[tuple, ...
     return Explanation(read_as(program, tables.catalog), compress(cells_used(program, tables, rows)), formula(program, tables), tuple(term.record() for term in scored.contributions), also)
 
 
-__all__ = ["Explanation", "answer_columns", "cells_used", "compress", "explain", "formula", "header", "read_as"]
+__all__ = ["Explanation", "answer_columns", "cells_used", "compress", "explain", "formula", "header", "in_header_words", "read_as"]

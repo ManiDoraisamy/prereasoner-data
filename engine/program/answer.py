@@ -32,7 +32,7 @@ from engine.program.closed import (ANSWERED, ASKED, WARNED, answer_key, choice_r
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
 from engine.program.language import Program, coordinates
-from engine.program.output import read_as
+from engine.program.output import in_header_words, read_as
 from engine.program.scoring import DEFAULT_WEIGHTS
 from engine.program.stock import stock_reader, workbook_targets
 from engine.program.store import RequestTables
@@ -147,7 +147,7 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
             state, questions = choice_record(catalog, question, [(line, candidate.rows) for line, candidate in zip(lines, listed)], in_view)
             choice = decide(state, questions)
         probabilities, tokens = choice.fields["reading"], tokens + choice.tokens
-    decision = choose_answer(probabilities, answers, lines)
+    decision = choose_answer(probabilities, answers, tuple(in_header_words(candidate.verified.scored.program, catalog) for candidate in listed))
     chosen = listed[decision.pick] if decision.pick is not None else None
     uncertain: tuple[str, ...] = ()
     if decision.kind == WARNED and decision.runner_up is not None:

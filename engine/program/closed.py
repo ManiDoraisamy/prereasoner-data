@@ -848,9 +848,10 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
     answer at ranks 0, 5, 9 and 12 read 0.33, 0.28 and 0.13 on three of them), so a candidate's probability is summed over
     the listed candidates whose answer (answers[i], answer_key) is the same (answer_masses). The likeliest answer, ties to
     the earlier listing, is asked back when none is likelier or it is below T_ASK, warned below T_FLAG, and answered
-    otherwise. It is asked back too when a reading of it reads, word for word (``lines``, each listing's read-as), like a
-    reading the choice was offered of another answer: "total Amount" on a sheet with two columns headed Amount read
-    "the total of Amount" twice, 40 and 60, and neither the choice nor the person can tell which was computed."""
+    otherwise. It is asked back too when a reading of it reads, word for word (``lines``: each listing's read-as in the
+    sheet's own header words, output.in_header_words), like a reading the choice was offered of another answer: "total
+    Amount" on a sheet with two columns headed Amount read "the total of Amount" for both, 40 and 60, and neither the
+    choice nor the person can tell which was computed."""
     probabilities = probabilities or {}
     none = probabilities.get(NONE, 0.0)
     mass, first = answer_masses(probabilities, answers)
