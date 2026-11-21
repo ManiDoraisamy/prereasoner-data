@@ -163,6 +163,10 @@ def _order(direction: str) -> str:
 
 
 def _show_query(program: Show, *, scalar: bool = False) -> SelectQuery:
+    if program.every:     # every kept data line, its cells as the sheet wrote them, in sheet order
+        select = tuple(SelectItem(_shown(column), f"shown_{at}") for at, column in enumerate(program.shown))
+        return SelectQuery(select, sql_table(program.table), where=_where(_data_lines(program.table), *map(_condition, program.where)),
+                           order_by=(OrderTerm(ColumnRef(sql_table(program.table), LINE, SQLType.INTEGER)),))
     if program.listing:
         keys = tuple(_fold(column) for column in program.shown)
         where = _where(None if addresses_printed(program.where) else _data_lines(program.table), *map(_condition, program.where), *(_is_null(key, negated=True) for key in keys), *_absent(program.absent))

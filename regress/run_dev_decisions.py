@@ -70,9 +70,9 @@ PROBE = EXPERIMENTS / "decisions-probe-20261118"
 # kept change's rerun of the questions it touches (gs1, af1, wm1 and DataBench's wm1b; cf1 and cf1b, the cell as the sheet
 # wrote it; fg1 and fg1b, a prose column's word counts; ol1 and ol1b, each cell on one line; to1 and to1b, tied lines in
 # sheet order), a later measurement of a question replacing an earlier one
-REFERENCE_TAGS = {"messy": ("eor1", "to1", "pl1b", "vt1"), "freshdev": ("eor1", "gs1", "wm1", "cf1", "fg1", "ol1", "to1", "vt1"),
-                  "wtq": ("eor1", "af1", "wm1", "cf1", "fg1", "ol1", "to1", "pl1b"),
-                  "databench": ("pgd1", "wm1", "wm1b", "cf1", "cf1b", "fg1", "fg1b", "ol1", "ol1b", "to1", "to1b", "pl1", "pl1b", "vt1b")}
+REFERENCE_TAGS = {"messy": ("eor1", "to1", "pl1b", "vt1", "ec2"), "freshdev": ("eor1", "gs1", "wm1", "cf1", "fg1", "ol1", "to1", "vt1"),
+                  "wtq": ("eor1", "af1", "wm1", "cf1", "fg1", "ol1", "to1", "pl1b", "ec2"),
+                  "databench": ("pgd1", "wm1", "wm1b", "cf1", "cf1b", "fg1", "fg1b", "ol1", "ol1b", "to1", "to1b", "pl1", "pl1b", "vt1b", "ec2")}
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
 # The demo set against vtdemo (results/e2e_vtdemo_con_stock.jsonl.gz): the stock arm on the connected catalog (place,
 # entity, currency and key links with each key's identities, the kept closed questions, the tab in view named, the

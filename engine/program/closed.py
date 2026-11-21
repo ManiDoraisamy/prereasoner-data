@@ -46,7 +46,7 @@ from engine.program.catalog import KIND_FAMILY, KIND_TABLE, Catalog
 from engine.program.decoder import table_reach
 from engine.program.index import index_of
 from engine.program.language import PeriodSpan, period_from_name
-from engine.program.names import PERCENT_OP, SAID_ABOVE, SAID_BELOW, SLOT_ANSWER_TYPE, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SAID, coarse_type, coordinate
+from engine.program.names import EVERY_COLUMN, PERCENT_OP, SAID_ABOVE, SAID_BELOW, SLOT_ANSWER_TYPE, SLOT_LISTING, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SAID, SLOT_SHOWN, coarse_type, coordinate
 from engine.program.scoring import Reading
 from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
@@ -527,6 +527,8 @@ def api_scores(scores: Mapping[str, float], record: ReadingRecord, fields: Mappi
         for name in [name for name in out if name.split(":", 1)[0] == slot and name not in terms]:
             out[name] = floor
         out.update(terms)
+        if slot == SLOT_SHOWN and NONE in probabilities:     # no column named: the listing of every column, against the uniform share
+            out[coordinate(SLOT_LISTING, EVERY_COLUMN)] = W * (_log(probabilities[NONE]) - math.log(1.0 / len(probabilities)))
     return out
 
 
@@ -818,9 +820,10 @@ def answer_key(rows: Sequence[Sequence]) -> str:
 
 @dataclass(frozen=True)
 class AnswerChoice:
-    """The decision over the choice's probabilities. pick: the listed candidate standing for the likeliest answer (its
-    first listing); runner_up: the first listing of the next likeliest answer; mass: the likeliest answer's probability,
-    summed over the candidates returning it."""
+    """The decision over the choice's probabilities. pick: the listed candidate served for the likeliest answer, of the
+    listings returning it the one the choice gave the most probability (the first among equals), so the read-as served
+    is the reading the choice preferred; runner_up: the first listing of the next likeliest answer; mass: the likeliest
+    answer's probability, summed over the candidates returning it."""
     kind: str
     pick: int | None
     runner_up: int | None
@@ -858,7 +861,8 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
         kind = ASKED
     else:
         kind = WARNED if mass[best] < T_FLAG else ANSWERED
-    return AnswerChoice(kind, first[best], runner_up, mass[best], none)
+    served = min((key for key in probabilities if key != NONE and answers[int(key[1:])] == best), key=lambda key: (-probabilities[key], int(key[1:])))
+    return AnswerChoice(kind, int(served[1:]), runner_up, mass[best], none)
 
 
 __all__ = ["ANSWERED", "ASKED", "CHOOSE_K", "T_ASK", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses",

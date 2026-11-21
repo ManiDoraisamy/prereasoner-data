@@ -61,6 +61,7 @@ COMPARE_OPS = (EQ, *COMPARISONS)
 ANY = "any"            # some kept line exists
 NO = "no"              # no kept line exists
 EVERY = "every"        # every line the base conditions keep also meets one more condition
+EVERY_COLUMN = "every"  # listing:every, a listing of every one of a table's own columns: what a question naming no column lists
 VERSUS = "versus"      # one number against a stated number or another program's number
 IS = "is"              # the top line's shown value, or the top group's key, against a stated text or number
 SAME = "same"          # the top line (or group) by one rank is also the top one by another

@@ -286,6 +286,56 @@ def test_a_fused_leaf_shows_its_answer_without_the_tie_order():
     assert shown_plan(two) is two
 
 
+def test_every_column_lists_every_line():
+    """tests.test_scale's "show all rows ordered by id" on 30,000 subscriptions was answered unwarned as 'the different
+    id on "subscriptions"': every row, one column. Its reading named no column of its shown slot (none of these 0.399
+    against id 0.466) and asked for a list; no program showed every column. The every-column listing is every data
+    line the conditions keep, in sheet order, each cell as written, a blank cell blank and no line merged with
+    another, the same in the typed SQL and both emitters. The decoder builds it only where the reading's
+    listing:every (the shown slot's none against its uniform share) is above zero and it asks for a list; never of a
+    reached column."""
+    from dataclasses import replace
+    rows = [["id", "plan", "reason", "amount"], ["sub_1", "yearly", "requested", 0.5], ["sub_2", "yearly", None, 0.25],
+            ["sub_3", "monthly", "requested", 0.5], ["sub_4", "yearly", None, 0.25], ["sub_4", "yearly", None, 0.25]]
+    catalog, table, tables = _setup(rows)
+    own = tuple(Col(table.id, at) for at in range(4))
+    every = Show(table.id, own, (), listing=True, every=True)
+    listed = _answer(every, tables)
+    assert [row[0] for row in listed] == ["sub_1", "sub_2", "sub_3", "sub_4", "sub_4"] and listed[1][2] is None and len(listed[0]) == 4, listed     # a repeated line stays
+    assert _answer(Show(table.id, own, (Equals(Col(table.id, 1), "yearly"),), listing=True, every=True), tables) == tuple(row for row in listed if row[1] == "yearly")
+    assert read_as(every, catalog) == "every column of Sheet1, line by line" and answer_type_of(every, catalog.column_kind) == A_LIST
+    assert coordinate("listing", "every") in coordinates(every, catalog.column_kind) and coordinate("shown", Col(table.id, 0).name) not in coordinates(every, catalog.column_kind)
+    reading = Reading({name: 1.0 for name in coordinates(every, catalog.column_kind)})
+    assert [scored.program for scored in Decoder(catalog).decode(reading, k=50).programs][0] == every
+    # contrastive: listing:every at or below zero builds none, and naming one column keeps its one-column listing
+    quiet = Reading({**reading.scores, coordinate("listing", "every"): 0.0})
+    assert not any(isinstance(scored.program, Show) and scored.program.every for scored in Decoder(catalog).decode(quiet, k=200).programs)
+    one = Show(table.id, (own[0],), (), listing=True)
+    assert [scored.program for scored in Decoder(catalog).decode(Reading({name: 1.0 for name in coordinates(one, catalog.column_kind)}), k=50).programs][0] == one
+    # negative: without a list none; a column a link reached (col -1) is never in it; it is never a distinct listing
+    unlisted = Reading({name: score for name, score in reading.scores.items() if name not in (coordinate("answer_type", A_LIST), coordinate("listing", "yes"))})
+    assert not any(isinstance(scored.program, Show) and scored.program.every for scored in Decoder(catalog).decode(unlisted, k=200).programs)
+    held = table.table.columns[3]
+    table.table.columns[3] = replace(held, col=-1)     # the amount column read as one a link reached
+    try:
+        reached = [scored.program for scored in Decoder(catalog).decode(reading, k=50).programs if isinstance(scored.program, Show) and scored.program.every]
+        assert reached and all(program.shown == own[:3] for program in reached), reached
+    finally:
+        table.table.columns[3] = held
+    try:
+        Show(table.id, own, (), every=True)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("every column outside a listing")
+    # the decoder builds it with no condition, and only where the reading's form is a show (fresh dev FD-0171 "which
+    # three had the highest per capita" read form rank and was answered with the whole table)
+    named = Reading({**reading.scores, coordinate("value", Col(table.id, 1).name, "yearly"): 3.0, coordinate("filter", Col(table.id, 1).name): 2.0})
+    assert all(not scored.program.where for scored in Decoder(catalog).decode(named, k=200).programs if isinstance(scored.program, Show) and scored.program.every)
+    ranked = Reading({**reading.scores, coordinate("form", "show"): -1.0, coordinate("form", "rank"): 2.0})
+    assert not any(isinstance(scored.program, Show) and scored.program.every for scored in Decoder(catalog).decode(ranked, k=200).programs)
+
+
 def test_a_workbook_reads_its_values_within_a_token_bound():
     """eval-neartail-ecommerce: the stock reading encodes every value target on a workbook's first question, and the
     2,000 order ids cost 49,704 of its 49,799 tokens, about 156 s on Cloud Run against a 180 s call. A workbook's value
@@ -1927,7 +1977,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

@@ -119,6 +119,17 @@ def test_a_candidates_probability_is_summed_over_the_same_answer() -> None:
     assert choice.pick == 1 and choice.runner_up == 0 and abs(choice.mass - 0.6) < 1e-12 and choice.kind == ANSWERED
 
 
+def test_the_answer_is_served_by_the_reading_the_choice_preferred() -> None:
+    """Of the listings returning the likeliest answer, the one the choice gave the most probability is served ("total
+    amount in France" was served as 'the size of the total of amount ... (all country → currency together)', its
+    answer's first listing, where the choice preferred another reading of the same rows); the decision and the
+    runner-up are the answer's, as before."""
+    choice = choose_answer({"r00": 0.1, "r01": 0.2, "r02": 0.5, NONE: 0.05}, ["a", "b", "a"])
+    assert choice.pick == 2 and choice.runner_up == 1 and abs(choice.mass - 0.6) < 1e-12 and choice.kind == ANSWERED
+    # contrastive: the first listing is served where it is the choice's likeliest of its answer
+    assert choose_answer({"r00": 0.5, "r01": 0.2, "r02": 0.1}, ["a", "b", "a"]).pick == 0
+
+
 def test_ties_go_to_the_earlier_listing() -> None:
     choice = choose_answer({"r00": 0.25, "r01": 0.25, "r02": 0.25, "r03": 0.25}, ["a", "b", "a", "b"])
     assert choice.pick == 0 and choice.runner_up == 1
@@ -410,7 +421,7 @@ def test_the_dev_replay_holds_each_question_to_its_latest_kept_measurement() -> 
 
 
 TESTS = [
-    test_a_candidates_probability_is_summed_over_the_same_answer, test_ties_go_to_the_earlier_listing, test_thresholds_ask_warn_and_answer,
+    test_a_candidates_probability_is_summed_over_the_same_answer, test_the_answer_is_served_by_the_reading_the_choice_preferred, test_ties_go_to_the_earlier_listing, test_thresholds_ask_warn_and_answer,
     test_none_likelier_than_the_best_answer_asks, test_nothing_listed_asks, test_answer_key_tells_rows_apart,
     test_sheet_state_describes_every_column_with_three_examples, test_sheet_state_names_a_family_table_by_all_its_tabs, test_a_workbook_of_several_tabs_names_the_tab_in_view,
     test_reading_record_offers_each_slot_its_coordinates, test_written_day_questions_need_a_year_and_a_day_number,

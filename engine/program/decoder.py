@@ -18,7 +18,7 @@ from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
 from engine.program.language import (Absent, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, GRAIN_MONTH, PERCENT_OP, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -847,6 +847,14 @@ class _Search:
         if together and (s(coordinate(SLOT_LISTING, "yes")) > 0 or self.type_score(A_LIST) > 0):     # only where it asks for a list
             frames += self.condition_frames(listed, (together,), lambda options, where: Show(table.id, options[0], where, listing=True), table, index, atoms, max_policy=2)
         frames += self.absent_frames(table, index, atoms, listed, columns)
+        # every column ("show all rows"): every data line of the table's own columns, none a link reached, with no
+        # condition; only where the reading's form is a show, it asks for a list, and it names no column of its shown
+        # slot above the uniform share (listing:every above zero)
+        every = s(coordinate(SLOT_LISTING, EVERY_COLUMN))
+        own = tuple(Col(table.id, column.position) for column in table.columns if column.col >= 0)
+        if every > 0 and len(own) > 1 and s(coordinate(SLOT_FORM, SHOW)) > 0 and (s(coordinate(SLOT_LISTING, "yes")) > 0 or self.type_score(A_LIST) > 0):
+            frames.append(_Frame(listed + every + s(coordinate(SLOT_CONDITIONS, table.id, 0)), ([_Option(every, own)],),
+                                 lambda options: Show(table.id, options[0], (), listing=True, every=True)))
         # agg
         agg = s(coordinate(SLOT_FORM, AGG)) + table_score
         measures = self.measure_options(table, index)

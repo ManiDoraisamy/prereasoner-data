@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAIN_MONTH, PERCENT_OP, coordinate)
 from engine.program.semantics import fold, number_text
@@ -351,13 +351,17 @@ class Show:
 
     step   AFTER reads the first data line below the first line the conditions keep, BEFORE the last data line above
            it ("who finished after Bo?"); None reads the kept line itself.
-    absent a listing keeps only the lines whose key no line holding its conditions holds (Absent)."""
+    absent a listing keeps only the lines whose key no line holding its conditions holds (Absent).
+    every  a listing of every data line the conditions keep itself, in sheet order, each shown cell as the sheet wrote
+           it and a blank cell blank, no line merged with another: "show all rows", shown being every one of the
+           table's own columns, which its coordinates name as listing:every."""
     table: str
     shown: tuple[Col, ...]
     where: tuple[Condition, ...] = ()
     listing: bool = False
     step: str | None = None
     absent: Absent | None = None
+    every: bool = False
 
     def __post_init__(self):
         if not self.shown:
@@ -368,6 +372,8 @@ class Show:
             raise ValueError("a neighbouring line is after or before the line a read's conditions keep")
         if self.absent is not None and (not self.listing or self.absent.key.table != self.table or addresses_printed(self.where)):
             raise ValueError("an absence keeps the data lines of a listing by their own key")
+        if self.every and (not self.listing or self.absent is not None or addresses_printed(self.where) or any(column.table != self.table or column.position == SECTION for column in self.shown)):
+            raise ValueError("every column is a listing of its own table's data lines")
 
 
 @dataclass(frozen=True, slots=True)
@@ -656,8 +662,11 @@ def _body_coordinates(program: Program) -> list[str]:
         return [coordinate(SLOT_CALC_OP, program.op), *([coordinate(SLOT_SIZE, STATED_BY_SIZE)] if program.magnitude else []), *_body_coordinates(program.left), *_body_coordinates(program.right)]
     names.append(coordinate(SLOT_TABLE, program.table))
     if isinstance(program, Show):
-        names.extend(coordinate(SLOT_SHOWN, column.name) for column in program.shown)
-        names.extend(shown_together(program.shown))
+        if program.every:     # every column, named as one: no column of it is one the question names
+            names.append(coordinate(SLOT_LISTING, EVERY_COLUMN))
+        else:
+            names.extend(coordinate(SLOT_SHOWN, column.name) for column in program.shown)
+            names.extend(shown_together(program.shown))
         if program.listing:
             names.append(coordinate(SLOT_LISTING, "yes"))
         if program.step is not None:

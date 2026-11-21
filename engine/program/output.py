@@ -200,6 +200,8 @@ def read_as(program: Program, catalog: Catalog) -> str:
     if isinstance(program, Show):
         shown = ", ".join(_name(catalog, column) for column in program.shown)
         where = _where_words(catalog, program.where)
+        if program.every:     # the wording the readers' ask-back used ("every column of subscriptions")
+            return f"every column of {table.tab or table.id}, line by line" + (f" where {where}" if where else "")
         if program.listing and len(program.shown) > 1:
             pairs = " and ".join(_name(catalog, column) for column in program.shown)
             return f"the different combinations of {pairs} {place}" + (f" where {where}" if where else "")
@@ -342,7 +344,11 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
             out.append(_with_tab(table, i, address))
 
     if isinstance(program, Show):
-        if program.listing:
+        if program.every:
+            for i in kept:
+                for column in program.shown:
+                    add(i, column.position)
+        elif program.listing:
             for i in absent_lines(program, catalog, kept):
                 if all(table.folds[column.position][i] is not None for column in program.shown):     # a line blank in a shown column is in no combination
                     for column in program.shown:
@@ -535,6 +541,12 @@ def formula(program: Program, tables: RequestTables) -> str:
         if not program.listing:
             cells = cells_used(program, tables, ())
             return f"={cells[0]}" if len(cells) == 1 else "={" + ",".join(cells) + "}" if cells else "=NA()"
+        if program.every:     # every kept line: the table's columns side by side, filtered by the conditions
+            tests = _filter_array(catalog, program.where)
+            if tests is None or not _plain_range(table):
+                return "=NA()"
+            body = "HSTACK(" + ",".join(_range(table, column.position) for column in program.shown) + ")"
+            return f"=FILTER({body},{tests})" if tests else f"={body}"
         if len(program.shown) > 1:     # the combinations: the shown ranges side by side, the lines filled in all and kept
             tests = _filter_array(catalog, program.where)
             if tests is None or program.absent is not None or not _plain_range(table) or any(column.position == SECTION for column in program.shown):

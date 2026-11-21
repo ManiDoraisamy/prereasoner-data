@@ -56,6 +56,8 @@ def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ..
         width = len(spellings)
         return tuple(tuple(words.get(cell, cell) for words, cell in zip(spellings, row[:width])) + tuple(row[width:]) for row in rows)
     keyed: Col | None = None
+    if isinstance(program, Show) and program.every:     # the lines' own text, as stored
+        return tuple(tuple(row) for row in rows)
     if isinstance(program, Show) and program.listing and len(program.shown) > 1:     # each column's folds back in its spelling
         spellings = [tables.catalog.table(column.table).written_spelling[column.position] for column in program.shown]
         return tuple(tuple(words.get(cell, cell) for words, cell in zip(spellings, row)) for row in rows)
