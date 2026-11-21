@@ -209,8 +209,9 @@ def main():
     # Negative: a question that names no world column is not a projection, and compose still owns 'which
     # continent is Tokyo in'. Both answers are unchanged.
     response, got = projected([SALES], "total amount in France")
-    ok("projection: no world column named stays a filtered total", [[str(c) for c in r] for r in got] == [["120"]]
-       and [view.get("op") for view in response.get("views") or []] == ["filter", "group_agg"], f"got={got}")
+    ops = [view.get("op") for view in response.get("views") or []]
+    ok("projection: no world column named stays an own-data total", [[str(c) for c in r] for r in got] == [["120"]]
+       and "world_join" not in ops and "group_agg" in ops, f"got={got} ops={ops}")
     response, got = projected([CUST], "which continent is Tokyo in")
     ok("projection: compose still answers 'which continent is Tokyo in'", got == [["Asia", 1]], f"got={got}")
 

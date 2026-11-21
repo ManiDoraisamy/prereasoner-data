@@ -182,7 +182,9 @@ class KnowledgeBridgeMixin:
                              if is_currency_source_column(column["name"]) and not is_synthetic_currency_column(column["name"])), None)
             measures = [column["name"] for column in mine
                         if column.get("affinity") in ("INTEGER", "REAL") and is_currency_measure_column(column["name"])]
-            if not currency or not measures or not rate_columns:
+            sheet = sheet_rates(norm, tab, own.keys, tab[table["name"]], table["columns"].index(currency)) if currency else ()
+            rates = tuple(sorted(set(rate_columns) | {"rate_to_" + target.lower() for target, _pairs in sheet}))
+            if not currency or not measures or not rates:
                 continue
             dated = next((column["name"] for column in mine if column.get("is_date")), None)
             days = {as_of}
@@ -190,9 +192,10 @@ class KnowledgeBridgeMixin:
                 index = table["columns"].index(dated)
                 days |= {str(row[index]) for row in table["rows"]
                          if index < len(row) and row[index] is not None and ISO_DAY.fullmatch(str(row[index]))}
-            database.load_rates(list(rate_columns), sorted(days))
+            if rate_columns:
+                database.load_rates(list(rate_columns), sorted(days))
             money.append(MoneyLink(tab[table["name"]], table["columns"].index(currency), table["columns"].index(dated) if dated else None,
-                                   tuple(table["columns"].index(name) for name in measures), rate_columns, as_of))
+                                   tuple(table["columns"].index(name) for name in measures), rates, as_of, sheet))
         return RequestLinks(own.columns, tuple(places), tuple(entities), own.keys, tuple(money))
 
     def _hold_unconnected(self, database, table, planner_schema, plan):
@@ -326,3 +329,36 @@ class KnowledgeBridgeMixin:
             "provenance": None, "warnings": [], "dims": None,
             "model": "engine - unified encoder: world bridge + semantic rank",
         }
+
+
+def sheet_rates(norm, tab, keys, money_tab: str, currency: int) -> tuple:
+    """The request's own exchange rates for the money table ``money_tab`` whose currency codes stand in column
+    ``currency``: each request table its currency column keys into (``keys``, engine/prepared.py KeyLink) that has a
+    rate_to_<code> column (engine/currency_intent.py currency_rate_target), per target currency its codes (the key's
+    cells, trimmed and upper-cased) and rates (canonical decimal text; a cell that is no number is left out). The
+    first such table read for a target wins. A sheet that states its rates is read before the knowledgebase's."""
+    from engine.currency_intent import currency_rate_target
+    from engine.numeric import canonical_decimal, parse_decimal
+
+    named = {tab[table["name"]]: table for table in norm if table["name"] in tab}
+    out: dict[str, tuple[tuple[str, str], ...]] = {}
+    for key in keys:
+        other = named.get(key.other_tab)
+        if key.tab != money_tab or key.position != currency or other is None:
+            continue
+        for position, name in enumerate(other["columns"]):
+            target = currency_rate_target(name)
+            if target is None or target in out:
+                continue
+            pairs = {}
+            for row in other["rows"]:
+                code = str(row[key.other_position]).strip().upper() if key.other_position < len(row) and row[key.other_position] is not None else ""
+                try:
+                    rate = canonical_decimal(parse_decimal(row[position])) if position < len(row) and row[position] not in (None, "") else None
+                except ValueError:
+                    rate = None
+                if code and rate is not None:
+                    pairs.setdefault(code, rate)
+            if pairs:
+                out[target] = tuple(sorted(pairs.items()))
+    return tuple(sorted(out.items()))

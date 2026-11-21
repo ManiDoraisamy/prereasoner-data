@@ -329,14 +329,17 @@ def main():
            f" model={(rcnt or {}).get('model')}")
 
     # C2b conversion serve path with a test-local rate table. The clarify gate must not
-    # reinterpret "US" as the country when exact `rate_to_usd` arithmetic realizes it.
+    # reinterpret "US" as the country when exact `rate_to_usd` arithmetic realizes it. These requests are served
+    # through the production entry (wr.serve, as engine/server.py serves them): it registers the request's links, so
+    # the own-data path reads the sheet's rates through the key from the currency column (engine/prepared.py
+    # MoneyLink.sheet_rates) and the knowledgebase's where the sheet states none.
     from engine.enrichment import ExplicitKeyEdge
     _ORD = {"name": "orders", "columns": ["order_id", "currency", "amount"],
             "rows": [[1, "EUR", 310], [2, "EUR", 210], [3, "GBP", 100], [4, "EUR", 95]]}
     _FX = {"name": "fx_rates", "columns": ["currency_code", "rate_to_usd"],
            "rows": [["USD", "1.0"], ["EUR", "1.08"], ["GBP", "1.27"]]}
     _FX_EDGE = ExplicitKeyEdge("orders", ("currency",), "fx_rates", ("currency_code",))
-    rconv = _retry(lambda: served(sub, qc.serve, [_ORD, _FX], "total order amount in US dollars", sub,
+    rconv = _retry(lambda: served(sub, wr.serve, [_ORD, _FX], "total order amount in US dollars", sub,
                                     explicit_fks=(_FX_EDGE,)))
     conv = (((rconv or {}).get("result") or {}).get("rows") or [[None]])[0][0] if rconv else None
     ok("fx: total in USD converts to 791.2 (615 EUR*1.08 + 100 GBP*1.27), no clarify",
@@ -347,7 +350,7 @@ def main():
     # A target the uploaded sheet cannot express is COMPLETED from the knowledgebase — the uploaded
     # sheet wins where it overlaps (USD above), but it does not veto knowledge it does not cover,
     # exactly as a city sheet without population still reads population from the world tables.
-    rkb = _retry(lambda: served(sub, qc.serve, [_ORD, _FX], "total order amount in euros", sub,
+    rkb = _retry(lambda: served(sub, wr.serve, [_ORD, _FX], "total order amount in euros", sub,
                                   explicit_fks=(_FX_EDGE,)))
     kb_value = (((rkb or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     # The served trail joins the ECB rates on their own reference-lookup sheet; the response's sql is the
@@ -391,13 +394,13 @@ def main():
            total == exact(kb_value), f"sum={total} result={kb_value}")
 
     # A target NEITHER the sheet NOR the ECB series ever published still declines with evidence.
-    rkwd = _retry(lambda: served(sub, qc.serve, [_ORD, _FX], "total order amount in KWD", sub,
+    rkwd = _retry(lambda: served(sub, wr.serve, [_ORD, _FX], "total order amount in KWD", sub,
                                    explicit_fks=(_FX_EDGE,)))
     ok("fx: a target outside sheet AND knowledgebase coverage declines, never a number",
        bool(rkwd) and rkwd.get("clarify") is True and not rkwd.get("result"),
        f"result={rkwd}")
 
-    rfilter = _retry(lambda: served(sub, qc.serve, [_ORD, _FX], "how many orders in EUR", sub,
+    rfilter = _retry(lambda: served(sub, wr.serve, [_ORD, _FX], "how many orders in EUR", sub,
                                       explicit_fks=(_FX_EDGE,)))
     filter_value = (((rfilter or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     ok("fx: COUNT in EUR is a filter, not a conversion decline",
@@ -407,10 +410,10 @@ def main():
 
     _PRODUCTS = {"name": "products", "columns": ["product", "revenue"],
                  "rows": [["A", 100], ["B", 250]]}
-    runits = _retry(lambda: served(sub, qc.serve, [_PRODUCTS], "total revenue in euros", sub))
+    runits = _retry(lambda: served(sub, wr.serve, [_PRODUCTS], "total revenue in euros", sub))
     unit_value = (((runits or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     ok("fx: no currency dimension treats EUR as a unit annotation",
-       bool(runits) and not runits.get("clarify") and unit_value == 350
+       bool(runits) and not runits.get("clarify") and exact(unit_value) == 350
        and (runits.get("currency") or {}).get("realization") == "unit_annotation",
        f"result={runits}")
 
@@ -616,11 +619,15 @@ def main():
         cities = {str(c).strip().lower() for r in rows for c in r}
         ok("composite: 'top 3 cities' returns the top 3 by amount (Paris/Lyon/Tokyo, Berlin excluded)",
            len(rows) == 3 and {"paris", "lyon", "tokyo"} <= cities and "berlin" not in cities, f"rows={rows}")
+    # Europe is no value of the upload: the own-data path asks back and the world layer answers (engine/routing.py
+    # reads_upload_whole), through its grounding lookup or the composed stack, whichever hosts it: either joins the
+    # world, keeps Europe's cities and totals each.
     reubc = _retry(lambda: served(sub, qc.serve, [CUST], "total amount in Europe by city", sub))
     if reubc is not None:
-        planb = reubc.get("plan") or []
-        ok("composite: 'total amount in Europe by city' stacks world_join+world_filter+group+topn",
-           {"world_join", "world_filter"} <= set(planb), f"plan={planb}")
+        opsb = [view.get("op") for view in reubc.get("views") or []] + list(reubc.get("plan") or [])
+        rowsb = sorted([str(r[0]), exact(r[1])] for r in (reubc.get("result") or {}).get("rows") or [])
+        ok("composite: 'total amount in Europe by city' joins the world, keeps Europe and totals by city",
+           "world_join" in opsb and rowsb == [["Berlin", 40], ["Lyon", 80], ["Paris", 100]], f"ops={opsb} rows={rowsb}")
 
     # ============================================================ (D) delegation sanity ==========================
     print("\n== (D) delegation sanity ==", flush=True)

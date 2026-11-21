@@ -8,6 +8,7 @@ a calculation selects from. Identifiers are ours, so nothing a sheet writes reac
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 
 from engine.prepared import connect
@@ -38,6 +39,18 @@ def sql_table(table_id: str) -> str:
 def table_id_of(sql_name: str) -> str:
     """The catalog table a SQL table holds (sql_table's inverse)."""
     return sql_name[1:]
+
+
+def request_name(catalog: Catalog, sql_name: str, column: str) -> tuple[str, str]:
+    """A store column as the request names it: the table by its tab, a column a position stores (text_column,
+    fold_column, number_column, day_column, words_column) by its header, as the request's own schema names them; any
+    other (a table no catalog table stores, a line's role or label) as it is."""
+    held = catalog.by_id.get(table_id_of(sql_name)) if sql_name.startswith("_") else None
+    stored = re.fullmatch(r"c(\d+)_[tfndw]", column)
+    if held is None:
+        return sql_name, column
+    position = int(stored.group(1)) if stored else None
+    return held.tab, held.column_name(position) if position is not None and position < len(held.table.columns) else column
 
 
 def words_column(position: int) -> str:

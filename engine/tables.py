@@ -750,12 +750,16 @@ class TableQuery:
             # every answer it detects one in. What the reading cannot certify is a conversion the path had no way to
             # make: a currency the question wants its answer in when no money column of the request can be read in
             # another (``converts``); the registry's currency assessment keeps that answer from being served unconverted.
-            if not selection.converts:
-                from engine.calculations import assess_calculations
-                from engine.calculations.registry import attach_calculation_evidence
-                attach_calculation_evidence(response, tuple(
-                    row for row in assess_calculations(question, norm, graph, computation)
-                    if row.get("specification") == "currency" and row.get("operation") == "convert"))
+            # The registry reads the query's columns as the request names them (request_named). A currency the
+            # program keeps rows by ("how many orders in EUR") is recorded when the program realizes it; it is
+            # evidence, never a reason to ask back.
+            from engine.calculations import assess_calculations
+            from engine.calculations.registry import attach_calculation_evidence
+            assessed = assess_calculations(question, norm, graph, request_named(computation, selection.catalog))
+            attach_calculation_evidence(response, tuple(
+                row for row in assessed if row.get("specification") == "currency"
+                and ((row.get("operation") == "convert" and not selection.converts)
+                     or (row.get("operation") == "filter" and row.get("status") == "satisfied"))))
         from engine.deterministic.context import current_execution_record
         deterministic = current_execution_record()
         if deterministic is not None:
@@ -768,6 +772,33 @@ class TableQuery:
         elif declined is not None:
             response["decomposition_required"] = declined
         return response
+
+
+def request_named(evidence, catalog):
+    """``evidence`` (engine/calculations describe_computation of a Decisions-path query, which reads the request's store
+    tables) with each store column named as the request names it (engine/program/store.py request_name): the
+    calculation registry reads the request's own schema, so it reads the measure and the currency column it finds
+    beside it as the request's columns, not as c1_n on _t0."""
+    from dataclasses import fields, is_dataclass, replace
+
+    from engine.calculations.core import PredicateFact
+    from engine.program.store import request_name
+    from engine.sql_ast import ColumnRef
+
+    def renamed(node):
+        if isinstance(node, ColumnRef):
+            table, name = request_name(catalog, node.table, node.name)
+            return replace(node, table=table, name=name)
+        if isinstance(node, PredicateFact):
+            table, column = request_name(catalog, node.table, node.column)
+            return replace(node, table=table, column=column)
+        if isinstance(node, (tuple, list, frozenset)):
+            return type(node)(renamed(item) for item in node)
+        if is_dataclass(node) and not isinstance(node, type):
+            return replace(node, **{field.name: renamed(getattr(node, field.name)) for field in fields(node) if field.init})
+        return node
+
+    return evidence if evidence is None or catalog is None else renamed(evidence)
 
 
 def read_as_of(candidate):

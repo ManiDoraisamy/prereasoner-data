@@ -125,8 +125,10 @@ class Link:
 class Conversion:
     """A money column in the row's own currency, read in a target currency: the knowledgebase exchange rate of the
     row's currency code on the row's day (the as-of day for a table with no date column) times the amount, as
-    production binds it (engine/knowledge_tables.py _world_rate_binding: on the fact table's currency and date). The
-    column states the target as its unit, so a total over it is one figure."""
+    production binds it (engine/knowledge_tables.py _world_rate_binding: on the fact table's currency and date). Where
+    the request states its own rates to the target (``sheet``: each code with its rate, engine/prepared.py MoneyLink
+    sheet_rates), the amount is read at the sheet's rate of its row's code instead, whatever its day. The column states
+    the target as its unit, so a total over it is one figure."""
     table_id: str
     position: int                 # the money column
     currency: int                 # the currency-code column's position
@@ -134,15 +136,23 @@ class Conversion:
     rate_column: str              # rate_to_usd
     target: str                   # USD
     as_of: str                    # ISO day, read when the table has no date column
+    sheet: tuple[tuple[str, str], ...] = ()     # the request's own rates to the target: (code, rate as decimal text)
 
     def joins(self, r: int) -> str:
+        if self.sheet:
+            rates = " UNION ALL ".join(f"SELECT {qlit(code)} AS code, {qlit(rate)} AS rate" for code, rate in self.sheet)
+            return f"LEFT JOIN ({rates}) AS x{r} ON x{r}.code = UPPER(TRIM(u.{qident(text_column(self.currency))}))"
         day = f"u.{qident(day_column(self.date))}" if self.date is not None else qlit(self.as_of)
         return (f'LEFT JOIN (SELECT "currency_code" AS code, CAST("date" AS TEXT) AS day, MIN({qident(self.rate_column)}) AS rate FROM knowledgebase."exchange_rate" '
                 f'GROUP BY "currency_code", "date") AS x{r} ON x{r}.code = UPPER(TRIM(u.{qident(text_column(self.currency))})) AND x{r}.day = {day}')
 
     @property
     def reaches(self) -> tuple[Reach, ...]:
-        return (Reach((self.target,), V_NUMBER, f"u.{qident(number_column(self.position))} * x{{r}}.rate"),)
+        """The amount in the target: the sheet's decimal rate times the amount in exact decimals (decimal_mul, so 95 at
+        1.08 is 102.6, not a float's 102.60000000000001); the knowledgebase's rate, a float, times it as SQLite does."""
+        amount = f"u.{qident(number_column(self.position))}"
+        product = f"decimal_mul({amount}, x{{r}}.rate)" if self.sheet else f"{amount} * x{{r}}.rate"
+        return (Reach((self.target,), V_NUMBER, product),)
 
     def header(self, name: str) -> str:
         return name
@@ -198,7 +208,8 @@ def links_on(catalog: Catalog, links: RequestLinks, target: str | None = None) -
             if table is None or rate not in money.rate_columns:
                 continue
             date = money.date if at(money.tab, money.date) is not None and table.is_date_column(money.date) else None
-            out.extend(Conversion(table.id, position, money.currency, date, rate, target, money.as_of)
+            sheet = dict(money.sheet_rates).get(target.upper(), ())
+            out.extend(Conversion(table.id, position, money.currency, date, rate, target, money.as_of, sheet)
                        for position in money.measures if at(money.tab, position) is not None)
     for key in links.keys:
         table, other = at(key.tab, key.position), at(key.other_tab, key.other_position)

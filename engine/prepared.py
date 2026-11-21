@@ -575,15 +575,18 @@ class KeyLink:
 @dataclass(frozen=True)
 class MoneyLink:
     """A request table's money columns in its rows' own currencies: its currency-code column, its date column (None
-    without one), the money columns, the knowledgebase's rate columns (rate_to_usd, ...) and the as-of day a row with
-    no date is converted on. The request's database holds the rates of every day the date column names and of the
-    as-of day."""
+    without one), the money columns, the rate columns it can be read through (rate_to_usd, ...) and the as-of day a row
+    with no date is converted on. The request's database holds the knowledgebase's rates of every day the date column
+    names and of the as-of day. ``sheet_rates``: the request's own rates, per target currency a request table names
+    (a key from the currency column into a table with a rate_to_<code> column), each currency code with its rate as
+    canonical decimal text; for that target the sheet's rates are read in place of the knowledgebase's."""
     tab: str
     currency: int
     date: int | None
     measures: tuple[int, ...]
     rate_columns: tuple[str, ...]
     as_of: str
+    sheet_rates: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = ()
 
 
 @dataclass(frozen=True)

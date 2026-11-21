@@ -2203,7 +2203,9 @@ def test_the_decisions_paths_reading_certifies_its_calculation_but_a_conversion_
     the registry never found a commission, a ratio or a currency filter in the path's query: every answer it detected
     one in was asked back ("how many orders in GBP", demo gate dry run 2026-11-20). The path's reading certifies its
     calculation; a currency the question wants its answer in, with no money column the path could read in another
-    currency, is still assessed by the registry, so that answer is never served unconverted."""
+    currency, is still assessed by the registry (by the request's own names, engine/tables.py request_named), so an
+    amount that names its currencies is never served unconverted, and a sheet that names none states its amounts in
+    the currency the question names (production's unit annotation, tests/test_geo.py)."""
     from engine.knowledge import KnowledgeReasoner
 
     planner = _hermetic_planner()
@@ -2215,10 +2217,19 @@ def test_the_decisions_paths_reading_certifies_its_calculation_but_a_conversion_
         kept = gate._verify_calculations(served, _orders_request(), question, ())
         assert kept is served and not kept.get("clarify"), (question, kept)
     question = "total amount for East in euros"
-    served, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), question))
+    from engine.tables import csv_table
+    from tests.test_answer import ROWS
+    codes = ["GBP", "USD"] * len(ROWS)
+    priced = [ROWS[0] + ["Currency"]] + [row + [codes[at]] for at, row in enumerate(ROWS[1:])]
+    request = [csv_table(_orders_csv(priced), "orders")]
+    served, _ = _decided(_choice(0.9), lambda: planner.serve(request, question))
     assert [row["specification"] for row in served["calculations"]] == ["currency"], served.get("calculations")
-    asked = gate._verify_calculations(served, _orders_request(), question, ())
+    asked = gate._verify_calculations(served, request, question, ())
     assert asked["clarify"] is True and asked["result"] is None, asked
+    # contrastive: a sheet that names no currency states its amounts in the one the question names
+    served, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), question))
+    kept = gate._verify_calculations(served, _orders_request(), question, ())
+    assert not kept.get("clarify") and kept["result"]["rows"] and kept["currency"]["realization"] == "unit_annotation", kept
 
 
 def test_the_store_shares_the_request_database_with_a_table_named_like_its_own():

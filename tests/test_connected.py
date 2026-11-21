@@ -163,6 +163,56 @@ def test_a_money_column_reads_in_the_target_currency_on_the_as_of_day() -> None:
     print("  PASS  a money column reads in the target currency, at the rate of its row's currency on the as-of day")
 
 
+def test_a_sheet_that_states_its_rates_is_read_at_its_own_rates() -> None:
+    """A request that holds its own rate table, keyed by the money table's currency codes, is converted at the sheet's
+    rates where it states the target (test_geo: 615 EUR at 1.08 and 100 GBP at 1.27 is 791.20 in USD, the uploaded
+    sheet winning over the knowledgebase's rates); a target the sheet does not state is read at the knowledgebase's,
+    and a code the sheet lists no rate for converts to nothing. The sheet's targets are offered beside the
+    knowledgebase's."""
+    sheet = (("USD", (("EUR", "1.08"), ("JPY", "0.0065"))),)
+    money = MoneyLink("orders", 3, None, (2,), ("rate_to_gbp", "rate_to_usd"), AS_OF, sheet)
+    _key, _plain, _connected_key, usd = _connected("USD", links=_links(money=(money,)))
+    _, amounts = _column(usd.catalog, f"Amount{ARROW}USD")
+    assert [None if value is None else round(value, 4) for value in amounts] == [108.0, 54.0, 13.0, 19.5, 10.8], amounts
+    _key, _plain, _connected_key, gbp = _connected("GBP", links=_links(money=(money,)))
+    _, pounds = _column(gbp.catalog, f"Amount{ARROW}GBP")
+    assert [round(value, 4) for value in pounds] == [85.0, 42.5, 10.4, 15.6, 8.5], pounds     # the knowledgebase's
+    partial = MoneyLink("orders", 3, None, (2,), ("rate_to_cad",), AS_OF, (("CAD", (("EUR", "1.5"),)),))
+    _key, _plain, _connected_key, cad = _connected("CAD", links=_links(money=(partial,)))
+    _, dollars = _column(cad.catalog, f"Amount{ARROW}CAD")
+    assert dollars == [150.0, 75.0, None, None, 15.0], dollars     # JPY has no rate on the sheet
+    assert conversion_targets(_links(money=(partial,))) == ["CAD"]
+    print("  PASS  a sheet that states its rates is read at its own rates")
+
+
+def test_the_calculation_registry_reads_a_program_by_the_requests_names() -> None:
+    """The Decisions path's programs read store tables (_t0, c2_n), and the calculation registry reads the request's
+    schema, so "total revenue in euros" on a sheet with no currency column asked "which currency are the amounts in"
+    (the measure c1_n was no monetary column it knew) where production answered 350 with euros as the unit.
+    engine/tables.py request_named gives the registry each store column by the request's table and header; a line's
+    role stays as it is, and a column a link reaches keeps its path."""
+    from engine.calculations import describe_computation
+    from engine.program.language import Agg, Col, Equals
+    from engine.program.lowering import to_query
+    from engine.program.names import SUM
+    from engine.program.store import request_name
+    from engine.tables import request_named
+
+    _key, plain, _connected_key, connected = _connected("USD")
+    catalog = connected.catalog
+    assert request_name(catalog, "_t0", "c2_n") == ("orders", "Amount")
+    assert request_name(catalog, "_t0", "_role") == ("orders", "_role")
+    usd = _names(catalog).index(f"Amount{ARROW}USD")
+    assert request_name(catalog, "_t0", f"c{usd}_n") == ("orders", f"Amount{ARROW}USD")
+    assert request_name(catalog, "orders", "Amount") == ("orders", "Amount"), "a request table's own name is kept"
+    program = Agg(SUM, Col("t0", 2), "t0", (Equals(Col("t0", 3), "eur"),))
+    named = request_named(describe_computation(to_query(program, catalog)), catalog)
+    output = named.branches[0].outputs[0]
+    assert [(column.table, column.name) for column in output.columns] == [("orders", "Amount")], output.columns
+    assert {(fact.table, fact.column) for fact in named.branches[0].predicates} >= {("orders", "Currency")}, named.branches[0].predicates
+    print("  PASS  the calculation registry reads a program by the request's names")
+
+
 def test_the_request_tables_hold_the_reached_columns() -> None:
     _use_fake_reader()
     tables = _tables()
@@ -326,6 +376,8 @@ TESTS = [
     test_a_place_column_reaches_its_country_continent_currency_and_population,
     test_a_key_reaches_the_other_tables_columns,
     test_a_money_column_reads_in_the_target_currency_on_the_as_of_day,
+    test_a_sheet_that_states_its_rates_is_read_at_its_own_rates,
+    test_the_calculation_registry_reads_a_program_by_the_requests_names,
     test_the_request_tables_hold_the_reached_columns,
     test_a_linked_value_is_read_as_one_across_the_key_and_its_column,
     test_a_place_column_few_cells_match_is_not_linked,
