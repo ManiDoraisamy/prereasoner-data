@@ -5,6 +5,46 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## The Decisions path answers as production's live suites expect (2026-11-21)
+
+The release build's live suites (`LIVE_ENGINE_ONLY=1 tests.run_all`) had not run on the cut-over. Their first run
+failed 4 of 73 `tests.test_geo` checks, 1 of 87 `tests.test_world`, 21 `tests.test_datasets` mode agreements and
+`tests.test_scale`. Each was classed as a behaviour the cut-over lost, a response detail, or an assertion on the old
+path's internals, and fixed where it lives:
+
+- **One number from either program.** The demo gate serves each question through the SQL and the Python program and
+  requires one answer; equal Decimals with different exponents printed "6431836" and "6431836.0". An exact number
+  prints as its canonical decimal text (`engine/program/execute.py:_plain`, `engine/numeric.py:canonical_decimal`).
+- **The calculation registry reads the request's names.** The registry (`engine/calculations`) reads the request's
+  schema and the Decisions path's programs read its store tables (`_t0.c1_n`), so "total revenue in euros" on a sheet
+  with no currency column asked "which currency are the amounts in" where production answered 350 with euros as the
+  stated unit. `engine/tables.py:request_named` gives the registry each store column by the request's table and header
+  (`engine/program/store.py:request_name`). A conversion the path could not make is still assessed (an amount that names
+  its currencies is never served unconverted), and a currency filter the chosen program realizes is recorded as
+  evidence, never a reason to ask back.
+- **A sheet's own rates win.** The path read money only at the knowledgebase's ECB rates, so "total order amount in US
+  dollars" beside the request's own `fx_rates` table asked back where production answered 791.20 at the sheet's rates.
+  A money table whose currency column keys into a request table with a `rate_to_<code>` column carries those rates
+  (`engine/knowledge_bridges.py:sheet_rates`, `MoneyLink.sheet_rates`); for that target the conversion reads the
+  sheet's rate of the row's code in exact decimals (`decimal_mul`), and the knowledgebase's for every other target.
+- **An answer names a column by the sheet's header.** A column a key reaches is named by its path in the catalog
+  ("order_id → customer_id → customer_name"); an answer and a fused decomposition answer name it by the header of the
+  sheet column whose values it holds (`engine/program/output.py:header`, through `Catalog.identities`), and a listing
+  of several columns names each.
+- **Assertions on the old hosts' shapes check what they guard.** `test_geo`'s currency block is served through
+  `KnowledgeReasoner.serve`, which registers the request's links as `engine/server.py` does (`qc.serve` bare registers
+  none); "total amount in Europe by city" is checked by its rows and a world join, as the grounding lookup now hosts it
+  (the Decisions path asks back about Europe, no value of the upload, and the world layer answers); "total amount in
+  France" stays an own-data total with no world join; the negated-existence prompt of
+  `tests/test_complex_datasets.py` is served through the production entry (its keys-only setup read a workbook
+  production never builds, and the choice between "no Paris line holds it" and "no line other than Paris holds it"
+  turned on the columns it held).
+
+`tests.test_scale` stays open at this entry: "show all rows ordered by id" picks the listing of the id column (0.80,
+unwarned) where production asked back, and the first question on the 30,000-line sheet takes about 70 s locally
+against the suite's 90 s, which Cloud Run's slower CPUs exceed (the sheet is compiled, twice when it writes dates as
+text, and its value targets encoded).
+
 ## The own-data path reads what a request's links reach (2026-11-20)
 
 The demo gate's measurement (demo25: 86 right, 2 wrong, 3 asked of 91) ran the Decisions path on a connected catalog:
