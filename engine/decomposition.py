@@ -668,6 +668,8 @@ def shown_output(plan, columns, rows, catalogs) -> tuple[list[str], list[tuple]]
     (engine/program/output.py answer_columns), unless another output column already has that name; and a key held as
     its fold (store.fold_column) shows each value as the column first spells it (engine/program/execute.py
     _displayed). Other columns (a figure a leaf computed), and plans over the request's own tables, are unchanged."""
+    from engine.program.language import Col
+    from engine.program.output import header
     from engine.program.store import day_column, fold_column, number_column, table_id_of, text_column
 
     names, rows = [str(name) for name in columns], [tuple(row) for row in rows]
@@ -680,14 +682,15 @@ def shown_output(plan, columns, rows, catalogs) -> tuple[list[str], list[tuple]]
         catalog = next((held for held in catalogs if origin and table_id_of(origin[0]) in held.by_id), None)
         if catalog is None:
             continue
-        table = catalog.table(table_id_of(origin[0]))
+        table_id = table_id_of(origin[0])
+        table = catalog.table(table_id)
         position = next((p for p in range(len(table.columns))
                          if origin[1] in (text_column(p), fold_column(p), number_column(p), day_column(p))), None)
         if position is None:
             continue
-        header = table.column_name(position)
-        if header not in names:
-            names[at] = header
+        shown = header(catalog, Col(table_id, position))
+        if shown not in names:
+            names[at] = shown
         if origin[1] == fold_column(position):
             words[at] = table.written_spelling[position]
     return names, [tuple(words[at].get(cell, cell) if at in words else cell for at, cell in enumerate(row)) for row in rows]

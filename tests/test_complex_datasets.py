@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from sqlalchemy import create_engine
 
-from engine.decomposition import build_decomposed_plan
+from engine.decomposition import build_decomposed_plan, shown_output
 from engine.deterministic import DeterministicAnalysis
 from engine.deterministic.context import analysis_execution_context
 from engine.encoder_overlay import EncoderQuery
@@ -48,7 +48,8 @@ def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None =
                  question: str | None = None, raw_tables: list[dict] | None = None):
     """Compile `proposal` (default: the shipped fixture) for `question` (default: the prompt)
     over `raw_tables` (default: the fixture's tables in file-name order), on one request database whose tables connect
-    by their keys, as serving does (engine/prepared.py link_tables)."""
+    by their keys, as serving does (engine/prepared.py link_tables). Returns the plan, its result and the workbooks its
+    leaves read (build_decomposed_plan's catalogs, which name the answer's columns as serving does)."""
     from sqlalchemy.pool import StaticPool
 
     from engine.prepared import SharedConnection, link_tables, scratch_database
@@ -58,6 +59,7 @@ def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None =
     proposal = proposal or json.loads(
         (directory / "decomposition.json").read_text(encoding="utf-8")
     )
+    catalogs: list = []
     with scratch_database() as database:
         link_tables(database, planner)
         plan = build_decomposed_plan(
@@ -67,6 +69,7 @@ def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None =
             foreign_keys,
             proposal,
             question=question or (directory / "prompt.txt").read_text(encoding="utf-8").strip(),
+            catalogs=catalogs,
         )
         shared = SharedConnection(database.connection)
         engine = create_engine("sqlite+pysqlite://", creator=lambda: shared, poolclass=StaticPool)
@@ -76,7 +79,7 @@ def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None =
             estimated_rows=sum(len(table["rows"]) for table in tables),
             python_row_limit=10_000,
         )
-    return plan, result
+    return plan, result, catalogs
 
 
 def test_a_decomposition_cannot_invent_a_cutoff():
@@ -115,14 +118,15 @@ def test_a_decomposition_cannot_invent_a_cutoff():
 def test_shipped_complex_datasets_match_gold_in_python_and_sql():
     planner = EncoderQuery()
     for name in COMPLEX_DATASETS:
-        plan, result = _run_fixture(planner, DATASET_DIR / name)
+        plan, result, catalogs = _run_fixture(planner, DATASET_DIR / name)
         kind, expected = EXPECTED[name]
         assert kind == "own-rows"
-        actual = [
-            [row[column] for column in expected["columns"]]
-            for row in result.rows
-        ]
-        assert actual == expected["rows"], (name, actual)
+        # the answer as serving returns it (engine/knowledge_compose.py): each column named by the header of the sheet
+        # column it holds, each key in the sheet's spelling
+        columns = list(plan.view_columns()[plan.output])
+        names, rows = shown_output(plan, columns, [tuple(row[column] for column in columns) for row in result.rows], catalogs)
+        actual = [[row[names.index(column)] for column in expected["columns"]] for row in rows]
+        assert actual == expected["rows"], (name, names, actual)
         assert result.mode.value == "verify"
         # `verify` reaches this line only after DeterministicAnalysis has compared
         # every materialized Python stage with its corresponding SQL stage.

@@ -44,6 +44,27 @@ def _name(catalog: Catalog, column: Col) -> str:
     return catalog.table(column.table).column_name(column.position)
 
 
+def header(catalog: Catalog, column: Col) -> str:
+    """A column's header as an answer shows it: a column the request's key links reach, which no sheet column holds
+    ("order_id → customer_id → customer_name", engine/program/connected.py), by the header of the sheet column whose
+    values it holds (Catalog.identities); every other column, a sheet's own or one reached in the knowledgebase ("city →
+    country"), by its name."""
+    table = catalog.table(column.table)
+    root = catalog.identities.get((column.table, column.position))
+    if root is None or column.position == SECTION or table.table.columns[column.position].col >= 0:
+        return table.column_name(column.position)
+    return catalog.table(root[0]).column_name(root[1])
+
+
+def _headers(catalog: Catalog, columns) -> tuple[str, ...]:
+    """header() of each column, a header another column already shows replaced by the column's own name."""
+    names: list[str] = []
+    for column in columns:
+        name = header(catalog, column)
+        names.append(_name(catalog, column) if name in names else name)
+    return tuple(names)
+
+
 def _value_words(catalog: Catalog, column: Col, value: str | float) -> str:
     if isinstance(value, (int, float)):
         return f"{value:g}"
@@ -239,16 +260,16 @@ def answer_columns(program: Program, catalog: Catalog) -> tuple[str, ...]:
     if isinstance(program, (Check, Calc)):
         return ("answer",)
     if isinstance(program, Show):
-        return tuple(_name(catalog, column) for column in (program.shown[:1] if program.listing else program.shown))
+        return _headers(catalog, program.shown)
     if isinstance(program, Agg):
         return (_figure_name(program, catalog),)
     if isinstance(program, Breakdown):
-        keys = tuple(f"month of {_name(catalog, column)}" if program.grain is not None and at == 0 else _name(catalog, column) for at, column in enumerate(program.groups))
-        return keys + (_figure_name(program, catalog),)
+        keys = _headers(catalog, program.groups)
+        return tuple(f"month of {key}" if program.grain is not None and at == 0 else key for at, key in enumerate(keys)) + (_figure_name(program, catalog),)
     if program.entity == ENTITY_LINE:
-        return tuple(_name(catalog, column) for column in program.shown) + (_measure_words(catalog, program.measure),)
+        return _headers(catalog, program.shown) + (_measure_words(catalog, program.measure),)
     if program.entity == ENTITY_GROUP:
-        return (_name(catalog, program.key), _figure_name(program, catalog))
+        return (header(catalog, program.key), _figure_name(program, catalog))
     return ("column", f'count of "{program.mark}"' if program.mark is not None else "total")
 
 
@@ -721,4 +742,4 @@ def explain(scored: ScoredProgram, tables: RequestTables, rows: tuple[tuple, ...
     return Explanation(read_as(program, tables.catalog), compress(cells_used(program, tables, rows)), formula(program, tables), tuple(term.record() for term in scored.contributions), also)
 
 
-__all__ = ["Explanation", "answer_columns", "cells_used", "compress", "explain", "formula", "read_as"]
+__all__ = ["Explanation", "answer_columns", "cells_used", "compress", "explain", "formula", "header", "read_as"]

@@ -328,6 +328,7 @@ def test_a_fused_answer_shows_the_sheets_spelling_of_a_folded_key():
 
     class Workbook:
         by_id = {"t0": Table()}
+        identities = {}
 
         def table(self, table_id):
             return self.by_id[table_id]

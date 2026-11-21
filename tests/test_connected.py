@@ -118,6 +118,31 @@ def test_a_key_and_what_it_reaches_hold_the_other_tables_values() -> None:
     assert lineage[("_t0", text_column(0))] == ("_t1", text_column(0))
 
 
+def test_an_answer_names_a_column_a_key_reaches_by_its_sheets_header() -> None:
+    """complex-promotions' fused answer named its customers "order_id → customer_id → customer_name" where the CSVs and
+    the demo gate name the column customer_name. An answer names a column the request's key links reach by the header
+    of the sheet column whose values it holds (Catalog.identities); a column reached in the knowledgebase keeps its path,
+    and a sheet's own column keeps its own header even where it holds another table's values. A listing of several
+    columns names each."""
+    from engine.program.language import Col, Show
+    from engine.program.output import answer_columns, header
+
+    clients = {"name": "customers", "columns": ["Name", "Tier"], "rows": CUSTOMERS["rows"]}
+    links = RequestLinks({"orders": tuple(ORDERS["columns"]), "customers": tuple(clients["columns"])}, (PLACE,), (),
+                         (KeyLink("orders", "Customer", 0, "customers", "Name", 0),), (MONEY,))
+    _key, _plain, _connected_key, connected = _connected(customers=clients, links=links)
+    catalog = connected.catalog
+    names = _names(catalog)
+    tier, country = names.index(f"Customer{ARROW}Tier"), names.index(f"City{ARROW}country")
+    assert catalog.identities[("t0", 0)] == ("t1", 0), catalog.identities
+    assert header(catalog, Col("t0", tier)) == "Tier"
+    assert header(catalog, Col("t0", country)) == f"City{ARROW}country"     # the knowledgebase's column: its path
+    assert header(catalog, Col("t0", 0)) == "Customer"     # the sheet's own key, though it holds the customers' Name
+    assert answer_columns(Show("t0", (Col("t0", 0), Col("t0", tier)), (), listing=True), catalog) == ("Customer", "Tier")
+    assert answer_columns(Show("t0", (Col("t0", tier),), (), listing=True), catalog) == ("Tier",)
+    print("  PASS  an answer names a column a key reaches by its sheet's header")
+
+
 def test_a_key_reaches_the_other_tables_columns() -> None:
     _key, _plain, _connected_key, connected = _connected()
     tiers, _ = _column(connected.catalog, f"Customer{ARROW}Tier")
@@ -297,6 +322,7 @@ def test_the_spider_evaluator_connects_the_keys_serving_finds() -> None:
 
 TESTS = [
     test_a_key_and_what_it_reaches_hold_the_other_tables_values,
+    test_an_answer_names_a_column_a_key_reaches_by_its_sheets_header,
     test_a_place_column_reaches_its_country_continent_currency_and_population,
     test_a_key_reaches_the_other_tables_columns,
     test_a_money_column_reads_in_the_target_currency_on_the_as_of_day,
