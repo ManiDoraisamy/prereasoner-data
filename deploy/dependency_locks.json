@@ -25,7 +25,7 @@
     "orchestrator/requirements.lock.txt": {
       "input": "orchestrator/requirements.txt",
       "input_sha256": "9ebab6ed1d00b694a64185f73f9375a329a000017a9ad7397cac8aa635a2aaa1",
-      "lock_sha256": "e8cebe0668bf44da48aeab18bf0279b80dbe9125ad391ab01f6f1e7ec7ee6a2e",
+      "lock_sha256": "a27645236159e62b283a791714bb405f3d43f2d5e32f86b0420cd7f7447bde8d",
       "target": "linux-x86_64-python3.11"
     },
     "requirements-ci-windows.lock.txt": {
@@ -43,13 +43,13 @@
     "requirements-gpu.lock.txt": {
       "input": "requirements.txt",
       "input_sha256": "9dfbabf8f31bd781872145d7907568ab1b1c8563b9bb01b614dcb96d31fc0882",
-      "lock_sha256": "2fd8436f877c322edfa5c4419a3f5a40555e6c521fd792feadadf0b96350c3ae",
+      "lock_sha256": "fcd77dcd35d44c15c9aaecd26dbc04f540d7ff8897b3685eafce40605225cf68",
       "target": "linux-x86_64-python3.11-cuda13.0"
     },
     "requirements.lock.txt": {
       "input": "requirements.txt",
       "input_sha256": "9dfbabf8f31bd781872145d7907568ab1b1c8563b9bb01b614dcb96d31fc0882",
-      "lock_sha256": "5401c79870b7316d23e348782af3434d2edb0b1b67c751d68d8f4d611a3f1a11",
+      "lock_sha256": "4e61184a31d0d8ae0a0ecedabb3960e20a2ca96c164ceef88140a40ca2e12d1f",
       "target": "linux-x86_64-python3.11"
     },
     "training/requirements.lock.txt": {
