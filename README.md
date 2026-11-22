@@ -46,7 +46,8 @@ What runs today:
 |---|---|---|
 | Encoder | `Qwen/Qwen2.5-0.5B` used without its decoder, adapted with a LoRA and a 10-block relational readout trained to fill **90 named coordinates**: 9 column types (`is_num`, `is_time`, `currency`, ...), 71 property names (`addressCountry`, `brand`, `birthDate`, ...), and 10 query intents (`intent_agg_sum`, `intent_filter_gt`, `intent_sort_desc`, ...) | What each column is, and what a composition or world question asks for |
 | Schema.org head | A linear layer reading 80 Schema.org properties. A class score is a weighted sum of those property scores. 56 properties and 11 classes pass the release gates; the others abstain | Which world table a column may join. Joins also need exact source-key matches |
-| Decisions path (own data) | The sheet compiler reads each uploaded tab; stock bge-m3 and the engine's word reader shortlist what a question may mean; the Decisions API (an external closed-choice model) answers closed questions whose options the engine built, with probabilities only; and one more closed question weighs the programs that ran | Which reading is decoded into programs, which answer is served, warned, or asked back |
+| Decisions path (own data) | The sheet compiler reads each uploaded tab; stock bge-m3 and the engine's word reader shortlist what a question may mean; the Decisions API (an external closed-choice model) answers closed questions whose options the engine built, with probabilities only; and one more closed question weighs the programs that ran | Which reading is decoded into programs, and whether an answer is served plainly, with a warning, or retried as most likely wrong |
+| Retry (own data) | Gemini 4 Neon writes one SQLite query over the workbook, for an answer the choice holds most likely wrong or one the person retries; guarded, read-only, shown with its SQL | The answer to a question the decoder's programs did not read |
 | Program decoder and typed SQL | A deterministic decoder that builds the most probable programs of the reading, each lowered to a typed syntax tree over one table | The candidate queries themselves |
 | Execution | PostgreSQL, plus a generated Python program that mirrors the SQL for supported shapes | The numbers |
 
@@ -157,7 +158,8 @@ engine/knowledge.py              one serving entry point
         |
         +--> own-data path: the Decisions API answers closed questions over options
         |       the engine built, the decoder builds programs (typed ASTs), the verifier
-        |       runs them, one choice per answer: served, warned or asked back
+        |       runs them, one choice per answer: served, warned, or most likely wrong
+        |       and retried by a written query (engine/retry.py, Gemini 4 Neon)
         |       engine/tables.py (select_query), engine/program/, engine/sheet/,
         |       engine/sql_ast.py
         |
@@ -338,10 +340,15 @@ ranking errors, missing world data, or wrong relationship inference. Accuracy wo
 measured stages: routing, table selection, candidate-pool recall, top-1 ranking, refusal, execution,
 and evaluation.
 
-No model writes SQL: every query is a program the decoder built, and a question the choice is not sure
-enough of is asked back with what it read rather than answered as a different one. Recorded Spider results
-are in [spider/results/RESULTS.md](spider/results/RESULTS.md); the program language joins no tables, so a
-Spider question whose answer needs a join is answered from one table or asked back.
+Every answer the engine decides is a program its decoder built; no model writes that SQL. The engine never asks
+back for its own uncertainty. An answer it is unsure of is served with a warning mark, and one it holds most likely
+wrong is retried: Gemini 4 Neon writes one SQLite query over the workbook (`engine/retry.py`), guarded, run
+read-only and shown with its SQL. A click on a mark shows the reason and a Retry. The person is asked only when the
+retry finds the sheet does not hold what the question asks. On the 896 development questions, 757 (84.5%) are
+served right, 66 (7.4%) are wrong without a mark, and 2 are asked back. Recorded results, Spider included, are in
+[spider/results/RESULTS.md](spider/results/RESULTS.md); the program language reads a table and the columns its
+keys and knowledgebase links reach, so a Spider question that needs a many-to-many join or a set operation is
+answered by the retry or marked.
 `gold_tables` results are an oracle ablation, not a Spider comparison. See
 [docs/SQL_AST.md](docs/SQL_AST.md).
 

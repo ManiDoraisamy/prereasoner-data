@@ -10,9 +10,11 @@ rows and trace. For the supported own-data subset, one immutable plan emits both
 stack and readable SQLAlchemy/Python source; see
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md). One frozen encoder (Qwen2.5-0.5B with a LoRA
 adapter and a relational readout) supplies model evidence: it reads intent and schema signals as named
-coordinates. No model writes SQL. Own-data questions take the Decisions path: an external closed-choice model
-answers closed questions whose options the engine built, the engine's decoder builds every program as a typed AST,
-and one more closed question chooses among the programs that run (see [Own-Data SQL Planner](#own-data-sql-planner)).
+coordinates. Own-data questions take the Decisions path: an external closed-choice model answers closed questions
+whose options the engine built, the engine's decoder builds every program as a typed AST, and one more closed
+question chooses among the programs that run (see [Own-Data SQL Planner](#own-data-sql-planner)); no model writes
+those queries. The one written query is the retry (`engine/retry.py`): an answer the choice holds most likely wrong,
+or one the person retries, is answered by a SQLite query Gemini 4 Neon writes, shown with its SQL.
 No model writes Python or a numeric answer, and model text never reaches a database. AST construction,
 routing, joins, validation, selection, emission, and execution are deterministic for fixed inputs,
 configuration, database state, and model files.
@@ -336,7 +338,7 @@ selection is `engine/tables.py:TableQuery.select_query`: the request's tables ar
 answered by `engine/program/answer.py`, and every candidate is a typed SQL AST the engine built. An external
 closed-choice model, the Decisions API (Gemini's Developer API, called only through `engine/llm.py:decide`), answers
 closed questions whose options the engine built and returns probabilities only; it never writes text, SQL or a
-program. No model writes SQL.
+program. Only the retry (step 8 below) runs a query a model wrote.
 
 | Owner | Responsibility |
 |---|---|

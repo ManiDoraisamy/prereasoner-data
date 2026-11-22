@@ -5,7 +5,8 @@ every query that runs is a typed AST the engine built, validated and rendered it
 closed-choice model, the Decisions API (Gemini, called only through [`engine/llm.py`](../engine/llm.py)),
 answers closed questions whose options the engine built and returns probabilities only: it never writes
 text, SQL or a program. The engine's decoder builds every program from the reading, the verifier runs
-each one, and one more closed question weighs the programs that returned rows. No model writes SQL.
+each one, and one more closed question weighs the programs that returned rows. No model writes those queries; the
+retry of an answer most likely wrong is the one written query (`engine/retry.py`).
 
 We trace **`"total amount for East"`** over an uploaded sheet of orders (Region, Product, Amount, Date).
 
@@ -62,17 +63,18 @@ read-as line in the sheet's own words ([`engine/program/output.py:read_as`](../e
 One more Decisions call weighs the listed candidates (each its read-as line and a preview of its answer,
 and "none of these"). Per answer, not per candidate: a candidate's probability is summed over the listed
 candidates returning the same answer ([`engine/program/closed.py:choose_answer`](../engine/program/closed.py)).
-The likeliest answer is **answered** at 0.575 or more, **warned** from 0.42, and **asked back** below that
-or when "none of these" is likelier.
+The likeliest answer is **answered** at 0.575 or more, **warned** from 0.42 (or when another answer's reading
+reads word for word like it), and **most likely wrong** below that or when "none of these" is likelier: it is
+retried, never asked back.
 
 [`engine/tables.py:select_query`](../engine/tables.py) records the outcome as a
 [`PoolSelection`](../engine/sql_rank.py): the listed candidates as the pool (each a
 [`ScoredQuery`](../engine/sql_candidate.py): its typed AST, its SQL, its answer's probability and its
 read-as line as evidence), ranked by that probability; the decided candidate as `selected` (with
 `warned`, and the coordinates the runner-up answer reads differently as `uncertain`); the likeliest one as
-`declined` when the path asks back. A question longer than 30 words
-([`engine/decomposition.py:ONE_QUERY_WORDS`](../engine/decomposition.py)) that the path asks back about asks, in an
-analysis, for the decomposition proposal; one it answers is answered.
+`erred` when its answer is most likely wrong. A question longer than 30 words
+([`engine/decomposition.py:ONE_QUERY_WORDS`](../engine/decomposition.py)) whose answer is most likely wrong asks, in
+an analysis, for the decomposition proposal; one it answers is answered.
 
 ## Stage 5 - serve, warn or ask
 
@@ -109,7 +111,7 @@ connected columns serve the questions it passes on and the compose probe's readi
 
 What the path does not do: the program language reads one table at a time, so two tables no key with unique
 values links (and a Spider schema's foreign keys, which its evaluator does not link) are answered from one
-table or asked back.
+table, or retried when that answer is most likely wrong.
 
 ## World queries
 

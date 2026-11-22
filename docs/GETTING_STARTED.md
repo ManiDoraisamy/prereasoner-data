@@ -64,7 +64,8 @@ file hash before installation. `HF_TOKEN` is only needed for an explicitly confi
 The own-data path loads stock bge-m3 (`engine/named/backbone.py`): a local copy named by
 `NAMED_BACKBONE_DIR/bge-m3`, else the hub cache at its pinned revision; the image bakes it, each file checked
 against the hashes `weights_manifest.json` pins under `base_models`. Its closed questions go to the Decisions
-API with the deployment's `GOOGLE_API_KEY`. No model writes SQL.
+API with the deployment's `GOOGLE_API_KEY`, as does the retry of an answer most likely wrong (Gemini 4 Neon,
+`engine/retry.py`), the one query a model writes.
 
 ## 3. Run fast tests first
 
