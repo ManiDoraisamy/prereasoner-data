@@ -3,8 +3,11 @@ or when the person retries an answer.
 
 Owner's decision, 2026-11-21: the path never asks back for its own uncertainty ("you can't push your failure to
 users"). Every answer is served and marked (engine/program/closed.py: answered, warned, erred); an erred answer is
-retried here at once, and the person may retry any marked answer. A retry describes the request's tables (each table's
-columns with their types, its row count, its first lines and, for a text column of few values, those values), sends
+retried here at once, and the person may retry any marked answer. A retry reads the workbook the Decisions path reads
+(``workbook_tables`` of engine/tables.py TableQuery.workbook's catalog: each compiled table of a tab, its record lines,
+with the columns the request's links add to it, "bank → country", "country → continent", "amount → USD"). It describes
+those tables (each table's columns with their types, its row count, its first lines and, for a text column of few
+values, those values), sends
 the question with it through engine/llm.py ``write_query`` (one call), guards the query the model writes (one SELECT,
 no forbidden keyword: engine/tables.py ``TableQuery.guard``) and runs it on the request's database (engine/prepared.py)
 over typed copies of the request's tables: TEMP tables built from their rows, each named as its table, numbers as
@@ -36,7 +39,9 @@ REPAIRS = 1                   # a failed query is sent back with its error this 
 
 SYSTEM = (
     "You answer a person's question about their spreadsheet by writing ONE SQLite SELECT statement over the tables "
-    "described. The tables are the tabs of one workbook, in its order: answer from ONE tab, the tab in view when one "
+    "described. A column named \"a → b\" holds what the sheet's column a reaches (a bank's country, a country's "
+    "continent, an amount in another currency): use it as any column. "
+    "The tables are the tabs of one workbook, in its order: answer from ONE tab, the tab in view when one "
     "is named, else the first tab that holds what the question asks, and combine tabs only when the question asks "
     "across them. Use only those tables and columns, each name in double quotes exactly as given. Numbers are stored as "
     "numbers and dates as ISO text (YYYY-MM-DD). Do not use WITH clauses or the REPLACE function; use subqueries. "
@@ -67,6 +72,36 @@ class Retried:
     def record(self) -> dict:
         return {"model": config.QUERY_MODEL, "sql": self.sql or None, "reason": self.reason,
                 "answerable": self.answerable, "error": self.error}
+
+
+def workbook_tables(catalog) -> list[dict]:
+    """The retry's tables of a workbook's catalog (engine/program/catalog.py; connected, engine/program/connected.py, in a
+    served request): one per compiled table of a tab, named by its tab (a tab's second table "<tab> (2)"), its columns by
+    the catalog's names (the sheet's headers, a repeated one by its letter, a link's column by its path), its record
+    lines (no title, header or printed total) with each cell as a number, an ISO day or the text the sheet wrote."""
+    from engine.program.catalog import KIND_TABLE
+    from engine.sheet.names import V_DATE, V_NUMBER
+
+    out, seen_tabs = [], {}
+    for table in catalog.tables:
+        if table.kind != KIND_TABLE:
+            continue
+        count = seen_tabs.get(table.tab, 0) + 1
+        seen_tabs[table.tab] = count
+        columns, names = [], set()
+        for position in range(len(table.table.columns)):
+            name, at = str(table.column_name(position)), 2
+            while name in names:
+                name, at = f"{table.column_name(position)} ({at})", at + 1
+            names.add(name)
+            columns.append(name)
+        kinds = [column.kind for column in table.table.columns]
+        rows = [[table.numbers[p][i] if kinds[p] == V_NUMBER else
+                 (table.days[p][i] or table.written[p][i]) if kinds[p] == V_DATE else table.written[p][i]
+                 for p in range(len(columns))]
+                for i, data in enumerate(table.is_data) if data]
+        out.append({"name": table.tab if count == 1 else f"{table.tab} ({count})", "columns": columns, "rows": rows})
+    return out
 
 
 def retry(question: str, tables: list[dict], guard) -> Retried:
@@ -221,4 +256,4 @@ def _value(value):
     return value
 
 
-__all__ = ["Retried", "retry", "SYSTEM"]
+__all__ = ["Retried", "retry", "SYSTEM", "workbook_tables"]

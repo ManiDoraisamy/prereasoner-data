@@ -398,8 +398,9 @@ program. No model writes SQL.
    `decomposition.ONE_QUERY_WORDS` (30) words whose answer is most likely wrong asks, in an analysis, for the
    decomposition proposal (`decomposition.declined_compound`); one it answers is answered.
 8. Any other erred answer is retried (`engine/retry.py`): Gemini 4 Neon (`engine/llm.py:write_query`, the Developer
-   API, low thinking) reads the request's tables (columns typed by their cells, row counts, first lines, a text
-   column's few values, the tab in view) and writes one SQLite SELECT, which the one guard checks and the request's
+   API, low thinking) reads the workbook the Decisions path reads (`TableQuery.workbook`: each compiled table with
+   the columns the request's links reach, `retry.workbook_tables`; columns typed by their cells, row counts, first
+   lines, a text column's few values, the tab in view) and writes one SQLite SELECT, which the one guard checks and the request's
    database runs read-only over TEMP typed copies (a failed query goes back once with its error). Its rows are the
    answer; its word that the tables cannot answer the question is the one question back; a retry that cannot answer
    leaves the likeliest reading served, marked most likely wrong. The person's Retry (`retry: true` on `/chat` and

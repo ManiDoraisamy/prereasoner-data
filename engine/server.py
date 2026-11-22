@@ -949,7 +949,8 @@ class H(BaseHTTPRequestHandler):
                     active = table_name(req["active_sheet"]) if req.get("active_sheet") else None
                     if req.get("retry"):
                         # The person retried an answer (engine/retry.py): the retry's written query answers it.
-                        res = MODEL.retry(tabs, req.get("question", ""), active_sheet=active)
+                        res = MODEL.retry(tabs, req.get("question", ""), active_sheet=active, as_of=req.get("as_of"),
+                                          explicit_fks=serve_kwargs.get("explicit_fks", ()))
                     else:
                         res = MODEL.serve(
                             tabs, req.get("question", ""), conv, req.get("as_of"),

@@ -370,7 +370,36 @@ def test_the_spider_evaluator_connects_the_keys_serving_finds() -> None:
     assert links.columns == {"orders": tuple(ORDERS["columns"]), "customers": tuple(CUSTOMERS["columns"])}
 
 
+def test_the_retry_reads_what_the_links_reach() -> None:
+    """The retry (engine/retry.py) reads the workbook the Decisions path reads (engine/tables.py TableQuery.workbook):
+    each compiled table with the columns the request's links add to it, so a retried question reads a city's continent
+    and a customer's tier. Before (6d239ad1) it read the sheet's own columns alone and a Retry on "total amount in
+    Europe" could only say the sheet holds no continent. Contrast: the unconnected workbook has no such column."""
+    from engine.retry import retry, workbook_tables
+    from tests.test_sql_ast import _neon
+
+    _key, plain, _connected_key, connected = _connected()
+    tables = {table["name"]: table for table in workbook_tables(connected.catalog)}
+    orders = tables["orders"]
+    continent = orders["columns"].index(f"City{ARROW}country{ARROW}continent")
+    assert [row[continent] for row in orders["rows"]] == ["Europe", "Europe", "Asia", "Asia", None], orders["rows"]
+    assert [row[orders["columns"].index("Amount")] for row in orders["rows"]] == [100.0, 50.0, 2000.0, 3000.0, 10.0]
+    assert f"Customer{ARROW}Tier" in orders["columns"], orders["columns"]
+    assert all(ARROW not in name for name in workbook_tables(plain.catalog)[0]["columns"])
+    europe = f'SELECT SUM("Amount") AS "total amount" FROM "orders" WHERE "City{ARROW}country{ARROW}continent" = \'Europe\''
+    prompts, restore = _neon([{"answerable": True, "sql": europe, "reason": "Adds Amount over the European cities."}])
+    try:
+        with scratch_database():
+            retried = retry("total amount in Europe", list(tables.values()), TableQuery.guard.__get__(TableQuery.__new__(TableQuery)))
+    finally:
+        restore()
+    assert retried.answered and retried.rows == ((150,),), retried
+    assert f'"City{ARROW}country{ARROW}continent" TEXT values: \'Europe\', \'Asia\'' in prompts[0], prompts[0]
+    print("  PASS  the retry reads what the request's links reach")
+
+
 TESTS = [
+    test_the_retry_reads_what_the_links_reach,
     test_a_key_and_what_it_reaches_hold_the_other_tables_values,
     test_an_answer_names_a_column_a_key_reaches_by_its_sheets_header,
     test_a_place_column_reaches_its_country_continent_currency_and_population,

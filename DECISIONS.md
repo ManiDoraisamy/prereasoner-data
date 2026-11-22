@@ -20,8 +20,11 @@ the answer. Retry can be automatic if it's an error." It replaces the ask-back o
   still take questions the upload does not answer ("total amount in Europe").
 - **One retry, one written query.** `engine/retry.py` is the only place a model writes SQL (CLAUDE.md, the owner's
   exception): Gemini 4 Neon (`gemini-4-neon`, on the Developer API only, at its low thinking level; 5.3 s on a probe)
-  reads the request's tables as typed TEMP copies built from their rows (the request database's own tables are not
-  touched; the planner's decimal text would have compared "9" > "100"), told to answer from one tab (the tab in
+  reads the workbook the Decisions path reads (`TableQuery.workbook`: each compiled table of a tab with the columns
+  the request's links reach, "bank → country → continent"; `retry.workbook_tables`) as typed TEMP copies (the request
+  database's own tables are not touched; the planner's decimal text would have compared "9" > "100"). Read from the
+  sheet's own columns alone, a Retry of "total deposits for banks in Europe" could only say the sheet holds no
+  continent; with the links it reads 3,300 (the demo's gold). It is told to answer from one tab (the tab in
   view, else the first that holds what is asked) unless the question asks across tabs: on the first 30 messy
   questions it unioned every tab and got 0 of 3 erred questions, with the rule 2 of 3 and one "the sheet has no
   CPC column". The query passes `TableQuery.guard`, runs read-only with a time and row bound, and goes back once

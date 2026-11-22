@@ -61,11 +61,17 @@ class KnowledgeReasoner:
             finally:
                 self.qw.end_request()       # close the resolution connection this request opened
 
-    def retry(self, tables, question, active_sheet=None):
+    def retry(self, tables, question, active_sheet=None, as_of=None, explicit_fks=()):
         """The person's retry of an answer: the own-data planner's retry (engine/tables.py TableQuery.retry_answer,
-        engine/retry.py), on the request's own database."""
+        engine/retry.py) on the request's database, over the workbook its links connect (``link_request``, as
+        ``_serve`` registers them), so a retried question reads what the request's columns reach."""
         with request_scope(), request_memo(), request_database(active_sheet):
-            return self.qw.q11.retry_answer(tables, question)
+            self.qw.begin_request()
+            try:
+                self.qw.link_request(as_of, explicit_fks)
+                return self.qw.q11.retry_answer(tables, question, explicit_fks=explicit_fks)
+            finally:
+                self.qw.end_request()
 
     def _serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
                decomposition=None):

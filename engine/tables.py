@@ -428,31 +428,17 @@ class TableQuery:
         typed AST (engine/program/lowering.py) and SQL with its read-as line as evidence. A question longer than
         ONE_QUERY_WORDS words whose answer is most likely wrong asks, in an analysis, for the decomposition proposal
         (engine/decomposition.py declined_compound). Raises LLMUnavailable when a Decisions call fails."""
-        from engine.prepared import connected_workbook, hold_sheet_vectors, prepared_workbook, scratch_database
-        from engine.program.answer import ERRED, WARNED, answer, convert_target
+        from engine.prepared import hold_sheet_vectors, scratch_database
+        from engine.program.answer import ERRED, WARNED, answer
         from engine.program.closed import answer_masses
-        from engine.program.connected import conversion_targets
         from engine.program.lowering import to_query
         from engine.sql_ast import render_query
         from engine.sql_candidate import ScoredQuery
         from engine.sql_rank import PoolSelection
 
         with scratch_database() as database:
-            key, prepared = prepared_workbook(tables)
+            key, prepared, targets = self.workbook(question, tables, database)
             hold_sheet_vectors(tables, database)
-            links = database.links(key, tables)
-            targets = ()
-            if links is not None:
-                own_key, own = key, prepared
-                key, prepared = database.connected(own_key, None, lambda: connected_workbook(own_key, own, links, database.connection))
-                targets = conversion_targets(links)
-                if targets:
-                    catalog = prepared.catalog
-                    target = database.answered(("convert", key), question,
-                                               lambda: convert_target(question, catalog, targets, database.active_sheet))
-                    if target is not None:
-                        key, prepared = database.connected(own_key, target,
-                                                           lambda: connected_workbook(own_key, own, links, database.connection, target))
             store = database.program_tables(key, prepared.catalog)
             said = database.answered(key, question,
                                      lambda: answer(question, prepared, store, database.active_sheet))
@@ -468,6 +454,34 @@ class TableQuery:
                              said.pick if erred else None, said.kind == WARNED, said.uncertain, said.runner_up,
                              said.probabilities, said.listed_programs, said.listed_rows, prepared.catalog, store, bool(targets),
                              said.alike)
+
+    @staticmethod
+    def workbook(question, tables, database):
+        """(key, preparation, conversion targets) of the workbook ``question`` reads of the request's ``tables`` on the
+        request's ``database``: compiled once per content (engine/prepared.py prepared_workbook); in a served request
+        connected by its links (what its place and entity columns reach in the knowledgebase, the keys between its
+        tables: connected_workbook), and, when the path's convert question names the currency the question wants its
+        answer in (engine/program/answer.py convert_target), each money column read in that currency. The Decisions
+        path (``select_query``) and the retry (``serve``, ``retry_answer``) read this one workbook."""
+        from engine.prepared import connected_workbook, prepared_workbook
+        from engine.program.answer import convert_target
+        from engine.program.connected import conversion_targets
+
+        key, prepared = prepared_workbook(tables)
+        links = database.links(key, tables)
+        targets = ()
+        if links is not None:
+            own_key, own = key, prepared
+            key, prepared = database.connected(own_key, None, lambda: connected_workbook(own_key, own, links, database.connection))
+            targets = conversion_targets(links)
+            if targets:
+                catalog = prepared.catalog
+                target = database.answered(("convert", key), question,
+                                           lambda: convert_target(question, catalog, targets, database.active_sheet))
+                if target is not None:
+                    key, prepared = database.connected(own_key, target,
+                                                       lambda: connected_workbook(own_key, own, links, database.connection, target))
+        return key, prepared, targets
 
     def _serve_ast(self, question, norm, tablemap):
         """Select the own-data query (``select_query``) and run it. In an analysis, as every served request is, the
@@ -505,17 +519,18 @@ class TableQuery:
         return candidate, result, None
 
     def retry_answer(self, tables, question, explicit_fks=()):
-        """The person's retry of an answer (engine/retry.py): Gemini 4 Neon writes the query over the request's tables,
-        whatever the Decisions path read. The response has ``serve``'s shape: the retry's rows and query (``check``
+        """The person's retry of an answer (engine/retry.py): Gemini 4 Neon writes the query over the workbook the
+        question reads (``workbook``: its tables and what the request's links reach), whatever the Decisions path read. The response has ``serve``'s shape: the retry's rows and query (``check``
         retried, asked), its word that the sheet cannot answer the question (the one question back), or the error its
         query met."""
         from engine.prepared import scratch_database
         from engine.query_contract import Coverage
-        from engine.retry import retry
+        from engine.retry import retry, workbook_tables
 
         norm, _fks = self.ingest(tables, explicit_fks=explicit_fks)
-        with scratch_database():
-            retried = retry(question, norm, self.guard)
+        with scratch_database() as database:
+            _key, prepared, _targets = self.workbook(question, norm, database)
+            retried = retry(question, workbook_tables(prepared.catalog), self.guard)
         response = {"question": question, "sql": retried.sql or None, "valid": retried.answered, "error": None,
                     "result": None, "read_as": retried.reason or None, "model": retried_model(),
                     "tables": [{"name": table["name"], "columns": table["columns"], "n_rows": len(table["rows"])}
@@ -716,12 +731,12 @@ class TableQuery:
                 # marked as most likely wrong.
                 from engine.decomposition import declined_compound
                 from engine.deterministic.context import current_analysis_context
-                from engine.retry import retry
+                from engine.retry import retry, workbook_tables
 
                 if current_analysis_context() is not None:
                     declined = declined_compound(selection, question)
                 if declined is None:
-                    retried = retry(question, norm, self.guard)
+                    retried = retry(question, workbook_tables(selection.catalog), self.guard)
                     likeliest = selection.pool[selection.erred] if selection.erred is not None else None
                     if retried.answered:
                         result = retried_result(retried)

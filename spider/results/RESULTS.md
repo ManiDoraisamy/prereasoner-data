@@ -5,6 +5,24 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The retry reads what the request's links reach: a Retry of "total deposits for banks in Europe" reads 3,300; 757 of 896 right, 2 asked (2026-11-22)
+
+- Change: the retry reads the workbook the Decisions path reads (`TableQuery.workbook`, shared by `select_query` and
+  the retry): each compiled table of a tab with the columns the request's links add ("bank → country → continent",
+  "customer → tier", "amount → USD"), as `retry.workbook_tables` gives them (record lines only, cells as numbers, ISO
+  days or the sheet's text); the person's Retry registers the request's links first, as serving does. Before, it
+  read the uploaded rows alone, and a Retry on a question that needs the knowledgebase could only say the sheet holds
+  no country or continent.
+- Live, on the knowledgebase (formfacade-bank-deposits, `KnowledgeReasoner.retry`): "total deposits for banks in
+  Europe" 3,300 (the demo's gold) through "bank → country → continent"; "which country has the most deposits?"
+  Switzerland 1,550 through "bank → country".
+- The 896 dev questions (tags neon2_wtq, neon2_mf, neon2_fd; the dev sets have no knowledgebase links, so this
+  measures the compiled tables against the uploaded rows): served right **757 (84.5%)**, unchanged; the retry on the
+  88 erred questions right 61, wrong 25, cannot answer 2, failed 0 (before 61 / 22 / 4 / 1); by set WikiTableQuestions
+  29 / 8 / 1 / 0, messy 8 / 2 / 0 / 0, fresh dev 18 / 3 / 0 / 0, DataBench 6 / 12 / 1 / 0. Unwarned wrong 66, asked 2.
+  Erred questions 12.2 s at the median, 26.0 s at p90. Spend about $2.9 (668,000 input, 61,000 output tokens): fresh
+  dev's wide compiled workbooks read about 27,000 input tokens per retry.
+
 ## Never asked back: an answer most likely wrong is retried by Gemini 4 Neon's written query; 757 of 896 served right (84.5%), 4 asked (2026-11-21)
 
 - Released 2026-11-21 (21:10 UTC), `6d239ad1`: engine `prereasoner-api-00342-mer` (`engine@sha256:b61683e5...`, build

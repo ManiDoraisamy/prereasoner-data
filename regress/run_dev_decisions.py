@@ -141,14 +141,13 @@ class QueryReplay:
         return json.loads(held.read_text(encoding="utf-8"))
 
 
-def retry_row(planner, item, tables) -> dict:
-    """Serving's retry of an erred question (engine/retry.py over the planner's ingest of its tables, as
+def retry_row(planner, item, selection) -> dict:
+    """Serving's retry of an erred question (engine/retry.py over the workbook its selection read, as
     TableQuery.serve retries it), graded: right, wrong, unanswerable (the model says the sheet cannot answer it) or
     failed (no query ran)."""
-    from engine.retry import retry
+    from engine.retry import retry, workbook_tables
 
-    norm, _fks = planner.ingest(tables)
-    retried = retry(item.question, norm, planner.guard)
+    retried = retry(item.question, workbook_tables(selection.catalog), planner.guard)
     outcome = ("right" if graded(item, retried.rows) else "wrong") if retried.answered else (
         "unanswerable" if not retried.answerable else "failed")
     return {"outcome": outcome, "sql": retried.sql, "reason": retried.reason, "error": retried.error,
@@ -463,7 +462,7 @@ def main() -> int:
                                listed_answer=[answer_key(listed) for listed in selection.rows], listed_right=listed_right,
                                choose_p=selection.probabilities, read_as=selection.pool[shown].evidence[0] if shown is not None else "")
                     if query_replay is not None and kind == ERRED and name != "demo":
-                        row["retry"] = retry_row(planner, item, tables)
+                        row["retry"] = retry_row(planner, item, selection)
                 except ReplayMiss as miss:
                     book, tables = None, None
                     request.close()
