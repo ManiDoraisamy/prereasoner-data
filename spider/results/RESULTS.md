@@ -7,6 +7,11 @@ been removed, and that commit holds the code that ran.
 
 ## The retry reads what the request's links reach: a Retry of "total deposits for banks in Europe" reads 3,300; 757 of 896 right, 2 asked (2026-11-22)
 
+- Released 2026-11-22, `b9b0fe50`: engine `prereasoner-api-00344-kip` (`engine@sha256:3755fc5d...`, all four build
+  stages), chat `prereasoner-chat-00243-jar` (`chat@sha256:36cc0c57...`), smoke `k8kk8` passed, both jobs on the image;
+  Hosting unchanged. Rollback: `00342-mer` / `00241-zas`. Chrome on chat.prereasoner.com (formfacade-bank-deposits):
+  "total deposits for banks in Europe" asked with Retry answered 3,300, marked retried, its query reading
+  "bank → country → continent".
 - Change: the retry reads the workbook the Decisions path reads (`TableQuery.workbook`, shared by `select_query` and
   the retry): each compiled table of a tab with the columns the request's links add ("bank → country → continent",
   "customer → tier", "amount → USD"), as `retry.workbook_tables` gives them (record lines only, cells as numbers, ISO
