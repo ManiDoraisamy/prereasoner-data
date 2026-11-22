@@ -45,7 +45,8 @@ HTTP, authentication, and private-reference selection
 canonical request validation and conversation ownership
         |
         v
-route ownership; learned readers' readings built into typed SQL candidates
+route ownership; own data: closed choices over engine-built options, decoded into typed SQL programs
+        |  an answer most likely wrong: retried by one guarded query Gemini writes
         |
         v
 guarded execution over uploaded and approved reference rows
@@ -68,10 +69,11 @@ database releases.
 | Boundary | Mechanism | Authority |
 |---|---|---|
 | Column, intent, profile, and similarity signals | Frozen Qwen encoder plus calibrated heads | Learned evidence; it types columns and reads intent for composition and world questions |
-| Own-data readings | XLM-R readers: stage-1 schema items, stage-2 reading models | Learned evidence; they classify readings, never write SQL |
-| SQL representation and construction | Typed AST, schema graph, and the deterministic builder that makes each reading a typed AST | Deterministic |
+| Own-data reading (the Decisions path) | The sheet compiler (`engine/sheet/`) compiles the workbook; stock bge-m3 and the engine's word reader shortlist what the question may mean; Gemini's Decisions API, an external closed-choice model (`engine/llm.py:decide`), answers closed questions whose options the engine built | External evidence: probabilities only, never text, SQL or a program |
+| SQL representation and construction | Typed AST, schema graph, and the deterministic decoder that builds each program of the reading as a typed AST | Deterministic |
 | Named-analysis SQL/Python emission | One immutable feed-forward plan and two source emitters | Deterministic for the supported subset |
-| Own-data query choice | Every candidate runs on a copy of the data; a learned re-scorer orders the grounded ones, date, double-counting and calculation preferences filter that order, and a learned refusal declines ("I read this as …") when it is not confident | Deterministic for fixed artifacts and inputs; no model writes SQL |
+| Own-data query choice | The verifier runs every program; one more closed question weighs those that returned rows, per answer: answered at 0.575 or more, warned from 0.42 (or when two readings are worded alike), most likely wrong below 0.42 or when "none of these" is likelier | Deterministic thresholds over the external model's probabilities; never asked back for the engine's own uncertainty |
+| Retry of an answer most likely wrong | Gemini 4 Neon (`engine/retry.py`) writes one SQLite SELECT over the workbook (its compiled tables and the columns the request's links reach); also run when the person presses Retry on a marked answer | The one place a model writes SQL: guarded, run read-only, and shown with its SQL; the person is asked only when the retry says the sheet does not hold what is asked |
 | Joins, calculations, validation, and execution | Typed rules, calculation specifications, guarded emitters, and PostgreSQL | Deterministic |
 | Entity fallback | Exact lookup, then similarity, followed by grounding checks | Retrieval signal plus deterministic gates |
 | Factual answer presentation | Shared deterministic renderer | Displays structured engine results; the optional chat's Gemini may make a follow-up's wording explicit using schema context |
@@ -95,7 +97,7 @@ schema-linking mistakes, selection mistakes, source gaps, or entity-resolution e
 | IANA country enrichment | **Current in guided Community deploy** | Raw Terraform remains opt-in; the guided deployment applies grants and activates it |
 | Other synchronized publisher datasets | **Current storage, not serving** | Planner activation remains gated |
 | Firebase trace streaming | **Opt-in** | Completed HTTP responses still render when RTDB is disabled |
-| Gemini: conversational orchestration, starter questions, and reference generation on Vertex AI; own-data closed choices on the Gemini Developer API's Decisions endpoint | **Current** | Always on, with no switch; needs a Vertex AI project and a Gemini Developer API key, which Terraform creates and keeps in Secret Manager |
+| Gemini: conversational orchestration, starter questions, and reference generation on Vertex AI; own-data closed choices on the Gemini Developer API's Decisions endpoint, and the own-data retry's query (Gemini 4 Neon) on the same API | **Current** | Always on, with no switch; needs a Vertex AI project and a Gemini Developer API key, which Terraform creates and keeps in Secret Manager |
 | Runtime weights | **External** | Public, manifest-pinned Hugging Face bundle |
 | Seeded knowledge database | **External** | Community restores a minimal pinned seed dump; the production database is built through source ETL and not distributed |
 | `wikidata` migration, organization tenancy, and generic temporal enrichment | **Planned** | Do not describe these as shipped |
@@ -106,7 +108,7 @@ schema-linking mistakes, selection mistakes, source gaps, or entity-resolution e
 |---|---|
 | How do I install, test, and make a first request? | [GETTING_STARTED.md](GETTING_STARTED.md) |
 | What runs for a request, and which module owns each decision? | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| How are own-data questions read and built into typed SQL? | [SQL_AST.md](SQL_AST.md) |
+| How are own-data questions read and built into typed SQL? | [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); [SQL_AST.md](SQL_AST.md) for the typed AST (its readers sections are history) |
 | How do the matching SQL and Python emitters work? | [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md) |
 | How are arithmetic semantics represented and checked? | [CALCULATIONS.md](CALCULATIONS.md) |
 | Which source schemas and releases exist? | [SOURCE_DATA.md](SOURCE_DATA.md) |

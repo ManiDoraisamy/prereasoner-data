@@ -1,24 +1,27 @@
 # Deterministic calculations
 
 Prereasoner treats arithmetic as part of the query, not as a number added after the query runs.
-Typed AST nodes represent the operands and operation. The shared encoder helps identify and order
-those operands; it never generates SQL or decides whether a result is correct. A numeric result is
-released only when a registered specification proves that the selected query matches the request.
+Typed AST nodes represent the operands and operation. No model decides whether a result is correct.
+On the world and composition routes a numeric result is released only when a registered
+specification proves that the selected query matches the request; an own-data answer's calculation
+is certified by the Decisions path's reading (step 5).
 
 ## Serving flow
 
 1. `registry.detect_calculations()` extracts an explicit calculation request.
-2. The existing encoder supplies role-specific column similarities such as `numerator`,
-   `denominator`, `measure`, and `rate`.
-3. Each specification binds only type- and domain-eligible columns and returns `CalculationPlan`
-   objects containing AST expressions, units, rules, and named bindings.
-4. `CalculationQueryExpander` adds those expressions to the ordinary bounded candidate pool and
-   obtains joins from `SchemaGraph`, including complete composite keys.
-5. Normal deterministic ranking orders the pool. Learned similarities are named soft features.
-6. `describe_computation()` records each selected expression, complete join predicate, guaranteed
+2. Each specification binds only type- and domain-eligible columns and returns `CalculationPlan`
+   objects containing AST expressions, units, rules, and named bindings
+   (`registry.composed_plans_for`), with joins from `SchemaGraph`, including complete composite keys.
+3. The world route renders the plan whose base measure is the aggregate it selected
+   (`engine/knowledge_tables.py`). The own-data Decisions path builds its own programs (a calculation
+   of two aggregates is one of its forms); no candidate pool is expanded with calculation plans.
+4. `describe_computation()` records each selected expression, complete join predicate, guaranteed
    filter, and set-operation branch.
-7. The registry selects the first ranked candidate satisfying every detected calculation. When none
-   does, serving removes the numeric result and returns structured evidence explaining what is missing.
+5. `assess_calculations()` checks the selected query against every detected calculation. When one is
+   unmet, serving removes the numeric result and returns structured evidence explaining what is missing
+   (`KnowledgeReasoner._verify_calculations`). A Decisions-path answer is not assessed this way, except a
+   currency the question wants when no money column of the request can be read in another, so an
+   amount is never served unconverted (`engine/tables.py:_serve_ast`).
 
 ## Registered specifications
 
@@ -40,13 +43,14 @@ rate units, and ambiguous add/subtract direction or operand bindings. Compatible
 inside one aggregate: for example, currency conversion plus a customer-tier discount becomes one
 `SUM(amount * exchange_rate * (1 - discount_rate))`. A row factor applies to each row before the rows
 are combined, so the planned `SUM` follows the base query's aggregate: a base that averages the measure
-gets the `AVG` of the factored rows (`engine/calculations/search.py:_aggregated_as_base`). The verifier requires the final AST to equal a
+gets the `AVG` of the factored rows (`engine/calculations/core.py:_output_realizes_plan` accepts
+either). The verifier requires the final AST to equal a
 composition of every detected specification; proving either factor alone is insufficient. A question
 that merely asks for a tax, commission, or discount *rate* is an ordinary projection, not a request to
 apply that rate.
 
-Own-data selection (which expands the readers' candidates) and scalar world-filter queries consume the
-same registered calculation plan.
+Scalar world-filter queries consume the registered calculation plan; own-data selection (the Decisions
+path) does not.
 The world adapter owns its request-local entity bridge, but it renders the registry's typed scalar
 expression and returns that same expression as verification evidence; it does not maintain a separate
 currency-only formula. A total grouped or ranked by a world attribute or an uploaded column ("total

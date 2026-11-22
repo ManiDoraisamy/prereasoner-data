@@ -6,11 +6,13 @@ the source tree; deployment and evaluation evidence must identify the tested rev
 
 ## One planner, two readable programs
 
-The engine builds typed SQL AST candidates from the own-data readers' readings and selects one
-([ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner)). For a supported winner,
-`lower_select_query()` constructs one immutable `AnalysisPlan`. SQL and Python emitters independently
-consume that plan. No model writes SQL or Python source, and neither emitter translates the other's
-source.
+The engine's decoder builds typed SQL AST programs from the Decisions path's reading, and one closed
+choice selects one ([ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner)). For a supported winner,
+`lower_select_query()` (or `lower_calculation()` for a calculation; `engine/program/lowering.py:to_plan`)
+constructs one immutable `AnalysisPlan`. SQL and Python emitters independently consume that plan. No
+model writes the SQL or Python source these emitters produce, and neither emitter translates the other's
+source. The one query a model writes, the retry of an answer most likely wrong (`engine/retry.py`), runs
+as guarded, read-only SQL outside the shared plan.
 
 The chat orchestrator's model proposes a named analysis action and slug. It does not normally split a
 question. If the engine's selected typed AST is compound and cannot be represented as one shared-plan
@@ -268,7 +270,7 @@ serving would return, even if the original SQL candidate differs. It executes th
 separately to record discrepancies, never to replace a successful Python answer solely in evaluation.
 SQL fallback remains limited to unsupported lowering, row limits, or execution failure. A served
 top-1 ranking keeps every tied row in both the SQL candidate and the shared plan
-(`sql_ast.keep_ties`, lowered as `SortedView.ties_on`). Only a tied `ORDER BY ... LIMIT n` cutoff with
+(`SelectQuery.with_ties`, lowered as `SortedView.ties_on`). Only a tied `ORDER BY ... LIMIT n` cutoff with
 `n > 1` can differ, because the shared plan adds stable tie keys; report that change in scalar-gold
 results rather than hiding it behind an evaluator-only fallback. `verify` still
 fails on inequality against the original candidate. Shared-plan stage parity is a separate check

@@ -44,7 +44,7 @@ are not public yet.
 | Website claim | Repository evidence |
 |---|---|
 | Apache-2.0 engine source | `LICENSE` and the public source tree |
-| CPU-capable model size | the whole runtime runs on CPU; its local models are the Qwen2.5-0.5B encoder (used without its decoder) and the bge-small embedder, and no SQL model is loaded. Spider prediction takes under 2 seconds per question at the median on a workstation CPU (`spider/results/RESULTS.md`); service memory for this design is not yet measured |
+| CPU-capable model size | the whole runtime runs on CPU; its local models are the Qwen2.5-0.5B encoder (used without its decoder), stock bge-m3 and the bge-small embedder, and no local SQL model is loaded. Own-data closed choices and the retry of an answer most likely wrong call Gemini's Developer API. Recorded prediction latency is in `spider/results/RESULTS.md`; service memory for this design is not yet measured |
 | Inspectable query and source-row path | planner, execution trace, and workbook implementation |
 | Deterministic source synchronization | source-specific ETL, releases, checksums, and replay metadata under `db/sync/` |
 | Public reference domains | documented Wikidata, IANA, CLDR, GeoNames, ECB, CDC, NLM, and other source pipelines |
@@ -52,18 +52,22 @@ are not public yet.
 Determinism means fixed inputs, configuration, database snapshot, and model artifacts produce the
 same ranked plan and result. It does not mean every plan is correct.
 
-### "No autoregressive SQL generation" holds, but "Qwen core" is incomplete
+### "No autoregressive SQL generation" and "Qwen core" are both incomplete
 
 "Qwen2.5-0.5B core used without autoregressive SQL generation" was contradicted from the 2026-09-23
 planner change, when a local SQL proposer shipped (a 0.5B LoRA, later a pinned 7B GGUF). Both
-proposers and their arbiter have since been removed, and no model writes SQL. Own-data questions are
-now read by separate XLM-R encoder readers, whose readings a deterministic builder makes into typed
-queries; the Qwen encoder serves column typing and composition and world questions. Own-data selection
-calls no external model, and a question the readers are not confident of is answered with how they read
-it rather than a number. The accurate wording: "No model writes SQL. Learned readers read your
-question, the engine builds and checks the query, and when it is unsure it tells you how it read the
-question." The chat service uses Gemini, and no model writes the numbers. This is a finding for the
-website owner; see `docs/MODEL_CARD.md`.
+proposers and their arbiter have since been removed, and no local model writes SQL. The XLM-R readers
+that then read own-data questions were replaced on 2026-11-20 by the Decisions path: Gemini's
+Decisions API, an external closed-choice model, answers closed questions whose options the engine
+built, with probabilities only, and the engine's decoder builds every query it decides as a typed AST.
+Since 2026-11-21 the engine never asks back for its own uncertainty: it marks an answer it is unsure
+of, and an answer it holds most likely wrong is retried with one SQLite query Gemini 4 Neon writes,
+guarded, run read-only and shown with its SQL. That retry is the one place a model writes SQL. The
+Qwen encoder serves column typing and composition and world questions; it does not read own-data
+questions. The accurate wording: "The engine builds and checks every query it decides. When it is
+unsure it marks the answer, and an answer it holds most likely wrong is retried with a query Gemini
+writes, shown with its SQL." The chat service uses Gemini, and no model writes the numbers. This is a
+finding for the website owner; see `docs/MODEL_CARD.md`.
 
 ## Launch Gaps In The Current Marketing Copy
 

@@ -1,22 +1,26 @@
 # Model Card
 
-> **Status (2026-11-20).** The trained own-data readers this document describes (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change. The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); what this document says of the readers is historical.
+> **Status (2026-11-22).** The trained own-data readers (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change, and no reader weights ship in the runtime bundle. Since 2026-11-21 the engine never asks back for its own uncertainty: an answer it holds most likely wrong is retried by one query Gemini 4 Neon writes (`engine/retry.py`). The current own-data path is in [Own-data Decisions path](#own-data-decisions-path) below, [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); what the experiment sections of this document say of the readers is historical.
 
 ## Summary
 
 Prereasoner is a tabular question-answering system with a learned semantic layer and a typed SQL
-layer. Learned components provide embeddings, Schema.org property probabilities, class scores,
-structural relevance signals, and the own-data readers' readings of a question. No model writes SQL:
-a deterministic builder makes every own-data query a typed AST from the readers' readings, and the
-engine validates, renders, and executes it. Selection, route ownership, source-key authorization,
-calculation semantics, SQL rendering, and execution are deterministic for fixed inputs and pinned
-artifacts. Gemini, an external model that is always on, serves the chat orchestrator, starter questions
-and reference generation on Vertex AI, and answers the engine's own-data closed choices on the Decisions
-API with probabilities over options the engine built, never SQL ([Gemini](#gemini-external-always-on)).
+layer. Learned components provide embeddings, Schema.org property probabilities, class scores, and
+structural relevance signals. Own-data questions take the Decisions path: an external closed-choice
+model answers closed questions whose options the engine built, and the engine's deterministic decoder
+builds every program it decides as a typed AST, which the engine validates, renders, and executes. An
+answer the engine holds most likely wrong is retried with one SQLite query that Gemini 4 Neon writes,
+guarded, run read-only and shown with its SQL; that retry is the one place a model writes SQL.
+Selection, route ownership, source-key authorization, calculation semantics, SQL rendering, and
+execution are deterministic for fixed inputs and pinned artifacts. Gemini, an external model that is
+always on, serves the chat orchestrator, starter questions and reference generation on Vertex AI,
+answers the engine's own-data closed choices on the Decisions API with probabilities over options the
+engine built, and writes the retry's query ([Gemini](#gemini-external-always-on)).
 
 Schema.org 30.0 is the required common semantic coordinate system. The current implementation uses it
 for property/class evidence and world-resolution proposals, but own-data noun/column/value bindings
-still use the dedicated readers' opaque embeddings. The required shared interface is not implemented
+use the Decisions path's shortlist (stock bge-m3 similarity and the engine's word reader) and closed
+choices, not Schema.org property profiles. The required shared interface is not implemented
 across those roles. Wikidata and publisher-owned releases provide observations projected into the
 vocabulary; they do not define it. Mutable facts remain in
 versioned database releases and are not intended to be memorized in model weights.
@@ -35,12 +39,12 @@ Physical table/column/cell pointers, literal values, entity/source keys and rela
 explicit: similar city profiles cannot identify Paris as Lyon, or distinguish departure from arrival
 without their roles. Unsupported meanings or insufficient evidence require calibrated abstention.
 
-The production readers below do not meet this semantic-interface requirement. The interrupted CLEF
-generic-AST trial also does not: its inputs contain names, SQL types and samples, and its head combines
-opaque contextual/lexical projections and residual scores under AST/action supervision. There are no
-shared property-profile targets or cross-role evidence masks. Valid ACE program renderings, AST
-schemas and inspectable SQL decisions do not repair that gap. That trial is historical evidence, not a
-shared-Schema.org model or a promoted replacement.
+Neither the Decisions path nor the readers it replaced meets this semantic-interface requirement.
+The interrupted CLEF generic-AST trial also does not: its inputs contain names, SQL types and
+samples, and its head combines opaque contextual/lexical projections and residual scores under
+AST/action supervision. There are no shared property-profile targets or cross-role evidence masks.
+Valid ACE program renderings, AST schemas and inspectable SQL decisions do not repair that gap. That
+trial is historical evidence, not a shared-Schema.org model or a promoted replacement.
 
 The existing 80-property head is a useful vocabulary and artifact reference, but its 896-dimensional
 Qwen inputs and table-property calibration are not a drop-in CLEF interface. Missing observed facts
@@ -97,8 +101,8 @@ repairs also pass. These overlapping staged results do not replace the completed
 whole-corpus counts above.
 These results do not certify complete English meaning. Every shared
 question remains quarantined. No model was fit, promoted or benchmarked as part
-of these corrections. Current artifacts and the gated execution plan are in
-`training/readers/README.md`.
+of these corrections. The artifacts and the gated execution plan were in
+`training/readers/README.md`, in git history before 2026-11-20.
 
 One prefill and the shared 215-coordinate head supply recursive conditional role/operator choices
 to the existing typed-AST owner. Named values, contributions, input bindings, ACE projection and
@@ -116,8 +120,8 @@ The full frozen-head run was cancelled before full-fit optimizer progress was co
 and dedicated network volume were deleted. No completed full fit or new Spider/Enron accuracy
 result exists. A further experiment requires the owner's review of the local corpus audit,
 verification of the actual available starting checkpoint bytes, and separate paid-compute
-authorization. The gated execution plan is in `training/readers/README.md` under "Local audit and
-gated CLEF execution plan". Native prefills use pinned
+authorization. The gated execution plan was in `training/readers/README.md` under "Local audit and
+gated CLEF execution plan" (git history before 2026-11-20). Native prefills use pinned
 numerical settings and no encoder gradient graph. No production model was replaced, and the real
 property-alignment and English-meaning limitations above remain open.
 
@@ -132,9 +136,9 @@ graders and all benchmark questions remain outside gradient training.
 The candidate vocabulary is now fully defined: **215 = 71 properties + 64 SQL + 32 ACE frames +
 32 structural/type/role + 16 dialogue**. All coordinates remain uncalibrated. Definitions, role inputs,
 integer profiles, exact contribution-based binding/replay, masked loss and the CLEF shared-head
-construction exist in the current owners. The promoted serving selector still uses the readers below;
-the earlier shared-head pilot is trained, but is not qualified. The recursive candidate integration
-above does not retroactively qualify that pilot.
+construction existed in the owners of the time. The promoted serving selector then used the readers,
+since replaced by the Decisions path; the earlier shared-head pilot is trained, but is not qualified.
+The recursive candidate integration above does not retroactively qualify that pilot.
 
 Frozen preparation produced **47,445 training / 5,131 calibration / 2,162 held-out entity test records**.
 This includes all 18,427 admitted source programs and 14,371 conversation records; overlapping variants
@@ -226,8 +230,8 @@ resolve this source-label ambiguity.
   `intent_filter_gt`, `intent_sort_desc`, `intent_limit`, ...).
 - Active uses: structural intent for composition and the world routes (the operator from
   `read_op_model`, the primitive head), column typing, and the representation consumed by the
-  Schema.org property head. The own-data SQL planner does not use it; the readers below read those
-  questions.
+  Schema.org property head. The own-data path does not use it; those questions take the
+  [Decisions path](#own-data-decisions-path).
 - Historical compatibility output: `alloc.json` still exposes 71 property-named coordinates. Two
   labels in that old basis are not valid Schema.org 30.0 properties (`GeoCoordinates` is a class;
   `taxonName` is absent). They are not the active class-routing vocabulary.
@@ -235,28 +239,29 @@ resolve this source-label ambiguity.
   manifest. Its exact runtime bytes and base revision are pinned, but its original source corpus and
   split provenance are incomplete. Do not claim a from-scratch reproduction of that checkpoint.
 
-### Own-data readers
+### Own-data Decisions path
 
-- Models (`engine/data/readers/`): a stage-1 schema-item model (XLM-R base) that scores each table's and
-  column's use; stage-2 reading models (XLM-R large, one directory per reader, `stage2_*`) that score
-  every reading the deterministic builder uses; a re-scorer (XLM-R base) that orders the candidates that
-  ran; and the choice, a logistic model over the re-scorer's logit and the pool's own evidence that ranks the
-  candidates and refuses below its threshold (`choice.json`). Each model is an
-  encoder with linear heads, defined once in `engine/readers/models.py`; serving runs the encoders in
-  bfloat16. No decoder is used.
-- Inputs: the question and the schema as the engine receives it: table and column names, inferred types,
-  sample values, and the question's own values beside the columns that hold them
-  (`engine/readers/text.py`).
-- Boundary: the readers emit readings, never SQL. `engine/readers/readings.py:build` makes each reading
-  a typed AST, the engine runs and grounds every candidate, and when the choice is not confident the
-  reply says how the question was read ("I read this as …") instead of serving an answer.
-- Training: Spider, BIRD and Spider-Syn questions with gold readings derived from gold SQL, plus
-  questions Gemini on Vertex AI wrote on the training databases (rewordings of training questions,
-  questions over lookup tables, and questions for queries built in the structures the readers
-  misread), each keeping its query's gold readings; no calibration or test database is used.
-  `training/readers/` trains them, and only `training/readers/promote.py` installs them, recording each
-  file's SHA-256 in `engine/data/weights_manifest.json`. The recipe, inputs and split are in
-  [training/readers/README.md](../training/readers/README.md).
+- Owner: `engine/tables.py:TableQuery.select_query` and `engine/program/`. The sheet compiler
+  (`engine/sheet/`) compiles the request's tables into one workbook; its header decision is the
+  committed, hash-pinned `engine/data/sheet_line_model.json`.
+- Stock reading: the engine's word reader plus stock `BAAI/bge-m3` (`engine/named/backbone.py`, pinned
+  revision; each file's SHA-256 under `base_models` in `engine/data/weights_manifest.json`; baked into
+  the image from the hub, not part of the weight bundle). Nothing in it is trained for this path; it only
+  shortlists the options the closed questions offer.
+- Closed choices: Gemini's Decisions API (external, see [Gemini](#gemini-external-always-on)) answers
+  closed questions whose options the engine built and returns probabilities only, never text, SQL, or a
+  program. The deterministic decoder builds the reading's 50 most probable programs as typed ASTs, the
+  verifier runs them, and one more closed question weighs those that returned rows, per answer: answered
+  at 0.575 or more (`T_FLAG`), warned from 0.42 (`T_ERR`) or when two readings are worded alike, and most
+  likely wrong below 0.42 or when "none of these" is likelier. The engine never asks back for its own
+  uncertainty.
+- Retry: an answer most likely wrong, or one the person retries, is answered by one SQLite SELECT that
+  Gemini 4 Neon writes over the workbook (`engine/retry.py`); it is guarded, run read-only, and shown
+  with its SQL and the reason for its mark. It is the one place a model writes SQL. The person is asked
+  only when the retry says the sheet does not hold what is asked.
+- History: until 2026-11-20 own-data questions were read by trained XLM-R readers (a stage-1
+  schema-item model, four stage-2 reading models, two re-scorers and a choice that ranked and refused).
+  They are in git history before that change; their files are not in the manifest and do not ship.
 
 ### Generalized Schema.org named-dimension model
 
@@ -286,17 +291,19 @@ releases, split policy, seed, and metrics are in `engine/data/schema_training_ma
 
 ### Gemini (external, always on)
 
-- Model: Gemini on Vertex AI (`GEMINI_MODEL`, default `gemini-3.8-flash`) and the Gemini Developer
-  API's closed-choice Decisions model (`DECISIONS_MODEL`, default `gemini-decision-1`), both called
-  through `engine/llm.py`. They are external services, not part of the weight bundle, and Prereasoner
-  does not train or fine-tune them.
+- Model: Gemini on Vertex AI (`GEMINI_MODEL`, default `gemini-3.8-flash`), and on the Gemini
+  Developer API the closed-choice Decisions model (`DECISIONS_MODEL`, default `gemini-decision-1`) and
+  the retry's query model (`QUERY_MODEL`, default `gemini-4-neon`), all called through `engine/llm.py`.
+  They are external services, not part of the weight bundle, and Prereasoner does not train or
+  fine-tune them.
 - Configuration: always on, with no switch. Vertex AI needs a project (`GOOGLE_CLOUD_PROJECT`) and
-  Application Default Credentials; the Decisions API needs a key (`GOOGLE_API_KEY`), which a
+  Application Default Credentials; the Developer API needs a key (`GOOGLE_API_KEY`), which a
   deployment reads from Secret Manager.
 - Uses: on Vertex AI, the chat orchestrator's tool loop, starter questions, and explicit
   reference-table generation, all outside the SQL planner (see [MCP.md](MCP.md)). On the Decisions
   API, own-data questions: closed choices among options the engine built, answered as probabilities,
-  never text, SQL, or a program.
+  never text, SQL, or a program. Gemini 4 Neon writes the own-data retry's one SQLite query
+  (`engine/llm.py:write_query`), which the engine guards, runs read-only and shows with its SQL.
 
 ### Entity-resolution embedder
 
@@ -312,11 +319,15 @@ committed Schema.org artifacts. Runtime validation rejects missing or mismatched
 
 The public bundle is
 [`prereasoner/prereasoner-weights`](https://huggingface.co/prereasoner/prereasoner-weights) at
-immutable revision `3455714f98cb253ec787473af8a5204c72ad3290`. The promoted property-head SHA-256 is
+immutable revision `cd8a03abb8fd443442f9a3e691f717f4285fd263`. The promoted property-head SHA-256 is
 `cef8a43cfa1c5f719b9b1a7ef6e977197890d4c86236035049e1be91e9550e0c`.
 `python -m engine.fetch_weights` downloads that revision without a token and verifies every digest.
-That revision also holds a retired `sql_proposer/` LoRA adapter from an earlier design. The manifest
-does not list it, the fetcher does not download it, and current Prereasoner loads no SQL model.
+The manifest lists the encoder (`encoder.pt`, `encoder_meta.pt`, `qwen_lora/`), its heads
+(`anchor_assignment.npz`, `primitives.npz`) and `schema_property_head.pt`; the fetcher downloads only
+those files. That revision also holds the retired own-data readers' files (`readers/`), which the
+manifest does not list, the fetcher does not download and no code loads. Stock bge-m3 is pinned
+separately under `base_models` (see [Own-data Decisions path](#own-data-decisions-path)).
+Prereasoner loads no local SQL-writing model; the retry's query is written by an external Gemini model.
 
 ## Intended Uses
 
@@ -336,16 +347,17 @@ does not list it, the fetcher does not download it, and current Prereasoner load
 ## Evaluation And Limitations
 
 Determinism removes sampling variance; it does not guarantee correctness. Remaining error classes
-include misread questions, shapes the readings form cannot hold, ranking and refusal errors,
-incomplete entity resolution, source gaps, and unsupported Schema.org coordinates. Recorded accuracy
-and latency are in `spider/results/RESULTS.md`.
+include misread questions, shapes the program language cannot hold, a wrong choice served without a
+mark, a wrong retry, incomplete entity resolution, source gaps, and unsupported Schema.org coordinates.
+On the 896 development questions, 757 (84.5%) are served right, 66 (7.4%) are wrong without a mark,
+and 2 are asked back. Recorded accuracy and latency are in `spider/results/RESULTS.md`.
 
 The Schema.org head has group-disjoint validation and untouched-test metrics. The shared historical
 encoder does not have equivalent original-training provenance, so their metrics must not be merged.
 SQL accuracy belongs in `spider/results/RESULTS.md`, and source-backed behavior belongs in
-`world_eval/RESULTS.md`; neither is implied by the class-head metrics. The readers' training sources
-include Spider's dev questions, so a Spider DEV result is not a held-out measurement of them; the Spider
-test set appears in no readers training step.
+`world_eval/RESULTS.md`; neither is implied by the class-head metrics. Spider results recorded before
+2026-11-20 measured the readers, whose training sources included Spider's dev questions, so those DEV
+results are not held-out measurements; the Spider test set appeared in no readers training step.
 
 ## Checkpoint Release Contract
 

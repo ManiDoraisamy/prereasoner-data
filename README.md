@@ -51,10 +51,11 @@ What runs today:
 | Program decoder and typed SQL | A deterministic decoder that builds the most probable programs of the reading, each lowered to a typed syntax tree over one table | The candidate queries themselves |
 | Execution | PostgreSQL, plus a generated Python program that mirrors the SQL for supported shapes | The numbers |
 
-No model writes the SQL. The decoder builds every own-data program from the reading, each candidate runs
-on your tables, and the choice weighs the ones that returned rows, per answer. The answer shows the query and
-how the question was read; an answer the choice is less sure of is given as one, and below that the reply says
-what it read instead of answering.
+The decoder builds every own-data program from the reading, each candidate runs on your tables, and the
+choice weighs the ones that returned rows, per answer; no model writes those queries. The answer shows the
+query and how the question was read. An answer the choice is less sure of carries a warning mark, and one it
+holds most likely wrong is retried: Gemini 4 Neon writes one SQLite query over the workbook, shown with its
+SQL. A click on the mark shows the reason and a Retry.
 
 The optional chat service uses Gemini to make follow-up wording explicit and request engine operations.
 It sends schema metadata, bounded recent user questions and saved analysis questions. It sends no source

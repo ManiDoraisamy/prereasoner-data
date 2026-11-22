@@ -128,8 +128,12 @@ onward run last, after the orchestrator suites, unless `RUN_ENGINE_TESTS=0`:
 
 | Suite | Primary boundary |
 |---|---|
-| `tests.test_sql_ast` | Typed planning, ranking, recursion, constraints, extrema, evaluation contract |
-| `tests.test_llm` | The one Gemini client (`engine/llm.py`): the configuration gate (there is no switch), the Decisions call's one sorted body and per-question probabilities, deterministic JSON requests against the real SDK types, failures only as `LLMUnavailable`, one client per process, and the chat facade's thought-signature replay and forced/disabled tool calls; no network |
+| `tests.test_sheet_compile` | The sheet compiler (`engine/sheet/`) on small synthetic grids, one per shape |
+| `tests.test_program` | The Decisions path's program language: each fixed semantic, the decoder's k-best, the verifier's evidence; no model, network or Postgres |
+| `tests.test_answer` | The Decisions path end to end (`engine/program/answer.py`, `closed.py`, `stock.py`, `dates.py`) with a fake Decisions transport and a fake backbone |
+| `tests.test_connected` | The connected catalog (`engine/program/connected.py`) and the request's links that feed it, on a scratch request database; the retry reads what the links reach |
+| `tests.test_sql_ast` | Typed planning, ranking, recursion, constraints, extrema, evaluation contract; the one selection's plumbing and the retry of an answer most likely wrong (`engine/retry.py`) |
+| `tests.test_llm` | The one Gemini client (`engine/llm.py`): the configuration gate (there is no switch), the Decisions call's one sorted body and per-question probabilities, the retry query's one body (`write_query`), deterministic JSON requests against the real SDK types, failures only as `LLMUnavailable`, one client per process, and the chat facade's thought-signature replay and forced/disabled tool calls; no network |
 | `tests.test_calculations` | Typed arithmetic, operand eligibility, complete joins, all-branch proof, abstention, and clarify transport |
 | `tests.test_analysis` | Slug/identity validation, effective table/relationship/semantic hashing, bounded unique view names, executed-SQL preservation, and HTTP/live-stream parity |
 | `tests.test_deterministic_emitters` | Plan validation, byte-stable source, ORM object relationships, stage alignment, execution policy, and SQL/Python parity |
@@ -266,8 +270,8 @@ python -m regress.run_regression --require-world
 
 `--require-world` makes missing live prerequisites fail rather than silently reducing the gate to offline tests.
 The gate covers core FK invariants, representative own-data SQL, canonical world answers, world-table joins, route
-wiring, and non-geographic grounding. Its own-data tier uses the same post-ranking calculation admissibility selector
-as live `TableQuery` serving; the gate must not execute raw rank 1 through a parallel policy path.
+wiring, and non-geographic grounding. Its own-data tier calls the one served selection (`TableQuery.select_query`,
+the Decisions path); the gate must not execute a candidate through a parallel policy path.
 
 ## Browser Tests
 
@@ -357,8 +361,10 @@ python -m spider.probe.full_eval `
 ```
 
 The evaluator runs the production selection (`engine.tables.TableQuery.select_query`). Recorded run times are in
-[RESULTS.md](../spider/results/RESULTS.md). The readers' training sources include Spider's dev
-questions, so a DEV run is not a held-out measurement of them.
+[RESULTS.md](../spider/results/RESULTS.md). Runs recorded before 2026-11-20 measured the trained readers,
+whose training sources included Spider's dev questions, so those DEV runs are not held-out measurements.
+Every question makes live Decisions calls (a `GOOGLE_API_KEY`, and their cost) unless
+`engine.llm.DECISIONS_TRANSPORT` replays recorded ones.
 
 To exercise the production backend policy on the clean scalar-gold subset, keep the same runner and
 comparison contract:

@@ -1,13 +1,14 @@
 # Own-Data SQL Planner
 
-> **Status (2026-11-20).** The trained own-data readers this document describes (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change. The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); what this document says of the readers is historical.
+> **Status (2026-11-22).** The trained own-data readers this document describes (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change. The re-scorer, the refusal ("I read this as …"), `search_pool`, `engine/sql_grounding.py`, `engine/calculations/search.py`, `keep_ties` and `tests/test_readers.py` were deleted with them. Since 2026-11-21 the engine never asks back for its own uncertainty: an answer most likely wrong is retried by one query Gemini 4 Neon writes (`engine/retry.py`), the one place a model writes SQL. The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner). What this document says of the readers, their selection and the serving example is historical; the typed AST itself ([Supported SQL](#supported-sql), [Validation and safety](#validation-and-safety)) is current.
 
-This is the own-data SQL planner: the path from a question over uploaded tables to executed SQL.
-Every query it can run is a validated typed abstract syntax tree (AST). Learned encoder readers read
-the question beside the schema as named readings, and a deterministic builder makes each reading a
-typed AST. Selection runs the candidates, keeps the ones that are grounded in the data, and lets a
-learned re-scorer order them and a learned refusal decide whether to serve the best one. No model
-writes SQL, and no step samples.
+This was the own-data SQL planner until 2026-11-20: the path from a question over uploaded tables to
+executed SQL. Every query it could run was a validated typed abstract syntax tree (AST). Learned
+encoder readers read the question beside the schema as named readings, and a deterministic builder
+made each reading a typed AST. Selection ran the candidates, kept the ones that were grounded in the
+data, and let a learned re-scorer order them and a learned refusal decide whether to serve the best
+one. In that design no model wrote SQL, and no step sampled. The sections below keep that design's
+present tense.
 
 ## What it does
 
@@ -225,7 +226,11 @@ The AST, validator, and renderer support:
 - `UNION`, `INTERSECT`, and `EXCEPT`;
 - a served top 1 keeping its ties (`SelectQuery.with_ties`).
 
-The readers' form (`engine/readers/readings.py`) holds a subset: one block, or two joined by `UNION`,
+The Decisions path's program language (`engine/program/language.py`) uses a subset: it reads one
+table at a time, with the columns the request's keys and knowledgebase links reach, as a shown cell, an
+aggregate, a breakdown, a rank, a calculation of two of them, or a check
+([ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner)). History: the readers' form it replaced
+(`engine/readers/readings.py`, deleted 2026-11-20) held a subset: one block, or two joined by `UNION`,
 `INTERSECT`, `EXCEPT`, or a nested condition (a scalar subquery, `IN` or `NOT IN`); per block the
 selected columns with their aggregates, conditions under one `AND` or `OR` with `=`, `!=`, `>`, `<`,
 `>=`, `<=`, `LIKE`, `NOT LIKE`, `IN`, or `NOT IN`, a date column's month or year-month, grouping, `HAVING`,
@@ -236,12 +241,14 @@ divided by the same aggregate over the whole). A plain column a grouped block sh
 nothing the readings do not say except the joins.
 
 Grammar support does not imply perfect language coverage. A valid AST can still be absent
-because the readers read the question wrongly or the form cannot hold its shape.
+because the closed choices read the question wrongly or the program language cannot hold its shape;
+such an answer is marked, or retried when it is most likely wrong.
 
 Arithmetic is handled by `engine/calculations/`, not by SQL-string templates. A specification
-detects explicit syntax, binds role-named numeric columns, and expands the readers' candidates into a
-`BinaryExpr` tree. The shared expander obtains complete join trees from `SchemaGraph`; composite keys
-remain one typed foreign-key edge. The post-ranking verifier describes the selected AST and requires the
+detects explicit syntax, binds role-named numeric columns, and plans a `BinaryExpr` tree, with
+complete join trees from `SchemaGraph`; composite keys remain one typed foreign-key edge. The verifier
+(`assess_calculations`; see [CALCULATIONS.md](CALCULATIONS.md) for how a Decisions-path answer is
+certified) describes the selected AST and requires the
 expected expression plus a complete registered-key path between its bound operands on every `UNION`,
 `INTERSECT`, or `EXCEPT` branch before a number can be released.
 
@@ -278,20 +285,19 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 
 | Module | Responsibility |
 |---|---|
-| `engine/readers/` | The learned readers, the decoder, and the deterministic builder ([above](#readers-and-builder)). |
+| `engine/program/`, `engine/sheet/` | The Decisions path that replaced `engine/readers/` (deleted 2026-11-20): the sheet compiler, the closed questions, the decoder, the verifier and the per-answer decision ([ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner)). |
+| `engine/retry.py` | The retry of an answer most likely wrong: one guarded, read-only SQLite query Gemini 4 Neon writes. |
 | `engine/sql_ast.py` | Immutable AST, validation, and rendering. |
 | `engine/sql_dates.py` | Calendar phrases of a question as typed date comparisons; the month words a query realized. |
 | `engine/sql_durations.py` | Duration phrases of a question, the date columns a span runs between, and the duration words a query realized. |
-| `engine/sql_grounding.py` | Pool eligibility: text literals that fit their column and joins the foreign keys allow; which SUM or AVG reads only rows its joins repeat (a selection preference). |
 | `engine/sql_schema.py` | Typed schema and join-path search. |
 | `engine/sql_candidate.py` | Scored-candidate container and evidence. |
 | `engine/sql_expansion.py` | Question-word helpers shared by the date and duration readers, the calculations, decomposition and the world routes; `plain_marks`. |
-| `engine/sql_rank.py` | The pool contract (`execution_op_limit`), the selection record (`PoolSelection`) and its post-ranking rule (`select_ranked_candidate`); `analyze_question` for the calculations. |
+| `engine/sql_rank.py` | The selection record (`PoolSelection`); `analyze_question` for the calculations. |
 | `engine/query_contract.py` | The unreadable-measure checks (`unreadable_operand`) and the `Coverage` record. |
 | `regress/sql_import.py` | SQL text importer used by offline evaluation, training labels and tests; never used by serving. |
 | `engine/calculations/core.py` | Typed plans and branch-preserving computation evidence. |
 | `engine/calculations/specifications.py` | Registered currency, ratio, and rate-application semantics. |
-| `engine/calculations/search.py` | Calculation-plan expansion of the readers' candidates into validated AST candidates. |
 | `engine/calculations/registry.py` | Shared selection, verification, and clarify policy. |
 | `engine/currency_intent.py` | Currency syntax and canonical rate-column rules used by the currency specification. |
 | `engine/deterministic/plan.py` | Immutable topologically ordered plan shared by both source emitters. |
@@ -308,12 +314,12 @@ Do not copy changing accuracy figures into architecture documentation. The stand
 the serving-faithful `whole_db` run: all database tables, the served selection, and no gold table
 hints. `gold_tables` is an oracle table-selection diagnostic, not a standard Spider result.
 
-A measured accuracy belongs to the whole served selection: the readers, pool execution and grounding,
-the re-scorer and the refusal, loaded from the same runtime bundle the service loads. The readers'
-training sources include Spider's train and dev questions (all but 20 calibration databases), BIRD
-and Spider-Syn, so a Spider DEV run reads databases the readers trained on; the Spider test set
-appears in no training step and is scored only in totals
-([training/readers/README.md](../training/readers/README.md)).
+A measured accuracy belongs to the whole served selection, today the Decisions path with the same
+runtime bundle and stock reader the service loads. Runs recorded before 2026-11-20 measured the
+readers, pool execution and grounding, the re-scorer and the refusal. The readers' training sources
+included Spider's train and dev questions (all but 20 calibration databases), BIRD and Spider-Syn, so
+those Spider DEV runs read databases the readers trained on; the Spider test set appeared in no
+training step and is scored only in totals.
 
 ## Reproduction
 
@@ -323,9 +329,10 @@ Fetch Spider data:
 python spider/probe/fetch_data.py --include-train
 ```
 
-Run the serving-faithful evaluation. It calls `TableQuery.select_query`, the serving selection,
-with the runtime bundle in `engine/data` and the readers in `engine/data/readers`; there is no
-planner-mode flag and no model to pass.
+Run the serving-faithful evaluation. It calls `TableQuery.select_query`, the serving selection
+(the Decisions path), with the runtime bundle in `engine/data` and stock bge-m3; there is no
+planner-mode flag and no model to pass. Every question makes live Decisions calls (a
+`GOOGLE_API_KEY`, and their cost) unless `engine.llm.DECISIONS_TRANSPORT` replays recorded ones.
 
 Standard Spider (whole_db — the headline comparison number):
 
@@ -338,8 +345,8 @@ python -m spider.probe.full_eval \
 Oracle table selection (gold_tables — the product-analogue upper bound): rerun the same
 command with `--config gold_tables`. `--selection pool_oracle` additionally executes the whole
 pool and scores each question by its best member: the ceiling any selection change could reach.
-Model training and promotion are covered in [`docs/TRAINING.md`](TRAINING.md) and, for the readers,
-[`training/readers/README.md`](../training/readers/README.md).
+Model training and promotion are covered in [`docs/TRAINING.md`](TRAINING.md); the readers' pipeline
+is in git history before 2026-11-20.
 
 The same evaluator can execute a lowerable selected AST through the readable Python emitter
 without changing candidate generation, ranking, gold execution, or comparison:
@@ -359,15 +366,17 @@ Python fields extend the existing scalar-gold report rather than defining anothe
 ## Tests
 
 ```bash
-python -m tests.test_readers
+python -m tests.test_program
+python -m tests.test_answer
 python -m tests.test_sql_ast
 ```
 
-`tests.test_readers` covers the readers' deterministic half: the readings form and its builder, the
-decoder's generic semantics, and the serialization, with outputs written as a model would write them.
+`tests.test_program` covers the Decisions path's program language, decoder and verifier with no model.
+`tests.test_answer` runs the Decisions path with a fake Decisions transport and a fake backbone.
 `tests.test_sql_ast` executes SQL against in-memory SQLite and covers AST typing, rendering, joins,
-grounding, the SQL import gate, and the plumbing of the one own-data selection over a pool written as
-SQL and imported into the typed AST, with the re-scorer and refusal stubbed. Neither loads weights.
+the SQL import gate, the plumbing of the one own-data selection, and the retry of an answer most likely
+wrong. (`tests.test_readers`, which covered the readers' readings form and builder, was deleted with
+them on 2026-11-20.)
 
 Run the repository aggregate suite with:
 
@@ -377,8 +386,10 @@ python -m tests.run_all
 
 ## What remains
 
-Spider is not solved. The next work should be measured against these bottlenecks (see RESULTS.md
-for recorded numbers):
+Spider is not solved. The list below was written for the readers and is history; the Decisions path's
+measured limits are in RESULTS.md and in [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner) (it
+reads one table at a time, with the columns the request's links reach). The bottlenecks as written then
+(see RESULTS.md for recorded numbers):
 
 1. Recall: measure pool recall (`--selection pool_oracle`) separately from the served top-1. A question
    with no correct pool member needs a reading the readers do not make or a shape the form cannot hold.

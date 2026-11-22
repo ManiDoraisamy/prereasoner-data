@@ -12,9 +12,10 @@ tags:
 This directory of the
 [Prereasoner runtime bundle](https://huggingface.co/prereasoner/prereasoner-weights) holds the LoRA
 adapter that turns `Qwen/Qwen2.5-0.5B` into an encoder whose representation feeds named semantic
-readouts. Prereasoner uses the base without its decoder and loads no SQL-generating model: a
-deterministic builder makes every own-data query a typed AST from the readings of separate XLM-R
-readers. A retired SQL proposer adapter (`sql_proposer/`) from an
+readouts for column typing and for composition and world questions. Prereasoner uses the base without
+its decoder and loads no local SQL-generating model. Own-data questions do not use this adapter: they
+take the Decisions path described in the source model card, where the engine's deterministic decoder
+builds every query it decides as a typed AST. A retired SQL proposer adapter (`sql_proposer/`) from an
 earlier design was removed from this repository on 2026-10-02 and remains in its history.
 
 Install and validate the complete compatible bundle through the source repository:

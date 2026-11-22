@@ -1,6 +1,6 @@
 # Training and model promotion
 
-> **Status (2026-11-20).** The trained own-data readers this document describes (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change. The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); what this document says of the readers is historical.
+> **Status (2026-11-22).** The trained own-data readers (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change, and `training/readers/` keeps only the GPU lease loop. The Decisions path trains no question reader: it reads with stock bge-m3 and the engine's word reader, and Gemini's Decisions API (external) makes its closed choices; an answer most likely wrong is retried by one query Gemini 4 Neon writes (`engine/retry.py`). The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); what this document says of the readers is historical.
 
 This page explains which model code runs today, how its data is built, and how one candidate becomes
 the runtime bundle. Historical experiments live in `training/props/pipeline.md`; they are background,
@@ -48,7 +48,7 @@ entity route.
 
 This track produced the Qwen LoRA and relational readout loaded by serving. It supplies structural
 intent for composition and the world routes, column typing, and the representation consumed by the
-Schema.org head. The own-data SQL planner reads questions with the readers below instead.
+Schema.org head. The own-data path (the Decisions path) does not use it.
 
 Its allocation (`encoder_meta.pt["alloc"]`) retains a historical 90-content-dimension layout: 9
 structural, 71 property-named, and 10 intent dimensions. Two old labels are not valid Schema.org 30.0
@@ -81,22 +81,21 @@ The class layer is deterministic once property probabilities are known. Each cla
 bias, signed property weights, a validation-calibrated threshold, support, and validation/test
 metrics. Selection uses train and validation only. Test is untouched until final evaluation.
 
-### Own-data readers (`training/readers/`)
+### Own-data readers (`training/readers/`, removed 2026-11-20)
 
-The own-data SQL planner (`engine/tables.py:TableQuery.select_query`) is read by four learned parts:
-a stage-1 schema-item model (XLM-R base), stage-2 reading models (XLM-R large), a re-scorer (XLM-R
-base), and a logistic choice fitted on held-out calibration databases that ranks the candidates and
-refuses below its threshold. They classify readings of a question; the deterministic builder in
-`engine/readers/readings.py` makes each reading a typed AST, so no model trained here writes SQL.
-`training/readers/` trains them from Spider, BIRD and Spider-Syn questions whose gold SQL is converted
-to readings, plus questions Gemini (`engine/llm.py`) wrote on the training databases: rewordings of
-training questions (`rewordings.py`), questions over lookup tables built from them (`lookups.py`), and
-questions for queries built in the structures the readers misread (`structures.py`); each keeps the
-gold readings of its query, and none touches a calibration or test database. Only
-`python -m training.readers.promote`
-installs a bundle into `engine/data/readers/`, recording each file's SHA-256 in
-`engine/data/weights_manifest.json`. The modules, inputs, split, and the recipe of the shipped bundle
-are in [`training/readers/README.md`](../training/readers/README.md).
+History. Until 2026-11-20 the own-data SQL planner (`engine/tables.py:TableQuery.select_query`) was
+read by four learned parts: a stage-1 schema-item model (XLM-R base), stage-2 reading models (XLM-R
+large), a re-scorer (XLM-R base), and a logistic choice fitted on held-out calibration databases that
+ranked the candidates and refused below its threshold. They classified readings of a question; the
+deterministic builder in `engine/readers/readings.py` made each reading a typed AST. `training/readers/`
+trained them from Spider, BIRD and Spider-Syn questions whose gold SQL was converted to readings, plus
+questions Gemini (`engine/llm.py`) wrote on the training databases: rewordings of training questions
+(`rewordings.py`), questions over lookup tables built from them (`lookups.py`), and questions for
+queries built in the structures the readers misread (`structures.py`); each kept the gold readings of
+its query, and none touched a calibration or test database. `python -m training.readers.promote`
+installed a bundle into `engine/data/readers/`. That pipeline is in git history before the change;
+[`training/readers/README.md`](../training/readers/README.md) says what remains. The Decisions path
+that replaced the readers trains no question reader (see the status note above).
 
 History: earlier designs trained a 0.5B LoRA SQL proposer (`training/proposer/`) and fit a linear
 arbiter on its pools (`training/rank/`). Both pipelines were removed with the models they served;
@@ -179,12 +178,13 @@ command for repository training.
 | `engine/data/schema_property_model.json` | thresholds, metrics, fingerprints, release gates |
 | `engine/data/schema_class_signatures.json` | all 926 class definitions and released class scores |
 | `engine/data/schema_training_manifest.json` | immutable corpus/trainer/runtime/evaluation provenance |
-| `engine/data/readers/` | own-data readers: `stage1/`, `stage2_*/`, `rescorer/`, `choice.json` (written only by `training/readers/promote.py`) |
-| `engine/data/weights_manifest.json` | public weight revision and every runtime SHA-256 |
+| `engine/data/sheet_line_model.json` | the sheet compiler's header decision (installed only by `training/sheet/promote.py`) |
+| `engine/data/weights_manifest.json` | public weight revision and every runtime SHA-256; under `base_models`, the hashes of the stock bge-m3 files the image bakes from the hub (not trained here) |
 
 The public bundle is `prereasoner/prereasoner-weights` at immutable revision
-`3455714f98cb253ec787473af8a5204c72ad3290`. `python -m engine.fetch_weights` downloads and verifies
-it without requiring a token.
+`cd8a03abb8fd443442f9a3e691f717f4285fd263`. `python -m engine.fetch_weights` downloads and verifies
+it without requiring a token. That revision also holds the retired readers' files (`readers/`); the
+manifest does not list them and the fetcher does not download them.
 
 ## Changing The Model
 

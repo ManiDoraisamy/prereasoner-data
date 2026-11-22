@@ -5,6 +5,27 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## Browser gate on b9b0fe50: 102 of 102 fresh, 77 of 78 existing; Sheets add-on v35 end to end; Prereasoner as served 88 of 100 against Gemini 4 Neon alone 81 (2026-11-22)
+
+- Chrome on chat.prereasoner.com, production `b9b0fe50` (engine `00344-kip`, chat `00243-jar`), the 24 demo datasets'
+  prompt.txt and eval.txt follow-ups, chat shorthand included, graded by `regress/browser_gold.py` (harness and
+  captures: `C:/work/prereasoner-readers-artifacts/gate_harness/b9b0fe50/`): fresh conversations **102 of 102** (v1: 101,
+  the formfacade-leads date range now 37,000); conversations made before the release **77 of 78**. The one miss is
+  customer-orders' shorthand "in GBP for the whole of Europe?" read as the average (145.53 GBP) in a conversation whose
+  last earlier turn asked for an average; the eval line expects the total (1,917.48), which it reads in a fresh one.
+  Every own-data answer carried its `check`; none of the 180 was warned or retried (the demo questions are ones the
+  path is sure of), 76 were answered by the world and compose routes, which carry no mark.
+- Google Sheets add-on: `sheets-addon/Code.js` (forwards `check`, sends `retry`) pushed as Apps Script version 35 and
+  set as the Marketplace SDK's draft script version (installs run 34 until the draft passes Google's review). End to
+  end through an Apps Script test deployment (head) on a new sheet of the bank-deposits rows: "how much more does the
+  biggest bank hold than the smallest one?" was answered 300 with a warning mark (45% sure), its reason and Retry;
+  Retry answered 700 (1,200 - 500, right) marked retried.
+- Head to head on a stratified sample of the dev sets (25 questions from each, seed 20261122): Prereasoner as served
+  (the Decisions path, an erred answer retried) right on **88 of 100**; Gemini 4 Neon writing the SQL for every
+  question over the same workbook right on **81** (wrong 13, cannot answer 6). Paired: both right 78, Prereasoner
+  alone 10, Neon alone 3, neither 9. By set: WikiTableQuestions 22 / 22, messy 24 / 21, fresh dev 21 / 20, DataBench
+  21 / 18. Neon spend about $1.2.
+
 ## The retry reads what the request's links reach: a Retry of "total deposits for banks in Europe" reads 3,300; 757 of 896 right, 2 asked (2026-11-22)
 
 - Released 2026-11-22, `b9b0fe50`: engine `prereasoner-api-00344-kip` (`engine@sha256:3755fc5d...`, all four build

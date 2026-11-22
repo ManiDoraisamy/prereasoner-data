@@ -444,7 +444,9 @@ only. The offline importer (`regress/sql_import.py`) turns test fixtures' SQL in
 
 This is the owner's required target, not the current production behavior. It was written against the trained
 readers (`engine/readers`, `training/readers`), which the Decisions path replaced on 2026-11-20; the reader modules it
-names are in git history before that change. Noun, column and
+names are in git history before that change. Where this section speaks in the present tense of the readers, their
+modules (`ReadingSearch`, `ASTGrammar`, `NamedSemanticModel`, `search_pool`), the re-scorer or the refusal, it
+describes the code as it stood before 2026-11-20; none of it serves today. Noun, column and
 contextualized-value meanings share a compact, selected property basis. Reuse the existing selection
 in `engine/data/alloc.json` and its provenance in `training/props/`, rather than allocating all 1,521
 ontology properties. The original basis had 67 property coordinates; the current allocation has 71
@@ -460,9 +462,11 @@ coordinate order, resolve historical non-property names explicitly, and justify 
 coverage and held-out task evidence. `engine/schema_org.py` and the pinned Schema.org 30.0 artifact
 provide vocabulary validation and inheritance; their full catalog is not the model dimension budget.
 Nouns, columns and values are different input roles with distinct identities and
-contexts, not different semantic spaces. The current readers and the interrupted CLEF AST candidate
-do not expose that common interface. Their opaque table/column/value scores are not property
-contributions, even when their final SQL tree can be inspected.
+contexts, not different semantic spaces. The readers this was written against and the interrupted CLEF
+AST candidate did not expose that common interface: their opaque table/column/value scores were not
+property contributions, even when their final SQL tree could be inspected. The Decisions path's
+shortlist (stock bge-m3 similarity and the word reader) and its closed choices are not property
+contributions either.
 
 The migration extends `engine/schema_model.py` and the existing semantic encoder/reader owners.
 One trained profile interface must cover all three roles. Coordinate meaning, scale, masks and
@@ -498,14 +502,16 @@ flowchart LR
     A --> X[Deterministic SQL/Python execution]
 ```
 
-Accepted bindings and operation readings feed the **existing** `engine/readers/readings.py:build`,
-typed AST, validation, deterministic SQL/Python emitters, request database and
-`TableQuery.select_query`. A migration must replace the current semantic binding callers coherently
-and leave one promoted bundle and selection path. It must inventory the property-head consumers in
-`engine/dimension.py`, `engine/knowledge_typing.py` and `engine/router.py`, preserve their evidence and
-source-key authorization, and recalibrate affected consumers before promotion. No serving migration
-has occurred. An unqualified shared-head feasibility candidate has been fitted; it does not yet
-provide recursive tree decisions or qualified cross-role bindings (see `docs/MODEL_CARD.md`).
+As written, accepted bindings and operation readings fed the readers' builder
+(`engine/readers/readings.py:build`, deleted on 2026-11-20; the Decisions path's decoder,
+`engine/program/decoder.py`, now builds every own-data typed AST), typed AST, validation,
+deterministic SQL/Python emitters, request database and `TableQuery.select_query`. A migration must
+replace the current semantic binding callers coherently and leave one promoted bundle and selection
+path. It must inventory the property-head consumers in `engine/dimension.py`,
+`engine/knowledge_typing.py` and `engine/router.py`, preserve their evidence and source-key
+authorization, and recalibrate affected consumers before promotion. No serving migration has
+occurred. An unqualified shared-head feasibility candidate has been fitted; it does not yet provide
+recursive tree decisions or qualified cross-role bindings (see `docs/MODEL_CARD.md`).
 
 Acceptance requires cross-role property calibration and alignment; schema/entity/rewording holdouts;
 identity, relationship-role and property-poor-domain cases; and property-coordinate interventions
@@ -517,20 +523,21 @@ frozen experiment contract, data manifest and approved budget are required befor
 
 ### Defined candidate interface and evidence plumbing (2026-11-06)
 
-`engine/readers/layout.py:named_coordinate_contract` owns the candidate's **215 defined coordinates**:
-71 selected property URIs, 64 SQL coordinates, 32 bounded ACE meaning frames, 32 structural/type/role
-coordinates and 16 dialogue controls. This is not the inherited 90-coordinate runtime allocation.
-The 10 inherited intents are inside the 64 SQL coordinates; the nine structural signals are inside
-the 32. The proposal's AST-node-presence slots have become explicit argument roles; recursive AST
-node tags and scoped identity edges remain grammar fields. Every candidate coordinate starts
-uncalibrated. The frame vocabulary is an application meaning profile, not APE grammar production names.
+`engine/readers/layout.py:named_coordinate_contract` (deleted with the readers) owned the candidate's
+**215 defined coordinates**: 71 selected property URIs, 64 SQL coordinates, 32 bounded ACE meaning
+frames, 32 structural/type/role coordinates and 16 dialogue controls. This is not the inherited
+90-coordinate runtime allocation. The 10 inherited intents are inside the 64 SQL coordinates; the
+nine structural signals are inside the 32. The proposal's AST-node-presence slots have become explicit
+argument roles; recursive AST node tags and scoped identity edges remain grammar fields. Every
+candidate coordinate starts uncalibrated. The frame vocabulary is an application meaning profile, not
+APE grammar production names.
 
 The property migration retires the class-named `GeoCoordinates` channel and trains the actual `geo`
 property afresh. It retires `taxonName`, projects scientific-name observations onto `name`, and adds
 `alternateName` as a separate alias target. These are new targets, not reinterpretations of old weights.
 No existing runtime allocation or promoted bundle changes.
 
-`NamedSemanticModel` and `NamedSemanticHead` in the existing readers model owner use one backbone and
+`NamedSemanticModel` and `NamedSemanticHead` in the readers' model owner (deleted 2026-11-20) used one backbone and
 one shared projection. The CLEF construction discards the stock choice head and reads prefill states;
 it does not invoke generation or export lexical/residual choice scores. `semantic_encode` places
 schema/data and static column/value items before the conversation, then query items afterward.
@@ -557,8 +564,8 @@ unknown individual observations still reduce coverage. The meaning head only exp
 `expected_concept` evidence. `observed_instance` profiles require verified source evidence and cannot
 be manufactured by relabelling that head's probabilities.
 
-The existing `training/readers/gold.py:semantic_labels` derives all 64 SQL presence labels and scoped
-argument occurrences from the validated typed AST. `training/readers/examples.py semantic` prepares
+The readers' `training/readers/gold.py:semantic_labels` (deleted 2026-11-20) derived all 64 SQL presence
+labels and scoped argument occurrences from the validated typed AST. `training/readers/examples.py semantic` prepares
 the original question/conversation state without inserting gold trees into input. The semantic fit
 mode in the existing trainer uses directly supervised, masked BCE; unknown coordinates have zero
 loss and gradient. Generated conversation controls require checked source-reading deltas and
@@ -785,13 +792,14 @@ start of enrichment.
 Source capabilities are intentionally different: exact dimensions, ambiguous relations, numbering-pattern metadata,
 temporal series, temporal rule sets, bounded calendars, terminology hierarchies, and rights-bearing document graphs.
 `engine/enrichment/intents.py` extracts only explicit requested attributes. `engine/calculations/` owns
-typed arithmetic intent, AST expansion, and post-ranking proof. Its registered specifications currently
-cover currency filter/conversion, ratios including per-capita measures, and flat tax, commission, and
-explicit annual one-year simple-interest amounts. The shared encoder can order eligible operands; typed
-columns, unit rules, complete join keys, and all-branch evidence determine admissibility. A planner route
-without typed computation evidence fails closed. `engine/currency_intent.py` remains the currency
-specification's ISO syntax and `rate_to_<code>` convention, not a second verifier. Ordinary own-data
-grouping does not activate enrichment.
+typed arithmetic intent, calculation plans, and the proof that a selected query realizes them. Its registered
+specifications currently cover currency filter/conversion, ratios including per-capita measures, and flat tax,
+commission, and explicit annual one-year simple-interest amounts. Typed columns, unit rules, complete join keys,
+and all-branch evidence determine admissibility. A planner route without typed computation evidence fails closed;
+a Decisions-path answer's reading certifies its own calculation, except a currency the question wants that no
+money column of the request can be read in (`engine/tables.py:_serve_ast`). `engine/currency_intent.py`
+remains the currency specification's ISO syntax and `rate_to_<code>` convention, not a second verifier.
+Ordinary own-data grouping does not activate enrichment.
 `engine/enrichment/adapters.py` returns typed match, absence, ambiguity, policy-denial, and ineligibility
 outcomes while retaining snapshot and license provenance. Temporal capabilities still abstain
 because row-level temporal AST semantics are not implemented in the generic enrichment planner.

@@ -31,12 +31,12 @@ connects tables to public knowledge, private references, and domain-specific cal
 ### Short feature list
 
 - **See the query** - Read the SQL that produced the result.
-- **Know who built it** - No model writes SQL. Learned readers read your question, the engine builds and checks the query, and when it is unsure it tells you how it read the question.
+- **Know who built it** - The engine builds and checks every query it decides. When it is unsure it marks the answer, and an answer it holds most likely wrong is retried with a query Gemini writes, shown with its SQL.
 - **Check the rows** - Open the matched input and reference rows.
 - **Use public facts** - Join approved source data when your table does not contain the answer.
 - **Keep the calculation** - See currency, ratio, tax, and commission operands and units.
 - **Repeat the answer** - Fixed data and model files produce the same query and result again. An answer that needed Gemini is the exception, and it is labelled.
-- **Refuse when the data is not enough** - An unsupported answer is returned for review instead of silently filled in.
+- **Say when the data is not enough** - A missing fact is reported instead of silently filled in, and an answer the engine doubts carries a mark that opens its reason.
 
 ### Call to action
 
@@ -154,10 +154,10 @@ run the same request against the same data and inspect what changed when the res
 ### Short feature list
 
 - **Named inputs** - See which columns, values, and source facts were used.
-- **Built by the engine** - No model writes SQL. Learned readers read your question, the engine builds and checks the query, and when it is unsure it tells you how it read the question.
+- **Built by the engine** - The engine builds and checks every query it decides. When it is unsure it marks the answer, and an answer it holds most likely wrong is retried with a query Gemini writes, shown with its SQL.
 - **Repeatable results** - Fixed inputs and artifacts produce the same plan and result.
 - **Source-aware answers** - Read the source release and matched reference rows.
-- **Clear limits** - Missing or ambiguous evidence produces a reviewable refusal.
+- **Clear limits** - Missing evidence is reported, and an answer the engine is unsure of is served with a mark and its reason.
 - **Local deployment** - Run the engine with your own data and infrastructure.
 
 ## Community Edition
@@ -204,7 +204,7 @@ Use these short labels in the product menu:
 Keep these links near claims that depend on implementation details:
 
 - [Architecture](ARCHITECTURE.md)
-- [Deterministic SQL planner](SQL_AST.md)
+- [From question to SQL](PROMPT_TO_SQL.md)
 - [Calculations](CALCULATIONS.md)
 - [Source data catalog](SOURCE_DATA.md)
 - [Open-source release guide](OPEN_SOURCE_RELEASE.md)

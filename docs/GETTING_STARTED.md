@@ -234,12 +234,13 @@ release browser test.
 | AST nodes/rendering | `engine/sql_ast.py` | `tests.test_sql_ast` |
 | Dual SQL/Python analysis emission | `engine/deterministic/` | `tests.test_deterministic_emitters` |
 | The Decisions path: closed questions, decoding, verification, the per-answer decision | `engine/program/` | `tests.test_answer`, `tests.test_program`, `regress.run_dev_decisions` |
-| Own-data selection: the request's grids, the pool, served, warned or asked | `engine/tables.py` (`select_query`), `engine/prepared.py`, `engine/sql_rank.py` | `tests.test_sql_ast` |
+| Own-data selection: the request's grids, the pool, answered, warned or most likely wrong | `engine/tables.py` (`select_query`), `engine/prepared.py`, `engine/sql_rank.py` | `tests.test_sql_ast` |
+| The retry of an answer most likely wrong (Gemini 4 Neon's one guarded, read-only query) | `engine/retry.py`, `engine/llm.py` (`write_query`) | `tests.test_sql_ast`, `tests.test_connected`, `tests.test_llm` |
 | FK inference | `engine/relations.py` | `tests.test_sql_ast`, `tests.test_master_ingest` |
 | Saved references | `engine/master.py` | `tests.test_master_ingest` |
 | Routing | `engine/routing.py` | `tests.test_routing` |
 | Shared enrichment policy | `engine/enrichment/registry.py` | `tests.test_enrichment` |
-| Typed calculation registry, expansion, and verification | `engine/calculations/` | `tests.test_calculations`, `tests.test_sql_ast` |
+| Typed calculation registry, plans, and verification | `engine/calculations/` | `tests.test_calculations`, `tests.test_sql_ast` |
 | Currency syntax and rate-column convention | `engine/currency_intent.py` | `tests.test_calculations`, `tests.test_enrichment` |
 | Requested enrichment attributes | `engine/enrichment/intents.py` | `tests.test_enrichment` |
 | Source lookup policy and ambiguity | `engine/enrichment/adapters.py` | `tests.test_enrichment` |

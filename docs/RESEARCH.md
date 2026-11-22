@@ -1,6 +1,6 @@
 # Prereasoner - research positioning
 
-> **Status (2026-11-20).** The trained own-data readers this document describes (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change. The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); what this document says of the readers is historical.
+> **Status (2026-11-22).** The trained own-data readers (`engine/readers`, their weights in `engine/data/readers`, their training in `training/readers`) were replaced by the Decisions path (`engine/program`, `DECISIONS.md` 2026-11-20); they remain in git history before that change. Since 2026-11-21 the engine never asks back for its own uncertainty: an answer most likely wrong is retried by one query Gemini 4 Neon writes (`engine/retry.py`), the one place a model writes SQL. The current own-data path is in [PROMPT_TO_SQL.md](PROMPT_TO_SQL.md) and [ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner); the sections below describe it, and what they say of the readers is historical.
 
 This document explains the approach, the evidence behind it, and the limits of the claims. For
 the implementation, see [ARCHITECTURE.md](ARCHITECTURE.md). For model reproduction, see
@@ -53,9 +53,11 @@ dimensions; the named dims *are the product* — they drive the typing, the oper
 the entity resolution that assemble the query. Concretely, "total amount in France" over
 `customers + orders` becomes
 `… JOIN knowledgebase."city" ON "city".qid = bridge.world_key WHERE "city".country = 'Q142'`
-and computes **270** — no autoregressive generation anywhere in the loop. No model writes SQL for any
-question. An own-data question is read by learned encoder readers as named readings, and a
-deterministic builder makes each reading a typed query. Section 4 describes the boundary.
+and computes **270** — no autoregressive generation anywhere in the loop. An own-data question takes
+the Decisions path: an external closed-choice model answers closed questions whose options the engine
+built, and the engine's deterministic decoder builds every query it decides as a typed AST. The one
+written query is the retry of an answer the engine holds most likely wrong (Gemini 4 Neon, shown with
+its SQL). Section 4 describes the boundary.
 
 **Scope, stated honestly.** This is valuable and shippable for the **declarative** slice
 (CSV/Sheets Q&A → SQL): declarative targets work with small models because the parse tree is
@@ -118,8 +120,8 @@ stack collapses into one exact query. RAG searches; this queries.*
 
 **One honest caveat.** The optional hosted language assistant can present results, resolve
 ambiguity, and orchestrate tools, but it does not own the executed query or numeric result.
-Learned, *soft* engine steps include the own-data readers' readings of a question (section 4),
-**type classification + entity
+Soft engine steps include the external closed-choice model's probabilities on the own-data path
+(section 4), **type classification + entity
 resolution** — which world table a column proposes via Schema.org named-property class scores and
 calibrated thresholds, and which world entity a cell resolves to (`knowledgebase."words"` exact-norm
 match first, then a bge-small cosine nearest-neighbour above threshold). Both steps are
@@ -137,27 +139,29 @@ precisely what it declines to do.
 to *emit a SQL string* autoregressively (optionally in an agent loop with retries and
 self-critique). That string is a black-box generation: it can hallucinate columns, silently drop
 a clause, or invent a join, and the only "explanation" available is a second after-the-fact
-rationalization from the same model. Prereasoner inverts this. **No model's text is executed, and
-no model writes SQL.** For an own-data question, learned encoder readers (XLM-R, `engine/readers/`)
-read the question beside the schema and classify named facts about each schema item: whether a table
-is used, which aggregate a column is selected under, which operator compares it with which span of the
-question, what is grouped, sorted and limited, and whether two blocks combine by a set operation or a
-nested condition. A deterministic builder makes each reading a typed tree, joining tables along the
-specified FK structure; the candidates run on a copy of the data, the ones that fail or are not grounded
-are dropped, and a learned re-scorer orders the rest. For composition and world questions the operator
-(`SUM`/`COUNT`/`AVG`) is read off the anchored `intent_agg_*` dims, and the world filter is a QID
-equality, not a generated literal. Because every piece is a classified reading or computed by an
+rationalization from the same model. Prereasoner inverts this for every answer it decides: **no
+model writes those queries.** For an own-data question (the Decisions path), the sheet compiler
+compiles the workbook, stock bge-m3 and the engine's word reader shortlist what the question may mean,
+and an external closed-choice model (Gemini's Decisions API) answers closed questions whose options the
+engine built, with probabilities only. The engine's deterministic decoder builds the most probable
+programs of that reading as typed trees, the verifier runs them on the request's data, and one more
+closed question weighs those that returned rows, per answer. For composition and world questions the
+operator (`SUM`/`COUNT`/`AVG`) is read off the anchored `intent_agg_*` dims, and the world filter is a
+QID equality, not a generated literal. Because every piece is a closed choice or computed by an
 audited rule, a wrong answer is a **traceable wrong query** whose reading is shown as its "read as"
-line, not an unexplained hallucination — and the system declines rather than bluffs: the readers'
-learned refusal, fitted on held-out databases, replies "I read this as …" instead of serving a reading
-it is unsure of, and the world routes keep a wording gate that returns a "did you mean?" rephrasing when
-a content word resolved but never reached the SQL.
+line, not an unexplained hallucination — and the system marks rather than bluffs: an answer it is
+unsure of is served with a warning mark, and one it holds most likely wrong is retried and marked. The
+retry is the one exception to the inversion: Gemini 4 Neon writes one SQLite query over the workbook,
+which the engine guards, runs read-only and shows with its SQL. The engine never asks back for its own
+uncertainty, and the world routes keep a wording gate that returns a "did you mean?" rephrasing when a
+content word resolved but never reached the SQL.
 
-**What this costs.** Classifying readings over a fixed form trades the open-endedness of generated SQL
-for answers whose every step the engine builds: a shape the readings form cannot hold (a self-join, a
-derived table, three blocks) is never a candidate. Recorded results are in
-`spider/results/RESULTS.md`; the readers' training sources include Spider's dev questions, so the Spider
-test set is their held-out measurement.
+**What this costs.** Choosing among programs of a fixed language trades the open-endedness of
+generated SQL for answers whose every step the engine builds: the program language reads one table at
+a time, with the columns the request's keys and knowledgebase links reach, so a question that needs a
+many-to-many join or a set operation is answered by the retry or marked. Recorded results are in
+`spider/results/RESULTS.md`; runs recorded before 2026-11-20 measured the readers, whose training
+sources included Spider's dev questions.
 
 **Versus post-hoc probing / SAEs.** The standard interpretability move trains a *separate*
 linear probe (or a sparse autoencoder) on a frozen model's activations *after* training, then
@@ -248,15 +252,16 @@ The tabular system's load-bearing fragilities, stated plainly:
    then embedding NN ≥ threshold. A value missing from the pinned snapshot is not fetched during
    serving; it is an explicit abstention. Measure the near-miss band and the coverage of each
    released snapshot before relying on a new type under load.
-5. **The readers' training distribution.** The own-data readers are fine-tuned on Spider, BIRD and
-   Spider-Syn questions (`training/readers/README.md`), and the refusal's threshold is fitted on
-   held-out Spider databases. Spreadsheet wording and schemas unlike those benchmarks may read worse
-   or be declined more often; measure the refusal rate and the answered accuracy on such data
+5. **The closed-choice model.** Own-data choices come from an external model (Gemini's Decisions
+   API) whose training Prereasoner does not control, decided per answer at fixed thresholds (`T_ERR`
+   0.42, `T_FLAG` 0.575). Spreadsheet wording and schemas unlike the development sets may be warned
+   or retried more often; measure right, warned, retried and unwarned-wrong answers on such data
    separately.
 
-> Note: the own-data readers are encoders that classify readings; none of them generates text, and
-> the composition and world operator is read from the anchored `intent_*` dims. The generalization
-> risk is real but lives in (1)–(5), not in a hidden side model.
+> Note: the own-data closed-choice model returns probabilities over options the engine built and
+> writes no text; the one model that writes a query is the retry's, and its query is guarded, run
+> read-only and shown with its SQL. The composition and world operator is read from the anchored
+> `intent_*` dims. The generalization risk is real but lives in (1)–(5), not in a hidden side model.
 
 ---
 
@@ -272,8 +277,10 @@ There are three model tracks and one historical warm start:
 3. **Schema.org named-dimension model** — `python -m training.schema_org.corpus` builds the
    group-disjoint multi-source corpus; `train_property_head.py` trains the URI-indexed head;
    `promote.py` installs calibrated property and class artifacts used by `engine/router.py`.
-4. **Own-data readers** — `training/readers/README.md` records the labels, examples, stage-1 and
-   stage-2 trainers, re-scorer, refusal fit, and the one promotion step (`training/readers/promote.py`).
+4. **Own-data readers (removed 2026-11-20)** — their labels, examples, stage-1 and stage-2 trainers,
+   re-scorer, refusal fit and promotion step are in git history before that change. The Decisions
+   path that replaced them uses stock bge-m3 and an external closed-choice model, and trains no
+   question reader.
 5. **Historical gen20 taxonomy** — `training/train/`, `training/taxonomy/`, and
    `training/anchor/` supply the warm-start lineage. They do not reproduce the shipped property
    model by themselves.
@@ -291,10 +298,12 @@ boundary.
 > production class vocabulary is the multi-source Schema.org 30.0 head: named property probabilities
 > form calibrated class proposals, and exact source-key grounding authorizes a world join. The shared
 > Qwen/LoRA representation also supplies structural intent for composition and the world routes.
-> Own-data questions are read by learned encoder readers as named readings, which a deterministic
-> builder makes into typed ASTs; a learned re-scorer orders the candidates that run and a learned
-> refusal declines a reading it is unsure of. Foreign-key discovery, AST construction, calculation
-> verification, and execution are deterministic, and no model writes SQL.
+> Own-data questions take the Decisions path: an external closed-choice model answers closed questions
+> whose options the engine built, a deterministic decoder builds the programs as typed ASTs, and one
+> more closed question chooses among those that run, per answer; an answer the engine is unsure of is
+> marked, and one it holds most likely wrong is retried with one guarded query Gemini 4 Neon writes,
+> shown with its SQL, the one place a model writes SQL. Foreign-key discovery, AST construction,
+> calculation verification, and execution are deterministic.
 > Schema.org defines the semantic vocabulary; Wikidata and publisher datasets provide observations,
 > QID bridges, and pinned facts. All ontology classes are representable, while only the calibrated
 > supported subset is servable and the rest abstain. Historical taxonomy experiments remain lineage,

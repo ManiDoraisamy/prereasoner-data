@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1160" viewBox="0 0 1600 1160" role="img" aria-labelledby="title desc">
   <title id="title">How a question becomes an answer in Prereasoner</title>
-  <desc id="desc">A user asks a question about uploaded tables. The chat orchestrator asks Gemini to select or restate the question as a constrained tool call. The engine routes the request, reads the question against the schema with encoder readers, builds and selects typed SQL candidates deterministically, emits SQL and, for supported plans, readable Python from one shared plan, executes against a private request database, and returns computed result rows and evidence. The orchestrator formats the engine's result for display.</desc>
+  <desc id="desc">A user asks a question about uploaded tables. The chat orchestrator asks Gemini to select or restate the question as a constrained tool call. The engine routes the request; for an own-data question an external closed-choice model (Gemini's Decisions API) answers closed questions whose options the engine built, the engine's decoder builds typed SQL programs deterministically, the verifier runs them, and one more closed choice selects one (an answer most likely wrong is retried with one guarded SQLite query Gemini 4 Neon writes, shown with its SQL). The engine emits SQL and, for supported plans, readable Python from one shared plan, executes against a private request database, and returns computed result rows and evidence. The orchestrator formats the engine's result for display.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0b1220"/><stop offset="1" stop-color="#111d31"/>
@@ -81,7 +81,7 @@
   <!-- Engine boundary -->
   <rect x="72" y="408" width="1456" height="495" rx="22" fill="url(#engine)" stroke="#2a6470" stroke-width="2"/>
   <text x="102" y="449" class="eyebrow" fill="#7de0cc">ENGINE · DETERMINISTIC QUERY CONSTRUCTION AND EXECUTION</text>
-  <text x="102" y="476" class="small">The learned readers supply evidence about meaning; ordinary engine code owns the query, execution, and result.</text>
+  <text x="102" y="476" class="small">An external closed-choice model weighs options the engine built; engine code builds the query and computes the result. An answer most likely wrong is retried with one guarded query Gemini writes, shown with its SQL.</text>
 
   <rect x="102" y="515" width="255" height="174" rx="14" class="card"/>
   <circle cx="130" cy="545" r="15" class="number"/><text x="130" y="550" text-anchor="middle" class="numberText">5</text>
@@ -93,20 +93,20 @@
 
   <path d="M357 602 H393" class="connector"/>
   <rect x="405" y="515" width="286" height="174" rx="14" class="card"/>
-  <text x="429" y="550" class="head">Encoder readers + schema</text>
-  <text x="429" y="581" class="body">Read the question beside table and</text>
-  <text x="429" y="602" class="body">column names, types, samples, and</text>
-  <text x="429" y="623" class="body">question-linked values.</text>
+  <text x="429" y="550" class="head">Closed choices + schema</text>
+  <text x="429" y="581" class="body">bge-m3 + word reader shortlist;</text>
+  <text x="429" y="602" class="body">Gemini's Decisions API picks among</text>
+  <text x="429" y="623" class="body">options the engine built.</text>
   <rect x="429" y="645" width="237" height="27" rx="13" class="pill"/>
-  <text x="447" y="663" class="pillText">ENCODER SIGNALS · NO SQL GENERATION</text>
+  <text x="447" y="663" class="pillText">PROBABILITIES ONLY · NO SQL</text>
 
   <path d="M691 602 H727" class="connector"/>
   <rect x="739" y="515" width="260" height="174" rx="14" class="card"/>
   <text x="763" y="550" class="head">Deterministic planner</text>
-  <text x="763" y="581" class="body">Builds typed SQL AST candidates</text>
-  <text x="763" y="602" class="body">from reader signals; grounds them</text>
-  <text x="763" y="623" class="body">against schema and relationships.</text>
-  <text x="763" y="660" class="small">Re-scores, executes, and selects a fit.</text>
+  <text x="763" y="581" class="body">Decoder builds typed SQL AST</text>
+  <text x="763" y="602" class="body">programs; the verifier runs each;</text>
+  <text x="763" y="623" class="body">one closed choice weighs them.</text>
+  <text x="763" y="660" class="small">Unsure: marked. Likely wrong: retried.</text>
 
   <path d="M999 602 H1035" class="connector"/>
   <rect x="1047" y="515" width="218" height="174" rx="14" class="card"/>
