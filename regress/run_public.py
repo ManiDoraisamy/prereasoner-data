@@ -34,6 +34,7 @@ usage: python -X utf8 -m regress.run_public --run NAME --set SET --system SYSTEM
        python -X utf8 -m regress.run_public --compare RUN_A RUN_B --set SET [--system engine]
        python -X utf8 -m regress.run_public --summary RUN
        python -X utf8 -m regress.run_public --census RUN          (wtq-train: the misses by SQUALL query family)
+       python -X utf8 -m regress.run_public --oracle RUN [--boost 4]   (wtq-train: what a reading naming SQUALL's columns builds)
        python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 2100 --squall "max .* - min"   (one SQUALL family)
 """
 from __future__ import annotations
@@ -512,6 +513,106 @@ def census(run: str, show: str | None = None) -> None:
                 print(" ", key, "|", row["question"][:90], "|", (row.get("squall") or "")[:110], "| read:", row.get("read_as", "")[:80])
 
 
+SQUALL_COLUMN = re.compile(r"\bc(\d+)(?:_(\w+))?\b")
+SQUALL_LITERAL = re.compile(r"'((?:[^']|'')*)'")
+SQUALL_OPERATIONS = ((r"\bcount \(", "aggregate", "count"), (r"\bsum \(", "aggregate", "sum"), (r"\bavg \(", "aggregate", "avg"),
+                     (r"\bmax \(", "aggregate", "max"), (r"\bmin \(", "aggregate", "min"), (r"\bdesc\b", "direction", "highest"),
+                     (r"order by [^)]*?(?<!desc)\blimit\b", "direction", "lowest"), (r"\) - \(| - ", "calc_op", "-"))
+
+
+def oracle_reading(sql: str, table) -> list[str]:
+    """The coordinates SQUALL's query names on a compiled WikiTableQuestions table: each column it reads (c<k> is the
+    csv's k-th column; a part of a text column, c<k>_number, its figure columns too) in the measure, shown, key and
+    filter slots, each string it compares with as that column's value, and its operations."""
+    from engine.program.names import coordinate
+    from engine.program.semantics import fold
+    low = " ".join(sql.lower().split())
+    columns = table.table.columns
+    sources = [column for column in columns if column.col >= 0]
+    named = set()
+    for k, part in SQUALL_COLUMN.findall(low):
+        at = int(k) - 1
+        if not 0 <= at < len(sources):
+            continue
+        source = sources[at]
+        named.add(source.position)
+        if part:
+            named.update(column.position for column in columns if column.col < 0 and column.path[:-1] == (source.path or (source.name,)))
+    names = [f"{table.id}.{position}" for position in sorted(named)]
+    out = [coordinate(slot, name) for name in names for slot in ("measure", "shown", "key", "filter")]
+    for literal in SQUALL_LITERAL.findall(low):
+        out.extend(coordinate("value", name, fold(literal.replace("''", "'"))) for name in names)
+    out.extend(coordinate(slot, value) for pattern, slot, value in SQUALL_OPERATIONS if re.search(pattern, low))
+    top = low.split(" from ", 1)[0]
+    form = ("calc" if re.search(r"\) [-+] \(", low) else "rank" if re.search(r"\border by\b.*\blimit\b", low)
+            else "agg" if re.search(r"\b(count|sum|avg|max|min) \(", top) else "show")
+    out.append(coordinate("form", form))
+    if form == "rank":
+        out.append(coordinate("entity", "group" if " group by " in low else "line"))
+    for operator in (">=", "<=", "!=", ">", "<"):
+        if re.search(rf"\s{re.escape(operator)}\s", low):
+            out.append(coordinate("comparison", operator))
+    for number in re.findall(r"(?<![\w.'])(\d+(?:\.\d+)?)(?![\w.'])", low.split(" where ", 1)[1] if " where " in low else ""):
+        from engine.program.semantics import number_text
+        out.append(coordinate("number", number_text(float(number))))
+    return out
+
+
+def oracle(run: str, boost: float, limit: int | None) -> None:
+    """How many of a run's unbuilt training questions a reading naming SQUALL's columns, values and operations builds:
+    each one is read again with those coordinates raised by ``boost``, decoded and verified, and stopped before the
+    choice (no new API call: the reading's calls are recorded). An upper bound on what a better reading reaches; the
+    rest needs language the engine lacks, or a compiled table SQUALL's columns do not map onto."""
+    import regress.run_dev_decisions as dev
+    import engine.program.answer as answer_module
+    from engine.prepared import scratch_database
+    from engine.program.decoder import Decoder
+    from engine.program.scoring import Reading
+    from engine.tables import TableQuery
+
+    class Stop(Exception):
+        pass
+
+    held = records(run, "wtq-train", "engine")
+    targets = {key for key, row in held.items() if not any(row.get("listed_right") or [])}
+    items, _, sql = items_of("wtq-train", 100000, 0)     # every annotated training question; the run's are kept below
+    items = [item for item in items if item.id in targets][:limit]
+    llm.DECISIONS_TRANSPORT = dev.Replay(eval_sets.CallStore(), WORK / "oracle_misses")
+    state: dict = {}
+    real_decode, real_verify = Decoder.decode, answer_module.verify
+
+    def decode(self, reading, *args, **kwargs):
+        raised = {name: reading.scores.get(name, 0.0) + boost for name in state["boost"]}
+        return real_decode(self, Reading({**reading.scores, **raised}), *args, **kwargs)
+
+    def verify(programs, tables, expected, top):
+        state["verified"] = real_verify(programs, tables, expected, top=top)
+        raise Stop
+
+    Decoder.decode, answer_module.verify = decode, verify
+    planner, reached, mapped, outcome = TableQuery(), 0, 0, collections.Counter()
+    try:
+        for item in items:
+            tables = dev.tables_of(item)
+            catalog = item.load()
+            state.update(boost=oracle_reading(sql[item.id], catalog.tables[0]), verified=None)
+            mapped += bool(state["boost"])
+            with scratch_database():
+                try:
+                    planner.select_query(item.question, tables)
+                except Stop:
+                    pass
+                except Exception as error:       # a reading call the store lacks: the question is not measured
+                    outcome[type(error).__name__] += 1
+                    continue
+            right = any(candidate.result.rows and dev.graded(item, candidate.result.rows) for candidate in state["verified"] or ())
+            reached += right
+            outcome["built" if right else "still not built"] += 1
+    finally:
+        Decoder.decode, answer_module.verify = real_decode, real_verify
+    print(f"{run}: {len(items)} unbuilt training questions, {mapped} with SQUALL columns mapped; with SQUALL's reading raised by {boost}: {dict(outcome)}")
+
+
 def keep(run: str) -> None:
     """The run's working records packed into regress/sets/public/records/<run>/ (no timestamp in the archives)."""
     for path in sorted((WORK / run).glob("*/*.jsonl")):
@@ -543,6 +644,8 @@ def main() -> int:
     parser.add_argument("--census")
     parser.add_argument("--show")
     parser.add_argument("--keep", help="pack a run's records into regress/sets/public/records")
+    parser.add_argument("--oracle", help="wtq-train: how many of a run's unbuilt questions SQUALL's reading builds")
+    parser.add_argument("--boost", type=float, default=4.0)
     args = parser.parse_args()
     if args.new_sample:
         record = new_sample(args.new_sample, args.size or 1000, args.seed)
@@ -559,6 +662,9 @@ def main() -> int:
         return 0
     if args.keep:
         keep(args.keep)
+        return 0
+    if args.oracle:
+        oracle(args.oracle, args.boost, args.limit)
         return 0
     if not (args.run and args.set):
         parser.error("--run and --set are required")
