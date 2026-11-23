@@ -1,0 +1,60 @@
+{
+ "id": "nydoh_hospital_acquired_infections",
+ "file": "nydoh_hospital_acquired_infections.csv",
+ "questions": [
+  {
+   "question": "What was the risk-adjusted indicator rate for surgical site infections following colon procedures at White Plains Hospital Center in 2014?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "8.75",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsubset = df[(df['Hospital Name'] == 'White Plains Hospital Center') & (df['Indicator Name'] == 'SSI Colon') & (df['Year'] == 2014)]\nresult = float(subset['Indicator Value'].iloc[0])",
+   "qid": "nydoh_hospital_acquired_infections#1"
+  },
+  {
+   "question": "How many central line-associated bloodstream infections were predicted for Albany Medical Center Hospital's cardiothoracic intensive care unit in 2012?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "2.81",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsubset = df[(df['Hospital Name'] == 'Albany Medical Center Hospital') & (df['Indicator Name'] == 'CLABSI Cardiothoracic ICU') & (df['Year'] == 2012)]\nresult = float(subset['Infections Predicted'].iloc[0])",
+   "qid": "nydoh_hospital_acquired_infections#2"
+  },
+  {
+   "question": "How many total surgical site infections were observed following hip procedures at John T Mather Memorial Hospital of Port Jefferson New York Inc in 2010?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "3",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsubset = df[(df['Hospital Name'] == 'John T Mather Memorial Hospital of Port Jefferson New York Inc') & (df['Indicator Name'] == 'SSI Hip') & (df['Year'] == 2010)]\nresult = int(subset['Infections Observed'].iloc[0])",
+   "qid": "nydoh_hospital_acquired_infections#3"
+  },
+  {
+   "question": "In 2017, how many Clostridium difficile hospital-onset cases were documented across all New York State hospitals combined?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "5131",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsubset = df[(df['Hospital Name'] == 'New York State - All Hospitals') & (df['Indicator Name'] == 'CDI Hospital Onset') & (df['Year'] == 2017)]\nresult = int(subset['Infections Observed'].iloc[0])",
+   "qid": "nydoh_hospital_acquired_infections#4"
+  },
+  {
+   "question": "Which calendar year recorded the highest number of tracking records in the hospital-acquired infections dataset?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2019",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nresult = str(df['Year'].value_counts().idxmax())",
+   "qid": "nydoh_hospital_acquired_infections#5"
+  },
+  {
+   "question": "Did Richmond University Medical Center have a significantly higher rate than the New York State average for hospital-onset Clostridium difficile infections in 2017?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsubset = df[(df['Hospital Name'] == 'Richmond University Medical Center') & (df['Indicator Name'] == 'CDI Hospital Onset') & (df['Year'] == 2017)]\ncomp = subset['Comparison Results'].iloc[0]\nresult = 'yes' if 'Significantly higher' in str(comp) else 'no'",
+   "qid": "nydoh_hospital_acquired_infections#6"
+  }
+ ]
+}

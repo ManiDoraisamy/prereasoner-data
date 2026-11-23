@@ -1,0 +1,35 @@
+{
+ "id": "census_hvs_homeownership_rates_by_region",
+ "answers": [
+  {
+   "id": "census_hvs_homeownership_rates_by_region#1",
+   "answer": "71.4",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\n\ncur_year = None\nresult = None\nfor idx, row in df.iterrows():\n    val_a = str(row[0]).strip()\n    m = re.match(r'^(\\d{4})', val_a)\n    if m and len(val_a) <= 7 and not any(r in val_a for r in ['United', 'North', 'Midwest', 'South', 'West']):\n        cur_year = int(m.group(1))\n    elif cur_year == 2020 and 'Midwest' in val_a:\n        val = str(row[2]).replace('*', '').strip()\n        result = float(val)\n        break"
+  },
+  {
+   "id": "census_hvs_homeownership_rates_by_region#2",
+   "answer": "7.9",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\n\ncur_year = None\nmidwest_q3 = None\nnortheast_q3 = None\n\nfor idx, row in df.iterrows():\n    val_a = str(row[0]).strip()\n    m = re.match(r'^(\\d{4})', val_a)\n    if m and len(val_a) <= 7 and not any(r in val_a for r in ['United', 'North', 'Midwest', 'South', 'West']):\n        cur_year = int(m.group(1))\n    elif cur_year == 2024:\n        if 'Midwest' in val_a:\n            midwest_q3 = float(str(row[3]).replace('*', '').strip())\n        elif 'Northeast' in val_a:\n            northeast_q3 = float(str(row[3]).replace('*', '').strip())\n\nresult = round(midwest_q3 - northeast_q3, 2)"
+  },
+  {
+   "id": "census_hvs_homeownership_rates_by_region#3",
+   "answer": "65.9",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\n\ncur_year = None\nrates = []\nfor idx, row in df.iterrows():\n    val_a = str(row[0]).strip()\n    m = re.match(r'^(\\d{4})', val_a)\n    if m and len(val_a) <= 7 and not any(r in val_a for r in ['United', 'North', 'Midwest', 'South', 'West']):\n        cur_year = int(m.group(1))\n    elif cur_year == 2023 and 'United States' in val_a:\n        for c in [1, 2, 3, 4]:\n            rates.append(float(str(row[c]).replace('*', '').strip()))\n        break\n\nresult = round(sum(rates) / len(rates), 2)"
+  },
+  {
+   "id": "census_hvs_homeownership_rates_by_region#4",
+   "answer": "yes",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\n\ncur_year = None\nrate = None\nfor idx, row in df.iterrows():\n    val_a = str(row[0]).strip()\n    m = re.match(r'^(\\d{4})', val_a)\n    if m and len(val_a) <= 7 and not any(r in val_a for r in ['United', 'North', 'Midwest', 'South', 'West']):\n        cur_year = int(m.group(1))\n    elif cur_year == 2020 and 'South' in val_a:\n        rate = float(str(row[2]).replace('*', '').strip())\n        break\n\nresult = 'yes' if rate > 70 else 'no'"
+  },
+  {
+   "id": "census_hvs_homeownership_rates_by_region#5",
+   "answer": "2019",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\n\ncur_year = None\nyear_rates = {}\nfor idx, row in df.iterrows():\n    val_a = str(row[0]).strip()\n    m = re.match(r'^(\\d{4})', val_a)\n    if m and len(val_a) <= 7 and not any(r in val_a for r in ['United', 'North', 'Midwest', 'South', 'West']):\n        cur_year = int(m.group(1))\n    elif cur_year in range(2015, 2020) and 'United States' in val_a:\n        year_rates[cur_year] = float(str(row[4]).replace('*', '').strip())\n\nbest_year = max(year_rates, key=year_rates.get)\nresult = str(best_year)"
+  },
+  {
+   "id": "census_hvs_homeownership_rates_by_region#6",
+   "answer": "8",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\n\ncur_year = None\nyear_rates = {}\nfor idx, row in df.iterrows():\n    val_a = str(row[0]).strip()\n    m = re.match(r'^(\\d{4})', val_a)\n    if m and len(val_a) <= 7 and not any(r in val_a for r in ['United', 'North', 'Midwest', 'South', 'West']):\n        cur_year = int(m.group(1))\n    elif cur_year in range(2010, 2020) and 'United States' in val_a:\n        year_rates[cur_year] = float(str(row[4]).replace('*', '').strip())\n\nresult = sum(1 for y, r in year_rates.items() if r >= 64.0)"
+  }
+ ]
+}

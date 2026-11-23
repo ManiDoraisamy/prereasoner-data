@@ -1,0 +1,87 @@
+{
+ "id": "ers_rural_urban_continuum_codes_2023",
+ "file": "ers_rural_urban_continuum_codes_2023.xlsx",
+ "questions": [
+  {
+   "question": "According to the 2020 Census counts, what was the total population of Baldwin County, Alabama?",
+   "sheet": "Rural-urban Continuum Code 2023",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "231767",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Rural-urban Continuum Code 2023')\nrow = df[(df['State'] == 'AL') & (df['County_Name'] == 'Baldwin County')]\nresult = int(row['Population_2020'].iloc[0])",
+   "qid": "ers_rural_urban_continuum_codes_2023#1",
+   "pass1": true,
+   "result": 231767,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Across all listed counties and equivalents, how many fall under rural-urban continuum code 1 for metro areas with at least 1 million residents?",
+   "sheet": "Rural-urban Continuum Code 2023",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "483",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Rural-urban Continuum Code 2023')\nresult = int((df['RUCC_2023'] == 1).sum())",
+   "qid": "ers_rural_urban_continuum_codes_2023#2",
+   "pass1": true,
+   "result": 483,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Based on the documentation notes for Virginia independent cities, which county was combined with Martinsville City?",
+   "sheet": "Documentation",
+   "kind": "lookup",
+   "answer_type": "name",
+   "answer": "Henry County",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Documentation', header=None)\nrow = df[df[1].astype(str).str.strip() == 'Martinsville City']\nresult = str(row[3].iloc[0]).strip()",
+   "qid": "ers_rural_urban_continuum_codes_2023#3",
+   "pass1": true,
+   "result": "Henry County",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Nationwide, were there more nonmetropolitan counties with an urban population under 5,000 not adjacent to a metro area (code 9) than counties in major metro areas of 1 million or more (code 1)?",
+   "sheet": "Rural-urban Continuum Code 2023",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Rural-urban Continuum Code 2023')\ncount_9 = (df['RUCC_2023'] == 9).sum()\ncount_1 = (df['RUCC_2023'] == 1).sum()\nresult = 'yes' if count_9 > count_1 else 'no'",
+   "qid": "ers_rural_urban_continuum_codes_2023#4",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which Virginia independent cities were combined with Rockbridge County according to the documentation?",
+   "sheet": "Documentation",
+   "kind": "lookup",
+   "answer_type": "list",
+   "answer": "[\"Buena Vista City\", \"Lexington City\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Documentation', header=None)\nrows = df[df[3].astype(str).str.strip() == 'Rockbridge County']\nresult = sorted(rows[1].astype(str).str.strip().tolist())",
+   "qid": "ers_rural_urban_continuum_codes_2023#5",
+   "pass1": true,
+   "result": [
+    "Buena Vista City",
+    "Lexington City"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the combined 2020 population across the three island districts of the U.S. Virgin Islands?",
+   "sheet": "Rural-urban Continuum Code 2023",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "87146",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Rural-urban Continuum Code 2023')\nvi_df = df[df['State'] == 'VI']\nresult = int(vi_df['Population_2020'].sum())",
+   "qid": "ers_rural_urban_continuum_codes_2023#6",
+   "pass1": true,
+   "result": 87146,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

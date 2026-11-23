@@ -1,0 +1,35 @@
+{
+ "id": "hud_pit_veteran_counts_by_state",
+ "answers": [
+  {
+   "id": "hud_pit_veteran_counts_by_state#1",
+   "answer": "9310",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hud_pit_veteran_counts_by_state.xlsx', sheet_name='2024')\nca_row = df[df['State'] == 'CA']\nresult = int(ca_row['Homeless Veterans, 2024'].values[0])"
+  },
+  {
+   "id": "hud_pit_veteran_counts_by_state#2",
+   "answer": "CA",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hud_pit_veteran_counts_by_state.xlsx', sheet_name='2023')\ndf = df[~df['State'].astype(str).str.strip().str.lower().isin(['total', 'nan', 'none'])]\ndf = df.dropna(subset=['State', 'Homeless Veterans, 2023'])\ndf = df[df['Homeless Veterans, 2023'] != '.']\ndf['Homeless Veterans, 2023'] = pd.to_numeric(df['Homeless Veterans, 2023'])\nresult = df.sort_values(by='Homeless Veterans, 2023', ascending=False).iloc[0]['State']"
+  },
+  {
+   "id": "hud_pit_veteran_counts_by_state#3",
+   "answer": "[\"CA\", \"WA\", \"FL\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hud_pit_veteran_counts_by_state.xlsx', sheet_name='2024')\ndf = df[~df['State'].astype(str).str.strip().str.lower().isin(['total', 'nan', 'none'])]\ndf = df.dropna(subset=['State', 'Unsheltered Homeless Veterans, 2024'])\ndf = df[df['Unsheltered Homeless Veterans, 2024'] != '.']\ndf['Unsheltered Homeless Veterans, 2024'] = pd.to_numeric(df['Unsheltered Homeless Veterans, 2024'])\ntop3 = df.sort_values(by='Unsheltered Homeless Veterans, 2024', ascending=False).head(3)\nresult = top3['State'].tolist()"
+  },
+  {
+   "id": "hud_pit_veteran_counts_by_state#4",
+   "answer": "0",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hud_pit_veteran_counts_by_state.xlsx', sheet_name='2024')\ndf = df[~df['State'].astype(str).str.strip().str.lower().isin(['total', 'nan', 'none'])]\ndf = df.dropna(subset=['State', 'Unsheltered Homeless Veterans, 2024'])\ndf = df[df['Unsheltered Homeless Veterans, 2024'] != '.']\ndf['Unsheltered Homeless Veterans, 2024'] = pd.to_numeric(df['Unsheltered Homeless Veterans, 2024'])\nresult = int((df['Unsheltered Homeless Veterans, 2024'] == 0).sum())"
+  },
+  {
+   "id": "hud_pit_veteran_counts_by_state#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hud_pit_veteran_counts_by_state.xlsx', sheet_name='Change')\ntotal_row = df[df['state'].astype(str).str.strip().str.lower() == 'total']\nchange_val = float(total_row['Change in Veteran Homelessness, 2023-2024'].values[0])\nresult = 'yes' if change_val < 0 else 'no'"
+  },
+  {
+   "id": "hud_pit_veteran_counts_by_state#6",
+   "answer": "FL",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hud_pit_veteran_counts_by_state.xlsx', sheet_name='2024')\ntx_sheltered = pd.to_numeric(df[df['State'] == 'TX']['Sheltered Total Homeless Veterans, 2024'].values[0])\nfl_sheltered = pd.to_numeric(df[df['State'] == 'FL']['Sheltered Total Homeless Veterans, 2024'].values[0])\nresult = 'FL' if fl_sheltered > tx_sheltered else 'TX'"
+  }
+ ]
+}

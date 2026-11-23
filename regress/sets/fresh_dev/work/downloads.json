@@ -1,0 +1,314 @@
+{
+ "nchs_hus2022_hypertension": {
+  "file": "nchs_hus2022_hypertension.xlsx",
+  "bytes": 12896,
+  "sha256": "a1f421d19abd84cde30f9cfa1effd42ad41760e8ef3438cd4101d8c9080874fc",
+  "retrieved_utc": "2026-11-11T23:40:43Z"
+ },
+ "nchs_hus_health_care_employment": {
+  "file": "nchs_hus_health_care_employment.xlsx",
+  "bytes": 25160,
+  "sha256": "08fcf386361a39fe1e319b6460099608e6f19ea9591e2612c0c5e62b09999a08",
+  "retrieved_utc": "2026-11-11T23:40:44Z"
+ },
+ "nchs_hus_mammography_use": {
+  "file": "nchs_hus_mammography_use.xlsx",
+  "bytes": 51018,
+  "sha256": "fae659126d6bbca6ecf100951f2e22be64ce1a9e117e27ad3e43ea50b8535f14",
+  "retrieved_utc": "2026-11-11T23:40:45Z"
+ },
+ "hrsa_organ_donation_transplantation": {
+  "file": "hrsa_organ_donation_transplantation.xlsx",
+  "bytes": 842285,
+  "sha256": "d1a1c66cec21efd45bf2c32ac216cb608298a360858507acc1fe770f91b6da6c",
+  "retrieved_utc": "2026-11-11T23:40:48Z"
+ },
+ "cms_trustees_hi_trust_fund_operations": {
+  "file": "cms_trustees_hi_trust_fund_operations.xlsx",
+  "bytes": 27587,
+  "sha256": "9177b7924438fd9ff4795ac972329eec9a8bfed34991cdadb1b7c51c9bbd0dcb",
+  "retrieved_utc": "2026-11-11T23:40:52Z"
+ },
+ "cms_marketplace_oep_state_level_2024": {
+  "file": "cms_marketplace_oep_state_level_2024.xlsx",
+  "bytes": 85441,
+  "sha256": "51103265df54a9c18cd59780a9c3cb4bb906f5a5ee6d6859a1487dc0ff8f98c4",
+  "retrieved_utc": "2026-11-11T23:40:53Z"
+ },
+ "cms_program_stats_part_d_utilization_2023": {
+  "file": "cms_program_stats_part_d_utilization_2023.xlsx",
+  "bytes": 138878,
+  "sha256": "3df33833b6a3d124293e3cdf10df5deb69d8d153b36ad4e4adea51f71a815322",
+  "retrieved_utc": "2026-11-11T23:40:54Z"
+ },
+ "cms_program_stats_inpatient_hospital_2023": {
+  "file": "cms_program_stats_inpatient_hospital_2023.xlsx",
+  "bytes": 162049,
+  "sha256": "618b16ce18ad3893f1e2968e4968327ff2a2ad8378c09257d37202831f7af686",
+  "retrieved_utc": "2026-11-11T23:40:55Z"
+ },
+ "macpac_medicaid_spending_by_state_fy2024": {
+  "file": "macpac_medicaid_spending_by_state_fy2024.xlsx",
+  "bytes": 33753,
+  "sha256": "eb3a2538412abf53fc9e13071d9cf9236246207e895dbe45b7bf5a0cf0bd56f1",
+  "retrieved_utc": "2026-11-11T23:40:59Z"
+ },
+ "macpac_medicaid_enrollment_by_eligibility_group_fy2023": {
+  "file": "macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx",
+  "bytes": 29268,
+  "sha256": "9a48acf2888ade6279842502e3955d84dfd0b957e17556981b1a610f7483f2f7",
+  "retrieved_utc": "2026-11-11T23:41:00Z"
+ },
+ "ers_foodborne_illness_cost_by_pathogen": {
+  "file": "ers_foodborne_illness_cost_by_pathogen.xlsx",
+  "bytes": 16499,
+  "sha256": "abb6bab176d41ee5891cf16d5bb1b6d6227669683b9ac1883c343f83693d8192",
+  "retrieved_utc": "2026-11-11T23:41:01Z"
+ },
+ "ca_hcai_case_mix_index": {
+  "file": "ca_hcai_case_mix_index.xlsx",
+  "bytes": 200815,
+  "sha256": "30f4221e305882c489e27e75b6aa5d02d0f90e2e4136852cfdf23ec3e9dd26d2",
+  "retrieved_utc": "2026-11-11T23:41:04Z"
+ },
+ "ca_cdph_health_care_personnel_flu_vaccination": {
+  "file": "ca_cdph_health_care_personnel_flu_vaccination.xlsx",
+  "bytes": 49703,
+  "sha256": "d584cca6c73c85e3ffc9543fc09a72fba9b58beee71204f031740c0308894d28",
+  "retrieved_utc": "2026-11-11T23:41:06Z"
+ },
+ "ca_hcai_medical_procedure_utilization_rates": {
+  "file": "ca_hcai_medical_procedure_utilization_rates.xlsx",
+  "bytes": 178708,
+  "sha256": "e1493f6098dc7fde06b605128522481927fe8f4939d07164083c1e6246833258",
+  "retrieved_utc": "2026-11-11T23:41:08Z"
+ },
+ "cdc_vsrr_quarterly_mortality_estimates": {
+  "file": "cdc_vsrr_quarterly_mortality_estimates.csv",
+  "bytes": 338710,
+  "sha256": "24cb6dcde3489b27769f8b6d880f8b9be868141eba505f386502f6f0bfad7b8b",
+  "retrieved_utc": "2026-11-11T23:41:13Z"
+ },
+ "cdc_monthly_deaths_select_causes_2020_2023": {
+  "file": "cdc_monthly_deaths_select_causes_2020_2023.csv",
+  "bytes": 9152,
+  "sha256": "93b88ba677af55f63b6b4e52d3bbab2a6fb21a0e62ae431b9066219652bdd7c2",
+  "retrieved_utc": "2026-11-11T23:41:14Z"
+ },
+ "cdc_births_fertility_rates_us": {
+  "file": "cdc_births_fertility_rates_us.csv",
+  "bytes": 2625,
+  "sha256": "b84ac66fb226eedcd6d3aca5e8584ee2acef1623c70ea405df378885d1c1d6d5",
+  "retrieved_utc": "2026-11-11T23:41:15Z"
+ },
+ "hhs_unaccompanied_children_program": {
+  "file": "hhs_unaccompanied_children_program.csv",
+  "bytes": 41670,
+  "sha256": "f1835c9c080bc582c2e5dc0a032dcc82823140681b8f31601cb4ec36a5d1f6bd",
+  "retrieved_utc": "2026-11-11T23:41:16Z"
+ },
+ "medicaid_child_adult_quality_measures_2023": {
+  "file": "medicaid_child_adult_quality_measures_2023.csv",
+  "bytes": 4077558,
+  "sha256": "aca9f7d29311d86df66fbde969a97f404db6e6b8b0ba22e8ffac4622c031f332",
+  "retrieved_utc": "2026-11-11T23:41:18Z"
+ },
+ "nydoh_hospital_maternity_information": {
+  "file": "nydoh_hospital_maternity_information.csv",
+  "bytes": 7690646,
+  "sha256": "9105421ce94910bc9c4de8f6cbe9ce07d15a5ce0958c54bd5587d5d0dd807493",
+  "retrieved_utc": "2026-11-11T23:41:28Z"
+ },
+ "nydoh_hospital_acquired_infections": {
+  "file": "nydoh_hospital_acquired_infections.csv",
+  "bytes": 7033334,
+  "sha256": "b54be00c195b35532916bff58d35fc9aa867428d7380bc762e74779cdd65adee",
+  "retrieved_utc": "2026-11-11T23:41:34Z"
+ },
+ "pa_medical_assistance_enrollment_by_county": {
+  "file": "pa_medical_assistance_enrollment_by_county.csv",
+  "bytes": 2177330,
+  "sha256": "f92a355f5eeb15f05c8418bb00f7178a25f68f0099e0301ee8e608eac7a2e083",
+  "retrieved_utc": "2026-11-11T23:41:41Z"
+ },
+ "wa_oic_dental_loss_ratios": {
+  "file": "wa_oic_dental_loss_ratios.csv",
+  "bytes": 103020,
+  "sha256": "6bb77db26bb9bfd73326d7d833c205a9b22ff87b735b07e08bec872b6db58512",
+  "retrieved_utc": "2026-11-11T23:41:43Z"
+ },
+ "md_infant_deaths_and_rates": {
+  "file": "md_infant_deaths_and_rates.csv",
+  "bytes": 3488,
+  "sha256": "aa60953128b087186676c1634f871dd8a40b5fb9c5956b790feebd24f5093cce",
+  "retrieved_utc": "2026-11-11T23:41:45Z"
+ },
+ "or_weekly_reportable_diseases": {
+  "file": "or_weekly_reportable_diseases.csv",
+  "bytes": 1125566,
+  "sha256": "934f02af249999e4074b169272944e03d04fe9c1d5f07141f04f1a0b99f169c5",
+  "retrieved_utc": "2026-11-11T23:41:48Z"
+ },
+ "nyc_dohmh_air_quality": {
+  "file": "nyc_dohmh_air_quality.csv",
+  "bytes": 2295725,
+  "sha256": "ad786caabadb8738caaefb3425ff9dffb67e2e5e4b91ca0d3602b69ac38cc1ea",
+  "retrieved_utc": "2026-11-11T23:41:50Z"
+ },
+ "census_state_tax_collections_fy2023": {
+  "file": "census_state_tax_collections_fy2023.xlsx",
+  "bytes": 23298,
+  "sha256": "6bca2f9a89a021467937e7e90e457abf89875631367a5292437db95c93467364",
+  "retrieved_utc": "2026-11-11T23:41:51Z"
+ },
+ "census_school_system_finances_2022": {
+  "file": "census_school_system_finances_2022.xlsx",
+  "bytes": 281112,
+  "sha256": "00b4d8ef0c0298c4687f1e307e4863639558fc3e767a2a68db6bfd1fc8198b12",
+  "retrieved_utc": "2026-11-11T23:41:52Z"
+ },
+ "census_state_to_state_migration_2023": {
+  "file": "census_state_to_state_migration_2023.xlsx",
+  "bytes": 142123,
+  "sha256": "2e33a91e0838abaff67de49e4299dfba72d6a59b5018bdd28d4ae963d93dd987",
+  "retrieved_utc": "2026-11-11T23:41:53Z"
+ },
+ "census_population_projections_2023": {
+  "file": "census_population_projections_2023.xlsx",
+  "bytes": 31263,
+  "sha256": "244345cf31944b1b7a7faf7dc0af171a245cf3e8cf03475ef6fd086ed31c4d4e",
+  "retrieved_utc": "2026-11-11T23:41:56Z"
+ },
+ "census_apportionment_2020": {
+  "file": "census_apportionment_2020.xlsx",
+  "bytes": 13475,
+  "sha256": "93e7e77a222f078c0af32457af2ecc7bcae2bcb9db0cedca4ad93ff3f99b55bf",
+  "retrieved_utc": "2026-11-11T23:41:58Z"
+ },
+ "fhwa_vehicle_miles_by_functional_system_2023": {
+  "file": "fhwa_vehicle_miles_by_functional_system_2023.xlsx",
+  "bytes": 55677,
+  "sha256": "8b5572d55ce5c9fe1250921e9ebd39aced07ad999182298c62fcd3d9c3630168",
+  "retrieved_utc": "2026-11-11T23:41:59Z"
+ },
+ "fhwa_public_road_length_2023": {
+  "file": "fhwa_public_road_length_2023.xlsx",
+  "bytes": 32851,
+  "sha256": "e08607685ab57b1ee50db5407d79d3231f88d4ee38082ec34d05ce7b532b3bc5",
+  "retrieved_utc": "2026-11-11T23:42:00Z"
+ },
+ "va_geographic_distribution_of_expenditures_fy2023": {
+  "file": "va_geographic_distribution_of_expenditures_fy2023.xlsx",
+  "bytes": 730923,
+  "sha256": "5c3306d5790ec2aed7239e37da8ddd24cb6e016edcf0df95c1228acc707e5df8",
+  "retrieved_utc": "2026-11-11T23:42:05Z"
+ },
+ "eia_average_retail_electricity_price_by_state": {
+  "file": "eia_average_retail_electricity_price_by_state.xlsx",
+  "bytes": 253341,
+  "sha256": "27af5b91bd669756e72912c454eb58cea88a195cc5f67548eda12213aaa24522",
+  "retrieved_utc": "2026-11-11T23:42:06Z"
+ },
+ "eia_epm_average_price_by_sector_and_state": {
+  "file": "eia_epm_average_price_by_sector_and_state.xlsx",
+  "bytes": 18839,
+  "sha256": "7830737eb277be4096b3c0eb491f53c71ff91ce7133e9869b76de61f64f679b9",
+  "retrieved_utc": "2026-11-11T23:42:07Z"
+ },
+ "eia_coal_production_by_state": {
+  "file": "eia_coal_production_by_state.xlsx",
+  "bytes": 19431,
+  "sha256": "6f25d62ed0098a9817aeb95cb6e4c6bb448feba6319b922f4787669be7fab914",
+  "retrieved_utc": "2026-11-11T23:42:08Z"
+ },
+ "nces_digest_tuition_fees_room_board": {
+  "file": "nces_digest_tuition_fees_room_board.xlsx",
+  "bytes": 98828,
+  "sha256": "4cdce190646a6c421ed478757ae8647f5298d7b13a71576b3b6de63d59ef4259",
+  "retrieved_utc": "2026-11-11T23:42:10Z"
+ },
+ "irs_data_book_gross_collections_by_state_fy2023": {
+  "file": "irs_data_book_gross_collections_by_state_fy2023.xlsx",
+  "bytes": 60715,
+  "sha256": "a0a6971ae8b150cd7f0eed2f4ae8d8563a7b4f236435789e19f56cf93764badf",
+  "retrieved_utc": "2026-11-11T23:42:12Z"
+ },
+ "ers_food_availability_red_meat_poultry_fish": {
+  "file": "ers_food_availability_red_meat_poultry_fish.xlsx",
+  "bytes": 101609,
+  "sha256": "be729605ef43db1d419b53372a31af7af6e8bb7ff2ce9afef3dd99f0f7ca1e86",
+  "retrieved_utc": "2026-11-11T23:42:14Z"
+ },
+ "faa_active_civil_airmen_2025": {
+  "file": "faa_active_civil_airmen_2025.xlsx",
+  "bytes": 852416,
+  "sha256": "7aa74507cddd21476642f0e97318758c886e3edc138b77365480dc8fae8a833c",
+  "retrieved_utc": "2026-11-11T23:42:17Z"
+ },
+ "hud_pit_veteran_counts_by_state": {
+  "file": "hud_pit_veteran_counts_by_state.xlsx",
+  "bytes": 73068,
+  "sha256": "583e1a4173d2b04ed86e952a0292fdbeacf145d5253c8c08dae4723e07c2bf37",
+  "retrieved_utc": "2026-11-11T23:42:18Z"
+ },
+ "epa_air_quality_statistics_by_city_2025": {
+  "file": "epa_air_quality_statistics_by_city_2025.xlsx",
+  "bytes": 55033,
+  "sha256": "a8aff1a1c821d13e960f707464413eb41c7b09155cacc01ae9e3fcb28c7cf59f",
+  "retrieved_utc": "2026-11-11T23:42:19Z"
+ },
+ "acf_tanf_caseload_fy2023": {
+  "file": "acf_tanf_caseload_fy2023.xlsx",
+  "bytes": 229940,
+  "sha256": "b9c209ea7da3410a86234fe72f5de6470f028606a0dce3a48e102ef46fad3f60",
+  "retrieved_utc": "2026-11-11T23:42:21Z"
+ },
+ "census_business_dynamics_by_state": {
+  "file": "census_business_dynamics_by_state.csv",
+  "bytes": 369276,
+  "sha256": "cfcddf0f951a42ae83fcd7b11bb3acbe5563cb2f7a077e0fc08393a4c0fb90cc",
+  "retrieved_utc": "2026-11-11T23:42:22Z"
+ },
+ "dot_bts_monthly_transportation_statistics": {
+  "file": "dot_bts_monthly_transportation_statistics.csv",
+  "bytes": 554551,
+  "sha256": "a3708fe670cf501bbbe5c2b16fddf6552574f67fda017ae60c45e99d67e672b5",
+  "retrieved_utc": "2026-11-11T23:42:30Z"
+ },
+ "sf_air_traffic_passenger_statistics": {
+  "file": "sf_air_traffic_passenger_statistics.csv",
+  "bytes": 6615174,
+  "sha256": "cade7e06a9db5a5b8753b1baebccb8ccf5cb8d08d82097df6ac437d229f85e46",
+  "retrieved_utc": "2026-11-11T23:42:35Z"
+ },
+ "nys_state_park_annual_attendance": {
+  "file": "nys_state_park_annual_attendance.csv",
+  "bytes": 276785,
+  "sha256": "b440cf3dca91bf0919f7ed1cdc89bb3da6ba8f479d468885ece1f076f0a55d2e",
+  "retrieved_utc": "2026-11-11T23:42:38Z"
+ },
+ "seattle_fremont_bridge_bicycle_counter": {
+  "file": "seattle_fremont_bridge_bicycle_counter.csv",
+  "bytes": 3915684,
+  "sha256": "2c9a839fdbceba98d05700658df0ed1d42315427eeeba3c7c6afe241161c1ba7",
+  "retrieved_utc": "2026-11-11T23:42:54Z"
+ },
+ "census_hvs_homeownership_rates_by_region": {
+  "file": "census_hvs_homeownership_rates_by_region.xlsx",
+  "bytes": 527450,
+  "sha256": "9ebe7c51e6c8e3120fc8ef69eb7f40c9b9391ff191fe2c120c2b7a89e87e63cb",
+  "retrieved_utc": "2026-11-11T23:41:55Z"
+ },
+ "nsf_sed_doctorates_by_field_and_citizenship": {
+  "file": "nsf_sed_doctorates_by_field_and_citizenship.xlsx",
+  "bytes": 12582,
+  "sha256": "0cc9929fd821e7e7220bea1b194c08ec303aed5fbb60cfb0e46bd38139aeff0c",
+  "retrieved_utc": "2026-11-11T23:42:13Z"
+ },
+ "census_voting_registration_by_state_2020": {
+  "file": "census_voting_registration_by_state_2020.xlsx",
+  "bytes": 16359,
+  "sha256": "8afd077c560de2605b06a65af1579f58686d5e9695d63080b07772e8eef97958",
+  "retrieved_utc": "2026-11-11T23:41:56Z"
+ }
+}

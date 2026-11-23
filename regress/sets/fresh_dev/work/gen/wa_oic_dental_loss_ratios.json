@@ -1,0 +1,60 @@
+{
+ "id": "wa_oic_dental_loss_ratios",
+ "file": "wa_oic_dental_loss_ratios.csv",
+ "questions": [
+  {
+   "question": "What was the reported loss ratio for Delta Dental of Washington in 2024?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "81",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nrow = df[(df['Company Name'] == 'Delta Dental of Washington') & (df['Year'] == 2024)]\nresult = int(row['Dental Loss Ratio'].iloc[0])",
+   "qid": "wa_oic_dental_loss_ratios#1"
+  },
+  {
+   "question": "How many data records in the file belong to companies domiciled in Washington state?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "92",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nresult = int((df['Domicile State'] == 'WA').sum())",
+   "qid": "wa_oic_dental_loss_ratios#2"
+  },
+  {
+   "question": "Which home state accounts for the largest number of company filings in the dataset?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "TX",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nresult = str(df['Domicile State'].value_counts().idxmax())",
+   "qid": "wa_oic_dental_loss_ratios#3"
+  },
+  {
+   "question": "Did UnitedHealthcare Insurance Company report more than one billion dollars in dental claims payments in 2024?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nrow = df[(df['Company Name'] == 'UnitedHealthcare Insurance Company') & (df['Year'] == 2024)]\npayments = row['Dental Payments'].iloc[0]\nresult = 'yes' if payments > 1_000_000_000 else 'no'",
+   "qid": "wa_oic_dental_loss_ratios#4"
+  },
+  {
+   "question": "What were the total dental claims payments made by Willamette Dental of Washington Inc. in 2021?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "63249175",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nrow = df[(df['Company Name'] == 'Willamette Dental of Washington Inc.') & (df['Year'] == 2021)]\nresult = int(row['Dental Payments'].iloc[0])",
+   "qid": "wa_oic_dental_loss_ratios#5"
+  },
+  {
+   "question": "What was the average monthly premium per covered person for Aetna Life Insurance Company in 2015?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "36.49",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nrow = df[(df['Company Name'] == 'AETNA LIFE INSURANCE COMPANY') & (df['Year'] == 2015)]\nresult = float(row['Average Amount of Premiums per Member per Month'].iloc[0])",
+   "qid": "wa_oic_dental_loss_ratios#6"
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "file": "census_voting_registration_by_state_2020.xlsx",
+ "sheets": [
+  {
+   "name": "Table 4a",
+   "rows": 65,
+   "cols": 13,
+   "shown_whole": true
+  }
+ ],
+ "chars": 7339
+}

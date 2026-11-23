@@ -1,0 +1,70 @@
+FILE census_voting_registration_by_state_2020.xlsx (Excel workbook) with 1 sheet(s): ["Table 4a"]
+
+### Sheet "Table 4a": 65 rows x 13 columns (Excel rows 1..65, columns A..M)
+merged cells: A5:A6, D5:H5, I5:M5, B5:B6, C5:C6
+(whole sheet shown; Excel row numbers)
+r1: A=Table with row headers in column A, and column headers in rows 5 through 6.
+r2: A=Table 4a.  Reported Voting and Registration for States: November 2020
+r3: A=(In thousands)
+r4: (blank)
+r5: A=STATE | B=Total population | C=Total citizen population | D=Registered | I=Voted
+r6: D=Total registered | E=Percent registered\n(Total) | F=Margin of error 1 | G=Percent registered\n(Citizen) | H=Margin of error 1 | I=Total voted | J=Percent voted\n(Total) | K=Margin of error 1 | L=Percent voted\n(Citizen) | M=Margin of error 1
+r7: A=UNITED STATES | B=252274 | C=231593 | D=168308 | E=66.7 | F=0.4 | G=72.7 | H=0.4 | I=154628 | J=61.3 | K=0.4 | L=66.8 | M=0.4
+r8: A=ALABAMA | B=3769 | C=3716 | D=2527 | E=67 | F=3.1 | G=68 | H=3.1 | I=2247 | J=59.6 | K=3.3 | L=60.5 | M=3.3
+r9: A=ALASKA | B=528 | C=516 | D=383 | E=72.6 | F=3.2 | G=74.2 | H=3.1 | I=330 | J=62.4 | K=3.4 | L=63.8 | M=3.4
+r10: A=ARIZONA | B=5638 | C=5075 | D=3878 | E=68.8 | F=2.5 | G=76.4 | H=2.5 | I=3649 | J=64.7 | K=2.6 | L=71.9 | M=2.6
+r11: A=ARKANSAS | B=2283 | C=2195 | D=1361 | E=59.6 | F=3.4 | G=62 | H=3.4 | I=1186 | J=51.9 | K=3.4 | L=54 | M=3.5
+r12: A=CALIFORNIA | B=30342 | C=25946 | D=18001 | E=59.3 | F=1.2 | G=69.4 | H=1.2 | I=16893 | J=55.7 | K=1.2 | L=65.1 | M=1.2
+r13: A=COLORADO | B=4525 | C=4200 | D=2993 | E=66.2 | F=2.9 | G=71.3 | H=2.9 | I=2837 | J=62.7 | K=3 | L=67.6 | M=3
+r14: A=CONNECTICUT | B=2777 | C=2524 | D=1850 | E=66.6 | F=3.2 | G=73.3 | H=3.2 | I=1681 | J=60.5 | K=3.3 | L=66.6 | M=3.4
+r15: A=DELAWARE | B=766 | C=722 | D=542 | E=70.8 | F=3 | G=75.1 | H=3 | I=489 | J=63.8 | K=3.2 | L=67.7 | M=3.2
+r16: A=DISTRICT OF COLUMBIA | B=576 | C=534 | D=464 | E=80.5 | F=2.7 | G=86.9 | H=2.4 | I=448 | J=77.8 | K=2.8 | L=84 | M=2.6
+r17: A=FLORIDA | B=17244 | C=15645 | D=10495 | E=60.9 | F=1.5 | G=67.1 | H=1.5 | I=9720 | J=56.4 | K=1.5 | L=62.1 | M=1.6
+r18: A=GEORGIA | B=8032 | C=7400 | D=5233 | E=65.2 | F=2.2 | G=70.7 | H=2.2 | I=4888 | J=60.9 | K=2.2 | L=66.1 | M=2.3
+r19: A=HAWAII | B=1056 | C=980 | D=673 | E=63.8 | F=3.3 | G=68.7 | H=3.3 | I=630 | J=59.7 | K=3.3 | L=64.3 | M=3.4
+r20: A=IDAHO | B=1370 | C=1299 | D=900 | E=65.7 | F=3.1 | G=69.3 | H=3.1 | I=843 | J=61.6 | K=3.2 | L=64.9 | M=3.2
+r21: A=ILLINOIS | B=9658 | C=8860 | D=6590 | E=68.2 | F=2 | G=74.4 | H=1.9 | I=6058 | J=62.7 | K=2 | L=68.4 | M=2
+r22: A=INDIANA | B=5096 | C=4921 | D=3412 | E=67 | F=2.7 | G=69.3 | H=2.7 | I=3002 | J=58.9 | K=2.8 | L=61 | M=2.8
+r23: A=IOWA | B=2361 | C=2293 | D=1742 | E=73.8 | F=3.1 | G=76 | H=3 | I=1618 | J=68.5 | K=3.2 | L=70.5 | M=3.2
+r24: A=KANSAS | B=2157 | C=1975 | D=1398 | E=64.8 | F=3.5 | G=70.8 | H=3.5 | I=1297 | J=60.1 | K=3.6 | L=65.7 | M=3.7
+r25: A=KENTUCKY | B=3384 | C=3227 | D=2450 | E=72.4 | F=3.2 | G=75.9 | H=3.1 | I=2210 | J=65.3 | K=3.4 | L=68.5 | M=3.4
+r26: A=LOUISIANA | B=3438 | C=3299 | D=2286 | E=66.5 | F=3.2 | G=69.3 | H=3.2 | I=2041 | J=59.4 | K=3.3 | L=61.9 | M=3.3
+r27: A=MAINE | B=1087 | C=1075 | D=832 | E=76.5 | F=3.2 | G=77.4 | H=3.2 | I=766 | J=70.5 | K=3.4 | L=71.3 | M=3.4
+r28: A=MARYLAND | B=4606 | C=4303 | D=3383 | E=73.4 | F=2.7 | G=78.6 | H=2.6 | I=3166 | J=68.7 | K=2.9 | L=73.6 | M=2.8
+r29: A=MASSACHUSETTS | B=5514 | C=4897 | D=3546 | E=64.3 | F=2.6 | G=72.4 | H=2.6 | I=3249 | J=58.9 | K=2.7 | L=66.3 | M=2.7
+r30: A=MICHIGAN | B=7790 | C=7467 | D=5513 | E=70.8 | F=2.1 | G=73.8 | H=2.1 | I=4994 | J=64.1 | K=2.2 | L=66.9 | M=2.2
+r31: A=MINNESOTA | B=4339 | C=4142 | D=3436 | E=79.2 | F=2.5 | G=82.9 | H=2.4 | I=3225 | J=74.3 | K=2.7 | L=77.9 | M=2.7
+r32: A=MISSISSIPPI | B=2212 | C=2177 | D=1749 | E=79.1 | F=2.8 | G=80.4 | H=2.7 | I=1531 | J=69.2 | K=3.2 | L=70.3 | M=3.2
+r33: A=MISSOURI | B=4637 | C=4475 | D=3388 | E=73.1 | F=2.7 | G=75.7 | H=2.7 | I=2990 | J=64.5 | K=2.9 | L=66.8 | M=2.9
+r34: A=MONTANA | B=836 | C=827 | D=641 | E=76.6 | F=2.6 | G=77.5 | H=2.6 | I=607 | J=72.6 | K=2.8 | L=73.5 | M=2.8
+r35: A=NEBRASKA | B=1435 | C=1369 | D=971 | E=67.7 | F=3.4 | G=70.9 | H=3.4 | I=892 | J=62.2 | K=3.5 | L=65.2 | M=3.5
+r36: A=NEVADA | B=2402 | C=2198 | D=1455 | E=60.6 | F=3.2 | G=66.2 | H=3.3 | I=1351 | J=56.3 | K=3.3 | L=61.5 | M=3.4
+r37: A=NEW HAMPSHIRE | B=1101 | C=1077 | D=843 | E=76.6 | F=2.9 | G=78.3 | H=2.8 | I=797 | J=72.4 | K=3 | L=74 | M=3
+r38: A=NEW JERSEY | B=6801 | C=5921 | D=5008 | E=73.6 | F=2.2 | G=84.6 | H=1.9 | I=4638 | J=68.2 | K=2.3 | L=78.3 | M=2.2
+r39: A=NEW MEXICO | B=1610 | C=1498 | D=1028 | E=63.9 | F=3 | G=68.6 | H=3 | I=938 | J=58.3 | K=3.1 | L=62.6 | M=3.2
+r40: A=NEW YORK | B=15105 | C=13298 | D=9370 | E=62 | F=1.6 | G=70.5 | H=1.7 | I=8609 | J=57 | K=1.7 | L=64.7 | M=1.7
+r41: A=NORTH CAROLINA | B=8113 | C=7391 | D=5161 | E=63.6 | F=2.2 | G=69.8 | H=2.2 | I=4780 | J=58.9 | K=2.3 | L=64.7 | M=2.3
+r42: A=NORTH DAKOTA | B=571 | C=556 | D=429 | E=75.2 | F=2.9 | G=77.3 | H=2.9 | I=373 | J=65.3 | K=3.2 | L=67.1 | M=3.2
+r43: A=OHIO | B=8951 | C=8740 | D=6733 | E=75.2 | F=1.9 | G=77 | H=1.8 | I=6128 | J=68.5 | K=2 | L=70.1 | M=2
+r44: A=OKLAHOMA | B=2942 | C=2800 | D=1884 | E=64 | F=3.5 | G=67.3 | H=3.5 | I=1631 | J=55.5 | K=3.6 | L=58.3 | M=3.7
+r45: A=OREGON | B=3369 | C=3242 | D=2590 | E=76.9 | F=2.9 | G=79.9 | H=2.8 | I=2402 | J=71.3 | K=3.1 | L=74.1 | M=3
+r46: A=PENNSYLVANIA | B=9902 | C=9621 | D=7337 | E=74.1 | F=1.8 | G=76.3 | H=1.8 | I=6756 | J=68.2 | K=1.9 | L=70.2 | M=1.9
+r47: A=RHODE ISLAND | B=840 | C=776 | D=575 | E=68.5 | F=3.2 | G=74.1 | H=3.2 | I=515 | J=61.3 | K=3.4 | L=66.3 | M=3.4
+r48: A=SOUTH CAROLINA | B=4010 | C=3878 | D=2713 | E=67.7 | F=3 | G=70 | H=3 | I=2459 | J=61.3 | K=3.1 | L=63.4 | M=3.1
+r49: A=SOUTH DAKOTA | B=659 | C=649 | D=437 | E=66.3 | F=3.4 | G=67.4 | H=3.4 | I=380 | J=57.7 | K=3.5 | L=58.5 | M=3.5
+r50: A=TENNESSEE | B=5283 | C=5038 | D=3742 | E=70.8 | F=2.6 | G=74.3 | H=2.5 | I=3346 | J=63.3 | K=2.7 | L=66.4 | M=2.7
+r51: A=TEXAS | B=21485 | C=18581 | D=13343 | E=62.1 | F=1.4 | G=71.8 | H=1.4 | I=11874 | J=55.3 | K=1.4 | L=63.9 | M=1.5
+r52: A=UTAH | B=2320 | C=2178 | D=1468 | E=63.3 | F=2.7 | G=67.4 | H=2.7 | I=1386 | J=59.7 | K=2.8 | L=63.6 | M=2.8
+r53: A=VERMONT | B=507 | C=500 | D=365 | E=72 | F=3.4 | G=73 | H=3.4 | I=342 | J=67.5 | K=3.6 | L=68.4 | M=3.6
+r54: A=VIRGINIA | B=6481 | C=5974 | D=4541 | E=70.1 | F=2.4 | G=76 | H=2.3 | I=4275 | J=66 | K=2.5 | L=71.5 | M=2.4
+r55: A=WASHINGTON | B=5993 | C=5389 | D=4029 | E=67.2 | F=2.5 | G=74.8 | H=2.4 | I=3854 | J=64.3 | K=2.6 | L=71.5 | M=2.5
+r56: A=WEST VIRGINIA | B=1397 | C=1379 | D=928 | E=66.4 | F=3.4 | G=67.3 | H=3.4 | I=773 | J=55.3 | K=3.6 | L=56.1 | M=3.6
+r57: A=WISCONSIN | B=4538 | C=4421 | D=3391 | E=74.7 | F=2.7 | G=76.7 | H=2.6 | I=3253 | J=71.7 | K=2.8 | L=73.6 | M=2.7
+r58: A=WYOMING | B=436 | C=427 | D=296 | E=67.9 | F=3.4 | G=69.3 | H=3.4 | I=280 | J=64.1 | K=3.5 | L=65.5 | M=3.5
+r59: (blank)
+r60: A=1 This figure added to or subtracted from the estimate provides the 90-percent confidence ...
+r61: A=NOTES:
+r62: A=Estimates may not sum to totals due to rounding.
+r63: A=For information on confidentiality protection, sampling error, nonsampling error, and defi...
+r64: (blank)
+r65: A=Source: U.S. Census Bureau, Current Population Survey, November 2020

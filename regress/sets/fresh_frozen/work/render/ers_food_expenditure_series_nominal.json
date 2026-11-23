@@ -1,0 +1,12 @@
+{
+ "file": "ers_food_expenditure_series_nominal.xlsx",
+ "sheets": [
+  {
+   "name": "Nominal expenditures",
+   "rows": 33,
+   "cols": 27,
+   "shown_whole": true
+  }
+ ],
+ "chars": 12716
+}

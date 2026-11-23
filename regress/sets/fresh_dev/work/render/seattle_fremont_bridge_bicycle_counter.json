@@ -1,0 +1,12 @@
+{
+ "file": "seattle_fremont_bridge_bicycle_counter.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 122675,
+   "cols": 4,
+   "shown_whole": false
+  }
+ ],
+ "chars": 5652
+}

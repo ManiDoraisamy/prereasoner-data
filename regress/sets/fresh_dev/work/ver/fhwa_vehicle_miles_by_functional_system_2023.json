@@ -1,0 +1,35 @@
+{
+ "id": "fhwa_vehicle_miles_by_functional_system_2023",
+ "answers": [
+  {
+   "id": "fhwa_vehicle_miles_by_functional_system_2023#1",
+   "answer": "6903.3341",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\n# Find Alabama row and Rural Interstate column\nstate_row = df[df[0] == 'Alabama'].index[0]\n# Column B is index 1 (Rural Interstate)\nresult = float(df.iloc[state_row, 1])"
+  },
+  {
+   "id": "fhwa_vehicle_miles_by_functional_system_2023#2",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\n# States start at row 15 (index 14) and end before 'U.S. Total'\nus_idx = df[df[0] == 'U.S. Total'].index[0]\nstates_df = df.iloc[14:us_idx].copy()\nstates_df[17] = pd.to_numeric(states_df[17], errors='coerce')\ntop3 = states_df.sort_values(by=17, ascending=False).head(3)\nresult = top3[0].tolist()"
+  },
+  {
+   "id": "fhwa_vehicle_miles_by_functional_system_2023#3",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\n# Column I (index 8) is Rural Total\nca_rural = float(df[df[0] == 'California'].iloc[0, 8])\ntx_rural = float(df[df[0] == 'Texas'].iloc[0, 8])\nresult = 'California' if ca_rural > tx_rural else 'Texas'"
+  },
+  {
+   "id": "fhwa_vehicle_miles_by_functional_system_2023#4",
+   "answer": "9",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\nus_idx = df[df[0] == 'U.S. Total'].index[0]\nstates_df = df.iloc[14:us_idx].copy()\nstates_df[17] = pd.to_numeric(states_df[17], errors='coerce')\nresult = int((states_df[17] > 100000).sum())"
+  },
+  {
+   "id": "fhwa_vehicle_miles_by_functional_system_2023#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\nmt_row = df[df[0] == 'Montana'].iloc[0]\nrural_total = float(mt_row[8])\ntotal_travel = float(mt_row[17])\nresult = 'yes' if (rural_total / total_travel) > 0.5 else 'no'"
+  },
+  {
+   "id": "fhwa_vehicle_miles_by_functional_system_2023#6",
+   "answer": "35575.3654",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\ntarget_states = ['Maine', 'New Hampshire', 'Vermont']\nsub_df = df[df[0].isin(target_states)]\nresult = float(pd.to_numeric(sub_df[17]).sum())"
+  }
+ ]
+}

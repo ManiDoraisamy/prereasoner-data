@@ -1,0 +1,45 @@
+FILE ers_foodborne_illness_cost_by_pathogen.xlsx (Excel workbook) with 1 sheet(s): ["MeanTotalAndPerCaseCosts"]
+
+### Sheet "MeanTotalAndPerCaseCosts": 41 rows x 5 columns (Excel rows 1..41, columns A..E)
+(whole sheet shown; Excel row numbers)
+r1: A=Cases, total cost, and per-case cost, by pathogen (2023 U.S. dollars)
+r2: A=Pathogen classification | B=Pathogen | C=Mean number of cases | D=Mean total cost (millions) | E=Mean per-case cost
+r3: A=Bacteria | B=Bacillus cereus | C=63400 | D=12.4 | E=195.5835962
+r4: A=Bacteria | B=Brucella spp. | C=839 | D=15.8 | E=18831.94279
+r5: A=Bacteria | B=Campylobacter spp. | C=845024 | D=11327.3 | E=13404.70803
+r6: A=Bacteria | B=Clostridium botulinum | C=55 | D=115.6 | E=2101818.182
+r7: A=Bacteria | B=Clostridium perfringens | C=965958 | D=603.8 | E=625.0789372
+r8: A=Bacteria | B=STEC O157 | C=63153 | D=457.1 | E=7237.97761
+r9: A=Bacteria | B=STEC non-O157 | C=112752 | D=46.8 | E=415.0702427
+r10: A=Bacteria | B=ETEC | C=17894 | D=5.5 | E=307.3655974
+r11: A=Bacteria | B=Diarrheagenic E. coli other than STEC and ETEC | C=11982 | D=3.7 | E=308.7965281
+r12: A=Bacteria | B=Listeria monocytogenes (total) | C=1583 | D=3964.3 | E=2504295.641
+r13: A=Bacteria | B=Mycobacterium bovis | C=60 | D=43.7 | E=728333.3333
+r14: A=Bacteria | B=Salmonella spp., nontyphoidal | C=1027561 | D=17127 | E=16667.62363
+r15: A=Bacteria | B=Salmonella enterica serotype Typhi | C=1821 | D=2.5 | E=1372.872048
+r16: A=Bacteria | B=Shigella spp. | C=131254 | D=1683.5 | E=12826.27577
+r17: A=Bacteria | B=Staphylococcus aureus | C=241148 | D=177.8 | E=737.3065503
+r18: A=Bacteria | B=Streptococcus spp., Group A | C=11217 | D=2.6 | E=231.7910315
+r19: A=Bacteria | B=Vibrio cholerae, toxigenic | C=84 | D=0.1 | E=1190.47619
+r20: A=Bacteria | B=Vibrio vulnificus | C=96 | D=438.4 | E=4566666.667
+r21: A=Bacteria | B=Vibrio parahaemolyticus | C=34664 | D=76.8 | E=2215.555043
+r22: A=Bacteria | B=Vibrio spp., other | C=17564 | D=102.5 | E=5835.800501
+r23: A=Bacteria | B=Yersinia enterocolitica | C=97656 | D=396.7 | E=4062.218399
+r24: A=Parasites | B=Cryptosporidium spp. | C=57616 | D=68.5 | E=1188.905859
+r25: A=Parasites | B=Cyclospora cayetanensis | C=11407 | D=5.3 | E=464.6269834
+r26: A=Parasites | B=Giardia intestinalis | C=76840 | D=58.6 | E=762.6236335
+r27: A=Parasites | B=Toxoplasma gondii (total) | C=86753 | D=5719.3 | E=65926.25039
+r28: A=Parasites | B=Trichinella spp. | C=156 | D=0.3 | E=1923.076923
+r29: A=Viruses | B=Astrovirus | C=15433 | D=4.8 | E=311.0218363
+r30: A=Viruses | B=Hepatitis A virus | C=1566 | D=97.7 | E=62388.25032
+r31: A=Viruses | B=Norovirus | C=5461731 | D=2968.3 | E=543.47239
+r32: A=Viruses | B=Rotavirus | C=15433 | D=10 | E=647.962159
+r33: A=Viruses | B=Sapovirus | C=15433 | D=3.5 | E=226.7867557
+r34: A=Illnesses from major foodborne pathogens | B=Subtotal | C=9388133 | D=44743.3 | E=4765.942281
+r35: A=Other foodborne gastroenteritis | B=Other foodborne gastroenteritis | C=38392704 | D=29972.8 | E=780.6899978
+r36: A=All pathogens | B=Total | C=47780837 | D=74716.1 | E=1563.725223
+r37: A=STEC = Shiga toxin-producing Escherichia coli. ETEC = enterotoxigenic Escherichia coli.
+r38: A="spp." is the abbreviation indicating all species of the genus listed. For example, Shigel...
+r39: A=Each pathogen is modeled individually to reflect uncertainty associated with that pathogen...
+r40: A="Other foodborne gastroenteritis" is refered to as "foodborne illnesses caused by unspecif...
+r41: A=Source: USDA, Economic Research Service (ERS) calculations using estimates published in Ho...

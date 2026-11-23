@@ -1,0 +1,64 @@
+{
+ "dataset": "formfacade-bank-deposits",
+ "kind": "world",
+ "uploads": [
+  {
+   "name": "deposits",
+   "columns": [
+    "bank",
+    "account manager",
+    "deposits"
+   ],
+   "rows": 6
+  }
+ ],
+ "normalized": [
+  {
+   "name": "deposits",
+   "upload": "deposits",
+   "columns": [
+    "bank",
+    "account manager",
+    "deposits"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [],
+ "entity_columns": [
+  {
+   "upload": "deposits",
+   "table": "deposits",
+   "column": "bank",
+   "column_index": 0,
+   "label": "bank",
+   "type_qid": "Q22687",
+   "cells": 6,
+   "cells_matched_exactly": 6,
+   "routed_as_place": false,
+   "bridged": true,
+   "cells_matched": 6,
+   "has_country": true,
+   "bridge": "deposits connected to knowledgebase",
+   "entity_table": "bank"
+  }
+ ],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 0,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "bank": 6,
+  "city": 0,
+  "country": 209,
+  "exchange_rate": 0,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 3.8
+}

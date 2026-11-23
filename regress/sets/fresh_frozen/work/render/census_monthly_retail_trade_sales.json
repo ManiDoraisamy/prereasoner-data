@@ -1,0 +1,216 @@
+{
+ "file": "census_monthly_retail_trade_sales.xlsx",
+ "sheets": [
+  {
+   "name": "2026",
+   "rows": 124,
+   "cols": 12,
+   "shown_whole": true
+  },
+  {
+   "name": "2025",
+   "rows": 119,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "2024",
+   "rows": 119,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "2023",
+   "rows": 119,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "2022",
+   "rows": 119,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "2021",
+   "rows": 119,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "2020",
+   "rows": 119,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "2019",
+   "rows": 119,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "2018",
+   "rows": 119,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2017",
+   "rows": 119,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2016",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2015",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2014",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2013",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2012",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2011",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2010",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2009",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2008",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2007",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2006",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2005",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2004",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2003",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2002",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2001",
+   "rows": 116,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "2000",
+   "rows": 118,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "1999",
+   "rows": 118,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "1998",
+   "rows": 118,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "1997",
+   "rows": 118,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "1996",
+   "rows": 118,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "1995",
+   "rows": 118,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "1994",
+   "rows": 118,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "1993",
+   "rows": 118,
+   "cols": 15,
+   "shown_whole": null
+  },
+  {
+   "name": "1992",
+   "rows": 118,
+   "cols": 15,
+   "shown_whole": null
+  }
+ ],
+ "chars": 155883
+}

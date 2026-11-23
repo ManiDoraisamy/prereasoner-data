@@ -1,0 +1,88 @@
+{
+ "id": "census_state_population_estimates_2023",
+ "file": "census_state_population_estimates_2023.xlsx",
+ "questions": [
+  {
+   "question": "According to the July 1, 2023 estimates, what was the resident population of Texas?",
+   "sheet": "NST-EST2023-POP",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "30503301",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\nrow = df[df[0].astype(str).str.strip().str.endswith('Texas')]\nresult = int(row.iloc[0, 5])",
+   "qid": "census_state_population_estimates_2023#1",
+   "pass1": true,
+   "result": 30503301,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three U.S. regions had the largest population estimates as of July 1, 2023?",
+   "sheet": "NST-EST2023-POP",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"South\", \"West\", \"Midwest\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\nregions = ['Northeast', 'Midwest', 'South', 'West']\ndf_regions = df[df[0].astype(str).str.strip().isin(regions)].copy()\ndf_regions[5] = pd.to_numeric(df_regions[5])\ntop3 = df_regions.sort_values(by=5, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()",
+   "qid": "census_state_population_estimates_2023#2",
+   "pass1": true,
+   "result": [
+    "South",
+    "West",
+    "Midwest"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which region had a larger estimated population in 2023, the Northeast or the Midwest?",
+   "sheet": "NST-EST2023-POP",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Midwest",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\nne_pop = int(df[df[0].astype(str).str.strip() == 'Northeast'].iloc[0, 5])\nmw_pop = int(df[df[0].astype(str).str.strip() == 'Midwest'].iloc[0, 5])\nresult = 'Midwest' if mw_pop > ne_pop else 'Northeast'",
+   "qid": "census_state_population_estimates_2023#3",
+   "pass1": true,
+   "result": "Midwest",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states, including the District of Columbia, had an estimated resident population of 10 million or more in 2023?",
+   "sheet": "NST-EST2023-POP",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "10",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\nstate_df = df.iloc[9:60].copy()\npop_2023 = pd.to_numeric(state_df[5])\nresult = int((pop_2023 >= 10_000_000).sum())",
+   "qid": "census_state_population_estimates_2023#4",
+   "pass1": true,
+   "result": 10,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did the total population estimate for the United States increase from 2022 to 2023?",
+   "sheet": "NST-EST2023-POP",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'United States'].iloc[0]\npop_2022 = int(us_row[4])\npop_2023 = int(us_row[5])\nresult = 'yes' if pop_2023 > pop_2022 else 'no'",
+   "qid": "census_state_population_estimates_2023#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the combined estimated resident population of California, Texas, and Florida as of July 1, 2023?",
+   "sheet": "NST-EST2023-POP",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "92079220",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\nstates = ['California', 'Texas', 'Florida']\nmask = df[0].astype(str).str.strip().str.lstrip('.').isin(states)\nresult = int(df.loc[mask, 5].astype(int).sum())",
+   "qid": "census_state_population_estimates_2023#6",
+   "pass1": true,
+   "result": 92079220,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

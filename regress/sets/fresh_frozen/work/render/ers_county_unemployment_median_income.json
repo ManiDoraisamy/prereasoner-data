@@ -1,0 +1,18 @@
+{
+ "file": "ers_county_unemployment_median_income.xlsx",
+ "sheets": [
+  {
+   "name": "Unemployment Med HH Income",
+   "rows": 3291,
+   "cols": 104,
+   "shown_whole": false
+  },
+  {
+   "name": "Variable Descriptions",
+   "rows": 109,
+   "cols": 2,
+   "shown_whole": true
+  }
+ ],
+ "chars": 102219
+}

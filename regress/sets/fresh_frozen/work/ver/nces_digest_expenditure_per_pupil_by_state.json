@@ -1,0 +1,45 @@
+{
+ "id": "nces_digest_expenditure_per_pupil_by_state",
+ "answers": [
+  {
+   "id": "nces_digest_expenditure_per_pupil_by_state#1",
+   "answer": "14696.93795",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nrow = df[df[0].astype(str).str.strip() == 'California']\n# Column R is index 17 (2020-21 unadjusted)\nresult = float(row.iloc[0, 17])"
+  },
+  {
+   "id": "nces_digest_expenditure_per_pupil_by_state#4",
+   "answer": "6",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\n# States and DC are in Excel rows 6 to 56 (pandas index 5 to 55)\nstates_df = df.iloc[5:56]\n# Column R is index 17\nvalues = pd.to_numeric(states_df[17], errors='coerce')\nresult = int((values > 20000).sum())"
+  },
+  {
+   "id": "nces_digest_expenditure_per_pupil_by_state#6",
+   "answer": "11400.25285",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nny = float(df[df[0].astype(str).str.strip() == 'New York'].iloc[0, 17])\nca = float(df[df[0].astype(str).str.strip() == 'California'].iloc[0, 17])\nresult = ny - ca"
+  },
+  {
+   "id": "nces_digest_expenditure_per_pupil_by_state#7",
+   "answer": "13495.85399",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'United States'].index[0]\nyear_row = df.iloc[2]\ncol_idx = None\nfor c in range(1, 19):\n    if '2019-20' in str(year_row[c]):\n        col_idx = c\n        break\nresult = float(df.iat[us_row, col_idx])"
+  },
+  {
+   "id": "nces_digest_expenditure_per_pupil_by_state#8",
+   "answer": "Idaho",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nyear_row = df.iloc[2]\ncol_idx = None\nfor c in range(19, df.shape[1]):\n    if '2020-21' in str(year_row[c]):\n        col_idx = c\n        break\n\nidaho_val = float(df[df[0].astype(str).str.strip() == 'Idaho'][col_idx].values[0])\nutah_val = float(df[df[0].astype(str).str.strip() == 'Utah'][col_idx].values[0])\nresult = 'Idaho' if idaho_val > utah_val else 'Utah'"
+  },
+  {
+   "id": "nces_digest_expenditure_per_pupil_by_state#9",
+   "answer": "[\"Utah\", \"Idaho\", \"Arizona\", \"Mississippi\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nyear_row = df.iloc[2]\ncol_idx = None\nfor c in range(19, df.shape[1]):\n    if '2020-21' in str(year_row[c]):\n        col_idx = c\n        break\n\nstates_df = df.iloc[5:56][[0, col_idx]].copy()\nstates_df.columns = ['State', 'Expenditure']\nstates_df['Expenditure'] = pd.to_numeric(states_df['Expenditure'])\nresult = states_df.sort_values('Expenditure').head(4)['State'].str.strip().tolist()"
+  },
+  {
+   "id": "nces_digest_expenditure_per_pupil_by_state#11",
+   "answer": "14663.403193529412",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nyear_row = df.iloc[2]\ncol_idx = None\nfor c in range(1, 19):\n    if '2020-21' in str(year_row[c]):\n        col_idx = c\n        break\n\nstates_df = df.iloc[5:56][[0, col_idx]].copy()\nresult = float(pd.to_numeric(states_df[col_idx]).mean())"
+  },
+  {
+   "id": "nces_digest_expenditure_per_pupil_by_state#12",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nyear_row = df.iloc[2]\ncol_idx = None\nfor c in range(1, 19):\n    if '2018-19' in str(year_row[c]):\n        col_idx = c\n        break\n\nfl_row = df[df[0].astype(str).str.strip() == 'Florida'].index[0]\nval = float(df.iat[fl_row, col_idx])\nresult = 'yes' if val > 10000 else 'no'"
+  }
+ ]
+}

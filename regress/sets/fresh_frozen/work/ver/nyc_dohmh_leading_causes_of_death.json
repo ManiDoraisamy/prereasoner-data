@@ -1,0 +1,35 @@
+{
+ "id": "nyc_dohmh_leading_causes_of_death",
+ "answers": [
+  {
+   "id": "nyc_dohmh_leading_causes_of_death#1",
+   "answer": "122",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_leading_causes_of_death.csv')\ncond = (\n    (df['Year'] == 2013) &\n    (df['Sex'].isin(['M', 'Male'])) &\n    (df['Race Ethnicity'] == 'Hispanic') &\n    (df['Leading Cause'].str.contains('HIV|Immunodeficiency', case=False))\n)\nresult = int(df[cond]['Deaths'].iloc[0])"
+  },
+  {
+   "id": "nyc_dohmh_leading_causes_of_death#2",
+   "answer": "3786",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_leading_causes_of_death.csv')\ncond_base = (\n    (df['Year'] == 2019) &\n    (df['Sex'].isin(['M', 'Male'])) &\n    (df['Race Ethnicity'].isin(['Non-Hispanic White', 'White Non-Hispanic']))\n)\nheart = int(df[cond_base & df['Leading Cause'].str.contains('Heart', case=False)]['Deaths'].iloc[0])\ndiabetes = int(df[cond_base & df['Leading Cause'].str.contains('Diabetes', case=False)]['Deaths'].iloc[0])\nresult = heart - diabetes"
+  },
+  {
+   "id": "nyc_dohmh_leading_causes_of_death#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_leading_causes_of_death.csv')\nr1 = float(df[(df['Year'] == 2021) & (df['Leading Cause'].str.contains('Covid', case=False)) & (df['Sex'].isin(['M', 'Male'])) & (df['Race Ethnicity'] == 'Hispanic')]['Age Adjusted Death Rate'].iloc[0])\nr2 = float(df[(df['Year'] == 2021) & (df['Leading Cause'].str.contains('Covid', case=False)) & (df['Sex'].isin(['F', 'Female'])) & (df['Race Ethnicity'].isin(['Black Non-Hispanic', 'Non-Hispanic Black']))]['Age Adjusted Death Rate'].iloc[0])\nresult = 'yes' if r1 > r2 else 'no'"
+  },
+  {
+   "id": "nyc_dohmh_leading_causes_of_death#4",
+   "answer": "2019",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_leading_causes_of_death.csv')\nresult = str(df['Year'].value_counts().idxmax())"
+  },
+  {
+   "id": "nyc_dohmh_leading_causes_of_death#5",
+   "answer": "[\"Other Race/ Ethnicity\", \"Not Stated/Unknown\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_leading_causes_of_death.csv')\nresult = df['Race Ethnicity'].value_counts().nlargest(2).index.tolist()"
+  },
+  {
+   "id": "nyc_dohmh_leading_causes_of_death#6",
+   "answer": "1060",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_leading_causes_of_death.csv')\nresult = int(df['Sex'].isin(['F', 'Female']).sum())"
+  }
+ ]
+}

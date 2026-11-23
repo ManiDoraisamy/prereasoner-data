@@ -1,0 +1,45 @@
+{
+ "id": "nsf_sed_doctorates_by_field_and_citizenship",
+ "answers": [
+  {
+   "id": "nsf_sed_doctorates_by_field_and_citizenship#4",
+   "answer": "1978",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nsf_sed_doctorates_by_field_and_citizenship.xlsx', sheet_name=0, header=None)\n\n# Find header row with years\nyear_row_idx = df[df.iloc[:, 0].astype(str).str.contains('Field and citizenship status', case=False, na=False)].index[0]\nyears = df.iloc[year_row_idx, 1:].astype(int).astype(str).tolist()\n\n# Find row for Education\neduc_row_idx = df[df.iloc[:, 0].astype(str).str.strip() == 'Education'].index[0]\nvalues = pd.to_numeric(df.iloc[educ_row_idx, 1:], errors='coerce')\n\nmax_year = years[values.reset_index(drop=True).idxmax()]\nresult = max_year"
+  },
+  {
+   "id": "nsf_sed_doctorates_by_field_and_citizenship#6",
+   "answer": "1191.2",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nsf_sed_doctorates_by_field_and_citizenship.xlsx', sheet_name=0, header=None)\n\nrow_idx = df[df.iloc[:, 0].astype(str).str.strip() == 'Computer and information sciences'].index[0]\nvalues = pd.to_numeric(df.iloc[row_idx, 1:], errors='coerce')\nresult = float(values.mean())"
+  },
+  {
+   "id": "nsf_sed_doctorates_by_field_and_citizenship#9",
+   "answer": "1983",
+   "program": "import pandas as pd\n\nexcel = pd.ExcelFile('nsf_sed_doctorates_by_field_and_citizenship.xlsx')\ndf = pd.read_excel(excel, sheet_name=excel.sheet_names[0], header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Field and citizenship status', case=False, na=False)].index[0]\nheaders = df.iloc[header_row].values\nrow = df[df.iloc[:, 0].astype(str).str.strip() == 'Humanities and arts'].iloc[0]\ndata = {str(headers[i]).strip(): float(row[i]) for i in range(1, len(headers)) if pd.notna(row[i])}\nresult = min(data, key=data.get)"
+  },
+  {
+   "id": "nsf_sed_doctorates_by_field_and_citizenship#7",
+   "answer": "4453",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nsf_sed_doctorates_by_field_and_citizenship.xlsx', sheet_name=0, header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'field and citizenship status'].index[0]\nyears = [str(val).strip().replace('.0', '') for val in df.iloc[header_row]]\ncol_2023 = years.index('2023')\n\nrow = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'humanities and arts'].index[0]\nresult = int(df.iat[row, col_2023])"
+  },
+  {
+   "id": "nsf_sed_doctorates_by_field_and_citizenship#8",
+   "answer": "4115",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nsf_sed_doctorates_by_field_and_citizenship.xlsx', sheet_name=0, header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'field and citizenship status'].index[0]\nyears = [str(val).strip().replace('.0', '') for val in df.iloc[header_row]]\ncol_2023 = years.index('2023')\n\nbio_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'biological and biomedical sciences'].index[0]\nphys_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'physical sciences'].index[0]\n\nresult = int(df.iat[bio_row, col_2023]) - int(df.iat[phys_row, col_2023])"
+  },
+  {
+   "id": "nsf_sed_doctorates_by_field_and_citizenship#10",
+   "answer": "[\"Education\", \"Humanities and arts\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nsf_sed_doctorates_by_field_and_citizenship.xlsx', sheet_name=0, header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'field and citizenship status'].index[0]\nyears = [str(val).strip().replace('.0', '') for val in df.iloc[header_row]]\ncol_2023 = years.index('2023')\n\nnon_se_fields = ['Business', 'Education', 'Humanities and arts', 'Other non-science and engineering']\ncounts = {}\nfor field in non_se_fields:\n    row = df[df.iloc[:, 0].astype(str).str.strip() == field].index[0]\n    counts[field] = int(df.iat[row, col_2023])\n\nsorted_fields = sorted(counts.items(), key=lambda x: x[1], reverse=True)\nresult = [sorted_fields[0][0], sorted_fields[1][0]]"
+  },
+  {
+   "id": "nsf_sed_doctorates_by_field_and_citizenship#11",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nsf_sed_doctorates_by_field_and_citizenship.xlsx', sheet_name=0, header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'field and citizenship status'].index[0]\nyears = [str(val).strip().replace('.0', '') for val in df.iloc[header_row]]\ncol_1978 = years.index('1978')\n\npsych_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'psychology'].index[0]\nhum_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'humanities and arts'].index[0]\n\npsych_val = int(df.iat[psych_row, col_1978])\nhum_val = int(df.iat[hum_row, col_1978])\n\nresult = 'yes' if psych_val > hum_val else 'no'"
+  },
+  {
+   "id": "nsf_sed_doctorates_by_field_and_citizenship#12",
+   "answer": "9098",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nsf_sed_doctorates_by_field_and_citizenship.xlsx', sheet_name=0, header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'field and citizenship status'].index[0]\nyears = [str(val).strip().replace('.0', '') for val in df.iloc[header_row]]\ncol_2023 = years.index('2023')\n\npsych_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'psychology'].index[0]\nsoc_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'social sciences'].index[0]\n\nresult = int(df.iat[psych_row, col_2023]) + int(df.iat[soc_row, col_2023])"
+  }
+ ]
+}

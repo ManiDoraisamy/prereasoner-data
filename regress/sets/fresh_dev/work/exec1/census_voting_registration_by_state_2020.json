@@ -1,0 +1,88 @@
+{
+ "id": "census_voting_registration_by_state_2020",
+ "file": "census_voting_registration_by_state_2020.xlsx",
+ "questions": [
+  {
+   "question": "According to the November 2020 survey, what percentage of citizens in Florida reported voting?",
+   "sheet": "Table 4a",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "62.1",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\nfl_row = df[df[0].astype(str).str.strip().str.upper() == 'FLORIDA'].index[0]\nresult = float(df.iloc[fl_row, 11])",
+   "qid": "census_voting_registration_by_state_2020#1",
+   "pass1": true,
+   "result": 62.1,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states or jurisdictions had the highest citizen voter registration rates in November 2020?",
+   "sheet": "Table 4a",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"DISTRICT OF COLUMBIA\", \"NEW JERSEY\", \"MINNESOTA\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\ndata = df.iloc[7:58, [0, 6]].copy()\ndata.columns = ['state', 'rate']\ndata['rate'] = pd.to_numeric(data['rate'])\ntop3 = data.sort_values(by='rate', ascending=False).head(3)\nresult = top3['state'].str.strip().tolist()",
+   "qid": "census_voting_registration_by_state_2020#2",
+   "pass1": true,
+   "result": [
+    "DISTRICT OF COLUMBIA",
+    "NEW JERSEY",
+    "MINNESOTA"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between California and Texas, which state had a higher overall voter turnout rate as a percentage of its total population in the November 2020 election?",
+   "sheet": "Table 4a",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "CALIFORNIA",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\nca_val = float(df[df[0].astype(str).str.strip().str.upper() == 'CALIFORNIA'].iloc[0, 9])\ntx_val = float(df[df[0].astype(str).str.strip().str.upper() == 'TEXAS'].iloc[0, 9])\nresult = 'CALIFORNIA' if ca_val > tx_val else 'TEXAS'",
+   "qid": "census_voting_registration_by_state_2020#3",
+   "pass1": true,
+   "result": "CALIFORNIA",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In how many states (including the District of Columbia) did at least 70 percent of the citizen population vote in the November 2020 election?",
+   "sheet": "Table 4a",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "16",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\ndata = df.iloc[7:58, [0, 11]].copy()\ndata.columns = ['state', 'citizen_voted_pct']\ndata['citizen_voted_pct'] = pd.to_numeric(data['citizen_voted_pct'])\nresult = int((data['citizen_voted_pct'] >= 70.0).sum())",
+   "qid": "census_voting_registration_by_state_2020#4",
+   "pass1": true,
+   "result": 16,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did the District of Columbia achieve a citizen voter registration rate exceeding 85 percent in the November 2020 election?",
+   "sheet": "Table 4a",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\ndc_val = float(df[df[0].astype(str).str.strip().str.upper() == 'DISTRICT OF COLUMBIA'].iloc[0, 6])\nresult = 'yes' if dc_val > 85.0 else 'no'",
+   "qid": "census_voting_registration_by_state_2020#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the combined total citizen population, in thousands, of California, Texas, and New York in November 2020?",
+   "sheet": "Table 4a",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "57825",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\nstates = ['CALIFORNIA', 'TEXAS', 'NEW YORK']\nsub = df[df[0].astype(str).str.strip().str.upper().isin(states)]\nresult = int(sub[2].astype(float).sum())",
+   "qid": "census_voting_registration_by_state_2020#6",
+   "pass1": true,
+   "result": 57825,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

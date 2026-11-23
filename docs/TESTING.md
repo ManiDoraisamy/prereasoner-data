@@ -345,15 +345,43 @@ python -m engine.server
 
 `AUTH_TEST_SUB` is a local test bypass and must not exist in production configuration.
 
+## Measuring the Decisions Path
+
+Every input these measurements read is in the repository (`regress/sets/`, its README) or fetched from a pinned
+public source and checked by its digest, so a clone reproduces each recorded number:
+
+```powershell
+python -m engine.fetch_weights
+python -m regress.eval_sets fetch
+```
+
+The dev replay holds the 896 dev questions and the 91 demo questions to their committed reference, every Decisions
+answer replayed from `regress/sets/calls` (no API call, no key), three processes as its docstring says:
+
+```powershell
+python -m regress.run_dev_decisions --sets wtq --tag parity_wtq
+python -m regress.run_dev_decisions --sets messy,freshdev --tag parity_mf
+python -m regress.run_dev_decisions --sets databench --tag parity_fd
+python -m regress.run_dev_decisions --sets demo --demo-maps --tag parity_demo
+```
+
+A kept change re-measures them with `--record --keep` (new Decisions bodies are sent and kept), then
+`python -m regress.eval_sets pack`, and commits the references and calls with the change.
+
+The public benchmark (`regress/run_public.py`) runs the engine alone, the engine as served (an erred answer retried),
+Gemini 4 Neon and Claude Opus 5.5 on DataBench test and the committed WikiTableQuestions test samples, and the engine
+on the training find set read for diagnosis; `--compare`, `--summary` and `--census` read the committed records.
+
 ## Spider Accuracy
 
 Planner behavior changes require a fresh serving-faithful `whole_db` run. The evaluator loads the
 runtime bundle from `engine/data` and calls the served selection (`TableQuery.select_query`); it has
-no model flags:
+no model flags. The calibration split RESULTS.md reports is committed (`spider/calibration/`, its README):
 
 ```powershell
 python spider/probe/fetch_data.py --include-train
 python -m spider.probe.full_eval `
+  --data spider/calibration `
   --dbs spider/data/dbs `
   --config whole_db `
   --tag <unique-tag> `

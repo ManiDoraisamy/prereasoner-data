@@ -1,0 +1,66 @@
+{
+ "file": "cms_program_stats_premiums_2023.xlsx",
+ "sheets": [
+  {
+   "name": "Table of Contents",
+   "rows": 11,
+   "cols": 2,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR PREMIUMS 1_CPS_04PRM",
+   "rows": 17,
+   "cols": 9,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR PREMIUMS 2_CPS_04PRM",
+   "rows": 44,
+   "cols": 9,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR PREMIUMS 3_CPS_04PRM",
+   "rows": 74,
+   "cols": 9,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR PREMIUMS 4_CPS_04PRM",
+   "rows": 19,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR PREMIUMS 5_CPS_04PRM",
+   "rows": 49,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR PREMIUMS 6_CPS_04PRM",
+   "rows": 76,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR PREMIUMS 7_CPS_04PRM",
+   "rows": 20,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR PREMIUMS 8_CPS_04PRM",
+   "rows": 51,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR PREMIUMS 9_CPS_04PRM",
+   "rows": 77,
+   "cols": 11,
+   "shown_whole": true
+  }
+ ],
+ "chars": 50615
+}

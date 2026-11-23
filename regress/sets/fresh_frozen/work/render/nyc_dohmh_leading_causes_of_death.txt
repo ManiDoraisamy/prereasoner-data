@@ -1,0 +1,86 @@
+FILE nyc_dohmh_leading_causes_of_death.csv (CSV). pandas.read_csv gives 2102 data rows x 7 columns.
+Columns and pandas dtypes: Year (int64); Leading Cause (str); Sex (str); Race Ethnicity (str); Deaths (str); Death Rate (str); Age Adjusted Death Rate (str)
+(sheet too large to show whole; r1 is the CSV header line; r2 is pandas index 0; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Year | B=Leading Cause | C=Sex | D=Race Ethnicity | E=Deaths | F=Death Rate | G=Age Adjusted Death Rate
+r2: A=2010 | B=Chronic Lower Respiratory Diseases (J40-J47) | C=F | D=Not Stated/Unknown | E=6 | F=. | G=.
+r3: A=2009 | B=Nephritis, Nephrotic Syndrome and Nephrisis (N00-N07, N17-N19, N25-N27) | C=F | D=Other Race/ Ethnicity | E=. | F=. | G=.
+r4: A=2011 | B=Chronic Lower Respiratory Diseases (J40-J47) | C=M | D=White Non-Hispanic | E=444 | F=33.3 | G=27.8
+r5: A=2010 | B=Diabetes Mellitus (E10-E14) | C=M | D=White Non-Hispanic | E=245 | F=18.3 | G=15.6
+r6: A=2012 | B=Intentional Self-Harm (Suicide: X60-X84, Y87.0) | C=M | D=White Non-Hispanic | E=199 | F=14.9 | G=13.6
+r7: A=2011 | B=Certain Conditions originating in the Perinatal Period (P00-P96) | C=M | D=Asian and Pacific Islander | E=19 | F=3.6 | G=4.2
+r8: A=2011 | B=Cerebrovascular Disease (Stroke: I60-I69) | C=F | D=Other Race/ Ethnicity | E=5 | F=. | G=.
+r9: A=2010 | B=Diseases of Heart (I00-I09, I11, I13, I20-I51) | C=M | D=Not Stated/Unknown | E=70 | F=. | G=.
+r10: A=2011 | B=Alzheimer's Disease (G30) | C=F | D=Asian and Pacific Islander | E=24 | F=4.2 | G=5.4
+r11: A=2007 | B=Assault (Homicide: Y87.1, X85-Y09) | C=M | D=Black Non-Hispanic | E=267 | F=31.3 | G=31.1
+r12: A=2013 | B=Malignant Neoplasms (Cancer: C00-C97) | C=M | D=White Non-Hispanic | E=3132 | F=232.7 | G=194.5
+r13: A=2010 | B=Essential Hypertension and Renal Diseases (I10, I12) | C=F | D=White Non-Hispanic | E=219 | F=15.3 | G=7.7
+r14: A=2009 | B=All Other Causes | C=F | D=Other Race/ Ethnicity | E=11 | F=. | G=.
+r15: A=2007 | B=Chronic Lower Respiratory Diseases (J40-J47) | C=M | D=Black Non-Hispanic | E=137 | F=16.1 | G=22.7
+r16: A=2012 | B=Malignant Neoplasms (Cancer: C00-C97) | C=F | D=Other Race/ Ethnicity | E=29 | F=. | G=.
+r17: A=2010 | B=Influenza (Flu) and Pneumonia (J09-J18) | C=F | D=Asian and Pacific Islander | E=74 | F=13.2 | G=16.9
+r18: A=2013 | B=Diseases of Heart (I00-I09, I11, I13, I20-I51) | C=F | D=Not Stated/Unknown | E=106 | F=. | G=.
+r19: A=2012 | B=Influenza (Flu) and Pneumonia (J09-J18) | C=F | D=Asian and Pacific Islander | E=74 | F=12.7 | G=15.1
+r20: A=2011 | B=Assault (Homicide: Y87.1, X85-Y09) | C=F | D=Not Stated/Unknown | E=. | F=. | G=.
+r21: A=2010 | B=Diseases of Heart (I00-I09, I11, I13, I20-I51) | C=F | D=Not Stated/Unknown | E=70 | F=. | G=.
+r22: A=2012 | B=Diabetes Mellitus (E10-E14) | C=F | D=White Non-Hispanic | E=240 | F=16.9 | G=10.3
+r23: A=2013 | B=Human Immunodeficiency Virus Disease (HIV: B20-B24) | C=M | D=Hispanic | E=122 | F=10.3 | G=11.3
+r24: A=2008 | B=Alzheimer's Disease (G30) | C=F | D=White Non-Hispanic | E=151 | F=10.5 | G=5.1
+r25: A=2008 | B=Diabetes Mellitus (E10-E14) | C=F | D=Other Race/ Ethnicity | E=. | F=. | G=.
+r26: A=2013 | B=Diabetes Mellitus (E10-E14) | C=F | D=White Non-Hispanic | E=238 | F=16.7 | G=10.4
+r27: A=2014 | B=Cerebrovascular Disease (Stroke: I60-I69) | C=F | D=Black Non-Hispanic | E=274 | F=26.1 | G=21.4
+r28: A=2010 | B=Influenza (Flu) and Pneumonia (J09-J18) | C=M | D=Other Race/ Ethnicity | E=6 | F=. | G=.
+r29: A=2012 | B=All Other Causes | C=F | D=Not Stated/Unknown | E=53 | F=. | G=.
+r30: A=2011 | B=Malignant Neoplasms (Cancer: C00-C97) | C=M | D=Not Stated/Unknown | E=27 | F=. | G=.
+r31: A=2010 | B=Certain Conditions originating in the Perinatal Period (P00-P96) | C=F | D=Not Stated/Unknown | E=5 | F=. | G=.
+r32: A=2011 | B=Influenza (Flu) and Pneumonia (J09-J18) | C=F | D=White Non-Hispanic | E=696 | F=49.1 | G=25.4
+r33: A=2011 | B=Essential Hypertension and Renal Diseases (I10, I12) | C=F | D=Asian and Pacific Islander | E=46 | F=8.1 | G=10.2
+r34: A=2014 | B=Chronic Lower Respiratory Diseases (J40-J47) | C=M | D=Not Stated/Unknown | E=14 | F=. | G=.
+r35: A=2012 | B=All Other Causes | C=F | D=Black Non-Hispanic | E=1483 | F=141.9 | G=127.3
+... sampled rows:
+r245: A=2008 | B=Influenza (Flu) and Pneumonia (J09-J18) | C=F | D=Other Race/ Ethnicity | E=. | F=. | G=.
+r307: A=2012 | B=Influenza (Flu) and Pneumonia (J09-J18) | C=M | D=Black Non-Hispanic | E=242 | F=28.3 | G=37.4
+r332: A=2009 | B=Malignant Neoplasms (Cancer: C00-C97) | C=F | D=Black Non-Hispanic | E=1735 | F=165.7 | G=151.1
+r370: A=2008 | B=Mental and Behavioral Disorders due to Accidental Poisoning and Other Psychoactive Substan... | C=M | D=Not Stated/Unknown | E=13 | F=. | G=.
+r611: A=2010 | B=Human Immunodeficiency Virus Disease (HIV: B20-B24) | C=M | D=Not Stated/Unknown | E=8 | F=. | G=.
+r665: A=2014 | B=Diseases of Heart (I00-I09, I11, I13, I20-I51) | C=F | D=Other Race/ Ethnicity | E=68 | F=. | G=.
+r700: A=2012 | B=Accidents Except Drug Posioning (V01-X39, X43, X45-X59, Y85-Y86) | C=M | D=Other Race/ Ethnicity | E=5 | F=. | G=.
+r749: A=2010 | B=Human Immunodeficiency Virus Disease (HIV: B20-B24) | C=F | D=Black Non-Hispanic | E=152 | F=14.5 | G=12.9
+r751: A=2014 | B=Influenza (Flu) and Pneumonia (J09-J18) | C=M | D=Black Non-Hispanic | E=242 | F=28 | G=33.9
+r773: A=2007 | B=Assault (Homicide: Y87.1, X85-Y09) | C=M | D=Not Stated/Unknown | E=. | F=. | G=.
+r794: A=2011 | B=Malignant Neoplasms (Cancer: C00-C97) | C=M | D=Other Race/ Ethnicity | E=36 | F=. | G=.
+r878: A=2013 | B=Essential Hypertension and Renal Diseases (I10, I12) | C=F | D=Hispanic | E=103 | F=8.3 | G=9.3
+r881: A=2010 | B=Malignant Neoplasms (Cancer: C00-C97) | C=M | D=Asian and Pacific Islander | E=526 | F=101 | G=124.5
+r948: A=2009 | B=Influenza (Flu) and Pneumonia (J09-J18) | C=F | D=Asian and Pacific Islander | E=83 | F=15.1 | G=20.3
+r972: A=2009 | B=Essential Hypertension and Renal Diseases (I10, I12) | C=F | D=Other Race/ Ethnicity | E=. | F=. | G=.
+r1119: A=2015 | B=Malignant Neoplasms (Cancer: C00-C97) | C=Female | D=Non-Hispanic Black | E=1872 | F=179.0816898 | G=148.0974577
+r1261: A=2016 | B=All Other Causes | C=Female | D=Hispanic | E=1147 | F=89.51775917 | G=91.93898635
+r1291: A=2016 | B=Essential Hypertension and Renal Diseases (I10, I12) | C=Female | D=Not Stated/Unknown | E=13
+r1343: A=2016 | B=All Other Causes | C=Male | D=Non-Hispanic Black | E=1375 | F=159.926678 | G=170.4808293
+r1376: A=2016 | B=Cerebrovascular Disease (Stroke: I60-I69) | C=Male | D=Other Race/ Ethnicity | E=1
+r1379: A=2016 | B=Essential Hypertension and Renal Diseases (I10, I12) | C=Male | D=Other Race/ Ethnicity | E=1
+r1477: A=2017 | B=Mental and Behavioral Disorders due to Accidental Poisoning and Other Psychoactive Substan... | C=Male | D=Non-Hispanic Black | E=309 | F=35.89463009 | G=33.14996692
+r1564: A=2018 | B=Cerebrovascular Disease (Stroke: I60-I69) | C=F | D=Asian and Pacific Islander | E=114 | F=17.552 | G=15.469
+r1623: A=2018 | B=Malignant Neoplasms (Cancer: C00-C97) | C=F | D=Non-Hispanic Black | E=1858 | F=183.781 | G=140.841
+r1677: A=2019 | B=Diseases of Heart (I00-I09, I11, I13, I20-I51) | C=Male | D=Non-Hispanic White | E=4034 | F=307.7768198 | G=224.9990183
+r1684: A=2019 | B=Diabetes Mellitus (E10-E14) | C=Male | D=Non-Hispanic White | E=248 | F=18.92133151 | G=14.48032854
+r1870: A=2020 | B=Mental and Behavioral Disorders due to Accidental Poisoning and Other Psychoactive Substan... | C=Male | D=Non-Hispanic Black | E=482 | F=55.4 | G=50.1
+r1966: A=2021 | B=Covid-19 | C=Male | D=Hispanic | E=1236 | F=103.4 | G=119.4
+r2010: A=2021 | B=Covid-19 | C=Male | D=Other Race/ Ethnicity | E=78
+r2071: A=2021 | B=Covid-19 | C=Female | D=Non-Hispanic Black | E=1029 | F=102.8 | G=74.2
+... last rows:
+r2096: A=2021 | B=Certain Conditions Originating in the Perinatal Period (P00-P96) | C=Female | D=Not Stated/Unknown | E=15
+r2097: A=2021 | B=Influenza (Flu) and Pneumonia (J09-J18) | C=Female | D=Not Stated/Unknown | E=12
+r2098: A=2021 | B=Chronic Lower Respiratory Diseases (J40-J47) | C=Female | D=Not Stated/Unknown | E=11
+r2099: A=2021 | B=Essential Hypertension and Renal Diseases (I10, I12, I15) | C=Female | D=Not Stated/Unknown | E=10
+r2100: A=2021 | B=Human Immunodeficiency Viruses Diseases | C=Female | D=Not Stated/Unknown | E=7
+r2101: A=2021 | B=Diabetes Mellitus (E10-E14) | C=Female | D=Not Stated/Unknown | E=7
+r2102: A=2021 | B=Alzheimer's Disease (G30) | C=Female | D=Not Stated/Unknown | E=7
+r2103: A=2021 | B=All Other Causes | C=Female | D=Not Stated/Unknown | E=102
+... column profiles (data rows below Excel row 1):
+  A [Year]: {"non_empty": 2102, "numeric": 2102, "min": "2007", "max": "2021", "sum": "4233616", "distinct": 15, "value_counts": {"2019": 178, "2016": 145, "2007": 141, "2011": 141, "2015": 141, "2021": 139, "2010": 138, "2018": 137, "2008": 136, "2014": 136, "2017": 136, "2009": 135, "2012": 134, "2013": 133, "2020": 132}}
+  B [Leading Cause]: {"non_empty": 2102, "distinct": 42, "top_values": {"All Other Causes": 182, "Diseases of Heart (I00-I09, I11, I13, I20-I51)": 182, "Malignant Neoplasms (Cancer: C00-C97)": 182, "Influenza (Flu) and Pneumonia (J09-J18)": 180, "Diabetes Mellitus (E10-E14)": 176, "Cerebrovascular Disease (Stroke: I60-I69)": 174}}
+  C [Sex]: {"non_empty": 2102, "distinct": 4, "value_counts": {"F": 622, "M": 609, "Female": 438, "Male": 433}}
+  D [Race Ethnicity]: {"non_empty": 2102, "distinct": 8, "value_counts": {"Other Race/ Ethnicity": 413, "Not Stated/Unknown": 362, "Asian and Pacific Islander": 333, "Hispanic": 331, "Black Non-Hispanic": 178, "White Non-Hispanic": 176, "Non-Hispanic White": 155, "Non-Hispanic Black": 154}}
+  E [Deaths]: {"non_empty": 2102, "distinct": 720, "top_values": {".": 138, "1": 61, "5": 41, "6": 32, "2": 30, "8": 28}}
+  F [Death Rate]: {"non_empty": 1759, "distinct": 1008, "top_values": {".": 386, "13": 7, "16.3": 7, "17.3": 7, "11.4": 6, "12.8": 6}}
+  G [Age Adjusted Death Rate]: {"non_empty": 1759, "distinct": 999, "top_values": {".": 386, "17.9": 8, "14.8": 7, "11.1": 6, "16.4": 6, "18.8": 6}}

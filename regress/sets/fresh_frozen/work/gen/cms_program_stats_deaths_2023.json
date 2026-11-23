@@ -1,0 +1,60 @@
+{
+ "id": "cms_program_stats_deaths_2023",
+ "file": "cms_program_stats_deaths_2023.xlsx",
+ "questions": [
+  {
+   "question": "How many total Medicare beneficiaries passed away during calendar year 2023?",
+   "sheet": "MDCR ENROLL AB 33_CPS_02ENR",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "2517604",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 33_CPS_02ENR', header=None)\nrow_2023 = df[df[0].astype(str).str.strip() == '2023']\nresult = int(row_2023.iloc[0, 1])",
+   "qid": "cms_program_stats_deaths_2023#1"
+  },
+  {
+   "question": "Did more female Medicare beneficiaries die in 2023 than male Medicare beneficiaries?",
+   "sheet": "MDCR ENROLL AB 34_CPS_02ENR",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 34_CPS_02ENR', header=None)\nmale_val = int(df[df[0].astype(str).str.strip() == 'Male'].iloc[0, 1])\nfemale_val = int(df[df[0].astype(str).str.strip() == 'Female'].iloc[0, 1])\nresult = 'yes' if female_val > male_val else 'no'",
+   "qid": "cms_program_stats_deaths_2023#2"
+  },
+  {
+   "question": "In calendar year 2023, which month recorded the highest number of deaths across all Medicare beneficiaries?",
+   "sheet": "MDCR ENROLL AB 33_CPS_02ENR",
+   "kind": "date_period",
+   "answer_type": "name",
+   "answer": "January",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 33_CPS_02ENR', header=None)\nheader_row = df[df[0].astype(str).str.strip() == 'Year'].iloc[0]\nrow_2023 = df[df[0].astype(str).str.strip() == '2023'].iloc[0]\n\nmonths = header_row.iloc[2:].values\nvalues = pd.to_numeric(row_2023.iloc[2:], errors='coerce').values\n\nmax_idx = values.argmax()\nresult = str(months[max_idx]).strip()",
+   "qid": "cms_program_stats_deaths_2023#3"
+  },
+  {
+   "question": "What are the three states with the highest total number of Medicare deaths in 2023?",
+   "sheet": "MDCR ENROLL AB 35_CPS_02ENR",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Florida\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 35_CPS_02ENR', header=None)\n# State rows run from Alabama (index 8) to Wyoming (index 58)\n# Find index of Alabama and Wyoming\nstart_idx = df[df[0].astype(str).str.strip() == 'Alabama'].index[0]\nend_idx = df[df[0].astype(str).str.strip() == 'Wyoming'].index[0]\nstates_df = df.iloc[start_idx:end_idx+1].copy()\nstates_df[1] = pd.to_numeric(states_df[1], errors='coerce')\ntop3 = states_df.sort_values(by=1, ascending=False).head(3)\nresult = [str(x).strip() for x in top3[0].tolist()]",
+   "qid": "cms_program_stats_deaths_2023#4"
+  },
+  {
+   "question": "How many Medicare beneficiaries enrolled in Medicare Advantage and Other Health Plans died during the year 2020?",
+   "sheet": "MDCR ENROLL AB 38_CPS_02ENR",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1055276",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 38_CPS_02ENR', header=None)\nrow_2020 = df[df[0].astype(str).str.strip() == '2020']\nresult = int(row_2020.iloc[0, 1])",
+   "qid": "cms_program_stats_deaths_2023#5"
+  },
+  {
+   "question": "How many total Original Medicare beneficiary deaths occurred in the District of Columbia in 2023?",
+   "sheet": "MDCR ENROLL AB 37_CPS_02ENR",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "2426",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 37_CPS_02ENR', header=None)\ndc_row = df[df[0].astype(str).str.strip() == 'District of Columbia']\nresult = int(dc_row.iloc[0, 1])",
+   "qid": "cms_program_stats_deaths_2023#6"
+  }
+ ]
+}

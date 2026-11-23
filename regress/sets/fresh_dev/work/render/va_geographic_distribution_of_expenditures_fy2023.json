@@ -1,0 +1,336 @@
+{
+ "file": "va_geographic_distribution_of_expenditures_fy2023.xlsx",
+ "sheets": [
+  {
+   "name": "Data Guide",
+   "rows": 39,
+   "cols": 1,
+   "shown_whole": true
+  },
+  {
+   "name": "State Level Expenditures",
+   "rows": 84,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "AK",
+   "rows": 51,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "AL",
+   "rows": 93,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "AR",
+   "rows": 98,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "AZ",
+   "rows": 43,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "CA",
+   "rows": 129,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "CO",
+   "rows": 91,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "CT",
+   "rows": 32,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "DC",
+   "rows": 21,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "DE",
+   "rows": 23,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "FL",
+   "rows": 114,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "GA",
+   "rows": 192,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "HI",
+   "rows": 27,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "IA",
+   "rows": 122,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "ID",
+   "rows": 66,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "IL",
+   "rows": 138,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "IN",
+   "rows": 120,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "KS",
+   "rows": 129,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "KY",
+   "rows": 145,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "LA",
+   "rows": 89,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "MA",
+   "rows": 42,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "MD",
+   "rows": 51,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "ME",
+   "rows": 37,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "MI",
+   "rows": 115,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "MN",
+   "rows": 114,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "MO",
+   "rows": 142,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "MS",
+   "rows": 105,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "MT",
+   "rows": 77,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "NC",
+   "rows": 133,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "ND",
+   "rows": 73,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "NE",
+   "rows": 116,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "NH",
+   "rows": 31,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "NJ",
+   "rows": 52,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "NM",
+   "rows": 55,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "NV",
+   "rows": 40,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "NY",
+   "rows": 107,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "OH",
+   "rows": 122,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "OK",
+   "rows": 101,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "OR",
+   "rows": 61,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "PA",
+   "rows": 103,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "RI",
+   "rows": 26,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "SC",
+   "rows": 72,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "SD",
+   "rows": 86,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "TN",
+   "rows": 123,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "TX",
+   "rows": 312,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "UT",
+   "rows": 52,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "VA",
+   "rows": 163,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "VT",
+   "rows": 34,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "WA",
+   "rows": 68,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "WI",
+   "rows": 99,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "WV",
+   "rows": 76,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "WY",
+   "rows": 43,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "PR",
+   "rows": 98,
+   "cols": 11,
+   "shown_whole": null
+  },
+  {
+   "name": "GU",
+   "rows": 18,
+   "cols": 11,
+   "shown_whole": null
+  }
+ ],
+ "chars": 168799
+}

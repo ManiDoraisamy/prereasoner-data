@@ -1,0 +1,23 @@
+{
+ "census_apportionment_2020#2": "2010 CENSUS APPORTIONMENT\" at position 0",
+ "census_apportionment_2020#3": "2010 CENSUS APPORTIONMENT\" at position 0",
+ "census_apportionment_2020#4": "(APRIL 1, 2020)\" at position 0",
+ "census_apportionment_2020#5": "ValueError: invalid literal for int() with base 10: 'APPORTIONMENT POPULATION \\n(APRIL 1, 2020)'",
+ "census_apportionment_2020#6": "(APRIL 1, 2020)\" at position 0",
+ "cms_program_stats_inpatient_hospital_2023#4": "KeyError: 'Total Discharges'",
+ "cms_trustees_medicare_enrollment#1": "KeyError: 'Calendar Year'",
+ "cms_trustees_medicare_enrollment#2": "KeyError: 'Calendar Year'",
+ "cms_trustees_medicare_enrollment#3": "KeyError: 'Calendar Year'",
+ "cms_trustees_medicare_enrollment#4": "KeyError: 'Calendar Year'",
+ "cms_trustees_medicare_enrollment#5": "KeyError: 'Calendar Year'",
+ "cms_trustees_medicare_enrollment#6": "KeyError: 'Calendar Year'",
+ "ers_foodborne_illness_cost_by_pathogen#1": "KeyError: 'Pathogen'",
+ "ers_foodborne_illness_cost_by_pathogen#2": "KeyError: 'Mean per-case cost'",
+ "ers_foodborne_illness_cost_by_pathogen#4": "KeyError: 'Pathogen'",
+ "ers_foodborne_illness_cost_by_pathogen#5": "KeyError: 'Pathogen'",
+ "nsf_sed_doctorates_by_field_and_citizenship#7": "IndexError: list index out of range",
+ "nsf_sed_doctorates_by_field_and_citizenship#8": "IndexError: list index out of range",
+ "nsf_sed_doctorates_by_field_and_citizenship#10": "IndexError: list index out of range",
+ "nsf_sed_doctorates_by_field_and_citizenship#11": "IndexError: list index out of range",
+ "nsf_sed_doctorates_by_field_and_citizenship#12": "IndexError: list index out of range"
+}

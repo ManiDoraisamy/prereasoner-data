@@ -1,0 +1,84 @@
+{
+ "id": "or_weekly_reportable_diseases",
+ "file": "or_weekly_reportable_diseases.csv",
+ "questions": [
+  {
+   "question": "For the week spanning November 8 through November 14, 2020, how many cases of Chlamydia were reported in Oregon?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "381",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nfiltered = df[(df['FirstDateOfWeek'] == '2020-11-08') & (df['Disease'] == 'Chlamydia') & (df['Place_name'] == 'Oregon')]\nresult = int(filtered['Cases'].iloc[0])",
+   "qid": "or_weekly_reportable_diseases#1",
+   "pass1": true,
+   "result": 381,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which condition had more reported cases in Oregon during the week of November 15 to November 21, 2020: Gonorrhea or Salmonellosis?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Gonorrhea",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nsubset = df[(df['FirstDateOfWeek'] == '2020-11-15') & (df['Disease'].isin(['Gonorrhea', 'Salmonellosis']))]\nresult = str(subset.sort_values('Cases', ascending=False).iloc[0]['Disease'])",
+   "qid": "or_weekly_reportable_diseases#2",
+   "pass1": true,
+   "result": "Gonorrhea",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did Oregon report any cases of Congenital syphilis for the surveillance week ending November 7, 2020?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\ncases = df[(df['LastDateOfWeek'] == '2020-11-07') & (df['Disease'] == 'Congenital syphilis')]['Cases'].iloc[0]\nresult = 'yes' if cases > 0 else 'no'",
+   "qid": "or_weekly_reportable_diseases#3",
+   "pass1": true,
+   "result": "no",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many distinct reportable conditions are tracked across the weeks in this surveillance dataset?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "38",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nresult = int(df['Disease'].nunique())",
+   "qid": "or_weekly_reportable_diseases#4",
+   "pass1": true,
+   "result": 38,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What is the overall sum of reported disease cases recorded across all weeks and conditions in the dataset?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "171262",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nresult = int(df['Cases'].sum())",
+   "qid": "or_weekly_reportable_diseases#5",
+   "pass1": true,
+   "result": 171262,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which MMWR surveillance year contains the largest number of weekly disease reports in the dataset?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2025",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nresult = str(df['MMWRyear'].value_counts().idxmax())",
+   "qid": "or_weekly_reportable_diseases#6",
+   "pass1": true,
+   "result": "2025",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

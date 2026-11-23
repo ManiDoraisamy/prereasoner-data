@@ -1,0 +1,60 @@
+{
+ "id": "ca_hcai_medical_procedure_utilization_rates",
+ "file": "ca_hcai_medical_procedure_utilization_rates.xlsx",
+ "questions": [
+  {
+   "question": "What was the California statewide rate for uncomplicated cesarean deliveries in 2024?",
+   "sheet": "Sheet1",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "26.4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nrow = df[(df['Year'] == 2024) & (df['County'] == 'STATEWIDE') & (df['Procedure'] == 'Uncomplicated Cesarean Delivery')]\nresult = float(row['Rate'].iloc[0])",
+   "qid": "ca_hcai_medical_procedure_utilization_rates#1"
+  },
+  {
+   "question": "In 2020, did Sutter Davis Hospital report a higher rate for uncomplicated VBAC than for uncomplicated cesarean delivery?",
+   "sheet": "Sheet1",
+   "kind": "comparison",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nhosp = df[(df['Year'] == 2020) & (df['Hospital'] == 'Sutter Davis Hospital')]\nvbac_rate = float(hosp[hosp['Procedure'] == 'Uncomplicated VBAC']['Rate'].iloc[0])\ncesarean_rate = float(hosp[hosp['Procedure'] == 'Uncomplicated Cesarean Delivery']['Rate'].iloc[0])\nresult = 'yes' if vbac_rate > cesarean_rate else 'no'",
+   "qid": "ca_hcai_medical_procedure_utilization_rates#2"
+  },
+  {
+   "question": "Which reporting year contains the highest total number of recorded rows in the dataset?",
+   "sheet": "Sheet1",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2020",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nresult = str(df['Year'].value_counts().idxmax())",
+   "qid": "ca_hcai_medical_procedure_utilization_rates#3"
+  },
+  {
+   "question": "Which county accounts for the largest number of procedure entries in this dataset?",
+   "sheet": "Sheet1",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Los Angeles",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nresult = str(df['County'].value_counts().idxmax())",
+   "qid": "ca_hcai_medical_procedure_utilization_rates#4"
+  },
+  {
+   "question": "What is the total combined count of uncomplicated cesarean, primary cesarean, and VBAC procedures reported by Adventist Health and Rideout in 2020?",
+   "sheet": "Sheet1",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "643",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nsubset = df[(df['Year'] == 2020) & (df['Hospital'] == 'Adventist Health and Rideout')]\nresult = int(subset['Count'].sum())",
+   "qid": "ca_hcai_medical_procedure_utilization_rates#5"
+  },
+  {
+   "question": "Which three counties have the greatest number of records in the report?",
+   "sheet": "Sheet1",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Los Angeles\", \"San Bernardino\", \"Riverside\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nresult = df['County'].value_counts().head(3).index.tolist()",
+   "qid": "ca_hcai_medical_procedure_utilization_rates#6"
+  }
+ ]
+}

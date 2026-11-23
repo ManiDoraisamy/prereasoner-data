@@ -1,0 +1,60 @@
+{
+ "id": "sf_air_traffic_passenger_statistics",
+ "file": "sf_air_traffic_passenger_statistics.csv",
+ "questions": [
+  {
+   "question": "How many flight activity records are classified under the budget or low fare price category?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "4244",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\nresult = int((df['Price Category Code'] == 'Low Fare').sum())",
+   "qid": "sf_air_traffic_passenger_statistics#1"
+  },
+  {
+   "question": "What is the total volume of passengers recorded across all entries in the dataset?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "1132828096",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\nresult = int(df['Passenger Count'].sum())",
+   "qid": "sf_air_traffic_passenger_statistics#2"
+  },
+  {
+   "question": "Which world region outside of the United States has the largest number of flight activity entries in this report?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Asia",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\nnon_us = df[df['GEO Region'] != 'US']\nresult = str(non_us['GEO Region'].value_counts().index[0])",
+   "qid": "sf_air_traffic_passenger_statistics#3"
+  },
+  {
+   "question": "Does international flight activity account for more reporting entries than domestic flight activity?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\ncounts = df['GEO Summary'].value_counts()\nresult = 'yes' if counts.get('International', 0) > counts.get('Domestic', 0) else 'no'",
+   "qid": "sf_air_traffic_passenger_statistics#4"
+  },
+  {
+   "question": "What are the three boarding areas with the highest number of activity records?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"A\", \"G\", \"B\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\nresult = df['Boarding Area'].value_counts().head(3).index.tolist()",
+   "qid": "sf_air_traffic_passenger_statistics#5"
+  },
+  {
+   "question": "How many more activity entries were filed for enplaned passengers than for deplaned passengers?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "328",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\ncounts = df['Activity Type Code'].value_counts()\nresult = int(counts['Enplaned'] - counts['Deplaned'])",
+   "qid": "sf_air_traffic_passenger_statistics#6"
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "file": "ers_foodborne_illness_cost_by_pathogen.xlsx",
+ "sheets": [
+  {
+   "name": "MeanTotalAndPerCaseCosts",
+   "rows": 41,
+   "cols": 5,
+   "shown_whole": true
+  }
+ ],
+ "chars": 3550
+}

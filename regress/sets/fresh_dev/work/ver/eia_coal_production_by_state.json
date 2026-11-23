@@ -1,0 +1,35 @@
+{
+ "id": "eia_coal_production_by_state",
+ "answers": [
+  {
+   "id": "eia_coal_production_by_state#1",
+   "answer": "190731",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\nwy_row = df[df[0].astype(str).str.strip() == 'Wyoming']\nresult = int(wy_row.iloc[0, 2])"
+  },
+  {
+   "id": "eia_coal_production_by_state#2",
+   "answer": "Underground",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\npa_idx = df[df[0].astype(str).str.strip() == 'Pennsylvania Total'].index[0]\nug_val = float(df.iloc[pa_idx + 1, 2])\nsurf_val = float(df.iloc[pa_idx + 2, 2])\nresult = str(df.iloc[pa_idx + 1, 0]).strip() if ug_val > surf_val else str(df.iloc[pa_idx + 2, 0]).strip()"
+  },
+  {
+   "id": "eia_coal_production_by_state#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\ntotal_row = df[df[0].astype(str).str.strip() == 'U.S. Total']\np2024 = float(total_row.iloc[0, 2])\np2023 = float(total_row.iloc[0, 4])\nresult = 'yes' if p2024 < p2023 else 'no'"
+  },
+  {
+   "id": "eia_coal_production_by_state#4",
+   "answer": "54377",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\nil_val = float(df[df[0].astype(str).str.strip() == 'Illinois'].iloc[0, 2])\nin_val = float(df[df[0].astype(str).str.strip() == 'Indiana'].iloc[0, 2])\nresult = int(il_val + in_val)"
+  },
+  {
+   "id": "eia_coal_production_by_state#5",
+   "answer": "[\"Appalachia Northern\", \"Appalachia Central\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\nsubregions = ['Appalachia Central', 'Appalachia Northern', 'Appalachia Southern']\nsubset = df[df[0].astype(str).str.strip().isin(subregions)].copy()\nsubset['prod_2024'] = subset[2].astype(float)\ntop2 = subset.sort_values(by='prod_2024', ascending=False).head(2)\nresult = top2[0].astype(str).str.strip().tolist()"
+  },
+  {
+   "id": "eia_coal_production_by_state#6",
+   "answer": "2023",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\ntotal_row = df[df[0].astype(str).str.strip() == 'U.S. Total']\np2024 = float(total_row.iloc[0, 2])\np2023 = float(total_row.iloc[0, 4])\nresult = '2024' if p2024 > p2023 else '2023'"
+  }
+ ]
+}

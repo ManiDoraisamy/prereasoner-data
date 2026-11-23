@@ -1,0 +1,513 @@
+FILE cms_program_stats_providers_2023.xlsx (Excel workbook) with 8 sheet(s): ["Table of Contents", "MDCR PROVIDERS 1_CPS_19PRV", "MDCR PROVIDERS 2_CPS_19PRV", "MDCR PROVIDERS 3_CPS_19PRV", "MDCR PROVIDERS 4_CPS_19PRV", "MDCR PROVIDERS 5_CPS_19PRV", "MDCR PROVIDERS 6_CPS_19PRV", "MDCR PROVIDERS 7_CPS_19PRV"]
+
+### Sheet "Table of Contents": 9 rows x 2 columns (Excel rows 1..9, columns A..B)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Providers
+r2: A=Table Name | B=Description
+r3: A=MDCR PROVIDERS 1_CPS_19PRV | B=Medicare Providers: Number of Medicare Certified Institutional Providers, Calendar Years 2...
+r4: A=MDCR PROVIDERS 2_CPS_19PRV | B=Medicare Providers: Number of Medicare Certified Inpatient Hospital and Skilled Nursing Fa...
+r5: A=MDCR PROVIDERS 3_CPS_19PRV | B=Medicare Providers: Number of Medicare Certified Facilities, by Type of Control, Calendar ...
+r6: A=MDCR PROVIDERS 4_CPS_19PRV | B=Medicare Providers: Number of Skilled Nursing Facilities and Medicare Certified Hospitals,...
+r7: A=MDCR PROVIDERS 5_CPS_19PRV | B=Medicare Providers: Number of Medicare Certified Providers, by Type of Provider, by State,...
+r8: A=MDCR PROVIDERS 6_CPS_19PRV | B=Medicare Providers: Number of Medicare Non-Institutional Providers by Specialty, Calendar ...
+r9: A=MDCR PROVIDERS 7_CPS_19PRV | B=Medicare Providers: Number of Medicare Non-Institutional Providers, by State, Territories,...
+
+### Sheet "MDCR PROVIDERS 1_CPS_19PRV": 36 rows x 7 columns (Excel rows 1..36, columns A..G)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Providers
+r2: A=Number of Medicare Certified Institutional Providers
+r3: A=Calendar Years 2018-2023
+r4: A=Type of Facility | B=2018 | C=2019 | D=2020 | E=2021 | F=2022 | G=2023
+r5: A=BLANK
+r6: A=Inpatient Hospitals
+r7: A=Total Hospitals | B=6072 | C=6023 | D=6214 | E=6266 | F=6231 | G=5995
+r8: A=Short Stay | B=3334 | C=3283 | D=3481 | E=3506 | F=3446 | G=3170
+r9: A=Psychiatric Units | B=1063 | C=1027 | D=998 | E=970 | F=941 | G=878
+r10: A=Rehabilitation Units | B=864 | C=840 | D=832 | E=822 | F=807 | G=792
+r11: A=Swing Bed Hospitals | B=455 | C=445 | D=662 | E=676 | F=671 | G=475
+r12: A=Psychiatric | B=598 | C=604 | D=613 | E=622 | F=631 | G=642
+r13: A=Rehabilitation | B=296 | C=306 | D=314 | E=332 | F=350 | G=378
+r14: A=Children's | B=96 | C=95 | D=93 | E=91 | F=91 | G=92
+r15: A=Long Term Care | B=382 | C=367 | D=347 | E=344 | F=339 | G=332
+r16: A=Critical Access | B=1351 | C=1353 | D=1351 | E=1358 | F=1361 | G=1368
+r17: A=Religious Non-Medical | B=15 | C=15 | D=15 | E=13 | F=13 | G=13
+r18: A=BLANK
+r19: A=Other Providers
+r20: A=Skilled Nursing Facilities | B=15218 | C=15103 | D=15015 | E=14908 | F=14795 | G=14598
+r21: A=Home Health Agencies | B=11317 | C=11157 | D=11221 | E=11353 | F=11607 | G=11971
+r22: A=Hospices | B=4775 | C=4970 | D=5260 | E=5966 | F=6844 | G=7122
+r23: A=Independent and Clinical Labs | B=262524 | C=265057 | D=284414 | E=311775 | F=316944 | G=314874
+r24: A=Outpatient Physical Therapy and/or Outpatient Speech Pathology | B=2016 | C=2032 | D=2044 | E=2023 | F=1954 | G=1922
+r25: A=Portable X-Ray | B=485 | C=494 | D=505 | E=519 | F=517 | G=521
+r26: A=End Stage Renal Disease | B=7429 | C=7629 | D=7755 | E=7834 | F=7770 | G=7635
+r27: A=Rural Health Clinics | B=4402 | C=4482 | D=4736 | E=5009 | F=5224 | G=5410
+r28: A=Comprehensive Outpatient Rehabilitation Facilities | B=172 | C=164 | D=158 | E=157 | F=148 | G=142
+r29: A=Ambulatory Surgical Centers | B=5718 | C=5812 | D=5905 | E=6055 | F=6118 | G=6327
+r30: A=Organ Procurement Organizations | B=59 | C=58 | D=58 | E=57 | F=56 | G=56
+r31: A=Federally Qualified Health Centers | B=8836 | C=9467 | D=10000 | E=10509 | F=11117 | G=11723
+r32: A=Transplant Centers¹ | B=242 | C=238 | D=237 | E=239 | F=241 | G=236
+r33: A=BLANK
+r34: A=¹Not included in total hospitals' counts because they are not stand-alone facilities.
+r35: (blank)
+r36: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PROVIDERS 2_CPS_19PRV": 43 rows x 7 columns (Excel rows 1..43, columns A..G)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Providers
+r2: A=Number of Medicare Certified Inpatient Hospital and Skilled Nursing Facility Beds and Beds...
+r3: A=Calendar Years 2018-2023
+r4: A=Type of Facility and Beds | B=2018 | C=2019 | D=2020 | E=2021 | F=2022 | G=2023
+r5: A=BLANK
+r6: A=Total Medicare Part A Enrollees | B=59649950.5 | C=61166694 | D=62498751.33 | E=63557292.5 | F=64759893.83 | G=66171290.25
+r7: A=BLANK
+r8: A=Total Hospitals¹
+r9: A=Number of beds | B=931555 | C=932559 | D=927342 | E=929459 | F=932358 | G=929728
+r10: A=Beds per 1,000 enrollees² | B=15.6 | C=15.2 | D=14.8 | E=14.6 | F=14.4 | G=14.1
+r11: A=BLANK
+r12: A=Short Stay Hospitals
+r13: A=Number of beds | B=780272 | C=779466 | D=774873 | E=775528 | F=776680 | G=771866
+r14: A=Beds per 1,000 enrollees² | B=13.1 | C=12.7 | D=12.4 | E=12.2 | F=12 | G=11.7
+r15: A=BLANK
+r16: A=Psychiatric Hospitals
+r17: A=Number of beds | B=58766 | C=59851 | D=61129 | E=62154 | F=62863 | G=63718
+r18: A=Beds per 1,000 enrollees² | B=1 | C=1 | D=1 | E=1 | F=1 | G=1
+r19: A=BLANK
+r20: A=Rehabilitation Hospitals
+r21: A=Number of beds | B=18622 | C=19059 | D=19481 | E=20220 | F=21039 | G=22297
+r22: A=Beds per 1,000 enrollees² | B=0.3 | C=0.3 | D=0.3 | E=0.3 | F=0.3 | G=0.3
+r23: A=BLANK
+r24: A=Children's Hospitals
+r25: A=Number of beds | B=16145 | C=16610 | D=16496 | E=16431 | F=16582 | G=16598
+r26: A=Beds per 1,000 enrollees² | B=0.3 | C=0.3 | D=0.3 | E=0.3 | F=0.3 | G=0.3
+r27: A=BLANK
+r28: A=Long Term Care Hospitals
+r29: A=Number of beds | B=26100 | C=25593 | D=23748 | E=23365 | F=23195 | G=22922
+r30: A=Beds per 1,000 enrollees² | B=0.4 | C=0.4 | D=0.4 | E=0.4 | F=0.4 | G=0.3
+r31: A=BLANK
+r32: A=Critical Access Hospitals
+r33: A=Number of beds | B=31352 | C=31682 | D=31317 | E=31519 | F=31757 | G=32085
+r34: A=Beds per 1,000 enrollees² | B=0.5 | C=0.5 | D=0.5 | E=0.5 | F=0.5 | G=0.5
+r35: A=BLANK
+r36: A=Skilled Nursing Facilities
+r37: A=Number of beds | B=1602222 | C=1592041 | D=1588755 | E=1574485 | F=1565195 | G=1550360
+r38: A=Beds per 1,000 enrollees² | B=26.9 | C=26 | D=25.4 | E=24.8 | F=24.2 | G=23.4
+r39: A=BLANK
+r40: A=¹Includes religious non-medical institutions, which are not broken out separately.
+r41: A=²Total Medicare Part A enrollee counts are used to calculate 'beds per 1,000 enrollees'.
+r42: (blank)
+r43: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PROVIDERS 3_CPS_19PRV": 71 rows x 7 columns (Excel rows 1..71, columns A..G)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Providers
+r2: A=Number of Medicare Certified Facilities, by Type of Control
+r3: A=Calendar Years 2018-2023
+r4: A=Type of Facility and Type of Control | B=2018 | C=2019 | D=2020 | E=2021 | F=2022 | G=2023
+r5: A=BLANK
+r6: A=Short Stay Hospitals | B=3334 | C=3283 | D=3481 | E=3506 | F=3446 | G=3170
+r7: A=Private (Not for Profit) | B=1449 | C=1478 | D=1613 | E=1616 | F=1607 | G=1479
+r8: A=Other (Not for Profit) | B=326 | C=299 | D=293 | E=286 | F=279 | G=272
+r9: A=Private (For Profit) | B=704 | C=676 | D=759 | E=802 | F=762 | G=661
+r10: A=Government - Federal | B=33 | C=30 | D=30 | E=29 | F=25 | G=25
+r11: A=Government - State | B=53 | C=53 | D=51 | E=53 | F=52 | G=52
+r12: A=Government - Local | B=173 | C=168 | D=164 | E=163 | F=163 | G=146
+r13: A=Church | B=262 | C=247 | D=239 | E=233 | F=232 | G=222
+r14: A=Hospital District or Authority | B=260 | C=254 | D=251 | E=247 | F=243 | G=236
+r15: A=Physician Ownership | B=69 | C=73 | D=76 | E=73 | F=78 | G=69
+r16: A=Tribal | B=5 | C=5 | D=5 | E=4 | F=5 | G=8
+r17: A=BLANK
+r18: A=Other Inpatient Hospitals | B=2738 | C=2740 | D=2733 | E=2760 | F=2785 | G=2825
+r19: A=Private (Not for Profit) | B=884 | C=895 | D=891 | E=908 | F=911 | G=925
+r20: A=Other (Not for Profit) | B=131 | C=124 | D=121 | E=118 | F=118 | G=114
+r21: A=Private (For Profit) | B=864 | C=871 | D=871 | E=894 | F=919 | G=952
+r22: A=Government - Federal | B=20 | C=18 | D=17 | E=18 | F=19 | G=18
+r23: A=Government - State | B=178 | C=179 | D=176 | E=173 | F=171 | G=171
+r24: A=Government - Local | B=262 | C=257 | D=264 | E=264 | F=265 | G=261
+r25: A=Church | B=97 | C=95 | D=96 | E=88 | F=82 | G=80
+r26: A=Hospital District or Authority | B=288 | C=286 | D=281 | E=280 | F=282 | G=284
+r27: A=Physician Ownership | B=9 | C=9 | D=10 | E=10 | F=11 | G=12
+r28: A=Tribal | B=5 | C=6 | D=6 | E=7 | F=7 | G=8
+r29: A=BLANK
+r30: A=Skilled Nursing Facilities | B=15218 | C=15103 | D=15015 | E=14908 | F=14795 | G=14598
+r31: A=For Profit - Individual | B=725 | C=774 | D=766 | E=800 | F=753 | G=750
+r32: A=For Profit - Partnership | B=1010 | C=818 | D=789 | E=685 | F=642 | G=544
+r33: A=For Profit - Corporation | B=8785 | C=7823 | D=7640 | E=7017 | F=6492 | G=6022
+r34: A=Non Profit - Church Related | B=494 | C=442 | D=426 | E=371 | F=337 | G=319
+r35: A=Non Profit - Corporation | B=2700 | C=2704 | D=2687 | E=2650 | F=2620 | G=2487
+r36: A=Non Profit - Other | B=353 | C=370 | D=366 | E=384 | F=367 | G=306
+r37: A=Government - State | B=126 | C=129 | D=126 | E=120 | F=123 | G=127
+r38: A=Government - County | B=415 | C=380 | D=373 | E=354 | F=325 | G=337
+r39: A=Government - City | B=82 | C=84 | D=85 | E=77 | F=65 | G=52
+r40: A=Government - City/County | B=81 | C=73 | D=71 | E=64 | F=65 | G=58
+r41: A=Government - Hospital District | B=190 | C=196 | D=197 | E=222 | F=250 | G=243
+r42: A=Government - Federal | B=13 | C=17 | D=15 | E=16 | F=18 | G=21
+r43: A=For Profit - Limited Liability Corporation | B=243 | C=1293 | D=1474 | E=2148 | F=2738 | G=3332
+r44: A=BLANK
+r45: A=Home Health Agencies | B=11317 | C=11157 | D=11221 | E=11353 | F=11607 | G=11971
+r46: A=Voluntary Non Profit | B=1634 | C=1570 | D=1542 | E=1538 | F=NA | G=1297
+r47: A=Proprietary | B=9290 | C=9216 | D=9332 | E=9474 | F=NA | G=9142
+r48: A=Government | B=393 | C=371 | D=347 | E=341 | F=NA | G=296
+r49: A=Unknown | B=0 | C=0 | D=0 | E=0 | F=NA | G=1236
+r50: A=BLANK
+r51: A=Hospices | B=4775 | C=4970 | D=5260 | E=5966 | F=6844 | G=7122
+r52: A=Voluntary Non Profit - Church | B=74 | C=69 | D=67 | E=65 | F=65 | G=63
+r53: A=Voluntary Non Profit - Private | B=580 | C=570 | D=552 | E=550 | F=497 | G=489
+r54: A=Voluntary Non Profit - Other | B=346 | C=332 | D=334 | E=309 | F=315 | G=309
+r55: A=Proprietary - Individual | B=112 | C=130 | D=148 | E=165 | F=181 | G=189
+r56: A=Proprietary - Partnership | B=214 | C=239 | D=248 | E=264 | F=278 | G=280
+r57: A=Proprietary - Corporation | B=2399 | C=2576 | D=2842 | E=3509 | F=4165 | G=4085
+r58: A=Proprietary - Other | B=485 | C=471 | D=491 | E=526 | F=529 | G=508
+r59: A=Government - State | B=11 | C=12 | D=14 | E=13 | F=12 | G=12
+r60: A=Government - County | B=70 | C=62 | D=58 | E=61 | F=53 | G=53
+r61: A=Government - City | B=12 | C=13 | D=13 | E=11 | F=8 | G=13
+r62: A=Government - City/County | B=8 | C=9 | D=8 | E=8 | F=5 | G=0
+r63: A=Combination Government & Non Profit | B=36 | C=35 | D=32 | E=28 | F=29 | G=27
+r64: A=Other | B=428 | C=452 | D=453 | E=457 | F=456 | G=451
+r65: A=Unknown | B=0 | C=0 | D=0 | E=0 | F=251 | G=643
+r66: (blank)
+r67: A=NOTES:  As of 2022, the control type categories for home health agencies have been collaps...
+r68: A=table.  In 2022, there was an issue in the source data for Home Health Agency control type...
+r69: A=not available (NA).
+r70: (blank)
+r71: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PROVIDERS 4_CPS_19PRV": 69 rows x 25 columns (Excel rows 1..69, columns A..Y)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Providers
+r2: A=Number of Skilled Nursing Facilities and Medicare Certified Hospitals, and Number of Beds,
+r3: A=by State, Territories, Possessions, and Other Areas, Calendar Year 2023
+r4: A=Provider State/Other | B=Total Medicare Part A Enrollees | C=Skilled Nursing Facilities | D=Skilled Nursing Facility Beds | E=Skilled Nursing Facility Beds Per 1,000 Part A Enrollees | F=Total Hospitals¹ | G=Total Hospital Beds¹ | H=Total Hospital Beds Per 1,000 Part A Enrollees | I=Short Stay Hospitals | J=Short Stay Hospital Beds | K=Short Stay Hospital Beds Per 1,000 Part A Enrollees | L=Critical Access Hospitals | M=Critical Access Hospital Beds | N=Critical Access Hospital Beds Per 1,000 Part A Enrollees | O=All Other Hospitals² | P=All Other Hospital Beds² | Q=All Other Hospital Beds Per 1,000 Part A Enrollees | R=Psychiatric Hospitals | S=Psychiatric Hospital Beds | T=Rehabilitation Hospitals | U=Rehabilitation Hospital Beds | V=Children's Hospitals | W=Children's Hospital Beds | X=Long Term Care Hospitals | Y=Long Term Care Hospital Beds
+r5: A=BLANK
+r6: A=All Areas | B=66171290.25 | C=14598 | D=1550360 | E=23.4294963 | F=5995 | G=929728 | H=14.05032298 | I=3170 | J=771866 | K=11.66466601 | L=1368 | M=32085 | N=0.4848779566 | O=1457 | P=125777 | Q=1.900779016 | R=642 | S=63718 | T=378 | U=22297 | V=92 | W=16598 | X=332 | Y=22922
+r7: A=United States | B=64839310.5 | C=14591 | D=1550110 | E=23.90694762 | F=5928 | G=917505 | H=14.1504435 | I=3111 | J=760432 | K=11.72794705 | L=1368 | M=32085 | N=0.4948386982 | O=1449 | P=124988 | Q=1.927657759 | R=638 | S=63247 | T=375 | U=22194 | V=91 | W=16383 | X=332 | Y=22922
+r8: A=BLANK
+r9: A=Alabama | B=1095060.833 | C=223 | D=26418 | E=24.12468714 | F=112 | G=17976 | H=16.41552638 | I=81 | J=16117 | K=14.7179038 | L=5 | M=115 | N=0.1050169968 | O=26 | P=1744 | Q=1.592605586 | R=10 | S=592 | T=7 | U=427 | V=2 | W=484 | X=7 | Y=241
+r10: A=Alaska | B=114284.5833 | C=20 | D=834 | E=7.297572216 | F=24 | G=1714 | H=14.99764841 | I=8 | J=1210 | K=10.58760477 | L=13 | M=210 | N=1.837518184 | O=3 | P=294 | Q=2.572525457 | R=2 | S=235 | T=0 | U=0 | V=0 | W=0 | X=1 | Y=59
+r11: A=Arizona | B=1453732.5 | C=142 | D=15874 | E=10.91947796 | F=125 | G=18167 | H=12.49679704 | I=64 | J=14139 | K=9.725998421 | L=17 | M=385 | N=0.2648355182 | O=44 | P=3643 | Q=2.505963098 | R=22 | S=2141 | T=16 | U=824 | V=1 | W=435 | X=5 | Y=243
+r12: A=Arkansas | B=669268.25 | C=218 | D=23432 | E=35.0113725 | F=104 | G=12303 | H=18.38276356 | I=45 | J=9075 | K=13.55958541 | L=28 | M=707 | N=1.056377618 | O=31 | P=2521 | Q=3.766800532 | R=11 | S=1219 | T=10 | U=610 | V=2 | W=360 | X=8 | Y=332
+r13: A=California | B=6637193.583 | C=1140 | D=113007 | E=17.02632273 | F=413 | G=79748 | H=12.01531928 | I=285 | J=70508 | K=10.62316461 | L=38 | M=1092 | N=0.1645273693 | O=90 | P=8148 | Q=1.227627294 | R=43 | S=3107 | T=14 | U=892 | V=10 | W=2407 | X=20 | Y=1667
+r14: A=Colorado | B=998731.25 | C=205 | D=18748 | E=18.77181674 | F=109 | G=13692 | H=13.70939379 | I=52 | J=10602 | K=10.61546838 | L=32 | M=703 | N=0.7038930643 | O=25 | P=2387 | Q=2.390032354 | R=9 | S=1074 | T=8 | U=398 | V=2 | W=567 | X=6 | Y=348
+r15: A=Connecticut | B=722945.1667 | C=198 | D=23907 | E=33.06889803 | F=39 | G=9130 | H=12.62889694 | I=27 | J=7748 | K=10.71727201 | L=0 | M=0 | N=0 | O=12 | P=1382 | Q=1.911624925 | R=8 | S=828 | T=1 | U=60 | V=1 | W=129 | X=2 | Y=365
+r16: A=Delaware | B=237090.1667 | C=41 | D=4630 | E=19.52843538 | F=16 | G=3225 | H=13.6024199 | I=6 | J=2337 | K=9.857009394 | L=0 | M=0 | N=0 | O=10 | P=888 | Q=3.745410501 | R=5 | S=475 | T=3 | U=118 | V=1 | W=260 | X=1 | Y=35
+r17: A=District of Columbia | B=94102.16667 | C=16 | D=2445 | E=25.98239856 | F=12 | G=3747 | H=39.8184243 | I=6 | J=2749 | K=29.21292992 | L=0 | M=0 | N=0 | O=6 | P=998 | Q=10.60549438 | R=2 | S=396 | T=1 | U=137 | V=1 | W=323 | X=2 | Y=142
+r18: A=Florida | B=5024635 | C=700 | D=83157 | E=16.54985885 | F=265 | G=68911 | H=13.71462803 | I=169 | J=62058 | K=12.35074787 | L=11 | M=287 | N=0.05711857677 | O=85 | P=6566 | Q=1.306761586 | R=29 | S=2254 | T=30 | U=2045 | V=3 | W=661 | X=23 | Y=1606
+r19: A=Georgia | B=1878043.917 | C=355 | D=38608 | E=20.55755973 | F=161 | G=23255 | H=12.38256454 | I=96 | J=19531 | K=10.39965031 | L=30 | M=742 | N=0.3950919323 | O=35 | P=2982 | Q=1.587822294 | R=13 | S=1316 | T=9 | U=464 | V=2 | W=529 | X=11 | Y=673
+r20: A=Hawaii | B=300376.4167 | C=42 | D=4189 | E=13.94583518 | F=26 | G=2651 | H=8.825592999 | I=12 | J=2054 | K=6.838086767 | L=9 | M=133 | N=0.4427777702 | O=5 | P=464 | Q=1.544728462 | R=1 | S=88 | T=1 | U=100 | V=2 | W=267 | X=1 | Y=9
+r21: A=Idaho | B=382426.5 | C=80 | D=6090 | E=15.92462865 | F=51 | G=3878 | H=10.14051066 | I=16 | J=2781 | K=7.271985597 | L=27 | M=538 | N=1.406806275 | O=8 | P=559 | Q=1.461718788 | R=4 | S=389 | T=2 | U=70 | V=0 | W=0 | X=2 | Y=100
+r22: A=Illinois | B=2345892.333 | C=662 | D=75757 | E=32.29346843 | F=204 | G=39014 | H=16.63077177 | I=115 | J=33557 | K=14.30457806 | L=54 | M=1295 | N=0.5520287447 | O=35 | P=4162 | Q=1.774164969 | R=17 | S=2129 | T=8 | U=719 | V=3 | W=399 | X=6 | Y=898
+r23: A=Indiana | B=1346998.25 | C=509 | D=49745 | E=36.93026327 | F=169 | G=19681 | H=14.61100636 | I=82 | J=16125 | K=11.97106232 | L=33 | M=839 | N=0.6228664365 | O=54 | P=2717 | Q=2.017077602 | R=33 | S=1672 | T=13 | U=656 | V=0 | W=0 | X=7 | Y=371
+r24: A=Iowa | B=671695.5 | C=392 | D=26294 | E=39.14571409 | F=121 | G=10955 | H=16.30947356 | I=30 | J=8345 | K=12.42378429 | L=82 | M=2001 | N=2.979028444 | O=9 | P=609 | Q=0.9066608307 | R=4 | S=399 | T=3 | U=130 | V=0 | W=0 | X=2 | Y=80
+r25: A=Kansas | B=576907.1667 | C=275 | D=17506 | E=30.34457017 | F=142 | G=10929 | H=18.94412244 | I=45 | J=8225 | K=14.25705984 | L=82 | M=1871 | N=3.243156106 | O=15 | P=833 | Q=1.443906486 | R=4 | S=304 | T=7 | U=351 | V=1 | W=34 | X=3 | Y=144
+r26: A=Kentucky | B=961706.9167 | C=270 | D=25387 | E=26.39785527 | F=116 | G=17790 | H=18.49835921 | I=62 | J=14444 | K=15.01912875 | L=29 | M=714 | N=0.7424299312 | O=25 | P=2632 | Q=2.736800531 | R=11 | S=1613 | T=6 | U=389 | V=0 | W=0 | X=8 | Y=630
+r27: A=Louisiana | B=921534.6667 | C=268 | D=32501 | E=35.26834223 | F=199 | G=19568 | H=21.2341442 | I=81 | J=14176 | K=15.38303497 | L=27 | M=677 | N=0.7346440937 | O=91 | P=4715 | Q=5.116465143 | R=43 | S=2711 | T=24 | U=668 | V=1 | W=228 | X=23 | Y=1108
+r28: A=Maine | B=368888.9167 | C=82 | D=6119 | E=16.58764935 | F=38 | G=3836 | H=10.3987944 | I=17 | J=2944 | K=7.980722291 | L=16 | M=400 | N=1.084337268 | O=5 | P=492 | Q=1.333734839 | R=4 | S=392 | T=1 | U=100 | V=0 | W=0 | X=0 | Y=0
+r29: A=Maryland | B=1120743.083 | C=220 | D=27353 | E=24.40612876 | F=57 | G=13610 | H=12.14372875 | I=43 | J=11485 | K=10.2476653 | L=0 | M=0 | N=0 | O=14 | P=2125 | Q=1.896063453 | R=7 | S=1545 | T=3 | U=211 | V=2 | W=180 | X=2 | Y=189
+r30: A=Massachusetts | B=1426517.083 | C=345 | D=41327 | E=28.97056087 | F=100 | G=19170 | H=13.43832487 | I=56 | J=12979 | K=9.098383855 | L=3 | M=69 | N=0.04836955744 | O=41 | P=6122 | Q=4.291571459 | R=19 | S=1997 | T=6 | U=721 | V=4 | W=577 | X=11 | Y=2799
+r31: A=Michigan | B=2205222.25 | C=424 | D=44261 | E=20.07099284 | F=158 | G=28125 | H=12.75381654 | I=91 | J=24279 | K=11.00977464 | L=37 | M=936 | N=0.4244470144 | O=30 | P=2910 | Q=1.319594884 | R=15 | S=1797 | T=2 | U=174 | V=1 | W=228 | X=12 | Y=711
+r32: A=Minnesota | B=1119476.333 | C=338 | D=24201 | E=21.61814348 | F=138 | G=15599 | H=13.93419364 | I=46 | J=12896 | K=11.51967185 | L=77 | M=1689 | N=1.508741141 | O=15 | P=1014 | Q=0.9057806492 | R=10 | S=323 | T=0 | U=0 | V=2 | W=339 | X=2 | Y=346
+r33: A=Mississippi | B=631192 | C=184 | D=16105 | E=25.51521566 | F=105 | G=12258 | H=19.42039823 | I=58 | J=10513 | K=16.65578778 | L=31 | M=855 | N=1.354579906 | O=16 | P=890 | Q=1.410030545 | R=8 | S=550 | T=1 | U=33 | V=0 | W=0 | X=7 | Y=307
+r34: A=Missouri | B=1305620.833 | C=488 | D=48626 | E=37.24358463 | F=134 | G=21808 | H=16.70316484 | I=66 | J=18640 | K=14.27673297 | L=34 | M=829 | N=0.6349469761 | O=34 | P=2339 | Q=1.791484894 | R=15 | S=875 | T=7 | U=511 | V=4 | W=638 | X=8 | Y=315
+r35: A=Montana | B=255243.3333 | C=59 | D=5360 | E=20.99956904 | F=67 | G=3126 | H=12.24713672 | I=14 | J=1952 | K=7.647604247 | L=50 | M=1080 | N=4.231256448 | O=3 | P=94 | Q=0.3682760242 | R=1 | S=20 | T=1 | U=34 | V=0 | W=0 | X=1 | Y=40
+r36: A=Nebraska | B=375212.6667 | C=174 | D=13137 | E=35.01214422 | F=96 | G=6165 | H=16.43068198 | I=26 | J=4317 | K=11.50547512 | L=62 | M=1246 | N=3.320783413 | O=8 | P=602 | Q=1.604423447 | R=2 | S=98 | T=1 | U=67 | V=2 | W=200 | X=3 | Y=237
+r37: A=Nevada | B=584438.0833 | C=65 | D=6994 | E=11.9670504 | F=54 | G=8010 | H=13.70547236 | I=22 | J=6261 | K=10.71285424 | L=13 | M=219 | N=0.3747189073 | O=19 | P=1530 | Q=2.617899216 | R=8 | S=863 | T=5 | U=323 | V=0 | W=0 | X=6 | Y=344
+r38: A=New Hampshire | B=335031.0833 | C=71 | D=7167 | E=21.39204497 | F=30 | G=3562 | H=10.63184933 | I=13 | J=2720 | K=8.118649687 | L=13 | M=316 | N=0.9431960666 | O=4 | P=526 | Q=1.570003579 | R=2 | S=341 | T=2 | U=185 | V=0 | W=0 | X=0 | Y=0
+r39: A=New Jersey | B=1711263.167 | C=346 | D=50862 | E=29.72190426 | F=93 | G=27075 | H=15.82164598 | I=62 | J=23078 | K=13.48594445 | L=0 | M=0 | N=0 | O=31 | P=3997 | Q=2.335701532 | R=14 | S=2693 | T=7 | U=688 | V=2 | W=120 | X=8 | Y=496
+r40: A=New Mexico | B=449788.6667 | C=65 | D=6711 | E=14.92034037 | F=52 | G=4837 | H=10.75393926 | I=27 | J=3726 | K=8.28389036 | L=13 | M=419 | N=0.9315485939 | O=12 | P=692 | Q=1.538500303 | R=4 | S=306 | T=5 | U=273 | V=0 | W=0 | X=3 | Y=113
+r41: A=New York | B=3821452.25 | C=601 | D=112155 | E=29.34879011 | F=187 | G=56092 | H=14.67818942 | I=134 | J=48921 | K=12.80167769 | L=20 | M=503 | N=0.1316253526 | O=33 | P=6668 | Q=1.744886384 | R=28 | S=5762 | T=1 | U=150 | V=1 | W=100 | X=2 | Y=636
+r42: A=North Carolina | B=2169793.833 | C=417 | D=43264 | E=19.93922157 | F=127 | G=25458 | H=11.73291195 | I=82 | J=21837 | K=10.06408981 | L=20 | M=630 | N=0.2903501661 | O=25 | P=2991 | Q=1.378471979 | R=15 | S=2296 | T=3 | U=298 | V=0 | W=0 | X=7 | Y=397
+r43: A=North Dakota | B=143787.5833 | C=75 | D=5085 | E=35.36466698 | F=50 | G=3325 | H=23.12438893 | I=7 | J=2143 | K=14.90392947 | L=37 | M=793 | N=5.515079826 | O=6 | P=389 | Q=2.705379637 | R=2 | S=235 | T=2 | U=82 | V=0 | W=0 | X=2 | Y=72
+r44: A=Ohio | B=2477699.167 | C=930 | D=82595 | E=33.33536255 | F=227 | G=41169 | H=16.61581864 | I=119 | J=34196 | K=13.80151411 | L=33 | M=830 | N=0.3349882065 | O=75 | P=6143 | Q=2.479316328 | R=34 | S=2569 | T=14 | U=787 | V=8 | W=1655 | X=18 | Y=1107
+r45: A=Oklahoma | B=790684 | C=282 | D=27202 | E=34.40312438 | F=146 | G=14200 | H=17.95913412 | I=76 | J=11408 | K=14.42801423 | L=39 | M=957 | N=1.210344461 | O=31 | P=1835 | Q=2.32077543 | R=12 | S=883 | T=8 | U=346 | V=2 | W=196 | X=9 | Y=410
+r46: A=Oregon | B=929722.75 | C=120 | D=9979 | E=10.73330732 | F=62 | G=7929 | H=8.528348908 | I=33 | J=7067 | K=7.601190785 | L=25 | M=586 | N=0.6302954295 | O=4 | P=276 | Q=0.2968626937 | R=2 | S=174 | T=0 | U=0 | V=1 | W=29 | X=1 | Y=73
+r47: A=Pennsylvania | B=2885008.417 | C=665 | D=83216 | E=28.84428327 | F=212 | G=35174 | H=12.19199216 | I=135 | J=28643 | K=9.928220602 | L=16 | M=361 | N=0.1251296176 | O=61 | P=6170 | Q=2.138641941 | R=26 | S=3445 | T=18 | U=1365 | V=5 | W=806 | X=12 | Y=554
+r48: A=Rhode Island | B=237623.0833 | C=74 | D=8246 | E=34.70201583 | F=14 | G=3056 | H=12.86070342 | I=10 | J=2583 | K=10.87015606 | L=0 | M=0 | N=0 | O=4 | P=473 | Q=1.990547355 | R=2 | S=203 | T=1 | U=40 | V=0 | W=0 | X=1 | Y=230
+r49: A=South Carolina | B=1191989.083 | C=189 | D=19961 | E=16.74595873 | F=84 | G=14169 | H=11.88685383 | I=52 | J=11779 | K=9.88180191 | L=3 | M=75 | N=0.06292003933 | O=29 | P=2315 | Q=1.942131881 | R=10 | S=1354 | T=12 | U=603 | V=1 | W=50 | X=6 | Y=308
+r50: A=South Dakota | B=193767.1667 | C=83 | D=5145 | E=26.5524861 | F=61 | G=3190 | H=16.46305747 | I=17 | J=2234 | K=11.52930106 | L=40 | M=741 | N=3.824177299 | O=4 | P=215 | Q=1.109579108 | R=1 | S=133 | T=1 | U=40 | V=1 | W=18 | X=1 | Y=24
+r51: A=Tennessee | B=1450926.25 | C=302 | D=34183 | E=23.55943316 | F=139 | G=24062 | H=16.58388908 | I=81 | J=20980 | K=14.45972874 | L=15 | M=347 | N=0.2391575726 | O=43 | P=2735 | Q=1.88500277 | R=20 | S=1446 | T=14 | U=790 | V=2 | W=197 | X=7 | Y=302
+r52: A=Texas | B=4628365.083 | C=1169 | D=132967 | E=28.72871902 | F=569 | G=79374 | H=17.14946824 | I=283 | J=62088 | K=13.41467211 | L=91 | M=2077 | N=0.4487545737 | O=195 | P=15209 | Q=3.286041556 | R=60 | S=5596 | T=72 | U=3901 | V=13 | W=2749 | X=49 | Y=2946
+r53: A=Utah | B=448951 | C=92 | D=8233 | E=18.33830418 | F=57 | G=6498 | H=14.4737399 | I=33 | J=5211 | K=11.60705734 | L=13 | M=265 | N=0.5902648619 | O=11 | P=1022 | Q=2.276417694 | R=5 | S=542 | T=2 | U=124 | V=1 | W=232 | X=3 | Y=124
+r54: A=Vermont | B=161912.25 | C=34 | D=2918 | E=18.02210765 | F=16 | G=1920 | H=11.85827508 | I=6 | J=1445 | K=8.924587238 | L=8 | M=301 | N=1.859031667 | O=2 | P=174 | Q=1.07465618 | R=2 | S=174 | T=0 | U=0 | V=0 | W=0 | X=0 | Y=0
+r55: A=Virginia | B=1642111 | C=280 | D=31744 | E=19.33121452 | F=105 | G=19284 | H=11.74342051 | I=72 | J=16990 | K=10.34643821 | L=8 | M=191 | N=0.1163136962 | O=25 | P=2103 | Q=1.280668603 | R=9 | S=874 | T=8 | U=461 | V=2 | W=300 | X=5 | Y=452
+r56: A=Washington | B=1488791.25 | C=190 | D=17946 | E=12.05407407 | F=102 | G=13282 | H=8.921331315 | I=47 | J=10781 | K=7.241445031 | L=39 | M=881 | N=0.5917552242 | O=16 | P=1620 | Q=1.088131059 | R=9 | S=1022 | T=2 | U=162 | V=3 | W=348 | X=1 | Y=80
+r57: A=West Virginia | B=448530.25 | C=117 | D=10192 | E=22.72310507 | F=60 | G=7521 | H=16.76809981 | I=25 | J=6002 | K=13.38148319 | L=21 | M=515 | N=1.148194576 | O=14 | P=1004 | Q=2.238422046 | R=5 | S=590 | T=5 | U=280 | V=0 | W=0 | X=4 | Y=134
+r58: A=Wisconsin | B=1283079.333 | C=322 | D=25543 | E=19.90757651 | F=150 | G=16682 | H=13.00153433 | I=65 | J=13437 | K=10.47246234 | L=58 | M=1315 | N=1.024878171 | O=27 | P=1930 | Q=1.504193817 | R=14 | S=1109 | T=7 | U=346 | V=2 | W=338 | X=3 | Y=125
+r59: A=Wyoming | B=123854.0833 | C=32 | D=2784 | E=22.4780639 | F=30 | G=1605 | H=12.95879762 | I=11 | J=1116 | K=9.010603203 | L=16 | M=350 | N=2.825906022 | O=3 | P=139 | Q=1.122288392 | R=2 | S=98 | T=1 | U=41 | V=0 | W=0 | X=0 | Y=0
+r60: A=BLANK
+r61: A=Territories, Possessions, and Other
+r62: A=Puerto Rico | B=764970.8333 | C=6 | D=208 | E=0.2719057916 | F=61 | G=11408 | H=14.91298688 | I=53 | J=10619 | K=13.88157501 | L=0 | M=0 | N=0 | O=8 | P=789 | Q=1.031411873 | R=4 | S=471 | T=3 | U=103 | V=1 | W=215 | X=0 | Y=0
+r63: A=Virgin Islands | B=20505.33333 | C=0 | D=0 | E=0 | F=2 | G=320 | H=15.60569608 | I=2 | J=320 | K=15.60569608 | L=0 | M=0 | N=0 | O=0 | P=0 | Q=0 | R=0 | S=0 | T=0 | U=0 | V=0 | W=0 | X=0 | Y=0
+r64: A=All Other | B=546503.5833 | C=1 | D=42 | E=0.07685219508 | F=4 | G=495 | H=0.9057580135 | I=4 | J=495 | K=0.9057580135 | L=0 | M=0 | N=0 | O=0 | P=0 | Q=0 | R=0 | S=0 | T=0 | U=0 | V=0 | W=0 | X=0 | Y=0
+r65: A=BLANK
+r66: B=¹Includes religious non-medical Institutions.
+r67: B=²All other hospitals and hospital beds include psychiatric, rehabilitation, children's and...
+r68: (blank)
+r69: B=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PROVIDERS 5_CPS_19PRV": 67 rows x 13 columns (Excel rows 1..67, columns A..M)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Providers
+r2: A=Number of Medicare Certified Providers, by Type of Provider, by State, Territories, Posses...
+r3: A=Provider State/Other | B=Home Health Agencies | C=Hospices | D=Independent and Clinical Labs | E=OPT/OSP¹ | F=Portable X-Ray | G=End Stage Renal Disease | H=Rural Health Clinics | I=Comprehensive Outpatient Rehabilitation Facilities | J=Ambulatory Surgical Centers | K=Organ Procurement Organizations | L=Federally Qualified Health Centers | M=Transplant Centers
+r4: A=BLANK
+r5: A=All Areas | B=11971 | C=7122 | D=314874 | E=1922 | F=521 | G=7635 | H=5410 | I=142 | J=6327 | K=56 | L=11723 | M=236
+r6: A=United States | B=11925 | C=7073 | D=313069 | E=1919 | F=521 | G=7571 | H=5410 | I=141 | J=6294 | K=55 | L=11554 | M=235
+r7: A=BLANK
+r8: A=Alabama | B=117 | C=87 | D=5255 | E=32 | F=6 | G=177 | H=146 | I=0 | J=49 | K=1 | L=210 | M=2
+r9: A=Alaska | B=13 | C=6 | D=797 | E=11 | F=0 | G=8 | H=0 | I=0 | J=18 | K=0 | L=37 | M=0
+r10: A=Arizona | B=181 | C=284 | D=7290 | E=24 | F=11 | G=126 | H=53 | I=4 | J=231 | K=1 | L=165 | M=5
+r11: A=Arkansas | B=95 | C=46 | D=3457 | E=20 | F=8 | G=68 | H=135 | I=2 | J=82 | K=1 | L=204 | M=3
+r12: A=California | B=2702 | C=2439 | D=25682 | E=42 | F=60 | G=742 | H=275 | I=6 | J=891 | K=4 | L=1512 | M=19
+r13: A=Colorado | B=221 | C=83 | D=5070 | E=34 | F=7 | G=82 | H=60 | I=1 | J=130 | K=1 | L=201 | M=4
+r14: A=Connecticut | B=76 | C=25 | D=3212 | E=27 | F=6 | G=50 | H=0 | I=3 | J=53 | K=0 | L=146 | M=2
+r15: A=Delaware | B=21 | C=11 | D=1146 | E=7 | F=5 | G=34 | H=0 | I=0 | J=22 | K=0 | L=14 | M=2
+r16: A=District of Columbia | B=32 | C=5 | D=648 | E=3 | F=1 | G=20 | H=0 | I=0 | J=2 | K=0 | L=50 | M=4
+r17: A=Florida | B=1079 | C=55 | D=26798 | E=221 | F=28 | G=535 | H=150 | I=28 | J=500 | K=4 | L=522 | M=11
+r18: A=Georgia | B=103 | C=250 | D=11748 | E=68 | F=23 | G=366 | H=96 | I=2 | J=411 | K=1 | L=325 | M=4
+r19: A=Hawaii | B=14 | C=10 | D=960 | E=2 | F=2 | G=41 | H=22 | I=0 | J=24 | K=1 | L=72 | M=1
+r20: A=Idaho | B=48 | C=51 | D=1850 | E=7 | F=6 | G=28 | H=50 | I=0 | J=60 | K=0 | L=118 | M=0
+r21: A=Illinois | B=531 | C=134 | D=11572 | E=82 | F=25 | G=341 | H=262 | I=0 | J=133 | K=1 | L=427 | M=9
+r22: A=Indiana | B=201 | C=100 | D=7051 | E=54 | F=12 | G=163 | H=127 | I=0 | J=144 | K=1 | L=314 | M=2
+r23: A=Iowa | B=134 | C=74 | D=3604 | E=26 | F=3 | G=64 | H=206 | I=0 | J=30 | K=1 | L=88 | M=2
+r24: A=Kansas | B=109 | C=83 | D=3462 | E=19 | F=2 | G=58 | H=185 | I=0 | J=76 | K=1 | L=108 | M=1
+r25: A=Kentucky | B=88 | C=23 | D=5237 | E=96 | F=8 | G=125 | H=394 | I=5 | J=38 | K=1 | L=440 | M=3
+r26: A=Louisiana | B=177 | C=120 | D=5409 | E=21 | F=16 | G=172 | H=231 | I=0 | J=90 | K=1 | L=317 | M=4
+r27: A=Maine | B=20 | C=16 | D=1604 | E=5 | F=2 | G=20 | H=37 | I=0 | J=15 | K=0 | L=122 | M=1
+r28: A=Maryland | B=55 | C=26 | D=5300 | E=69 | F=9 | G=172 | H=0 | I=0 | J=340 | K=1 | L=112 | M=2
+r29: A=Massachusetts | B=272 | C=78 | D=5288 | E=11 | F=16 | G=89 | H=7 | I=0 | J=59 | K=1 | L=138 | M=9
+r30: A=Michigan | B=404 | C=161 | D=9702 | E=131 | F=6 | G=223 | H=219 | I=4 | J=117 | K=1 | L=281 | M=8
+r31: A=Minnesota | B=149 | C=75 | D=5917 | E=37 | F=5 | G=118 | H=103 | I=1 | J=94 | K=1 | L=78 | M=6
+r32: A=Mississippi | B=42 | C=84 | D=3550 | E=23 | F=5 | G=97 | H=234 | I=0 | J=74 | K=1 | L=308 | M=1
+r33: A=Missouri | B=128 | C=128 | D=6094 | E=50 | F=10 | G=154 | H=327 | I=1 | J=101 | K=1 | L=307 | M=8
+r34: A=Montana | B=23 | C=32 | D=1181 | E=1 | F=2 | G=17 | H=63 | I=0 | J=21 | K=0 | L=76 | M=0
+r35: A=Nebraska | B=64 | C=39 | D=2431 | E=8 | F=3 | G=37 | H=127 | I=0 | J=49 | K=1 | L=57 | M=2
+r36: A=Nevada | B=178 | C=143 | D=2353 | E=6 | F=8 | G=52 | H=19 | I=8 | J=81 | K=1 | L=57 | M=1
+r37: A=New Hampshire | B=26 | C=22 | D=1432 | E=3 | F=2 | G=18 | H=16 | I=0 | J=28 | K=0 | L=63 | M=1
+r38: A=New Jersey | B=39 | C=59 | D=8237 | E=33 | F=12 | G=190 | H=0 | I=7 | J=256 | K=1 | L=124 | M=6
+r39: A=New Mexico | B=76 | C=57 | D=2052 | E=13 | F=3 | G=61 | H=20 | I=0 | J=21 | K=1 | L=150 | M=2
+r40: A=New York | B=111 | C=40 | D=13858 | E=18 | F=31 | G=367 | H=54 | I=5 | J=176 | K=4 | L=534 | M=14
+r41: A=North Carolina | B=166 | C=77 | D=11317 | E=62 | F=7 | G=253 | H=83 | I=1 | J=144 | K=2 | L=405 | M=5
+r42: A=North Dakota | B=18 | C=13 | D=880 | E=1 | F=1 | G=16 | H=58 | I=0 | J=14 | K=0 | L=24 | M=2
+r43: A=Ohio | B=812 | C=159 | D=12583 | E=82 | F=20 | G=321 | H=73 | I=1 | J=204 | K=4 | L=438 | M=8
+r44: A=Oklahoma | B=229 | C=127 | D=4564 | E=25 | F=18 | G=87 | H=132 | I=0 | J=41 | K=1 | L=171 | M=3
+r45: A=Oregon | B=50 | C=65 | D=3502 | E=4 | F=3 | G=72 | H=114 | I=1 | J=93 | K=1 | L=192 | M=3
+r46: A=Pennsylvania | B=403 | C=181 | D=10354 | E=97 | F=12 | G=317 | H=70 | I=14 | J=245 | K=2 | L=407 | M=15
+r47: A=Rhode Island | B=23 | C=9 | D=1005 | E=1 | F=3 | G=16 | H=0 | I=0 | J=15 | K=0 | L=49 | M=1
+r48: A=South Carolina | B=69 | C=88 | D=5479 | E=42 | F=3 | G=154 | H=107 | I=1 | J=77 | K=1 | L=229 | M=3
+r49: A=South Dakota | B=25 | C=16 | D=996 | E=1 | F=2 | G=26 | H=58 | I=0 | J=14 | K=0 | L=53 | M=2
+r50: A=Tennessee | B=129 | C=58 | D=7516 | E=58 | F=12 | G=197 | H=276 | I=4 | J=147 | K=2 | L=172 | M=8
+r51: A=Texas | B=1882 | C=1060 | D=29958 | E=184 | F=46 | G=741 | H=351 | I=37 | J=475 | K=3 | L=655 | M=25
+r52: A=Utah | B=86 | C=85 | D=2639 | E=4 | F=4 | G=53 | H=17 | I=2 | J=58 | K=1 | L=52 | M=3
+r53: A=Vermont | B=10 | C=10 | D=649 | E=0 | F=1 | G=8 | H=10 | I=0 | J=2 | K=0 | L=69 | M=1
+r54: A=Virginia | B=249 | C=118 | D=7669 | E=93 | F=7 | G=207 | H=79 | I=0 | J=69 | K=1 | L=180 | M=6
+r55: A=Washington | B=69 | C=41 | D=6325 | E=15 | F=29 | G=112 | H=128 | I=2 | J=169 | K=1 | L=282 | M=5
+r56: A=West Virginia | B=50 | C=18 | D=2218 | E=12 | F=2 | G=40 | H=66 | I=0 | J=8 | K=0 | L=398 | M=2
+r57: A=Wisconsin | B=95 | C=82 | D=5524 | E=31 | F=8 | G=125 | H=142 | I=0 | J=83 | K=2 | L=79 | M=4
+r58: A=Wyoming | B=31 | C=20 | D=644 | E=3 | F=0 | G=11 | H=28 | I=1 | J=20 | K=0 | L=22 | M=0
+r59: A=BLANK
+r60: A=Territories, Possessions, and Other
+r61: A=Puerto Rico | B=38 | C=42 | D=1558 | E=2 | F=0 | G=49 | H=0 | I=1 | J=27 | K=1 | L=62 | M=1
+r62: A=Virgin Islands | B=2 | C=3 | D=82 | E=0 | F=0 | G=4 | H=0 | I=0 | J=4 | K=0 | L=5 | M=0
+r63: A=All Other | B=6 | C=4 | D=165 | E=1 | F=0 | G=11 | H=0 | I=0 | J=2 | K=0 | L=102 | M=0
+r64: A=BLANK
+r65: A=¹OPT/OSP = Outpatient Physical Therapy/Outpatient Speech Pathology
+r66: (blank)
+r67: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PROVIDERS 6_CPS_19PRV": 123 rows x 6 columns (Excel rows 1..123, columns A..F)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Providers
+r2: A=Number of Medicare Non-Institutional Providers, by Specialty
+r3: A=Calendar Years 2019-2023
+r4: A=Specialty | B=2019 | C=2020 | D=2021 | E=2022 | F=2023
+r5: A=BLANK
+r6: A=Total All Specialties | B=1374296 | C=1403879 | D=1444008 | E=1484780 | F=1523718
+r7: A=BLANK
+r8: A=All Physician Specialties | B=692846 | C=698164 | D=702691 | E=708579 | F=716280
+r9: A=Primary Care
+r10: A=Family Practice | B=95358 | C=95263 | D=94830 | E=94832 | F=95349
+r11: A=General Practice | B=8648 | C=8215 | D=7845 | E=7508 | F=7238
+r12: A=Internal Medicine | B=112362 | C=110443 | D=109202 | E=109287 | F=109774
+r13: A=Pediatric Medicine | B=10887 | C=11087 | D=11684 | E=10907 | F=10350
+r14: A=Medical
+r15: A=Addiction Medicine | B=379 | C=400 | D=417 | E=437 | F=477
+r16: A=Adult Congenital Heart Disease | B=-- | C=40 | D=50 | E=55 | F=62
+r17: A=Advanced Heart Failure and Transplant Cardiology | B=644 | C=712 | D=772 | E=814 | F=870
+r18: A=Allergy/Immunology | B=3776 | C=3738 | D=3659 | E=3696 | F=3691
+r19: A=Anesthesiology | B=43201 | C=43339 | D=43493 | E=43905 | F=44628
+r20: A=Cardiac Electrophysiology | B=2417 | C=2510 | D=2549 | E=2582 | F=2669
+r21: A=Cardiology | B=24584 | C=24277 | D=23933 | E=23726 | F=23752
+r22: A=Critical Care Intensivists | B=5003 | C=5311 | D=5616 | E=5856 | F=6049
+r23: A=Dermatology | B=12774 | C=12926 | D=13046 | E=13166 | F=13410
+r24: A=Emergency Medicine | B=49766 | C=50357 | D=50660 | E=51659 | F=52888
+r25: A=Endocrinology | B=6613 | C=6629 | D=6714 | E=6803 | F=6934
+r26: A=Gastroenterology | B=14876 | C=15012 | D=15126 | E=15278 | F=15575
+r27: A=Geriatric Medicine | B=2274 | C=2264 | D=2211 | E=2200 | F=2198
+r28: A=Hematology | B=1004 | C=1002 | D=1029 | E=1064 | F=1081
+r29: A=Hematology-Oncology | B=10077 | C=10111 | D=10128 | E=10273 | F=10375
+r30: A=Hematopoietic Cell Transplantation and Cellular Therapy | B=209 | C=195 | D=182 | E=183 | F=174
+r31: A=Hospice and Palliative Care | B=1642 | C=1761 | D=1856 | E=1974 | F=2050
+r32: A=Hospitalist | B=16627 | C=18437 | D=19936 | E=21402 | F=22533
+r33: A=Infectious Disease | B=6664 | C=6778 | D=6882 | E=6994 | F=7081
+r34: A=Interventional Cardiology | B=4021 | C=4282 | D=4451 | E=4651 | F=4841
+r35: A=Interventional Pain Management | B=1956 | C=1904 | D=1853 | E=1818 | F=1755
+r36: A=Medical Oncology | B=4074 | C=4123 | D=4159 | E=4196 | F=4265
+r37: A=Medical Toxicology | B=46 | C=43 | D=51 | E=46 | F=44
+r38: A=Nephrology | B=9632 | C=9772 | D=9813 | E=9959 | F=10038
+r39: A=Neurology | B=16413 | C=16743 | D=17117 | E=17505 | F=17899
+r40: A=Osteopathic Manipulative Medicine | B=981 | C=978 | D=968 | E=975 | F=987
+r41: A=Pain Management | B=3308 | C=3412 | D=3458 | E=3517 | F=3582
+r42: A=Pathology | B=12568 | C=12572 | D=12585 | E=12686 | F=12792
+r43: A=Peripheral Vascular Disease | B=92 | C=89 | D=80 | E=79 | F=71
+r44: A=Physical Medicine and Rehabilitation | B=9132 | C=9180 | D=9215 | E=9298 | F=9411
+r45: A=Preventive Medicine | B=561 | C=524 | D=508 | E=485 | F=482
+r46: A=Pulmonary Disease | B=11494 | C=11525 | D=11580 | E=11738 | F=11843
+r47: A=Rheumatology | B=5129 | C=5192 | D=5266 | E=5354 | F=5378
+r48: A=Single or Multispecialty Clinic or Group Practice | B=1334 | C=1249 | D=1429 | E=1359 | F=1291
+r49: A=Sleep Medicine | B=690 | C=752 | D=802 | E=873 | F=950
+r50: A=Sports Medicine | B=1599 | C=1674 | D=1807 | E=1903 | F=2058
+r51: A=Surgical
+r52: A=Cardiac Surgery | B=1701 | C=1595 | D=1534 | E=1482 | F=1450
+r53: A=Colorectal Surgery (formerly Proctology) | B=1630 | C=1668 | D=1697 | E=1718 | F=1775
+r54: A=General Surgery | B=23512 | C=23435 | D=23440 | E=23528 | F=23688
+r55: A=Hand Surgery | B=1744 | C=1780 | D=1794 | E=1825 | F=1846
+r56: A=Maxillofacial Surgery | B=1160 | C=1102 | D=1034 | E=988 | F=926
+r57: A=Micrographic Dermatologic Surgery | B=-- | C=346 | D=376 | E=391 | F=405
+r58: A=Neurosurgery | B=5424 | C=5445 | D=5544 | E=5582 | F=5661
+r59: A=Ophthalmology | B=19945 | C=19780 | D=19437 | E=19296 | F=19191
+r60: A=Orthopedic Surgery | B=25757 | C=25730 | D=25814 | E=25862 | F=25888
+r61: A=Otolaryngology | B=9861 | C=9826 | D=9780 | E=9786 | F=9795
+r62: A=Plastic and Reconstructive Surgery | B=5215 | C=5156 | D=5102 | E=4972 | F=4888
+r63: A=Surgical Oncology | B=1179 | C=1182 | D=1220 | E=1306 | F=1342
+r64: A=Thoracic Surgery | B=2757 | C=2761 | D=2842 | E=2873 | F=2958
+r65: A=Urology | B=9921 | C=9925 | D=9953 | E=9991 | F=10158
+r66: A=Vascular Surgery | B=3735 | C=3791 | D=3865 | E=3955 | F=4033
+r67: A=Radiology
+r68: A=Diagnostic Radiology | B=32370 | C=32645 | D=32861 | E=33349 | F=33917
+r69: A=Interventional Radiology | B=2399 | C=2485 | D=2581 | E=2703 | F=2894
+r70: A=Nuclear Medicine | B=696 | C=677 | D=645 | E=639 | F=643
+r71: A=Radiation Oncology | B=4969 | C=5021 | D=5092 | E=5158 | F=5236
+r72: A=Obstetrics-Gynecology
+r73: A=Gynecological Oncology | B=1115 | C=1117 | D=1118 | E=1142 | F=1168
+r74: A=Obstetrics & Gynecology | B=34490 | C=34316 | D=34333 | E=34233 | F=34037
+r75: A=Psychiatry
+r76: A=Geriatric Psychiatry | B=238 | C=211 | D=207 | E=213 | F=208
+r77: A=Neuropsychiatry | B=174 | C=178 | D=209 | E=211 | F=246
+r78: A=Psychiatry | B=27865 | C=27536 | D=27268 | E=27202 | F=27215
+r79: (blank)
+r80: A=Non-Physician Practitioners | B=490091 | C=515001 | D=548738 | E=584326 | F=617632
+r81: A=Anesthesiologist Assistant | B=2479 | C=2689 | D=2903 | E=3128 | F=3394
+r82: A=Audiologist, Billing Independently | B=8114 | C=8124 | D=8191 | E=8326 | F=8534
+r83: A=Certified Clinical Nurse Specialist | B=2470 | C=2311 | D=2174 | E=2059 | F=1949
+r84: A=Certified Nurse Midwife | B=4157 | C=4191 | D=4317 | E=4377 | F=4440
+r85: A=Certified Registered Nurse Anesthetist (CRNA) | B=48962 | C=50300 | D=51442 | E=53050 | F=54907
+r86: A=Clinical Psychologist | B=29800 | C=29197 | D=28917 | E=28271 | F=27548
+r87: A=Licensed Clinical Social Worker | B=48457 | C=49526 | D=50864 | E=51762 | F=53105
+r88: A=Nurse Practitioner | B=163497 | C=177074 | D=193281 | E=211517 | F=227687
+r89: A=Occupational Therapist in Private Practice | B=9740 | C=10604 | D=12306 | E=13594 | F=15056
+r90: A=Optician | B=1528 | C=1256 | D=1217 | E=1001 | F=854
+r91: A=Physical Therapist in Private Practice | B=67979 | C=71512 | D=77647 | E=82540 | F=87372
+r92: A=Physician Assistant | B=95220 | C=99978 | D=106290 | E=114738 | F=122021
+r93: A=Psychologist, Billing Independently | B=613 | C=587 | D=507 | E=492 | F=505
+r94: A=Registered Dietitian or Nutrition Professional | B=4101 | C=4336 | D=4647 | E=4757 | F=4902
+r95: A=Speech Language Pathologists | B=3395 | C=3720 | D=4401 | E=5067 | F=5691
+r96: (blank)
+r97: A=Limited Licensed Practitioners | B=105378 | C=104337 | D=104412 | E=103961 | F=103135
+r98: A=Chiropractic | B=42762 | C=42275 | D=42123 | E=41818 | F=41312
+r99: A=Dentist | B=186 | C=313 | D=345 | E=335 | F=372
+r100: A=Optometry | B=39035 | C=38602 | D=38977 | E=39077 | F=39094
+r101: A=Oral Surgery (Dentist Only) | B=3119 | C=2855 | D=2738 | E=2513 | F=2401
+r102: A=Podiatry | B=20295 | C=20316 | D=20255 | E=20242 | F=19999
+r103: (blank)
+r104: A=Other Providers/Suppliers | B=85843 | C=85984 | D=87520 | E=87233 | F=85910
+r105: A=Ambulance Service Supplier | B=10221 | C=10213 | D=10230 | E=10240 | F=10271
+r106: A=Ambulatory Surgical Center | B=5477 | C=5513 | D=5533 | E=5600 | F=5810
+r107: A=Centralized Flu | B=9655 | C=9514 | D=9465 | E=9453 | F=9444
+r108: A=Clinical Laboratory (Billing Independently) | B=3152 | C=3422 | D=3948 | E=7894 | F=7291
+r109: A=Independent Diagnostic Testing Facility | B=2595 | C=2510 | D=2402 | E=2332 | F=2262
+r110: A=Individual Certified Prosthetist/Orthotist | B=2448 | C=2493 | D=2509 | E=2506 | F=2583
+r111: A=Mass Immunization Roster Billers | B=35689 | C=35943 | D=39574 | E=38313 | F=34660
+r112: A=Medical Supply Company | B=9465 | C=9364 | D=9063 | E=8694 | F=8443
+r113: A=Opioid Treatment Programs | B=-- | C=920 | D=1049 | E=1121 | F=1169
+r114: A=Pharmacy | B=48739 | C=48044 | D=48265 | E=48012 | F=47069
+r115: A=Portable X-Ray Supplier (Billing Independently) | B=315 | C=308 | D=312 | E=321 | F=311
+r116: (blank)
+r117: A=All Other Providers/Suppliers, Not Elsewhere Classified | B=2513 | C=2376 | D=2591 | E=2560 | F=2559
+r118: (blank)
+r119: A=NOTES:  Includes the number of both participating and non-participating physicians, non-ph...
+r120: A=other providers/suppliers utilized by Medicare fee-for-service beneficiaries as reflected ...
+r121: A=from counts presented in other tables because of differences in sources and methodology.  ...
+r122: (blank)
+r123: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PROVIDERS 7_CPS_19PRV": 70 rows x 6 columns (Excel rows 1..70, columns A..F)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Providers
+r2: A=Number of Medicare Non-Institutional Providers, by State, Territories, Possessions, and Ot...
+r3: A=Calendar Years 2019-2023
+r4: A=State/Other | B=2019 | C=2020 | D=2021 | E=2022 | F=2023
+r5: A=BLANK
+r6: A=All Areas | B=1374296 | C=1403879 | D=1444008 | E=1484780 | F=1523718
+r7: A=BLANK
+r8: A=Alabama | B=19058 | C=19677 | D=20545 | E=21126 | F=21736
+r9: A=Alaska | B=4269 | C=4214 | D=4342 | E=4525 | F=4696
+r10: A=Arizona | B=27652 | C=28744 | D=30104 | E=31631 | F=32518
+r11: A=Arkansas | B=11889 | C=12232 | D=12705 | E=13193 | F=13546
+r12: A=California | B=126637 | C=128073 | D=131414 | E=135239 | F=139308
+r13: A=Colorado | B=29727 | C=30674 | D=33585 | E=34304 | F=33098
+r14: A=Connecticut | B=20591 | C=21121 | D=21684 | E=22438 | F=22749
+r15: A=Delaware | B=5496 | C=5698 | D=5798 | E=6087 | F=6362
+r16: A=District of Columbia | B=4615 | C=4686 | D=4921 | E=5157 | F=5293
+r17: A=Florida | B=83424 | C=86644 | D=90919 | E=96186 | F=100510
+r18: A=Georgia | B=39639 | C=41506 | D=43369 | E=44740 | F=45798
+r19: A=Hawaii | B=5812 | C=5903 | D=6079 | E=6376 | F=6593
+r20: A=Idaho | B=7887 | C=8139 | D=8594 | E=8993 | F=9391
+r21: A=Illinois | B=76555 | C=76442 | D=77233 | E=78508 | F=79770
+r22: A=Indiana | B=29629 | C=30556 | D=31885 | E=33109 | F=34097
+r23: A=Iowa | B=16106 | C=16052 | D=16426 | E=17124 | F=17353
+r24: A=Kansas | B=16716 | C=16956 | D=17284 | E=17903 | F=18172
+r25: A=Kentucky | B=20912 | C=21526 | D=22574 | E=23309 | F=23993
+r26: A=Louisiana | B=18613 | C=19184 | D=19941 | E=20485 | F=20890
+r27: A=Maine | B=9989 | C=10338 | D=10457 | E=10713 | F=10958
+r28: A=Maryland | B=32254 | C=33014 | D=33851 | E=34368 | F=35291
+r29: A=Massachusetts | B=44384 | C=44964 | D=45895 | E=47134 | F=48211
+r30: A=Michigan | B=49410 | C=49812 | D=50740 | E=52004 | F=53144
+r31: A=Minnesota | B=33086 | C=33198 | D=33665 | E=34664 | F=35898
+r32: A=Mississippi | B=11686 | C=11909 | D=12347 | E=12755 | F=12888
+r33: A=Missouri | B=33634 | C=33655 | D=34132 | E=34766 | F=35529
+r34: A=Montana | B=6076 | C=6337 | D=6657 | E=7049 | F=7296
+r35: A=Nebraska | B=10122 | C=10308 | D=10708 | E=11177 | F=11461
+r36: A=Nevada | B=9581 | C=9949 | D=10501 | E=10998 | F=11508
+r37: A=New Hampshire | B=8415 | C=8650 | D=8902 | E=9197 | F=9482
+r38: A=New Jersey | B=44005 | C=45290 | D=46360 | E=47799 | F=49337
+r39: A=New Mexico | B=8976 | C=9271 | D=9208 | E=9486 | F=9743
+r40: A=New York | B=99339 | C=102128 | D=104014 | E=106594 | F=109090
+r41: A=North Carolina | B=46143 | C=47658 | D=49575 | E=51353 | F=52962
+r42: A=North Dakota | B=5053 | C=5112 | D=5236 | E=5490 | F=5733
+r43: A=Ohio | B=59383 | C=65105 | D=67800 | E=69655 | F=70599
+r44: A=Oklahoma | B=15039 | C=15384 | D=15682 | E=16130 | F=16375
+r45: A=Oregon | B=20041 | C=20425 | D=20922 | E=21481 | F=22036
+r46: A=Pennsylvania | B=70202 | C=70635 | D=72299 | E=74010 | F=75148
+r47: A=Rhode Island | B=6035 | C=6165 | D=6340 | E=6557 | F=6728
+r48: A=South Carolina | B=20678 | C=21457 | D=22386 | E=23584 | F=24472
+r49: A=South Dakota | B=5510 | C=5685 | D=5835 | E=6103 | F=6229
+r50: A=Tennessee | B=30525 | C=31314 | D=32755 | E=34135 | F=34920
+r51: A=Texas | B=88602 | C=91321 | D=95636 | E=100327 | F=112133
+r52: A=Utah | B=11609 | C=11921 | D=12547 | E=13085 | F=13968
+r53: A=Vermont | B=4253 | C=4343 | D=4387 | E=4508 | F=4600
+r54: A=Virginia | B=34375 | C=34867 | D=35934 | E=37305 | F=39239
+r55: A=Washington | B=35092 | C=35560 | D=36624 | E=37320 | F=38148
+r56: A=West Virginia | B=9193 | C=9395 | D=9479 | E=9734 | F=10028
+r57: A=Wisconsin | B=30417 | C=31032 | D=31695 | E=32515 | F=33266
+r58: A=Wyoming | B=3238 | C=3356 | D=3380 | E=3528 | F=3634
+r59: A=BLANK
+r60: A=Territories, Possessions, and Other
+r61: A=Puerto Rico | B=7283 | C=7184 | D=7392 | E=7296 | F=7212
+r62: A=Virgin Islands | B=260 | C=307 | D=377 | E=424 | F=411
+r63: A=All Other | B=1614 | C=1322 | D=513 | E=515 | F=557
+r64: A=BLANK
+r65: A=NOTES:  Includes the number of both participating and non-participating Part B non-institu...
+r66: A=Medicare fee-for-service beneficiaries as reflected on the Part B claims.  Data presented ...
+r67: A=from counts presented in other tables because of differences in sources and methodology.  ...
+r68: A=practitioners, limited licensed practitioners, and other provider/suppliers may be counted...
+r69: (blank)
+r70: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...

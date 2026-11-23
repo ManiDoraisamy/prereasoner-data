@@ -1,0 +1,25 @@
+{
+ "id": "cms_program_stats_inpatient_hospital_2023",
+ "answers": [
+  {
+   "id": "cms_program_stats_inpatient_hospital_2023#1",
+   "answer": "264306",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 1_CPS_05UIP', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Type of Entitlement', case=False, na=False)].index[0]\nheaders = df.iloc[header_row].astype(str).str.strip()\ncol_idx = headers[headers.str.contains('Discharged Dead', case=False, na=False)].index[0]\n\n# Look for 2023 under All Beneficiaries\nyear_rows = df[(df.iloc[:, 0] == 2023) | (df.iloc[:, 0] == '2023')]\nresult = int(year_rows.iloc[0, col_idx])"
+  },
+  {
+   "id": "cms_program_stats_inpatient_hospital_2023#3",
+   "answer": "2018",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 1_CPS_05UIP', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Type of Entitlement', case=False, na=False)].index[0]\nheaders = df.iloc[header_row].astype(str).str.strip()\ndeductible_col = headers[headers.str.contains('Total Deductible Payments', case=False, na=False)].index[0]\n\n# All Beneficiaries is rows 6 to 11 (2018-2023)\nall_ben_start = df[df.iloc[:, 0].astype(str).str.strip() == 'All Beneficiaries'].index[0]\ndata_rows = df.iloc[all_ben_start+1:all_ben_start+7]\nyears = data_rows.iloc[:, 0].astype(int).astype(str)\npayments = data_rows.iloc[:, deductible_col].astype(float)\n\nmax_idx = payments.idxmax()\nresult = str(df.loc[max_idx, 0])"
+  },
+  {
+   "id": "cms_program_stats_inpatient_hospital_2023#5",
+   "answer": "160",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 10_CPS_05UIP', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Measures', case=False, na=False)].index[0]\nheaders = df.iloc[header_row].astype(str).str.strip()\nmed_dep_col = headers[headers.str.contains('Medicare Dependent Hospitals', case=False, na=False)].index[0]\n\nnum_hosp_row = df[df.iloc[:, 0].astype(str).str.contains('Number of Hospitals', case=False, na=False)].index[0]\nresult = int(df.iloc[num_hosp_row, med_dep_col])"
+  },
+  {
+   "id": "cms_program_stats_inpatient_hospital_2023#4",
+   "answer": "[\"California\", \"Florida\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 7_CPS_05UIP', header=None)\n\nheader_row_idx = None\nfor idx, row in df.iterrows():\n    row_vals = [str(v).strip() for v in row.values]\n    if any('Area of Residence' in v for v in row_vals) and any('Total Discharges' in v for v in row_vals):\n        header_row_idx = idx\n        break\n\nheaders = [str(v).strip() for v in df.iloc[header_row_idx]]\narea_col = [i for i, h in enumerate(headers) if 'Area of Residence' in h][0]\ndischarges_col = [i for i, h in enumerate(headers) if h == 'Total Discharges'][0]\n\nus_states = {\n    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',\n    'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',\n    'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi',\n    'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',\n    'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania',\n    'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',\n    'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'\n}\n\ndata = df.iloc[header_row_idx + 1:].copy()\ndata = data[data[area_col].astype(str).str.strip().isin(us_states)]\ndata['discharges'] = pd.to_numeric(data[discharges_col], errors='coerce')\ntop_3 = data.sort_values(by='discharges', ascending=False).head(3)\nresult = top_3[area_col].str.strip().tolist()"
+  }
+ ]
+}

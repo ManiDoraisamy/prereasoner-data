@@ -1,0 +1,60 @@
+{
+ "id": "ers_food_expenditure_series_nominal",
+ "file": "ers_food_expenditure_series_nominal.xlsx",
+ "questions": [
+  {
+   "question": "What were the total nominal food-at-home expenditures in millions of dollars in 2020?",
+   "sheet": "Nominal expenditures",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "860098.13",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=None)\nheader_row = df[df[0].astype(str).str.strip() == 'Year'].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_row]]\ndata = df.iloc[header_row + 1:].copy()\ndata = data[pd.to_numeric(data['Year'], errors='coerce').notna()]\ndata['Year'] = data['Year'].astype(int)\n\nrow_2020 = data[data['Year'] == 2020]\ncol = [c for c in data.columns if 'Total food-at-home expenditures' in c][0]\nresult = float(row_2020[col].values[0])",
+   "qid": "ers_food_expenditure_series_nominal#1"
+  },
+  {
+   "question": "In 2021, by how much did total nominal food-away-from-home expenditures exceed total nominal food-at-home expenditures, in millions of dollars?",
+   "sheet": "Nominal expenditures",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "113810.31",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=None)\nheader_row = df[df[0].astype(str).str.strip() == 'Year'].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_row]]\ndata = df.iloc[header_row + 1:].copy()\ndata = data[pd.to_numeric(data['Year'], errors='coerce').notna()]\ndata['Year'] = data['Year'].astype(int)\n\nrow_2021 = data[data['Year'] == 2021]\nfafh_col = [c for c in data.columns if 'Total food-away-from-home expenditures' in c][0]\nfah_col = [c for c in data.columns if 'Total food-at-home expenditures' in c][0]\nresult = round(float(row_2021[fafh_col].values[0]) - float(row_2021[fah_col].values[0]), 2)",
+   "qid": "ers_food_expenditure_series_nominal#2"
+  },
+  {
+   "question": "In which year did total nominal spending on food away from home first surpass one trillion dollars (1,000,000 million dollars)?",
+   "sheet": "Nominal expenditures",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2018",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=None)\nheader_row = df[df[0].astype(str).str.strip() == 'Year'].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_row]]\ndata = df.iloc[header_row + 1:].copy()\ndata = data[pd.to_numeric(data['Year'], errors='coerce').notna()]\ndata['Year'] = data['Year'].astype(int)\n\ncol = [c for c in data.columns if 'Total food-away-from-home expenditures' in c][0]\ndata[col] = pd.to_numeric(data[col])\nsurpassed = data[data[col] > 1000000].sort_values('Year')\nresult = str(surpassed['Year'].iloc[0])",
+   "qid": "ers_food_expenditure_series_nominal#3"
+  },
+  {
+   "question": "Did alcohol sales at eating and drinking places drop in 2020 compared to 2019?",
+   "sheet": "Nominal expenditures",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=None)\nheader_row = df[df[0].astype(str).str.strip() == 'Year'].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_row]]\ndata = df.iloc[header_row + 1:].copy()\ndata = data[pd.to_numeric(data['Year'], errors='coerce').notna()]\ndata['Year'] = data['Year'].astype(int)\n\ncol = [c for c in data.columns if 'Alcohol sales at eating and drinking places' in c][0]\nval_2019 = float(data[data['Year'] == 2019][col].values[0])\nval_2020 = float(data[data['Year'] == 2020][col].values[0])\nresult = 'yes' if val_2020 < val_2019 else 'no'",
+   "qid": "ers_food_expenditure_series_nominal#4"
+  },
+  {
+   "question": "Between 1997 and 2025, how many years saw total away-from-home alcohol sales exceed 100,000 million nominal dollars?",
+   "sheet": "Nominal expenditures",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=None)\nheader_row = df[df[0].astype(str).str.strip() == 'Year'].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_row]]\ndata = df.iloc[header_row + 1:].copy()\ndata = data[pd.to_numeric(data['Year'], errors='coerce').notna()]\ndata['Year'] = data['Year'].astype(int)\n\ncol = [c for c in data.columns if 'Total alcohol-away-from-home sales' in c][0]\ndata[col] = pd.to_numeric(data[col])\nresult = int((data[col] > 100000).sum())",
+   "qid": "ers_food_expenditure_series_nominal#5"
+  },
+  {
+   "question": "Which three years had the highest nominal food sales at full-service restaurants?",
+   "sheet": "Nominal expenditures",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"2023\", \"2024\", \"2025\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=None)\nheader_row = df[df[0].astype(str).str.strip() == 'Year'].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_row]]\ndata = df.iloc[header_row + 1:].copy()\ndata = data[pd.to_numeric(data['Year'], errors='coerce').notna()]\ndata['Year'] = data['Year'].astype(int)\n\ncol = [c for c in data.columns if 'Food sales at full-service restaurants' in c][0]\ndata[col] = pd.to_numeric(data[col])\ntop3 = data.sort_values(col, ascending=False).head(3)\nresult = [str(y) for y in top3['Year'].tolist()]",
+   "qid": "ers_food_expenditure_series_nominal#6"
+  }
+ ]
+}

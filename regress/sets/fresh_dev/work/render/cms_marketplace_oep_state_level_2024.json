@@ -1,0 +1,72 @@
+{
+ "file": "cms_marketplace_oep_state_level_2024.xlsx",
+ "sheets": [
+  {
+   "name": "Contents",
+   "rows": 12,
+   "cols": 3,
+   "shown_whole": true
+  },
+  {
+   "name": "(1) Apps for QHP Coverage",
+   "rows": 55,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "(2) by Enrollment Status",
+   "rows": 55,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "(3) by Switching Status",
+   "rows": 34,
+   "cols": 6,
+   "shown_whole": true
+  },
+  {
+   "name": "(4) by Week",
+   "rows": 57,
+   "cols": 16,
+   "shown_whole": true
+  },
+  {
+   "name": "(5) by Premium and FA",
+   "rows": 55,
+   "cols": 16,
+   "shown_whole": true
+  },
+  {
+   "name": "(6) by Demographics",
+   "rows": 56,
+   "cols": 26,
+   "shown_whole": true
+  },
+  {
+   "name": "(7) by Metal Level",
+   "rows": 56,
+   "cols": 9,
+   "shown_whole": true
+  },
+  {
+   "name": "(8) by FPL",
+   "rows": 55,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "(9) Dental",
+   "rows": 55,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "(10) BHP",
+   "rows": 4,
+   "cols": 14,
+   "shown_whole": true
+  }
+ ],
+ "chars": 67315
+}

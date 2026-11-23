@@ -1,0 +1,78 @@
+{
+ "file": "cms_program_stats_part_d_utilization_2023.xlsx",
+ "sheets": [
+  {
+   "name": "Table of Contents",
+   "rows": 13,
+   "cols": 2,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 1_CPS_12UPD",
+   "rows": 58,
+   "cols": 19,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 2_CPS_12UPD",
+   "rows": 60,
+   "cols": 19,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 3_CPS_12UPD",
+   "rows": 60,
+   "cols": 19,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 4_CPS_12UPD",
+   "rows": 49,
+   "cols": 10,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 5_CPS_12UPD",
+   "rows": 50,
+   "cols": 10,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 6_CPS_12UPD",
+   "rows": 73,
+   "cols": 10,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 7_CPS_12UPD",
+   "rows": 74,
+   "cols": 10,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 8_CPS_12UPD",
+   "rows": 81,
+   "cols": 19,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 9_CPS_12UPD",
+   "rows": 88,
+   "cols": 19,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 10_CPS_12UPD",
+   "rows": 54,
+   "cols": 19,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR UTLZN D 11_CPS_12UPD",
+   "rows": 79,
+   "cols": 19,
+   "shown_whole": true
+  }
+ ],
+ "chars": 125896
+}

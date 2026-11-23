@@ -1,0 +1,35 @@
+{
+ "id": "or_weekly_reportable_diseases",
+ "answers": [
+  {
+   "id": "or_weekly_reportable_diseases#1",
+   "answer": "381",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nfiltered = df[(df['FirstDateOfWeek'] == '2020-11-08') & (df['LastDateOfWeek'] == '2020-11-14') & (df['Disease'] == 'Chlamydia')]\nresult = int(filtered['Cases'].iloc[0])"
+  },
+  {
+   "id": "or_weekly_reportable_diseases#2",
+   "answer": "Gonorrhea",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nweek_df = df[(df['FirstDateOfWeek'] == '2020-11-15') & (df['LastDateOfWeek'] == '2020-11-21')]\ngonorrhea_cases = week_df[week_df['Disease'] == 'Gonorrhea']['Cases'].sum()\nsalmonellosis_cases = week_df[week_df['Disease'] == 'Salmonellosis']['Cases'].sum()\nresult = 'Gonorrhea' if gonorrhea_cases > salmonellosis_cases else 'Salmonellosis'"
+  },
+  {
+   "id": "or_weekly_reportable_diseases#3",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nfiltered = df[(df['LastDateOfWeek'] == '2020-11-07') & (df['Disease'] == 'Congenital syphilis')]\ncases = filtered['Cases'].sum()\nresult = 'yes' if cases > 0 else 'no'"
+  },
+  {
+   "id": "or_weekly_reportable_diseases#4",
+   "answer": "38",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nresult = int(df['Disease'].nunique())"
+  },
+  {
+   "id": "or_weekly_reportable_diseases#5",
+   "answer": "171262",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nresult = int(df['Cases'].sum())"
+  },
+  {
+   "id": "or_weekly_reportable_diseases#6",
+   "answer": "2025",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('or_weekly_reportable_diseases.csv')\nresult = str(df['MMWRyear'].value_counts().idxmax())"
+  }
+ ]
+}

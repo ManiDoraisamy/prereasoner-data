@@ -1,0 +1,30 @@
+{
+ "id": "nchs_hus_life_expectancy_mortality",
+ "answers": [
+  {
+   "id": "nchs_hus_life_expectancy_mortality#1",
+   "answer": "70.8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\nrow_1970 = df[df[0].astype(str).str.strip().str.startswith('1970')].index[0]\nresult = float(df.iloc[row_1970, 1])"
+  },
+  {
+   "id": "nchs_hus_life_expectancy_mortality#2",
+   "answer": "15.2",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\nrow_1900 = df[df[0].astype(str).str.strip().str.startswith('1900')].index[0]\nwhite_f = float(df.iloc[row_1900, 6])\nblack_f = float(df.iloc[row_1900, 9])\nresult = round(white_f - black_f, 2)"
+  },
+  {
+   "id": "nchs_hus_life_expectancy_mortality#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\n# Row 183 has '2019\\6 (single race)' at 65 years for Asian, not Hispanic\n# Column E=Both sexes, F=Male, G=Female\nrow_idx = df[(df[0].astype(str).str.contains('2019')) & (df.index > 175) & (df.index < 185)].index[0]\nmale_le = float(df.iloc[row_idx, 5])\nfemale_le = float(df.iloc[row_idx, 6])\nresult = 'yes' if female_le > male_le else 'no'"
+  },
+  {
+   "id": "nchs_hus_life_expectancy_mortality#5",
+   "answer": "14.02",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\n# At 75 years for Hispanic females (rows 187 to 191, column J/9)\nyears = ['2006', '2007', '2008', '2009', '2010']\nsubset = df[(df.index >= 186) & (df.index <= 202) & (df[0].astype(str).str.strip().isin(years))]\nresult = round(float(subset[9].astype(float).mean()), 2)"
+  },
+  {
+   "id": "nchs_hus_life_expectancy_mortality#6",
+   "answer": "2014",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\n# At birth, Black not Hispanic both sexes is column E (index 4)\n# Rows 140 to 153 covers 2006 to 2017\nyears = [str(y) for y in range(2006, 2018)]\nsubset = df[(df.index >= 140) & (df.index <= 153) & (df[0].astype(str).str.strip().isin(years))].copy()\nsubset['val'] = subset[4].astype(float)\nbest_row = subset.loc[subset['val'].idxmax()]\nresult = str(best_row[0]).strip()"
+  }
+ ]
+}

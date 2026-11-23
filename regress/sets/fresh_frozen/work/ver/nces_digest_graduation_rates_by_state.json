@@ -1,0 +1,35 @@
+{
+ "id": "nces_digest_graduation_rates_by_state",
+ "answers": [
+  {
+   "id": "nces_digest_graduation_rates_by_state#1",
+   "answer": "87",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\nrow_idx = df[df[0].astype(str).str.strip().str.startswith('California')].index[0]\ncol_idx = 15  # Column P is 2021-22\nresult = float(df.iloc[row_idx, col_idx])"
+  },
+  {
+   "id": "nces_digest_graduation_rates_by_state#2",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\n# Column AQ (index 42) is English learner 2021-22\ncol_aq = 42\ntx_row = df[df[0].astype(str).str.strip().str.startswith('Texas')].index[0]\nca_row = df[df[0].astype(str).str.strip().str.startswith('California')].index[0]\ntx_rate = float(df.iloc[tx_row, col_aq])\nca_rate = float(df.iloc[ca_row, col_aq])\nresult = str(df.iloc[tx_row, 0]).strip() if tx_rate > ca_rate else str(df.iloc[ca_row, 0]).strip()"
+  },
+  {
+   "id": "nces_digest_graduation_rates_by_state#3",
+   "answer": "[\"West Virginia\", \"Tennessee\", \"Wisconsin\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\n# Rows 7 to 57 are states and DC (Excel rows 8 to 58)\nstate_df = df.iloc[7:58, [0, 15]].copy()\nstate_df = state_df[~state_df[0].astype(str).str.contains('District of Columbia')]\nstate_df[15] = pd.to_numeric(state_df[15], errors='coerce')\ntop3 = state_df.sort_values(by=15, ascending=False).head(3)\nresult = [str(x).strip() for x in top3[0].tolist()]"
+  },
+  {
+   "id": "nces_digest_graduation_rates_by_state#4",
+   "answer": "5",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\nstate_df = df.iloc[7:58, [0, 15]].copy()\nstate_df = state_df[~state_df[0].astype(str).str.contains('District of Columbia')]\nstate_df[15] = pd.to_numeric(state_df[15], errors='coerce')\nresult = int((state_df[15] >= 90).sum())"
+  },
+  {
+   "id": "nces_digest_graduation_rates_by_state#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'United States'].index[0]\nrate_20_21 = float(df.iloc[us_row, 13])  # Col N\nrate_21_22 = float(df.iloc[us_row, 15])  # Col P\nresult = 'yes' if rate_21_22 > rate_20_21 else 'no'"
+  },
+  {
+   "id": "nces_digest_graduation_rates_by_state#6",
+   "answer": "83.2",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\nfl_row = df[df[0].astype(str).str.strip().str.startswith('Florida')].index[0]\n# Column AS (index 44) is Economically disadvantaged 2021-22\ncol_as = 44\nresult = float(df.iloc[fl_row, col_as])"
+  }
+ ]
+}

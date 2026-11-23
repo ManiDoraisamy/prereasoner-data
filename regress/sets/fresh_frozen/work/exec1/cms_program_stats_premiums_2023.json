@@ -1,0 +1,88 @@
+{
+ "id": "cms_program_stats_premiums_2023",
+ "file": "cms_program_stats_premiums_2023.xlsx",
+ "questions": [
+  {
+   "question": "What was the total dollar amount of standard base Medicare Part A premiums collected in calendar year 2021?",
+   "sheet": "MDCR PREMIUMS 1_CPS_04PRM",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "3898888074",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 1_CPS_04PRM', header=None)\nyear_row = df[df[0] == 2021]\nresult = int(year_row[4].values[0])",
+   "qid": "cms_program_stats_premiums_2023#1",
+   "pass1": true,
+   "result": 3898888074,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2023, did more female Medicare beneficiaries pay a Part A penalty addition than male beneficiaries?",
+   "sheet": "MDCR PREMIUMS 2_CPS_04PRM",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 2_CPS_04PRM', header=None)\nmale_val = df.loc[df[0].str.strip() == 'Male', 7].values[0]\nfemale_val = df.loc[df[0].str.strip() == 'Female', 7].values[0]\nresult = 'yes' if int(female_val) > int(male_val) else 'no'",
+   "qid": "cms_program_stats_premiums_2023#2",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between 2018 and 2023, in which calendar year was the total Medicare Part B premium amount the lowest?",
+   "sheet": "MDCR PREMIUMS 4_CPS_04PRM",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2018",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 4_CPS_04PRM', header=None)\ndata_rows = df[df[0].isin([2018, 2019, 2020, 2021, 2022, 2023])]\nmin_row = data_rows.loc[data_rows[2].astype(float).idxmin()]\nresult = str(int(min_row[0]))",
+   "qid": "cms_program_stats_premiums_2023#3",
+   "pass1": true,
+   "result": "2018",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which racial or ethnic group had the highest number of Part B beneficiaries subject to income-related monthly adjustments (IRMAA) in 2023?",
+   "sheet": "MDCR PREMIUMS 5_CPS_04PRM",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Non-Hispanic White",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 5_CPS_04PRM', header=None)\nraces = ['Non-Hispanic White', 'Black (or African-American)', 'Asian/Pacific Islander', 'Hispanic', 'American Indian/Alaska Native', 'Other', 'Unknown']\nrace_rows = df[df[0].str.strip().isin(races)].copy()\nrace_rows['irmaa'] = race_rows[9].astype(int)\ntop_race = race_rows.sort_values(by='irmaa', ascending=False).iloc[0]\nresult = str(top_race[0]).strip()",
+   "qid": "cms_program_stats_premiums_2023#4",
+   "pass1": true,
+   "result": "Non-Hispanic White",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Among U.S. states and territories in 2023, what were the three states with the largest number of Part D premium-paying beneficiaries?",
+   "sheet": "MDCR PREMIUMS 9_CPS_04PRM",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"New York\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 9_CPS_04PRM', header=None)\n# State rows are from row index 7 to 57 (Alabama to Wyoming)\nstate_df = df.iloc[7:58].copy()\nstate_df[1] = pd.to_numeric(state_df[1], errors='coerce')\ntop3 = state_df.sort_values(by=1, ascending=False).head(3)\nresult = [str(x).strip() for x in top3[0].tolist()]",
+   "qid": "cms_program_stats_premiums_2023#5",
+   "pass1": true,
+   "result": [
+    "California",
+    "New York",
+    "Florida"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2023, what was the average number of Medicare Part D premium beneficiaries across the four age brackets comprising individuals 65 and older (65-74, 75-84, 85-94, and 95 and over)?",
+   "sheet": "MDCR PREMIUMS 8_CPS_04PRM",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "8514105",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 8_CPS_04PRM', header=None)\nbrackets = ['65-74 Years', '75-84 Years', '85-94 Years', '95 Years and Over']\nbracket_rows = df[df[0].str.strip().isin(brackets)]\nresult = float(bracket_rows[1].astype(int).mean())",
+   "qid": "cms_program_stats_premiums_2023#6",
+   "pass1": true,
+   "result": 8514105.0,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

@@ -1,0 +1,88 @@
+{
+ "id": "eia_epm_average_price_by_sector_and_state",
+ "file": "eia_epm_average_price_by_sector_and_state.xlsx",
+ "questions": [
+  {
+   "question": "In August 2026, what was the average residential electricity price in Hawaii, in cents per kilowatt-hour?",
+   "sheet": "Table_5_06_A",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "47.18",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nrow = df[df[0].astype(str).str.strip() == 'Hawaii'].index[0]\nresult = float(df.iloc[row, 1])",
+   "qid": "eia_epm_average_price_by_sector_and_state#1",
+   "pass1": true,
+   "result": 47.18,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Among the states in the New England division, which one had the highest residential electricity price in August 2026?",
+   "sheet": "Table_5_06_A",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Maine",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nstates = ['Connecticut', 'Maine', 'Massachusetts', 'New Hampshire', 'Rhode Island', 'Vermont']\nsub = df[df[0].astype(str).str.strip().isin(states)].copy()\nsub[1] = pd.to_numeric(sub[1])\nresult = sub.loc[sub[1].idxmax(), 0].strip()",
+   "qid": "eia_epm_average_price_by_sector_and_state#2",
+   "pass1": true,
+   "result": "Maine",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three Census divisions had the highest average electricity prices across all sectors in August 2026?",
+   "sheet": "Table_5_06_A",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Pacific Noncontiguous\", \"New England\", \"Pacific Contiguous\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\ndivisions = [\n    'New England', 'Middle Atlantic', 'East North Central', 'West North Central',\n    'South Atlantic', 'East South Central', 'West South Central', 'Mountain',\n    'Pacific Contiguous', 'Pacific Noncontiguous'\n]\nsub = df[df[0].astype(str).str.strip().isin(divisions)].copy()\nsub[9] = pd.to_numeric(sub[9])\ntop3 = sub.sort_values(by=9, ascending=False).head(3)\nresult = [x.strip() for x in top3[0].tolist()]",
+   "qid": "eia_epm_average_price_by_sector_and_state#3",
+   "pass1": true,
+   "result": [
+    "Pacific Noncontiguous",
+    "New England",
+    "Pacific Contiguous"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states in the East North Central division had an average industrial electricity price under 10 cents per kilowatt-hour in August 2026?",
+   "sheet": "Table_5_06_A",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nenc_states = ['Illinois', 'Indiana', 'Michigan', 'Ohio', 'Wisconsin']\nsub = df[df[0].astype(str).str.strip().isin(enc_states)].copy()\nsub[5] = pd.to_numeric(sub[5])\nresult = int((sub[5] < 10.0).sum())",
+   "qid": "eia_epm_average_price_by_sector_and_state#4",
+   "pass1": true,
+   "result": 3,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did the U.S. national average electricity price across all sectors increase from August 2025 to August 2026?",
+   "sheet": "Table_5_06_A",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nrow = df[df[0].astype(str).str.strip() == 'U.S. Total'].index[0]\np_2026 = float(df.iloc[row, 9])\np_2025 = float(df.iloc[row, 10])\nresult = \"yes\" if p_2026 > p_2025 else \"no\"",
+   "qid": "eia_epm_average_price_by_sector_and_state#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the average industrial electricity price across the four West South Central states in August 2026, in cents per kilowatt-hour?",
+   "sheet": "Table_5_06_A",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "7.33",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nwsc_states = ['Arkansas', 'Louisiana', 'Oklahoma', 'Texas']\nsub = df[df[0].astype(str).str.strip().isin(wsc_states)].copy()\nsub[5] = pd.to_numeric(sub[5])\nresult = round(float(sub[5].mean()), 2)",
+   "qid": "eia_epm_average_price_by_sector_and_state#6",
+   "pass1": true,
+   "result": 7.33,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

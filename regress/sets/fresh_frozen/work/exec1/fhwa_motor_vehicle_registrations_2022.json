@@ -1,0 +1,88 @@
+{
+ "id": "fhwa_motor_vehicle_registrations_2022",
+ "file": "fhwa_motor_vehicle_registrations_2022.xlsx",
+ "questions": [
+  {
+   "question": "How many publicly owned buses were registered in Texas in 2022?",
+   "sheet": "CY MV-1 Publish",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "56923",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\ntexas_row = df[df[0].astype(str).str.contains('^Texas', regex=True)].iloc[0]\nresult = int(texas_row[5])",
+   "qid": "fhwa_motor_vehicle_registrations_2022#1",
+   "pass1": true,
+   "result": 56923,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states had the highest number of total motor vehicle registrations in 2022?",
+   "sheet": "CY MV-1 Publish",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\ndata = df.iloc[9:60].copy()\ndata[0] = data[0].astype(str).str.replace(r'\\s*\\(\\d+\\)', '', regex=True).str.strip()\ndata[15] = pd.to_numeric(data[15], errors='coerce')\ntop3 = data.sort_values(by=15, ascending=False).head(3)\nresult = top3[0].tolist()",
+   "qid": "fhwa_motor_vehicle_registrations_2022#2",
+   "pass1": true,
+   "result": [
+    "California",
+    "Texas",
+    "Florida"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Michigan and Pennsylvania, which state had more total truck registrations in 2022?",
+   "sheet": "CY MV-1 Publish",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Pennsylvania",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\ndata = df.iloc[9:60].copy()\ndata[0] = data[0].astype(str).str.replace(r'\\s*\\(\\d+\\)', '', regex=True).str.strip()\nmi_trucks = float(data[data[0] == 'Michigan'][9].values[0])\npa_trucks = float(data[data[0] == 'Pennsylvania'][9].values[0])\nresult = 'Pennsylvania' if pa_trucks > mi_trucks else 'Michigan'",
+   "qid": "fhwa_motor_vehicle_registrations_2022#3",
+   "pass1": true,
+   "result": "Pennsylvania",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states had more than 500,000 total motorcycle registrations in 2022?",
+   "sheet": "CY MV-1 Publish",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\ndata = df.iloc[9:60].copy()\nmoto_total = pd.to_numeric(data[12], errors='coerce')\nresult = int((moto_total > 500000).sum())",
+   "qid": "fhwa_motor_vehicle_registrations_2022#4",
+   "pass1": true,
+   "result": 3,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did Florida have more private and commercial automobile registrations than Texas in 2022?",
+   "sheet": "CY MV-1 Publish",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\ndata = df.iloc[9:60].copy()\ndata[0] = data[0].astype(str).str.replace(r'\\s*\\(\\d+\\)', '', regex=True).str.strip()\nfl_val = float(data[data[0] == 'Florida'][1].values[0])\ntx_val = float(data[data[0] == 'Texas'][1].values[0])\nresult = 'yes' if fl_val > tx_val else 'no'",
+   "qid": "fhwa_motor_vehicle_registrations_2022#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the total number of registered motorcycles across the six New England states (Connecticut, Maine, Massachusetts, New Hampshire, Rhode Island, and Vermont) in 2022?",
+   "sheet": "CY MV-1 Publish",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "426855",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\ndata = df.iloc[9:60].copy()\ndata[0] = data[0].astype(str).str.replace(r'\\s*\\(\\d+\\)', '', regex=True).str.strip()\nne_states = ['Connecticut', 'Maine', 'Massachusetts', 'New Hampshire', 'Rhode Island', 'Vermont']\nne_data = data[data[0].isin(ne_states)]\nresult = int(pd.to_numeric(ne_data[12]).sum())",
+   "qid": "fhwa_motor_vehicle_registrations_2022#6",
+   "pass1": true,
+   "result": 426855,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

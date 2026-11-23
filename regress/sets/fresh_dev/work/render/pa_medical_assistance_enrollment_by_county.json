@@ -1,0 +1,12 @@
+{
+ "file": "pa_medical_assistance_enrollment_by_county.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 18972,
+   "cols": 15,
+   "shown_whole": false
+  }
+ ],
+ "chars": 17542
+}

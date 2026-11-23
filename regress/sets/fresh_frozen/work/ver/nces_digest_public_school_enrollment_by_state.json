@@ -1,0 +1,35 @@
+{
+ "id": "nces_digest_public_school_enrollment_by_state",
+ "answers": [
+  {
+   "id": "nces_digest_public_school_enrollment_by_state#3",
+   "answer": "[\"Idaho\", \"North Dakota\", \"Utah\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\n# States start after row 'State' (row index 10, excel row 11) up to row before 'Bureau of Indian Education'\nstate_start = df[df[0] == 'State'].index[0] + 1\nstate_end = df[df[0].astype(str).str.contains('Bureau of Indian')].index[0]\nstates_df = df.iloc[state_start:state_end].copy()\n# Column Z is projected percent change 2022 to 2031 (index 25)\nproj_col = 25\nstates_df[proj_col] = pd.to_numeric(states_df[proj_col], errors='coerce')\ntop3 = states_df.sort_values(by=proj_col, ascending=False).head(3)\nresult = top3[0].tolist()"
+  },
+  {
+   "id": "nces_digest_public_school_enrollment_by_state#4",
+   "answer": "14",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\nstate_start = df[df[0] == 'State'].index[0] + 1\nstate_end = df[df[0].astype(str).str.contains('Bureau of Indian')].index[0]\nstates_df = df.iloc[state_start:state_end].copy()\n# Column T is percent change 2017 to 2022 (index 19)\npct_col = 19\nstates_df[pct_col] = pd.to_numeric(states_df[pct_col], errors='coerce')\nresult = int((states_df[pct_col] > 0).sum())"
+  },
+  {
+   "id": "nces_digest_public_school_enrollment_by_state#6",
+   "answer": "12404615.25",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\nregions = ['Northeast', 'Midwest', 'South', 'West']\nfall_2022_col = [c for c in df.columns if df.iloc[2, c] == 'Fall 2022'][0]\nregion_vals = df[df[0].isin(regions)][fall_2022_col].astype(float)\nresult = float(region_vals.mean())"
+  },
+  {
+   "id": "nces_digest_public_school_enrollment_by_state#1",
+   "answer": "5519599",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\n\ncol_2022 = None\nfor r in range(5):\n    for c in df.columns:\n        if 'Fall 2022' in str(df.iloc[r, c]):\n            col_2022 = c\n            break\n    if col_2022 is not None:\n        break\n\ntx_mask = df[0].astype(str).str.strip().str.lower() == 'texas'\ntx_row = df[tx_mask].index[0]\nresult = int(df.iloc[tx_row, col_2022])"
+  },
+  {
+   "id": "nces_digest_public_school_enrollment_by_state#2",
+   "answer": "Midwest",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\n\ncol_2022 = None\nfor r in range(5):\n    for c in df.columns:\n        if 'Fall 2022' in str(df.iloc[r, c]):\n            col_2022 = c\n            break\n    if col_2022 is not None:\n        break\n\nne_row = df[df[0].astype(str).str.strip().str.lower() == 'northeast'].index[0]\nmw_row = df[df[0].astype(str).str.strip().str.lower() == 'midwest'].index[0]\n\nne_val = float(df.iloc[ne_row, col_2022])\nmw_val = float(df.iloc[mw_row, col_2022])\n\nresult = 'Midwest' if mw_val > ne_val else 'Northeast'"
+  },
+  {
+   "id": "nces_digest_public_school_enrollment_by_state#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\n\ncol_2019, col_2020 = None, None\nfor r in range(5):\n    for c in df.columns:\n        val = str(df.iloc[r, c])\n        if 'Fall 2019' in val:\n            col_2019 = c\n        if 'Fall 2020' in val:\n            col_2020 = c\n\nus_row = df[df[0].astype(str).str.strip().str.lower() == 'united states'].index[0]\nval_2019 = float(df.iloc[us_row, col_2019])\nval_2020 = float(df.iloc[us_row, col_2020])\n\nresult = 'yes' if val_2020 < val_2019 else 'no'"
+  }
+ ]
+}

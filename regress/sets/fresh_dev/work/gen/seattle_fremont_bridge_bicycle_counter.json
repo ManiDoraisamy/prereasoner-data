@@ -1,0 +1,60 @@
+{
+ "id": "seattle_fremont_bridge_bicycle_counter",
+ "file": "seattle_fremont_bridge_bicycle_counter.csv",
+ "questions": [
+  {
+   "question": "Did the west sidewalk record more total cyclist crossings than the east sidewalk over the entire tracking period?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\nwest = df['Fremont Bridge Sidewalks, south of N 34th St Cyclist West Sidewalk'].sum()\neast = df['Fremont Bridge Sidewalks, south of N 34th St Cyclist East Sidewalk'].sum()\nresult = 'yes' if west > east else 'no'",
+   "qid": "seattle_fremont_bridge_bicycle_counter#1"
+  },
+  {
+   "question": "Did any single hour record 1,100 or more total bicycle crossings on the Fremont Bridge?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\nmax_val = df['Fremont Bridge Sidewalks, south of N 34th St Total'].max()\nresult = 'yes' if max_val >= 1100 else 'no'",
+   "qid": "seattle_fremont_bridge_bicycle_counter#2"
+  },
+  {
+   "question": "What is the cumulative total number of bicycle crossings recorded across both sidewalks over the entire dataset?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "13421194",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\nresult = int(df['Fremont Bridge Sidewalks, south of N 34th St Total'].sum())",
+   "qid": "seattle_fremont_bridge_bicycle_counter#3"
+  },
+  {
+   "question": "By how many bicycle crossings did the west sidewalk exceed the east sidewalk in total over the entire recorded time span?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "1422814",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\nwest = df['Fremont Bridge Sidewalks, south of N 34th St Cyclist West Sidewalk'].sum()\neast = df['Fremont Bridge Sidewalks, south of N 34th St Cyclist East Sidewalk'].sum()\nresult = int(west - east)",
+   "qid": "seattle_fremont_bridge_bicycle_counter#4"
+  },
+  {
+   "question": "How many hourly records in the dataset are missing values for the total bridge bicycle count?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "30",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\nresult = int(df['Fremont Bridge Sidewalks, south of N 34th St Total'].isna().sum())",
+   "qid": "seattle_fremont_bridge_bicycle_counter#5"
+  },
+  {
+   "question": "How many cyclists were counted on the east sidewalk during the hour recorded at 5:00 PM on October 2, 2012?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "393",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\nrow = df[df['Date'] == '10/02/2012 05:00:00 PM']\nresult = int(row['Fremont Bridge Sidewalks, south of N 34th St Cyclist East Sidewalk'].iloc[0])",
+   "qid": "seattle_fremont_bridge_bicycle_counter#6"
+  }
+ ]
+}

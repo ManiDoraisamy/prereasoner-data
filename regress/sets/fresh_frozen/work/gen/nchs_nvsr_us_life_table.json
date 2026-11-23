@@ -1,0 +1,60 @@
+{
+ "id": "nchs_nvsr_us_life_table",
+ "file": "nchs_nvsr_us_life_table.xlsx",
+ "questions": [
+  {
+   "question": "What was the life expectancy at birth for the total United States population in 2024?",
+   "sheet": "Table 1",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "78.97103119",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\nstart_idx = df[df[0] == '0-1'].index[0]\nresult = float(df.loc[start_idx, 6])",
+   "qid": "nchs_nvsr_us_life_table#1"
+  },
+  {
+   "question": "At what age interval did the number of deaths reach its highest point in the 2024 United States life table?",
+   "sheet": "Table 1",
+   "kind": "lookup",
+   "answer_type": "name",
+   "answer": "88-89",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\nstart_idx = df[df[0] == '0-1'].index[0]\nend_idx = df[df[0] == '100 and over'].index[0]\ndata = df.loc[start_idx:end_idx].copy()\ndata[3] = pd.to_numeric(data[3])\nresult = str(data.loc[data[3].idxmax(), 0])",
+   "qid": "nchs_nvsr_us_life_table#2"
+  },
+  {
+   "question": "Based on the 2024 United States life table, does more than half of the initial population survive to reach age 80?",
+   "sheet": "Table 1",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\nstart_idx = df[df[0] == '0-1'].index[0]\nend_idx = df[df[0] == '100 and over'].index[0]\ndata = df.loc[start_idx:end_idx].copy()\ndata[2] = pd.to_numeric(data[2])\nsurviving_80 = data.loc[data[0] == '80-81', 2].iloc[0]\nresult = 'yes' if surviving_80 > 50000 else 'no'",
+   "qid": "nchs_nvsr_us_life_table#3"
+  },
+  {
+   "question": "For how many age intervals in 2024 was the probability of dying within one year strictly below 0.001?",
+   "sheet": "Table 1",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "26",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\nstart_idx = df[df[0] == '0-1'].index[0]\nend_idx = df[df[0] == '100 and over'].index[0]\ndata = df.loc[start_idx:end_idx].copy()\ndata[1] = pd.to_numeric(data[1])\nresult = int((data[1] < 0.001).sum())",
+   "qid": "nchs_nvsr_us_life_table#4"
+  },
+  {
+   "question": "Which three single-year age brackets had the lowest annual mortality probabilities in the 2024 life table?",
+   "sheet": "Table 1",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"10-11\", \"9-10\", \"11-12\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\nstart_idx = df[df[0] == '0-1'].index[0]\nend_idx = df[df[0] == '100 and over'].index[0]\ndata = df.loc[start_idx:end_idx].copy()\ndata[1] = pd.to_numeric(data[1])\nresult = data.sort_values(by=1).head(3)[0].tolist()",
+   "qid": "nchs_nvsr_us_life_table#5"
+  },
+  {
+   "question": "What is the difference in remaining life expectancy between an individual reaching age 65 and one reaching age 85 in the 2024 United States life table?",
+   "sheet": "Table 1",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "12.949572568",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\nstart_idx = df[df[0] == '0-1'].index[0]\nend_idx = df[df[0] == '100 and over'].index[0]\ndata = df.loc[start_idx:end_idx].copy()\ndata[6] = pd.to_numeric(data[6])\nex_65 = data.loc[data[0] == '65-66', 6].iloc[0]\nex_85 = data.loc[data[0] == '85-86', 6].iloc[0]\nresult = float(ex_65 - ex_85)",
+   "qid": "nchs_nvsr_us_life_table#6"
+  }
+ ]
+}

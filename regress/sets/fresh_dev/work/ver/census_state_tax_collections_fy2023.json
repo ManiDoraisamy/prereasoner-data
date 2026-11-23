@@ -1,0 +1,30 @@
+{
+ "id": "census_state_tax_collections_fy2023",
+ "answers": [
+  {
+   "id": "census_state_tax_collections_fy2023#1",
+   "answer": "217707953",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_tax_collections_fy2023.xlsx', sheet_name='State Tax Collection 2023', header=None)\nheader_row = df.iloc[4]\ncal_col = header_row[header_row.astype(str).str.strip() == 'California'].index[0]\ntotal_tax_row = df[df.iloc[:, 0].astype(str).str.strip() == 'Total Taxes'].index[0]\nresult = int(df.iloc[total_tax_row, cal_col])"
+  },
+  {
+   "id": "census_state_tax_collections_fy2023#2",
+   "answer": "[\"Texas\", \"New\\nMexico\", \"North\\nDakota\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_tax_collections_fy2023.xlsx', sheet_name='State Tax Collection 2023', header=None)\nheader_row = df.iloc[4]\nsev_row = df[df.iloc[:, 1].astype(str).str.strip() == 'T53'].index[0]\n\n# State columns: columns from Alabama (D, idx 3) to Wyoming (BB, idx 53), excluding DC\nstate_cols = [c for c in range(3, len(header_row)) if str(header_row[c]).strip() != 'DC']\n\nsev_series = pd.to_numeric(df.iloc[sev_row, state_cols], errors='coerce')\ntop3_cols = sev_series.nlargest(3).index\nresult = [str(header_row[c]) for c in top3_cols]"
+  },
+  {
+   "id": "census_state_tax_collections_fy2023#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_tax_collections_fy2023.xlsx', sheet_name='State Tax Collection 2023', header=None)\nheader_row = df.iloc[4]\nny_col = header_row[header_row.astype(str).str.replace('\\n', ' ').str.strip() == 'New York'].index[0]\n\nind_inc_row = df[df.iloc[:, 1].astype(str).str.strip() == 'T40'].index[0]\ngen_sales_row = df[df.iloc[:, 1].astype(str).str.strip() == 'T09'].index[0]\n\nind_inc = float(df.iloc[ind_inc_row, ny_col])\ngen_sales = float(df.iloc[gen_sales_row, ny_col])\n\nresult = 'yes' if ind_inc > gen_sales else 'no'"
+  },
+  {
+   "id": "census_state_tax_collections_fy2023#5",
+   "answer": "38868.22",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_tax_collections_fy2023.xlsx', sheet_name='State Tax Collection 2023', header=None)\nheader_row = df.iloc[4]\nhunt_row = df[df.iloc[:, 1].astype(str).str.strip() == 'T23'].index[0]\n\n# All 50 states exclude US and DC\nstate_cols = [c for c in range(3, len(header_row)) if str(header_row[c]).strip() != 'DC']\nhunt_values = pd.to_numeric(df.iloc[hunt_row, state_cols], errors='coerce')\nresult = float(hunt_values.mean())"
+  },
+  {
+   "id": "census_state_tax_collections_fy2023#6",
+   "answer": "California",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_tax_collections_fy2023.xlsx', sheet_name='State Tax Collection 2023', header=None)\nheader_row = df.iloc[4]\nmotor_fuel_row = df[df.iloc[:, 1].astype(str).str.strip() == 'T13'].index[0]\n\nstate_cols = [c for c in range(3, len(header_row)) if str(header_row[c]).strip() != 'DC']\nfuel_series = pd.to_numeric(df.iloc[motor_fuel_row, state_cols], errors='coerce')\ntop_col = fuel_series.idxmax()\nresult = str(header_row[top_col])"
+  }
+ ]
+}

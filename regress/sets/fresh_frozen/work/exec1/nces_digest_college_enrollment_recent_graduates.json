@@ -1,0 +1,84 @@
+{
+ "id": "nces_digest_college_enrollment_recent_graduates",
+ "file": "nces_digest_college_enrollment_recent_graduates.xlsx",
+ "questions": [
+  {
+   "question": "In 2022, what percentage of recent female high school completers were enrolled in college?",
+   "sheet": "Digest 2023 Table 302.10",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "66.03494739",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\nrow = df[df[0].astype(str).str.strip() == '2022']\nresult = float(row.iloc[0, 19])",
+   "qid": "nces_digest_college_enrollment_recent_graduates#1",
+   "pass1": true,
+   "result": 66.03494739442361,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2022, was the overall college enrollment rate higher for recent female high school graduates than for male graduates?",
+   "sheet": "Digest 2023 Table 302.10",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\nrow = df[df[0].astype(str).str.strip() == '2022']\nfemale_rate = float(row.iloc[0, 19])\nmale_rate = float(row.iloc[0, 13])\nresult = 'yes' if female_rate > male_rate else 'no'",
+   "qid": "nces_digest_college_enrollment_recent_graduates#2",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In which year between 2010 and 2022 was the total college enrollment rate for recent high school graduates at its highest?",
+   "sheet": "Digest 2023 Table 302.10",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2016",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\ndata = []\nfor idx, row in df.iterrows():\n    val = str(row[0]).strip()\n    if val.isdigit() and 2010 <= int(val) <= 2022:\n        data.append((val, float(row[7])))\ndata.sort(key=lambda x: x[1], reverse=True)\nresult = data[0][0]",
+   "qid": "nces_digest_college_enrollment_recent_graduates#3",
+   "pass1": true,
+   "result": "2016",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In how many years from 2000 through 2022 did the total college enrollment rate for recent high school graduates exceed 65 percent?",
+   "sheet": "Digest 2023 Table 302.10",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "17",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\ncount = 0\nfor idx, row in df.iterrows():\n    val = str(row[0]).strip()\n    if val.isdigit() and 2000 <= int(val) <= 2022:\n        if float(row[7]) > 65.0:\n            count += 1\nresult = count",
+   "qid": "nces_digest_college_enrollment_recent_graduates#4",
+   "pass1": true,
+   "result": 17,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between males and females, which group had a higher enrollment rate in 2-year colleges among recent high school completers in 2022?",
+   "sheet": "Digest 2023 Table 302.10",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Males",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\nrow = df[df[0].astype(str).str.strip() == '2022']\nmale_2yr = float(row.iloc[0, 15])\nfemale_2yr = float(row.iloc[0, 21])\nresult = 'Males' if male_2yr > female_2yr else 'Females'",
+   "qid": "nces_digest_college_enrollment_recent_graduates#5",
+   "pass1": true,
+   "result": "Males",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the average number of male recent high school completers, in thousands, from 1960 to 1962?",
+   "sheet": "Digest 2023 Table 302.10",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "806",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\nvals = []\nfor idx, row in df.iterrows():\n    val = str(row[0]).strip()\n    if val in ['1960', '1961', '1962']:\n        vals.append(float(row[3]))\nresult = round(sum(vals) / len(vals))",
+   "qid": "nces_digest_college_enrollment_recent_graduates#6",
+   "pass1": true,
+   "result": 806,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

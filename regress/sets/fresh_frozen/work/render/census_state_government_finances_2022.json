@@ -1,0 +1,12 @@
+{
+ "file": "census_state_government_finances_2022.xlsx",
+ "sheets": [
+  {
+   "name": "2022 ASFIN",
+   "rows": 91,
+   "cols": 52,
+   "shown_whole": true
+  }
+ ],
+ "chars": 44393
+}

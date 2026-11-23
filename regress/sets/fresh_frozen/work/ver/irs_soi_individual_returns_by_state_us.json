@@ -1,0 +1,30 @@
+{
+ "id": "irs_soi_individual_returns_by_state_us",
+ "answers": [
+  {
+   "id": "irs_soi_individual_returns_by_state_us#1",
+   "answer": "159949000",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_soi_individual_returns_by_state_us.xlsx', sheet_name='Sheet1', header=None)\n# Row 9 (index 8): Number of returns [1], column B (index 1) is All returns\nrow = df[df[0].astype(str).str.contains(r'^Number of returns', regex=True)].iloc[0]\nresult = int(row[1])"
+  },
+  {
+   "id": "irs_soi_individual_returns_by_state_us#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_soi_individual_returns_by_state_us.xlsx', sheet_name='Sheet1', header=None)\nsingle_row = df[df[0].astype(str).str.contains('Number of single returns', regex=False)].iloc[0]\njoint_row = df[df[0].astype(str).str.contains('Number of joint returns', regex=False)].iloc[0]\nsingle_val = float(single_row[1])\njoint_val = float(joint_row[1])\nresult = 'yes' if single_val > joint_val else 'no'"
+  },
+  {
+   "id": "irs_soi_individual_returns_by_state_us#3",
+   "answer": "$25,000 under $50,000",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_soi_individual_returns_by_state_us.xlsx', sheet_name='Sheet1', header=None)\nbracket_row = df.iloc[4, 2:12] # Excel row 5 has AGI brackets\ne_file_row = df[df[0].astype(str).str.contains('Number of electronically filed returns', regex=False)].iloc[0, 2:12]\nmax_col = e_file_row.astype(float).idxmax()\nresult = str(bracket_row[max_col]).strip()"
+  },
+  {
+   "id": "irs_soi_individual_returns_by_state_us#5",
+   "answer": "[\"$10,000 under $25,000\", \"$25,000 under $50,000\", \"$1 under $10,000\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_soi_individual_returns_by_state_us.xlsx', sheet_name='Sheet1', header=None)\nbrackets = df.iloc[4, 2:12].tolist()\neic_row = df[df[0].astype(str).str.contains('Earned income credit:.*Number', regex=True)].iloc[0, 2:12]\ns = pd.Series(eic_row.astype(float).values, index=brackets)\nresult = s.nlargest(3).index.tolist()"
+  },
+  {
+   "id": "irs_soi_individual_returns_by_state_us#6",
+   "answer": "151042049",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_soi_individual_returns_by_state_us.xlsx', sheet_name='Sheet1', header=None)\nbefore_idx = df[df[0].astype(str).str.contains('Income tax before credits:', regex=False)].index[0]\nafter_idx = df[df[0].astype(str).str.contains('Income tax after credits:', regex=False)].index[0]\n# Amount rows are immediately following the Number rows\nbefore_amt = float(df.iloc[before_idx + 1, 1])\nafter_amt = float(df.iloc[after_idx + 1, 1])\nresult = int(before_amt - after_amt)"
+  }
+ ]
+}

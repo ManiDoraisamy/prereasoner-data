@@ -1,0 +1,12 @@
+{
+ "file": "nchs_hus_overdose_mortality.xlsx",
+ "sheets": [
+  {
+   "name": "A",
+   "rows": 384,
+   "cols": 24,
+   "shown_whole": true
+  }
+ ],
+ "chars": 72485
+}

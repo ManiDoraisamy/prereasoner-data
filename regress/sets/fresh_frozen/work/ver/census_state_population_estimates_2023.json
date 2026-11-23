@@ -1,0 +1,35 @@
+{
+ "id": "census_state_population_estimates_2023",
+ "answers": [
+  {
+   "id": "census_state_population_estimates_2023#1",
+   "answer": "30503301",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\n# Col A is Geographic Area, Col F (index 5) is 2023 population estimate\ntexas_row = df[df[0].astype(str).str.strip().str.replace('^\\.', '', regex=True) == 'Texas']\nresult = int(texas_row.iloc[0, 5])"
+  },
+  {
+   "id": "census_state_population_estimates_2023#2",
+   "answer": "[\"South\", \"West\", \"Midwest\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\nregions = ['Northeast', 'Midwest', 'South', 'West']\nregion_df = df[df[0].astype(str).str.strip().isin(regions)].copy()\nregion_df[5] = pd.to_numeric(region_df[5])\ntop3 = region_df.sort_values(by=5, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()"
+  },
+  {
+   "id": "census_state_population_estimates_2023#3",
+   "answer": "Midwest",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\nne_pop = float(df[df[0].astype(str).str.strip() == 'Northeast'].iloc[0, 5])\nmw_pop = float(df[df[0].astype(str).str.strip() == 'Midwest'].iloc[0, 5])\nresult = 'Midwest' if mw_pop > ne_pop else 'Northeast'"
+  },
+  {
+   "id": "census_state_population_estimates_2023#4",
+   "answer": "9",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\n# States and DC start with a dot (rows 10 to 60)\nstate_rows = df[df[0].astype(str).str.strip().str.startswith('.')].copy()\n# Exclude Puerto Rico\nstate_rows = state_rows[state_rows[0].astype(str).str.strip().str.replace('^\\.', '', regex=True) != 'Puerto Rico']\nstate_rows[5] = pd.to_numeric(state_rows[5])\nresult = int((state_rows[5] >= 10000000).sum())"
+  },
+  {
+   "id": "census_state_population_estimates_2023#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'United States'].iloc[0]\npop_2022 = float(us_row[4])\npop_2023 = float(us_row[5])\nresult = 'yes' if pop_2023 > pop_2022 else 'no'"
+  },
+  {
+   "id": "census_state_population_estimates_2023#6",
+   "answer": "92079220",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_population_estimates_2023.xlsx', sheet_name='NST-EST2023-POP', header=None)\ntargets = ['California', 'Texas', 'Florida']\nclean_names = df[0].astype(str).str.strip().str.replace('^\\.', '', regex=True)\nrows = df[clean_names.isin(targets)]\nresult = int(pd.to_numeric(rows[5]).sum())"
+  }
+ ]
+}

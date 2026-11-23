@@ -1,0 +1,35 @@
+{
+ "id": "nchs_hus_mammography_use",
+ "answers": [
+  {
+   "id": "nchs_hus_mammography_use#1",
+   "answer": "40.6",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\nheader = df.iloc[3]\ncol_2019 = header[header.astype(str).str.contains('2019')].index[0]\n\n# Find row for Uninsured under Health insurance status\nrow_idx = df[df[0].astype(str).str.strip().str.startswith('Uninsured')].index[0]\nresult = float(df.iloc[row_idx, col_2019])"
+  },
+  {
+   "id": "nchs_hus_mammography_use#2",
+   "answer": "65\u201374 years",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\nheader = df.iloc[3]\ncol_2019 = header[header.astype(str).str.contains('2019')].index[0]\n\n# Locate the rows for 50\u201364 years and 65\u201374 years under Age group (rows 10-16)\nrow_50_64 = df[df[0].astype(str).str.strip() == '50\u201364 years'].index[0]\nrow_65_74 = df[df[0].astype(str).str.strip() == '65\u201374 years'].index[0]\n\nval_50_64 = float(df.iloc[row_50_64, col_2019])\nval_65_74 = float(df.iloc[row_65_74, col_2019])\n\nresult = str(df.iloc[row_65_74, 0]).strip() if val_65_74 > val_50_64 else str(df.iloc[row_50_64, 0]).strip()"
+  },
+  {
+   "id": "nchs_hus_mammography_use#3",
+   "answer": "2000",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\nheader = df.iloc[3]\n# Row for Total, 40 years and over, age adjusted\nrow_idx = df[df[0].astype(str).str.contains('Total, 40 years and over, age adjusted')].index[0]\n\nrates = {}\nfor col_idx in range(1, len(header), 2):\n    yr = str(header[col_idx]).strip()\n    val = pd.to_numeric(df.iloc[row_idx, col_idx], errors='coerce')\n    if pd.notna(val):\n        rates[yr] = val\n\nresult = max(rates, key=rates.get)"
+  },
+  {
+   "id": "nchs_hus_mammography_use#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\nheader = df.iloc[3]\ncol_2019 = header[header.astype(str).str.contains('2019')].index[0]\n\n# Under Age and education, 40 years and over, crude:\nsub_df = df.iloc[81:86]\nrow_idx = sub_df[sub_df[0].astype(str).str.strip().str.startswith('Some college or more')].index[0]\nval = float(df.iloc[row_idx, col_2019])\nresult = 'yes' if val > 70.0 else 'no'"
+  },
+  {
+   "id": "nchs_hus_mammography_use#5",
+   "answer": "[\"2000%\u2013399%\", \"400% or more\"]",
+   "program": "import pandas as pd\nimport json\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\nheader = df.iloc[3]\ncol_2019 = header[header.astype(str).str.contains('2019')].index[0]\n\n# Rows 55 to 59 represent 40 years and over, crude by poverty level\npov_df = df.iloc[55:59][[0, col_2019]].copy()\npov_df[col_2019] = pd.to_numeric(pov_df[col_2019])\ntop2 = pov_df.sort_values(by=col_2019, ascending=False).head(2)\nresult = top2[0].astype(str).str.strip().tolist()"
+  },
+  {
+   "id": "nchs_hus_mammography_use#6",
+   "answer": "35.7",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\nheader = df.iloc[3]\ncol_2018 = header[header.astype(str).str.contains('2018')].index[0]\n\n# Health insurance status at time of interview -> 40\u201364 years\nrow_private = df[df[0].astype(str).str.strip() == 'Private'].index[0]\nrow_uninsured = df[df[0].astype(str).str.strip() == 'Uninsured'].index[0]\n\nval_private = float(df.iloc[row_private, col_2018])\nval_uninsured = float(df.iloc[row_uninsured, col_2018])\n\nresult = round(val_private - val_uninsured, 1)"
+  }
+ ]
+}

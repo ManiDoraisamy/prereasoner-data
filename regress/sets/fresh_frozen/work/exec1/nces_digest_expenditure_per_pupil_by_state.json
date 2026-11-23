@@ -1,0 +1,172 @@
+{
+ "id": "nces_digest_expenditure_per_pupil_by_state",
+ "file": "nces_digest_expenditure_per_pupil_by_state.xlsx",
+ "questions": [
+  {
+   "question": "What was California's unadjusted current expenditure per pupil in the 2020-21 school year?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "14696.93795",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\ncols_2020_21 = [c for c in df.columns if '2020-21' in str(df.iloc[2, c])]\ncol_unadj = cols_2020_21[0]\nca_row = df[df[0].astype(str).str.strip() == 'California']\nresult = float(ca_row.iloc[0, col_unadj])",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#1",
+   "pass1": true,
+   "result": 14696.93794873777,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between New York and New Jersey, which state had the higher current expenditure per pupil in constant 2022-23 dollars during the 2020-21 school year?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "New York",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\ncols_2020_21 = [c for c in df.columns if '2020-21' in str(df.iloc[2, c])]\ncol_const = cols_2020_21[1]\nny_val = float(df[df[0].astype(str).str.strip() == 'New York'].iloc[0, col_const])\nnj_val = float(df[df[0].astype(str).str.strip() == 'New Jersey'].iloc[0, col_const])\nresult = 'New York' if ny_val > nj_val else 'New Jersey'",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#2",
+   "pass1": false,
+   "result": "New Jersey",
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  },
+  {
+   "question": "Which three states had the highest current expenditures per pupil in constant 2022-23 dollars in 2020-21, excluding the District of Columbia?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"New York\", \"Vermont\", \"New Jersey\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\ncols_2020_21 = [c for c in df.columns if '2020-21' in str(df.iloc[2, c])]\ncol_const = cols_2020_21[1]\nstates_df = df.iloc[5:56].copy()\nstates_df = states_df[states_df[0].astype(str).str.strip() != 'District of Columbia']\nstates_df['val'] = pd.to_numeric(states_df[col_const], errors='coerce')\ntop3 = states_df.sort_values(by='val', ascending=False).head(3)\nresult = top3[0].str.strip().tolist()",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#3",
+   "pass1": false,
+   "result": [
+    "Alabama",
+    "Alaska",
+    "Arizona"
+   ],
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  },
+  {
+   "question": "How many states, including the District of Columbia, had unadjusted current expenditures per pupil exceeding $20,000 in the 2020-21 school year?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "6",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\ncols_2020_21 = [c for c in df.columns if '2020-21' in str(df.iloc[2, c])]\ncol_unadj = cols_2020_21[0]\nstates_df = df.iloc[5:56].copy()\nvals = pd.to_numeric(states_df[col_unadj], errors='coerce')\nresult = int((vals > 20000).sum())",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#4",
+   "pass1": true,
+   "result": 6,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In constant 2022-23 dollars, did the United States national average per-pupil expenditure increase from 2018-19 to 2019-20?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'United States']\ncols_2018_19 = [c for c in df.columns if '2018-19' in str(df.iloc[2, c])]\ncols_2019_20 = [c for c in df.columns if '2019-20' in str(df.iloc[2, c])]\ncol_const_1819 = cols_2018_19[1]\ncol_const_1920 = cols_2019_20[1]\nval_1819 = float(us_row.iloc[0, col_const_1819])\nval_1920 = float(us_row.iloc[0, col_const_1920])\nresult = 'yes' if val_1920 > val_1819 else 'no'",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#5",
+   "pass1": false,
+   "result": "no",
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  },
+  {
+   "question": "By how many unadjusted dollars did New York's per-pupil expenditure exceed that of California in the 2020-21 school year?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "11400.25285",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\ncols_2020_21 = [c for c in df.columns if '2020-21' in str(df.iloc[2, c])]\ncol_unadj = cols_2020_21[0]\nny_val = float(df[df[0].astype(str).str.strip() == 'New York'].iloc[0, col_unadj])\nca_val = float(df[df[0].astype(str).str.strip() == 'California'].iloc[0, col_unadj])\nresult = round(ny_val - ca_val, 5)",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#6",
+   "pass1": true,
+   "result": 11400.25285,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the national average per-pupil expenditure in unadjusted dollars for the 2019-20 school year across the United States?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "13495.85399",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'United States'].iloc[0]\nresult = float(us_row[15])",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#7",
+   "pass1": true,
+   "result": 13495.85399352145,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In constant 2022-23 dollars, did Idaho or Utah have higher per-pupil expenditures in 2020-21?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Idaho",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nidaho_val = float(df[df[0].astype(str).str.strip() == 'Idaho'].iloc[0, 35])\nutah_val = float(df[df[0].astype(str).str.strip() == 'Utah'].iloc[0, 35])\nresult = 'Idaho' if idaho_val > utah_val else 'Utah'",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#8",
+   "pass1": true,
+   "result": "Idaho",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which four states spent the least per student in constant 2022-23 dollars during the 2020-21 school year, among all 50 states and DC?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Utah\", \"Idaho\", \"Arizona\", \"Mississippi\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nstates_df = df.iloc[5:56, [0, 35]].copy()\nstates_df.columns = ['state', 'exp']\nstates_df['exp'] = pd.to_numeric(states_df['exp'])\nbottom4 = states_df.sort_values(by='exp').head(4)['state'].tolist()\nresult = bottom4",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#9",
+   "pass1": true,
+   "result": [
+    "Utah",
+    "Idaho",
+    "Arizona",
+    "Mississippi"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many of the 50 states plus the District of Columbia spent less than $12,000 per pupil in constant 2022-23 dollars in 2020-21?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "6",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nstates_df = df.iloc[5:56, [0, 35]].copy()\nstates_df.columns = ['state', 'exp']\nstates_df['exp'] = pd.to_numeric(states_df['exp'])\nresult = int((states_df['exp'] < 12000).sum())",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#10",
+   "pass1": false,
+   "result": 7,
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  },
+  {
+   "question": "What was the average unadjusted expenditure per pupil in 2020-21 across the 50 states and the District of Columbia?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "14688.084725352943",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nstates_df = df.iloc[5:56, 17].copy()\nstates_df = pd.to_numeric(states_df)\nresult = float(states_df.mean())",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#11",
+   "pass1": true,
+   "result": 14663.403193769664,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did Florida spend more than $10,000 per student in unadjusted dollars during the 2018-19 school year?",
+   "sheet": "Digest 2023 Table 236.65",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_expenditure_per_pupil_by_state.xlsx', sheet_name='Digest 2023 Table 236.65', header=None)\nfl_row = df[df[0].astype(str).str.strip() == 'Florida'].iloc[0]\nval = float(fl_row[13])\nresult = 'yes' if val > 10000 else 'no'",
+   "qid": "nces_digest_expenditure_per_pupil_by_state#12",
+   "pass1": true,
+   "result": "no",
+   "error": null,
+   "reject1": null
+  }
+ ],
+ "rounds": 2
+}

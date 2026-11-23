@@ -5,6 +5,39 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## Every measurement runs from a clone: the evaluation's inputs, records and recorded API answers are committed (2026-11-23)
+
+The owner's order: the project must be complete when someone checks it out and builds it; no artifact may live only
+in a local folder of one machine, recoverable from nowhere if that machine fails. Until then the dev replay
+(`regress/run_dev_decisions.py`), which this file's rules require for a planner change, imported gitignored experiment
+code by an absolute path (`run_e2e.py`, `summarize.py`, the set loaders) and replayed a cache in a gitignored folder;
+the public benchmark, the training find set, our two fresh sets, the demo request databases and the Spider
+calibration split lived only on the owner's machine.
+
+- `regress/eval_sets.py` owns every evaluation set: their loaders and graders (the datasets' own graders kept as
+  written: `regress/wtq_evaluator.py`, `regress/databench_compare.py`), the public datasets' fetch from pinned
+  sources checked by sha256 (`regress/sets/sources.json`; SQUALL's digest is of the bytes the source serves, LF,
+  since a Windows clone rewrites them), and `CallStore`, the recorded API answers by request-body hash.
+- `regress/sets/` holds what only this project made: the fresh dev and frozen sets (their workbooks as downloaded,
+  questions, method and scripts), the dev replay's reference, the demo request databases of 2026-11-18, every
+  recorded Decisions answer (about 60 MB compressed, so every recorded measurement replays without spend), the
+  public benchmark's samples, per-question records and the written models' answers. `spider/calibration/` holds the
+  Spider calibration split.
+- The dev replay's reference is no longer a stack of layers each re-measuring the questions a change touched: it is
+  every question's record in the last kept measurement (`--keep` writes it, with the calls each question made), and
+  the replay compares the served label directly, so the warned answer whose reading reads like another's no longer
+  shows as a label mismatch.
+- `regress/run_public.py` owns the public benchmark and the training find set (it replaces the gitignored
+  `public-bench-20261122` and `engine-reach-20261122` harnesses, deleted).
+- `engine/named/backbone.py` reads a backbone copy only from `NAMED_BACKBONE_DIR` (no path of one machine); without
+  one, the pinned hub revision from the local cache, as the image does.
+
+Accepted when a clean worktree of the change, with no `.env`, no local weights and no local datasets, fetched the
+weights, the datasets and bge-m3 by the repository's own commands (every file matching its pin) and replayed the 896
+dev and 91 demo questions at parity. What stays outside: the retired readers' artifacts (about 12 GB in
+`C:/work/prereasoner-readers-artifacts`, read only by the retired `training/factory` and `training/named` pipelines,
+whose local paths remain); where they go is the owner's decision.
+
 ## Never ask back for the engine's own uncertainty: every answer is marked, and an answer most likely wrong is retried by a written query (2026-11-21)
 
 The owner's order: "never ask back unless the question is wrong. You can't push your failure to users. Show warning

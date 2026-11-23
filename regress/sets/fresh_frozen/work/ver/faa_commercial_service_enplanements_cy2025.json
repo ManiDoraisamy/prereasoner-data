@@ -1,0 +1,35 @@
+{
+ "id": "faa_commercial_service_enplanements_cy2025",
+ "answers": [
+  {
+   "id": "faa_commercial_service_enplanements_cy2025#1",
+   "answer": "39976695",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan ')\n# Filter out total/subtotal rows and locate Denver International\nrow = df[df['Airport Name'].astype(str).str.strip() == 'Denver International']\nresult = int(row['CY 25 Enplanements'].iloc[0])"
+  },
+  {
+   "id": "faa_commercial_service_enplanements_cy2025#2",
+   "answer": "Chicago O'Hare International",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan ')\ntargets = [\"Los Angeles International\", \"Chicago O'Hare International\"]\nsub = df[df['Airport Name'].isin(targets)].copy()\nsub['CY 25 Enplanements'] = pd.to_numeric(sub['CY 25 Enplanements'])\nbest = sub.sort_values(by='CY 25 Enplanements', ascending=False).iloc[0]\nresult = best['Airport Name']"
+  },
+  {
+   "id": "faa_commercial_service_enplanements_cy2025#3",
+   "answer": "[\"Dallas-Fort Worth International\", \"George Bush Intcntl/Houston\", \"Austin-Bergstrom International\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan ')\ndf['CY 25 Enplanements'] = pd.to_numeric(df['CY 25 Enplanements'], errors='coerce')\ntx_airports = df[(df['ST'] == 'TX') & df['CY 25 Enplanements'].notna()]\ntop3 = tx_airports.sort_values(by='CY 25 Enplanements', ascending=False).head(3)\nresult = top3['Airport Name'].tolist()"
+  },
+  {
+   "id": "faa_commercial_service_enplanements_cy2025#4",
+   "answer": "4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan ')\nfl_large = df[(df['ST'] == 'FL') & (df['Hub'] == 'L')]\nresult = int(len(fl_large))"
+  },
+  {
+   "id": "faa_commercial_service_enplanements_cy2025#5",
+   "answer": "75424837",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan ')\nca_large = df[(df['ST'] == 'CA') & (df['Hub'] == 'L')]\nresult = int(pd.to_numeric(ca_large['CY 25 Enplanements']).sum())"
+  },
+  {
+   "id": "faa_commercial_service_enplanements_cy2025#6",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan ')\natl = df[df['Airport Name'].astype(str).str.contains('Atlanta International')].iloc[0]\nresult = 'yes' if atl['CY 25 Enplanements'] > atl['CY 24 Enplanements'] else 'no'"
+  }
+ ]
+}

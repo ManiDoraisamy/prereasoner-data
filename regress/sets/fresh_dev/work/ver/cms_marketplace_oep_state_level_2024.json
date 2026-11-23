@@ -1,0 +1,40 @@
+{
+ "id": "cms_marketplace_oep_state_level_2024",
+ "answers": [
+  {
+   "id": "cms_marketplace_oep_state_level_2024#2",
+   "answer": "4226461",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(2) by Enrollment Status')\nhc_total = df[(df['State Name'] == 'Total') & (df['Platform'] == 'HC.gov')]\nresult = int(hc_total['New Consumers'].iloc[0])"
+  },
+  {
+   "id": "cms_marketplace_oep_state_level_2024#3",
+   "answer": "[\"California\", \"Massachusetts\", \"New Jersey\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(9) Dental')\nsbm_df = df[(df['Platform'] == 'SBM') & (df['State Name'] != 'Total')].copy()\ncol_name = [c for c in sbm_df.columns if 'Standalone Dental Plan' in str(c)][0]\nsbm_df[col_name] = pd.to_numeric(sbm_df[col_name], errors='coerce')\ntop3 = sbm_df.sort_values(by=col_name, ascending=False).head(3)\nresult = top3['State Name'].tolist()"
+  },
+  {
+   "id": "cms_marketplace_oep_state_level_2024#6",
+   "answer": "671527",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(10) BHP')\ntotal_row = df[df['State Name'] == 'Total']\nresult = int(total_row['Female'].iloc[0])"
+  },
+  {
+   "id": "cms_marketplace_oep_state_level_2024#8",
+   "answer": "4682452",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(3) by Switching Status')\n# Total row for HC.gov or sum of states\ntotal_row = df[(df['State Name'] == 'Total') & (df['Platform'] == 'HC.gov')]\nresult = int(total_row['Active Re-enrollees who Switched Plans'].iloc[0])"
+  },
+  {
+   "id": "cms_marketplace_oep_state_level_2024#9",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(6) by Demographics')\nga_rural = df.loc[df['State Name'] == 'Georgia', 'Rural'].iloc[0]\nnc_rural = df.loc[df['State Name'] == 'North Carolina', 'Rural'].iloc[0]\nresult = 'yes' if ga_rural > nc_rural else 'no'"
+  },
+  {
+   "id": "cms_marketplace_oep_state_level_2024#10",
+   "answer": "[\"Texas\", \"Florida\", \"Georgia\", \"North Carolina\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(7) by Metal Level')\n# Filter for HC.gov platform and exclude Total rows\nhc_states = df[(df['Platform'] == 'HC.gov') & (df['State Name'] != 'Total')].copy()\nhc_states['Gold'] = pd.to_numeric(hc_states['Gold'], errors='coerce')\ntop4 = hc_states.sort_values(by='Gold', ascending=False).head(4)\nresult = top4['State Name'].tolist()"
+  },
+  {
+   "id": "cms_marketplace_oep_state_level_2024#12",
+   "answer": "357890",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(6) by Demographics')\ntotal_all = df[(df['State Name'] == 'Total') & (df['Platform'] == 'All')]\nresult = int(total_all['Age \u2265 65'].iloc[0])"
+  }
+ ]
+}

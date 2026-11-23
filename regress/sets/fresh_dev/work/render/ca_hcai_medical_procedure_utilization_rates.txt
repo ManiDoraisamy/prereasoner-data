@@ -1,0 +1,89 @@
+FILE ca_hcai_medical_procedure_utilization_rates.xlsx (Excel workbook) with 1 sheet(s): ["Sheet1"]
+
+### Sheet "Sheet1": 3307 rows x 9 columns (Excel rows 1..3307, columns A..I)
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Year | B=County | C=Hospital | D=OSHPD_ID | E=Procedure | F=Count | G=Rate | H=Longitude | I=Latitude
+r2: A=2024 | B=STATEWIDE | C=STATEWIDE | D=None | E=Uncomplicated Cesarean Delivery | F=87617 | G=26.4 | H=None | I=None
+r3: A=2024 | B=STATEWIDE | C=STATEWIDE | D=None | E=Uncomplicated VBAC | F=9383 | G=17.2 | H=None | I=None
+r4: A=2024 | B=STATEWIDE | C=STATEWIDE | D=None | E=Uncomplicated Primary Cesarean Delivery | F=42604 | G=15.3 | H=None | I=None
+r5: A=2024 | B=Alameda | C=Alta Bates Summit Medical Center – Alta Bates Campus | D=106010739 | E=Uncomplicated Cesarean Delivery | F=686 | G=21.9 | H=-122.2575014 | I=37.8556279
+r6: A=2024 | B=Alameda | C=Alta Bates Summit Medical Center – Alta Bates Campus | D=106010739 | E=Uncomplicated VBAC | F=156 | G=33.8 | H=-122.2575014 | I=37.8556279
+r7: A=2024 | B=Alameda | C=Alta Bates Summit Medical Center – Alta Bates Campus | D=106010739 | E=Uncomplicated Primary Cesarean Delivery | F=382 | G=14.3 | H=-122.2575014 | I=37.8556279
+r8: A=2024 | B=Alameda | C=Highland Hospital | D=106010846 | E=Uncomplicated Cesarean Delivery | F=328 | G=23.8 | H=-122.2325063 | I=37.7990596
+r9: A=2024 | B=Alameda | C=Highland Hospital | D=106010846 | E=Uncomplicated VBAC | F=61 | G=28 | H=-122.2325063 | I=37.7990596
+r10: A=2024 | B=Alameda | C=Highland Hospital | D=106010846 | E=Uncomplicated Primary Cesarean Delivery | F=172 | G=14.8 | H=-122.2325063 | I=37.7990596
+r11: A=2024 | B=Alameda | C=St. Rose Hospital | D=106010967 | E=Uncomplicated Cesarean Delivery | F=65 | G=28 | H=-122.0885076 | I=37.6330725
+r12: A=2024 | B=Alameda | C=St. Rose Hospital | D=106010967 | E=Uncomplicated VBAC | F=0 | H=-122.0885076 | I=37.6330725
+r13: A=2024 | B=Alameda | C=St. Rose Hospital | D=106010967 | E=Uncomplicated Primary Cesarean Delivery | F=24 | G=12.6 | H=-122.0885076 | I=37.6330725
+r14: A=2024 | B=Alameda | C=Washington Hospital – Fremont | D=106010987 | E=Uncomplicated Cesarean Delivery | F=391 | G=29.7 | H=-121.9779535 | I=37.5572736
+r15: A=2024 | B=Alameda | C=Washington Hospital – Fremont | D=106010987 | E=Uncomplicated VBAC | F=13 | G=7.3 | H=-121.9779535 | I=37.5572736
+r16: A=2024 | B=Alameda | C=Washington Hospital – Fremont | D=106010987 | E=Uncomplicated Primary Cesarean Delivery | F=227 | G=19.9 | H=-121.9779535 | I=37.5572736
+r17: A=2024 | B=Alameda | C=Stanford Health Care Tri-Valley | D=106014050 | E=Uncomplicated Cesarean Delivery | F=337 | G=31.5 | H=-121.8803417 | I=37.6933946
+r18: A=2024 | B=Alameda | C=Stanford Health Care Tri-Valley | D=106014050 | E=Uncomplicated VBAC | F=24 | G=11.7 | H=-121.8803417 | I=37.6933946
+r19: A=2024 | B=Alameda | C=Stanford Health Care Tri-Valley | D=106014050 | E=Uncomplicated Primary Cesarean Delivery | F=155 | G=17.9 | H=-121.8803417 | I=37.6933946
+r20: A=2024 | B=Alameda | C=Eden Medical Center | D=106014233 | E=Uncomplicated Cesarean Delivery | F=212 | G=22.2 | H=-122.0901455 | I=37.6982572
+r21: A=2024 | B=Alameda | C=Eden Medical Center | D=106014233 | E=Uncomplicated VBAC | F=2 | G=2.1 | H=-122.0901455 | I=37.6982572
+r22: A=2024 | B=Alameda | C=Eden Medical Center | D=106014233 | E=Uncomplicated Primary Cesarean Delivery | F=119 | G=13.8 | H=-122.0901455 | I=37.6982572
+r23: A=2024 | B=Alameda | C=Kaiser Foundation Hospital – Oakland Medical Center | D=106014326 | E=Uncomplicated Cesarean Delivery | F=367 | G=20.7 | H=-122.258237 | I=37.8237432
+r24: A=2024 | B=Alameda | C=Kaiser Foundation Hospital – Oakland Medical Center | D=106014326 | E=Uncomplicated VBAC | F=64 | G=28.2 | H=-122.258237 | I=37.8237432
+r25: A=2024 | B=Alameda | C=Kaiser Foundation Hospital – Oakland Medical Center | D=106014326 | E=Uncomplicated Primary Cesarean Delivery | F=204 | G=13.2 | H=-122.258237 | I=37.8237432
+r26: A=2024 | B=Alameda | C=Kaiser Foundation Hospital – San Leandro | D=106014337 | E=Uncomplicated Cesarean Delivery | F=533 | G=19.1 | H=-122.1642717 | I=37.706844
+r27: A=2024 | B=Alameda | C=Kaiser Foundation Hospital – San Leandro | D=106014337 | E=Uncomplicated VBAC | F=103 | G=28.3 | H=-122.1642717 | I=37.706844
+r28: A=2024 | B=Alameda | C=Kaiser Foundation Hospital – San Leandro | D=106014337 | E=Uncomplicated Primary Cesarean Delivery | F=272 | G=11.2 | H=-122.1642717 | I=37.706844
+r29: A=2024 | B=Amador | C=Sutter Amador Hospital | D=106034002 | E=Uncomplicated Cesarean Delivery | F=50 | G=26.9 | H=-120.764465 | I=38.3504826
+r30: A=2024 | B=Amador | C=Sutter Amador Hospital | D=106034002 | E=Uncomplicated VBAC | F=0 | H=-120.764465 | I=38.3504826
+r31: A=2024 | B=Amador | C=Sutter Amador Hospital | D=106034002 | E=Uncomplicated Primary Cesarean Delivery | F=18 | G=11.7 | H=-120.764465 | I=38.3504826
+r32: A=2024 | B=Butte | C=Oroville Hospital | D=106040937 | E=Uncomplicated Cesarean Delivery | F=104 | G=32.2 | H=-121.5411912 | I=39.5061693
+r33: A=2024 | B=Butte | C=Oroville Hospital | D=106040937 | E=Uncomplicated VBAC | F=2 | G=3.6 | H=-121.5411912 | I=39.5061693
+r34: A=2024 | B=Butte | C=Oroville Hospital | D=106040937 | E=Uncomplicated Primary Cesarean Delivery | F=50 | G=18.7 | H=-121.5411912 | I=39.5061693
+r35: A=2024 | B=Butte | C=Enloe Health | D=106040962 | E=Uncomplicated Cesarean Delivery | F=356 | G=21.1 | H=-121.849727 | I=39.7425867
+... sampled rows:
+r611: A=2024 | B=Ventura | C=St. John's Regional Medical Center | D=106560529 | E=Uncomplicated Cesarean Delivery | F=389 | G=29.3 | H=-119.1558102 | I=34.2163022
+r749: A=2023 | B=Los Angeles | C=St. Mary Medical Center – Long Beach | D=106190053 | E=Uncomplicated Cesarean Delivery | F=341 | G=27.4 | H=-118.1862725 | I=33.7805577
+r751: A=2023 | B=Los Angeles | C=St. Mary Medical Center – Long Beach | D=106190053 | E=Uncomplicated Primary Cesarean Delivery | F=148 | G=14.5 | H=-118.1862725 | I=33.7805577
+r773: A=2023 | B=Los Angeles | C=Hollywood Presbyterian Medical Center | D=106190382 | E=Uncomplicated Cesarean Delivery | F=906 | G=31.5 | H=-118.2897312 | I=34.0957647
+r948: A=2023 | B=Orange | C=Providence St. Jude Medical Center | D=106301342 | E=Uncomplicated VBAC | F=37 | G=15.4 | H=-117.92786 | I=33.8943501
+r972: A=2023 | B=Riverside | C=Hemet Global Medical Center | D=106331194 | E=Uncomplicated VBAC | F=1 | G=4.3 | H=-116.9601303 | I=33.7503708
+r1261: A=2023 | B=Ventura | C=Adventist Health Simi Valley | D=106560525 | E=Uncomplicated Primary Cesarean Delivery | F=48 | G=13.1 | H=-118.7449442 | I=34.2891994
+r1343: A=2022 | B=Fresno | C=Adventist Health Reedley | D=106100797 | E=Uncomplicated Cesarean Delivery | F=325 | G=28.4 | H=-119.45145 | I=36.60789
+r1376: A=2022 | B=Kern | C=Mercy Hospital – Bakersfield | D=106150761 | E=Uncomplicated Cesarean Delivery | F=517 | G=25.8 | H=-119.02715 | I=35.37323
+r1379: A=2022 | B=Kern | C=Ridgecrest Regional Hospital | D=106150782 | E=Uncomplicated Cesarean Delivery | F=105 | G=27.9 | H=-117.66996 | I=35.6404
+r1477: A=2022 | B=Los Angeles | C=PIH Health Hospital – Whittier | D=106190631 | E=Uncomplicated Primary Cesarean Delivery | F=206 | G=14.7 | H=-118.049255 | I=33.9697943
+r1564: A=2022 | B=Monterey | C=Natividad Medical Center | D=106274043 | E=Uncomplicated Primary Cesarean Delivery | F=187 | G=11.5 | H=-121.6297 | I=36.69686
+r1677: A=2022 | B=Sacramento | C=Kaiser Foundation Hospital – South Sacramento | D=106342344 | E=Uncomplicated VBAC | F=105 | G=31.6 | H=-121.42409 | I=38.47144
+r1684: A=2022 | B=San Benito | C=Hazel Hawkins Memorial Hospital | D=106350784 | E=Uncomplicated Primary Cesarean Delivery | F=25 | G=7.4 | H=-121.38609 | I=36.835
+r1870: A=2022 | B=Solano | C=NorthBay Medical Center | D=106481357 | E=Uncomplicated Primary Cesarean Delivery | F=197 | G=16.8 | H=-122.05076 | I=38.26097
+r1966: A=2021 | B=Butte | C=Oroville Hospital | D=106040937 | E=Uncomplicated Primary Cesarean Delivery | F=42 | G=14.1 | H=-121.5428 | I=39.50485
+r2213: A=2021 | B=Merced | C=Mercy Medical Center – Merced | D=106240942 | E=Uncomplicated Cesarean Delivery | F=641 | G=30.9 | H=-120.4651815 | I=37.3402309
+r2220: A=2021 | B=Monterey | C=Community Hospital of the Monterey Peninsula | D=106270744 | E=Uncomplicated VBAC | F=3 | G=2.5 | H=-121.92488 | I=36.59827
+r2269: A=2021 | B=Orange | C=Providence St. Jude Medical Center | D=106301342 | E=Uncomplicated Primary Cesarean Delivery | F=193 | G=11.3 | H=-117.92851 | I=33.89349
+r2328: A=2021 | B=Sacramento | C=Mercy General Hospital | D=106340947 | E=Uncomplicated VBAC | F=22 | G=16.1 | H=-121.45271 | I=38.56955
+r2355: A=2021 | B=San Bernardino | C=Kaiser Foundation Hospital – Fontana | D=106361223 | E=Uncomplicated VBAC | F=171 | G=17.4 | H=-117.43549 | I=34.0725
+r2466: A=2021 | B=San Luis Obispo | C=French Hospital Medical Center | D=106400480 | E=Uncomplicated VBAC | F=0 | H=-120.64977 | I=35.27801
+r2676: A=2020 | B=Fresno | C=Community Regional Medical Center – Fresno | D=106100717 | E=Uncomplicated VBAC | F=157 | G=22.6 | H=-119.784071 | I=36.74252
+r2744: A=2020 | B=Los Angeles | C=California Hospital Medical Center – Los Angeles | D=106190125 | E=Uncomplicated Cesarean Delivery | F=621 | G=24.8 | H=-118.26551 | I=34.03721
+r2903: A=2020 | B=Mendocino | C=Adventist Health Ukiah Valley | D=106231396 | E=Uncomplicated Cesarean Delivery | F=142 | G=20.7 | H=-123.202741 | I=39.15216
+r2976: A=2020 | B=Orange | C=Orange County Global Medical Center | D=106301566 | E=Uncomplicated VBAC | F=7 | G=2.7 | H=-117.83398 | I=33.75361
+r3002: A=2020 | B=Riverside | C=Palo Verde Hospital | D=106331288 | E=Uncomplicated Cesarean Delivery | F=35 | G=43.8 | H=-114.5956 | I=33.61315
+r3015: A=2020 | B=Riverside | C=Kaiser Foundation Hospital – Riverside | D=106334025 | E=Uncomplicated VBAC | F=89 | G=17.4 | H=-117.47082 | I=33.9063
+r3020: A=2020 | B=Riverside | C=Southwest Healthcare System – Murrieta | D=106334068 | E=Uncomplicated Cesarean Delivery | F=602 | G=22.5 | H=-117.18488 | I=33.55788
+r3025: A=2020 | B=Riverside | C=Riverside University Health System – Medical Center | D=106334487 | E=Uncomplicated Primary Cesarean Delivery | F=93 | G=9.5 | H=-117.19525 | I=33.91187
+... last rows:
+r3300: A=2020 | B=Yolo | C=Woodland Memorial Hospital | D=106571086 | E=Uncomplicated VBAC | F=0 | H=-121.7933 | I=38.66284
+r3301: A=2020 | B=Yolo | C=Woodland Memorial Hospital | D=106571086 | E=Uncomplicated Primary Cesarean Delivery | F=61 | G=13.9 | H=-121.7933 | I=38.66284
+r3302: A=2020 | B=Yolo | C=Sutter Davis Hospital | D=106574010 | E=Uncomplicated Cesarean Delivery | F=142 | G=13.7 | H=-121.77164 | I=38.56289
+r3303: A=2020 | B=Yolo | C=Sutter Davis Hospital | D=106574010 | E=Uncomplicated VBAC | F=44 | G=33.1 | H=-121.77164 | I=38.56289
+r3304: A=2020 | B=Yolo | C=Sutter Davis Hospital | D=106574010 | E=Uncomplicated Primary Cesarean Delivery | F=53 | G=5.9 | H=-121.77164 | I=38.56289
+r3305: A=2020 | B=Yuba | C=Adventist Health and Rideout | D=106580996 | E=Uncomplicated Cesarean Delivery | F=435 | G=26.6 | H=-121.593602 | I=39.138805
+r3306: A=2020 | B=Yuba | C=Adventist Health and Rideout | D=106580996 | E=Uncomplicated VBAC | F=30 | G=10.5 | H=-121.593602 | I=39.138805
+r3307: A=2020 | B=Yuba | C=Adventist Health and Rideout | D=106580996 | E=Uncomplicated Primary Cesarean Delivery | F=178 | G=13.2 | H=-121.593602 | I=39.138805
+... column profiles (data rows below Excel row 1):
+  A [Year]: {"non_empty": 3306, "numeric": 3306, "min": "2020", "max": "2024", "sum": "6684552", "distinct": 5, "value_counts": {"2020": 699, "2021": 675, "2022": 660, "2023": 651, "2024": 621}}
+  B [County]: {"non_empty": 3306, "distinct": 50, "top_values": {"Los Angeles": 714, "San Bernardino": 204, "Riverside": 201, "Orange": 189, "San Diego": 189, "Santa Clara": 135}}
+  C [Hospital]: {"non_empty": 3306, "distinct": 252, "top_values": {"AHMC Anaheim Regional Medical Center": 15, "Adventist Health Bakersfield": 15, "Adventist Health Clearlake": 15, "Adventist Health Delano": 15, "Adventist Health Glendale": 15, "Adventist Health Hanford": 15}}
+  D [OSHPD_ID]: {"non_empty": 3306, "distinct": 239, "top_values": {"106010739": 15, "106010846": 15, "106010967": 15, "106010987": 15, "106014050": 15, "106014233": 15}}
+  E [Procedure]: {"non_empty": 3306, "distinct": 3, "value_counts": {"Uncomplicated Cesarean Delivery": 1102, "Uncomplicated Primary Cesarean Delivery": 1102, "Uncomplicated VBAC": 1102}}
+  F [Count]: {"non_empty": 3298, "numeric": 3298, "min": "0", "max": "89176", "sum": "1388344", "distinct": 766, "top_values": {"0": 118, "1": 97, "2": 73, "3": 34, "4": 34, "37": 25}}
+  G [Rate]: {"non_empty": 3180, "numeric": 3180, "min": "0.3", "max": "100", "sum": "61261", "distinct": 395, "top_values": {"13.6": 26, "14": 24, "12.9": 23, "14.9": 23, "14.5": 22, "24.2": 22}}
+  H [Longitude]: {"non_empty": 3306, "numeric": 3291, "min": "-124.19514", "max": "-114.5956", "sum": "-393736.5707", "distinct": 457, "top_values": {"None": 15, "-114.5956": 9, "-115.49824": 9, "-115.55183": 9, "-116.23391": 9, "-116.27654": 9}}
+  I [Latitude]: {"non_empty": 3306, "numeric": 3291, "min": "32.61909", "max": "41.7736588", "sum": "118102.9288", "distinct": 457, "top_values": {"None": 15, "32.61909": 9, "32.75128": 9, "32.75387": 9, "32.77963": 9, "32.78138": 9}}

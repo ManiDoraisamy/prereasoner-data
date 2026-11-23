@@ -1,0 +1,88 @@
+{
+ "id": "va_geographic_distribution_of_expenditures_fy2023",
+ "file": "va_geographic_distribution_of_expenditures_fy2023.xlsx",
+ "questions": [
+  {
+   "question": "Which three states had the largest estimated veteran populations as of September 30, 2023?",
+   "sheet": "State Level Expenditures",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Texas\", \"California\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='State Level Expenditures', header=None)\ntotals_indices = df[df[0].astype(str).str.strip() == 'Totals'].index\nstates_df = df.iloc[totals_indices[0] + 1 : totals_indices[1]].copy()\nstates_df[1] = pd.to_numeric(states_df[1], errors='coerce')\ntop3 = states_df.sort_values(by=1, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()",
+   "qid": "va_geographic_distribution_of_expenditures_fy2023#1",
+   "pass1": true,
+   "result": [
+    "Texas",
+    "California",
+    "Florida"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In Delaware, how many unique patients received treatment at a VA health care facility in Kent County during FY 2023?",
+   "sheet": "DE",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "5447",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='DE', header=None)\nkent_row = df[df[0].astype(str).str.strip().str.upper() == 'KENT']\nresult = int(kent_row.iloc[0, 10])",
+   "qid": "va_geographic_distribution_of_expenditures_fy2023#2",
+   "pass1": true,
+   "result": 5447,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many counties in Connecticut had total VA expenditures exceeding $100 million in fiscal year 2023?",
+   "sheet": "CT",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='CT', header=None)\nend_idx = df[df[0].astype(str).str.contains('Totals', case=False, na=False)].index[0]\ncounties = df.iloc[3:end_idx].copy()\ncounties[2] = pd.to_numeric(counties[2], errors='coerce')\nresult = int((counties[2] > 100000).sum())",
+   "qid": "va_geographic_distribution_of_expenditures_fy2023#3",
+   "pass1": true,
+   "result": 4,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Hawaii County and Maui County, which had more unique patients receiving VA medical care in FY 2023?",
+   "sheet": "HI",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "HAWAII",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='HI', header=None)\nhawaii_val = pd.to_numeric(df[df[0].astype(str).str.strip() == 'HAWAII'].iloc[0, 10], errors='coerce')\nmaui_val = pd.to_numeric(df[df[0].astype(str).str.strip() == 'MAUI'].iloc[0, 10], errors='coerce')\nresult = 'HAWAII' if hawaii_val > maui_val else 'MAUI'",
+   "qid": "va_geographic_distribution_of_expenditures_fy2023#4",
+   "pass1": true,
+   "result": "HAWAII",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In fiscal year 2023, did Florida have a higher number of unique patients treated at VA health care facilities than California?",
+   "sheet": "State Level Expenditures",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='State Level Expenditures', header=None)\nfl_row = df[df[0].astype(str).str.strip() == 'Florida']\nca_row = df[df[0].astype(str).str.strip() == 'California']\nfl_patients = float(fl_row.iloc[0, 10])\nca_patients = float(ca_row.iloc[0, 10])\nresult = 'yes' if fl_patients > ca_patients else 'no'",
+   "qid": "va_geographic_distribution_of_expenditures_fy2023#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which congressional district in Arkansas had the highest total VA expenditures in FY 2023?",
+   "sheet": "AR",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "CONG. DIST (02)",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='AR', header=None)\ncong_dist = df[df[0].astype(str).str.contains('CONG. DIST', case=False, na=False)].copy()\ncong_dist[2] = pd.to_numeric(cong_dist[2], errors='coerce')\nmax_row = cong_dist.loc[cong_dist[2].idxmax()]\nresult = str(max_row[0]).strip()",
+   "qid": "va_geographic_distribution_of_expenditures_fy2023#6",
+   "pass1": true,
+   "result": "CONG. DIST (02)",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

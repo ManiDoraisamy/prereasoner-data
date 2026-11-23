@@ -1,0 +1,35 @@
+{
+ "id": "cdc_births_fertility_rates_us",
+ "answers": [
+  {
+   "id": "cdc_births_fertility_rates_us#1",
+   "answer": "2007",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nmax_row = df.loc[df['Birth Number'].idxmax()]\nresult = str(int(max_row['Year']))"
+  },
+  {
+   "id": "cdc_births_fertility_rates_us#2",
+   "answer": "11.6",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nresult = float(df.loc[df['Year'] == 2018, 'Crude Birth Rate'].values[0])"
+  },
+  {
+   "id": "cdc_births_fertility_rates_us#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nresult = 'yes' if (df['General Fertility Rate'] < 60).any() else 'no'"
+  },
+  {
+   "id": "cdc_births_fertility_rates_us#4",
+   "answer": "460733",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nbirths_2007 = df.loc[df['Year'] == 2007, 'Birth Number'].values[0]\nbirths_2017 = df.loc[df['Year'] == 2017, 'Birth Number'].values[0]\nresult = int(births_2007 - births_2017)"
+  },
+  {
+   "id": "cdc_births_fertility_rates_us#5",
+   "answer": "26",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nresult = int((df['Birth Number'] >= 4000000).sum())"
+  },
+  {
+   "id": "cdc_births_fertility_rates_us#6",
+   "answer": "25.03",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nsubset = df[(df['Year'] >= 1920) & (df['Year'] <= 1929)]\nresult = float(subset['Crude Birth Rate'].mean())"
+  }
+ ]
+}

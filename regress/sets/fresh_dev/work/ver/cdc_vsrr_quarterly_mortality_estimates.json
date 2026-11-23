@@ -1,0 +1,30 @@
+{
+ "id": "cdc_vsrr_quarterly_mortality_estimates",
+ "answers": [
+  {
+   "id": "cdc_vsrr_quarterly_mortality_estimates#1",
+   "answer": "27.9",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nfiltered = df[\n    (df['Year and Quarter'] == '2023 Q1') &\n    (df['Time Period'] == '12 months ending with quarter') &\n    (df['Cause of Death'] == 'Alzheimer disease') &\n    (df['Rate Type'] == 'Age-adjusted')\n]\nresult = float(filtered['Overall Rate'].iloc[0])"
+  },
+  {
+   "id": "cdc_vsrr_quarterly_mortality_estimates#2",
+   "answer": "males",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nfiltered = df[\n    (df['Year and Quarter'] == '2023 Q1') &\n    (df['Time Period'] == '3-month period') &\n    (df['Cause of Death'] == 'Cancer') &\n    (df['Rate Type'] == 'Age-adjusted')\n].iloc[0]\n\nfemale_rate = filtered['Rate Sex Female']\nmale_rate = filtered['Rate Sex Male']\nresult = 'males' if male_rate > female_rate else 'females'"
+  },
+  {
+   "id": "cdc_vsrr_quarterly_mortality_estimates#3",
+   "answer": "21",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nresult = int(df['Cause of Death'].nunique())"
+  },
+  {
+   "id": "cdc_vsrr_quarterly_mortality_estimates#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nfiltered = df[\n    (df['Year and Quarter'] == '2023 Q1') &\n    (df['Time Period'] == '12 months ending with quarter') &\n    (df['Cause of Death'] == 'All causes') &\n    (df['Rate Type'] == 'Age-adjusted')\n]\nwv_rate = float(filtered['Rate West Virginia'].iloc[0])\nresult = 'yes' if wv_rate > 1000 else 'no'"
+  },
+  {
+   "id": "cdc_vsrr_quarterly_mortality_estimates#5",
+   "answer": "7.6",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nfiltered = df[\n    (df['Year and Quarter'] == '2023 Q1') &\n    (df['Time Period'] == '3-month period') &\n    (df['Cause of Death'] == 'Firearm-related injury') &\n    (df['Rate Type'] == 'Crude')\n].iloc[0]\n\nr1 = filtered['Rate Age 1-4']\nr2 = filtered['Rate Age 5-14']\nr3 = filtered['Rate Age 15-24']\nresult = round(float((r1 + r2 + r3) / 3), 1)"
+  }
+ ]
+}

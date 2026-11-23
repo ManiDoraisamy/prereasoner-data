@@ -1,0 +1,78 @@
+{
+ "file": "hrsa_organ_donation_transplantation.xlsx",
+ "sheets": [
+  {
+   "name": "READ ME FIRST",
+   "rows": 43,
+   "cols": 5,
+   "shown_whole": true
+  },
+  {
+   "name": "Overview - National",
+   "rows": 43,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "Overview - State",
+   "rows": 7867,
+   "cols": 9,
+   "shown_whole": false
+  },
+  {
+   "name": "Donor Demographics",
+   "rows": 78,
+   "cols": 7,
+   "shown_whole": true
+  },
+  {
+   "name": "OPO - POTR",
+   "rows": 1695,
+   "cols": 7,
+   "shown_whole": false
+  },
+  {
+   "name": "OPO Service Area by County",
+   "rows": 3275,
+   "cols": 8,
+   "shown_whole": false
+  },
+  {
+   "name": "Waitlist-Candidate Registration",
+   "rows": 85,
+   "cols": 27,
+   "shown_whole": true
+  },
+  {
+   "name": "Waitlist - OTC Transplant Rate",
+   "rows": 1126,
+   "cols": 9,
+   "shown_whole": false
+  },
+  {
+   "name": "Waitlist - OTC Removal Reasons",
+   "rows": 866,
+   "cols": 13,
+   "shown_whole": false
+  },
+  {
+   "name": "Recipient Demographics",
+   "rows": 67,
+   "cols": 28,
+   "shown_whole": true
+  },
+  {
+   "name": "OTC Transplants by Demographics",
+   "rows": 1904,
+   "cols": 28,
+   "shown_whole": false
+  },
+  {
+   "name": "OTC Outcome Measures",
+   "rows": 1126,
+   "cols": 10,
+   "shown_whole": null
+  }
+ ],
+ "chars": 165377
+}

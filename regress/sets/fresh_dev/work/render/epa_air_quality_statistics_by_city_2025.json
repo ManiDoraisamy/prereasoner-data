@@ -1,0 +1,12 @@
+{
+ "file": "epa_air_quality_statistics_by_city_2025.xlsx",
+ "sheets": [
+  {
+   "name": "AQ Stats by City 2025",
+   "rows": 484,
+   "cols": 13,
+   "shown_whole": true
+  }
+ ],
+ "chars": 58074
+}

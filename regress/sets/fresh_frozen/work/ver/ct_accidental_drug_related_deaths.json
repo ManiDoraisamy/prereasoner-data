@@ -1,0 +1,35 @@
+{
+ "id": "ct_accidental_drug_related_deaths",
+ "answers": [
+  {
+   "id": "ct_accidental_drug_related_deaths#1",
+   "answer": "44.35",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_accidental_drug_related_deaths.csv')\nresult = round(float(df['Age'].mean()), 2)"
+  },
+  {
+   "id": "ct_accidental_drug_related_deaths#2",
+   "answer": "NEW HAVEN",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_accidental_drug_related_deaths.csv')\nresult = str(df['Residence County'].value_counts().index[0])"
+  },
+  {
+   "id": "ct_accidental_drug_related_deaths#3",
+   "answer": "[\"HARTFORD\", \"NEW HAVEN\", \"WATERBURY\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_accidental_drug_related_deaths.csv')\nresult = list(df['Residence City'].value_counts().head(3).index)"
+  },
+  {
+   "id": "ct_accidental_drug_related_deaths#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_accidental_drug_related_deaths.csv')\ncounts = df['Sex'].value_counts()\nresult = 'yes' if counts.get('Male', 0) > counts.get('Female', 0) else 'no'"
+  },
+  {
+   "id": "ct_accidental_drug_related_deaths#5",
+   "answer": "5164",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_accidental_drug_related_deaths.csv')\nresult = int((df['Cocaine'] == 'Y').sum())"
+  },
+  {
+   "id": "ct_accidental_drug_related_deaths#6",
+   "answer": "13",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_accidental_drug_related_deaths.csv')\nresult = int(df['Age'].min())"
+  }
+ ]
+}

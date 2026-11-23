@@ -1,0 +1,89 @@
+FILE medicaid_new_adult_group_enrollment.csv (CSV). pandas.read_csv gives 7854 data rows x 10 columns.
+Columns and pandas dtypes: State (str); Total Medicaid Enrollees (str); Total VIII Group Enrollees (str); Total VIII Group Newly Eligible Enrollees (str); Total VIII Group Not Newly Eligible Enrollees (str); Updated Year (int64); Updated Month (int64); Enrollment Year (int64); Enrollment Month (int64); Notes (str)
+(sheet too large to show whole; r1 is the CSV header line; r2 is pandas index 0; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=State | B=Total Medicaid Enrollees | C=Total VIII Group Enrollees | D=Total VIII Group Newly Eligible Enrollees | E=Total VIII Group Not Newly Eligible Enrollees | F=Updated Year | G=Updated Month | H=Enrollment Year | I=Enrollment Month | J=Notes
+r2: A=Amer. Samoa | B=28183 | F=2020 | G=2 | H=2018 | I=10
+r3: A=Amer. Samoa | B=28183 | F=2020 | G=2 | H=2019 | I=1
+r4: A=Totals | B=70888822 | C=7934664 | D=5750308 | E=2184356 | F=2016 | G=12 | H=2014 | I=4
+r5: A=Kansas | B=369499 | F=2020 | G=2 | H=2019 | I=1
+r6: A=N. Mariana Islands | B=15963 | F=2020 | G=2 | H=2019 | I=2
+r7: A=Totals | B=75153292 | C=15448306 | D=12201118 | E=3247188 | F=2020 | G=2 | H=2019 | I=2
+r8: A=Amer. Samoa | B=37829 | F=2020 | G=2 | H=2019 | I=4
+r9: A=Georgia | B=1941288 | F=2020 | G=2 | H=2018 | I=8
+r10: A=Amer. Samoa | B=27898 | F=2020 | G=2 | H=2018 | I=9
+r11: A=Ohio | B=2919452 | C=590989 | D=590699 | E=290 | F=2020 | G=2 | H=2018 | I=9
+r12: A=Wyoming | B=57513 | F=2020 | G=2 | H=2018 | I=9
+r13: A=Vermont | B=174201 | C=57473 | D=0 | E=57473 | F=2020 | G=2 | H=2018 | I=9
+r14: A=Puerto Rico | B=1241794 | C=411936 | E=411936 | F=2020 | G=2 | H=2018 | I=9
+r15: A=New Hampshire | B=186728 | C=55024 | D=54727 | E=297 | F=2020 | G=2 | H=2018 | I=9 | J=New Hampshire expanded its Medicaid program by adopting the VIII Group on August 15, 2014
+r16: A=Virgin Islands | B=25474 | C=11347 | E=11347 | F=2020 | G=2 | H=2018 | I=9 | J=Virgin Island expanded its Medicaid program by adopting the VIII Group on June 1, 2015
+r17: A=New Jersey | B=1674135 | C=555514 | D=555514 | E=0 | F=2020 | G=2 | H=2018 | I=9
+r18: A=North Dakota | B=91096 | C=19872 | D=18885 | E=987 | F=2020 | G=2 | H=2018 | I=9
+r19: A=Wisconsin | B=1181756 | F=2020 | G=2 | H=2018 | I=9
+r20: A=Pennsylvania | B=2855345 | C=770564 | D=731789 | E=38775 | F=2020 | G=2 | H=2018 | I=9 | J=Pennsylvania expanded its Medicaid program by adopting the VIII Group on January 1, 2015.
+r21: A=Virginia | B=1073040 | C=0 | D=0 | E=0 | F=2020 | G=2 | H=2018 | I=9 | J=Virginia expanded its Medicaid program by adopting the VIII Group on January 1, 2019.
+r22: A=Tennessee | B=1496795 | F=2020 | G=2 | H=2018 | I=9
+r23: A=New Mexico | B=826594 | C=248307 | D=248307 | E=0 | F=2020 | G=2 | H=2018 | I=9
+r24: A=South Carolina | B=1262242 | F=2020 | G=2 | H=2018 | I=9
+r25: A=West Virginia | B=534034 | C=163554 | D=163554 | E=0 | F=2020 | G=2 | H=2018 | I=9
+r26: A=Oregon | B=947809 | C=451491 | D=375958 | E=75533 | F=2020 | G=2 | H=2018 | I=9
+r27: A=Texas | B=4254778 | F=2020 | G=2 | H=2018 | I=9
+r28: A=Washington | B=1759640 | C=561298 | D=547730 | E=13568 | F=2020 | G=2 | H=2018 | I=9
+r29: A=New York | B=6150250 | C=1915271 | D=299091 | E=1616180 | F=2020 | G=2 | H=2018 | I=9
+r30: A=Iowa | B=604187 | C=167984 | D=153533 | E=14451 | F=2020 | G=2 | H=2018 | I=9
+r31: A=Guam | B=36437 | C=4151 | E=4151 | F=2020 | G=2 | H=2018 | I=11
+r32: A=Alaska | B=206277 | C=48272 | D=48270 | E=2 | F=2020 | G=2 | H=2018 | I=9 | J=Alaska expanded its Medicaid program by adopting the VIII Group on September 1, 2015.
+r33: A=Massachusetts | B=1442299 | C=334027 | D=0 | E=334027 | F=2020 | G=2 | H=2019 | I=4
+r34: A=Michigan | B=2420714 | C=687460 | D=633017 | E=54443 | F=2020 | G=2 | H=2018 | I=12 | J=Michigan expanded its Medicaid program by adopting the VIII Group on April 1, 2014.
+r35: A=South Carolina | B=1264623 | F=2020 | G=2 | H=2018 | I=11
+... sampled rows:
+r1186: A=Alabama | B=997545 | F=2016 | G=12 | H=2014 | I=1
+r1462: A=Texas | B=4312511 | F=2016 | G=12 | H=2014 | I=10
+r1510: A=American Samoa | B=40517 | F=2017 | G=9 | H=2016 | I=5
+r1909: A=Hawaii | B=286260 | C=85011 | D=33684 | E=51327 | F=2017 | G=7 | H=2015 | I=1
+r2486: A=Oregon | B=1099324 | C=550420 | D=478843 | E=71577 | F=2017 | G=9 | H=2016 | I=2
+r2650: A=West Virginia | B=504018 | C=138395 | D=138395 | E=0 | F=2016 | G=12 | H=2014 | I=7
+r2716: A=Massachusetts | B=1890532 | C=305794 | D=0 | E=305794 | F=2016 | G=12 | H=2014 | I=9
+r2722: A=South Carolina | B=1240322 | F=2017 | G=9 | H=2016 | I=8
+r2918: A=Virgin Islands | B=24461 | C=3673 | E=3673 | F=2017 | G=9 | H=2016 | I=2 | J=Virgin Island expanded its Medicaid program by adopting the VIII Group on June 1, 2015
+r3092: A=Mississippi | B=682837 | F=2016 | G=12 | H=2014 | I=5
+r3333: A=Puerto Rico | B=1273245 | C=366563 | E=366563 | F=2017 | G=9 | H=2016 | I=3
+r3704: A=New Jersey | B=1719939 | C=580168 | D=580168 | E=0 | F=2018 | G=8 | H=2017 | I=1
+r3896: A=Massachusetts | B=1714085 | C=343846 | D=0 | E=343846 | F=2021 | G=1 | H=2019 | I=9
+r4390: A=Virgin Islands | B=31682 | C=15024 | E=15024 | F=2021 | G=5 | H=2020 | I=6 | J=The Virgin Islands expanded its Medicaid program by adopting the VIII Group on June 1, 201...
+r4404: A=Mississippi | B=697178 | F=2021 | G=5 | H=2020 | I=6
+r4503: A=Hawaii | B=348761 | C=133702 | D=23261 | E=110441 | F=2021 | G=5 | H=2020 | I=9
+r4620: A=Hawaii | B=405,711 | C=149,598 | D=26,665 | E=122,933 | F=2022 | G=3 | H=2021 | I=1
+r4675: A=Georgia | B=2,267,550 | F=2022 | G=3 | H=2021 | I=2
+r4897: A=California | B=13,159,326 | C=4,102,727 | D=4,074,553 | E=28,174 | F=2022 | G=3 | H=2020 | I=12
+r5316: A=Minnesota | B=1,278,144 | C=269,267 | D=269,267 | E=0 | F=2023 | G=4 | H=2021 | I=10
+r5452: A=Texas | B=5,485,623 | F=2023 | G=4 | H=2021 | I=12
+r5770: A=Massachusetts | B=2,091,126 | C=466,793 | D=0 | E=466,793 | F=2023 | G=10 | H=2022 | I=6
+r5916: A=Wyoming | B=83,942 | F=2023 | G=12 | H=2022 | I=8
+r5968: A=Virgin Islands | B=37,209 | C=18,315 | E=18,315 | F=2023 | G=12 | H=2022 | I=9 | J=The Virgin Islands expanded its Medicaid program by adopting the VIII Group on June 1, 201...
+r5994: A=Kentucky | B=1,564,993 | C=635,006 | D=635,006 | E=0 | F=2024 | G=5 | H=2022 | I=10
+r6015: A=Oregon | B=1,287,789 | C=713,769 | D=604,860 | E=108,909 | F=2024 | G=5 | H=2022 | I=10
+r6636: A=New Mexico | B=869,896 | C=268,125 | D=268,125 | E=0 | F=2024 | G=12 | H=2023 | I=9
+r6908: A=Maine | B=400,791 | C=114,922 | D=90,703 | E=24,219 | F=2025 | G=8 | H=2024 | I=2 | J=Maine Expanded its Medicaid program by adopting the VIII Group on July 1, 2018.
+r7793: A=Virginia | B=1730454 | C=642093.0 | D=642093.0 | E=0.0 | F=2026 | G=2 | H=2025 | I=5 | J=Virginia expanded its Medicaid program by adopting the VIII Group on January 1, 2019.
+r7825: A=Mississippi | B=649345 | F=2026 | G=2 | H=2025 | I=6
+... last rows:
+r7848: A=Vermont | B=163398 | C=61252.0 | D=0.0 | E=61252.0 | F=2026 | G=2 | H=2025 | I=6
+r7849: A=Virgin Islands | B=20512 | C=7963.0 | E=7963.0 | F=2026 | G=2 | H=2025 | I=6 | J=The Virgin Islands expanded its Medicaid program by adopting the VIII Group on June 1, 201...
+r7850: A=Virginia | B=1699456 | C=629482.0 | D=629482.0 | E=0.0 | F=2026 | G=2 | H=2025 | I=6 | J=Virginia expanded its Medicaid program by adopting the VIII Group on January 1, 2019.
+r7851: A=Washington | B=1806696 | C=597699.0 | D=573302.0 | E=24397.0 | F=2026 | G=2 | H=2025 | I=6
+r7852: A=West Virginia | B=510520 | C=170182.0 | D=170182.0 | E=0.0 | F=2026 | G=2 | H=2025 | I=6
+r7853: A=Wisconsin | B=1209196 | F=2026 | G=2 | H=2025 | I=6
+r7854: A=Wyoming | B=66428 | F=2026 | G=2 | H=2025 | I=6
+r7855: A=Totals | B=82877280 | C=20399012.0 | D=16388981.0 | E=4010031.0 | F=2026 | G=2 | H=2025 | I=6
+... column profiles (data rows below Excel row 1):
+  A [State]: {"non_empty": 7854, "distinct": 64, "top_values": {"Alabama": 138, "Alaska": 138, "Arizona": 138, "Arkansas": 138, "Colorado": 138, "Connecticut": 138}}
+  B [Total Medicaid Enrollees]: {"non_empty": 7854, "distinct": 7656, "top_values": {"17000": 33, "36726": 21, "15472": 12, "27898": 12, "31,434": 12, "33,887": 12}}
+  C [Total VIII Group Enrollees]: {"non_empty": 5370, "distinct": 5281, "top_values": {"0": 60, "77,963": 3, "112703": 2, "119145": 2, "15211": 2, "19542": 2}}
+  D [Total VIII Group Newly Eligible Enrollees]: {"non_empty": 4958, "distinct": 4620, "top_values": {"0": 296, "0.0": 24, "76,260": 3, "10040": 2, "18981": 2, "20005": 2}}
+  E [Total VIII Group Not Newly Eligible Enrollees]: {"non_empty": 5264, "distinct": 3386, "top_values": {"0": 1468, "0.0": 193, "1": 19, "2": 15, "3": 10, "1.0": 6}}
+  F [Updated Year]: {"non_empty": 7854, "numeric": 7854, "min": "2016", "max": "2026", "sum": "15870576", "distinct": 11, "value_counts": {"2017": 1197, "2021": 855, "2016": 684, "2020": 684, "2022": 684, "2023": 684, "2024": 684, "2026": 684, "2018": 672, "2019": 513, "2025": 513}}
+  G [Updated Month]: {"non_empty": 7854, "numeric": 7854, "min": "1", "max": "12", "sum": "54966", "distinct": 11, "value_counts": {"12": 1881, "2": 1368, "8": 1185, "7": 684, "1": 513, "3": 513, "5": 513, "9": 513, "11": 342, "10": 171, "4": 171}}
+  H [Enrollment Year]: {"non_empty": 7854, "numeric": 7854, "min": "2014", "max": "2025", "sum": "15859305", "distinct": 12, "value_counts": {"2014": 684, "2015": 684, "2018": 684, "2019": 684, "2020": 684, "2021": 684, "2022": 684, "2023": 684, "2024": 684, "2016": 681, "2017": 675, "2025": 342}}
+  I [Enrollment Month]: {"non_empty": 7854, "numeric": 7854, "min": "1", "max": "12", "sum": "50025", "distinct": 12, "value_counts": {"1": 683, "2": 683, "3": 683, "4": 683, "5": 683, "6": 683, "10": 626, "11": 626, "12": 626, "7": 626, "8": 626, "9": 626}}
+  J [Notes]: {"non_empty": 1651, "distinct": 28, "value_counts": {"Alaska expanded its Medicaid program by adopting the VIII Group on September 1, 2015.": 135, "Montana expanded its Medicaid program by adopting the VIII Group on January 1, 2016.": 135, "Pennsylvania expanded its Medicaid program by adopting the VIII Group on January 1, 2015.": 135, "Michigan expanded its Medicaid program by adopting the VIII Group on April 1, 2014.": 134, "Louisiana expanded its Medicaid program by adopting the VIII Group on July 1, 2016.": 114, "Virginia expanded its Medicaid program by adopting the VIII Group on January 1, 2019.": 84, "Indiana expanded its Medicaid program by adopting the VIII Group on February 1, 2015.": 72, "Maine Expanded its Medicaid program by adopting the VIII Group on July 1, 2018.": 72, "New Hampshire expanded its Medicaid program by adopting the VIII Group on August 15, 2014.": 72, "The Virgin Islands expanded its Medicaid program by adopting the VIII Group on June 1, 201...": 72, "Indiana expanded its Medicaid program by adopting the VIII Group on February 1, 2015": 63, "New Hampshire expanded its Medicaid program by adopting the VIII Group on August 15, 2014": 63, "Awaiting state reporting/enrollment reasonableness review in progress": 61, "Idaho expanded its Medicaid program by adopting the VIII Group on January 1, 2020.": 57, "Oklahoma expanded its Medicaid program by adopting the VIII Group on July 1, 2021.": 57, "Utah expanded its Medicaid program by adopting the VIII Group on January 1, 2020.": 57, "Missouri expanded its Medicaid program by adopting the VIII Group on October 1, 2021.": 51, "Virgin Island expanded its Medicaid program by adopting the VIII Group on June 1, 2015": 51, "South Dakota expanded its Medicaid program by adopting the VIII Group on July 1, 2023.": 42, "North Carolina expanded its Medicaid program by adopting the VIII Group on October 1, 2023...": 27, "Louisiana is expanding its Medicaid program by adopting the VIII Group on July 1, 2016.": 21, "Maine expanded its Medicaid program by adopting the VIII Group on July 1, 2018.": 21, "Idaho expanded its Medicaid program by adopting VIII Group on January 1, 2020.": 15, "Utah expanded its Medicaid program by adopting VIII Group on January 1, 2020.": 15, "Virgin Islands expanded its Mediciad program by adopting the VIII Group on June 1, 2015.": 12, "Awaiting state reporting/enrollment reasonableness review in progress.": 6, "Virginia expanded its Medicaid program by adopting the VIII Group on January 1, 2019. Awai...": 6, "Michigan expanded its Medicaid program by adopting the VIII Group on April 1, 2014": 1}}

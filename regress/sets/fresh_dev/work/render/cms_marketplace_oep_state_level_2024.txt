@@ -1,0 +1,528 @@
+FILE cms_marketplace_oep_state_level_2024.xlsx (Excel workbook) with 11 sheet(s): ["Contents", "(1) Apps for QHP Coverage", "(2) by Enrollment Status", "(3) by Switching Status", "(4) by Week", "(5) by Premium and FA", "(6) by Demographics", "(7) by Metal Level", "(8) by FPL", "(9) Dental", "(10) BHP"]
+
+### Sheet "Contents": 12 rows x 3 columns (Excel rows 1..12, columns A..C)
+(whole sheet shown; Excel row numbers)
+r1: A=State-Level Public Use File: Contents
+r2: A=Table | B=Name | C=Includes SBM Data
+r3: A=1 | B=Applications for QHP Coverage | C=Yes
+r4: A=2 | B=Plan Selections by Enrollment Status | C=Yes
+r5: A=3 | B=Plan Selections by Switching Status | C=No
+r6: A=4 | B=Plan Selections by Week | C=Yes
+r7: A=5 | B=Consumers by Premiums and Financial Assistance | C=Yes
+r8: A=6 | B=Consumers by Age, Gender, Race/Ethnicity, Rural/Non-Rural | C=Yes
+r9: A=7 | B=Consumers by Metal Level | C=Yes
+r10: A=8 | B=Consumers by Household Income as a Percent of FPL | C=Yes
+r11: A=9 | B=Dental Plan Selections by Age | C=Yes
+r12: A=10 | B=Basic Health Plan (BHP) | C=Yes
+
+### Sheet "(1) Apps for QHP Coverage": 55 rows x 8 columns (Excel rows 1..55, columns A..H)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Number of Submitted Applications | E=Individuals Applying for Coverage on Submitted Applications | F=Individuals Determined Eligible to Enroll in a Qualified Healthcare Plan (QHP) | G=Individuals Determined Eligible to Enroll, with Financial Assistance | H=Individuals Determined or Assessed Eligible for Medicaid/CHIP by the Marketplace
+r2: A=Alaska | B=AK | C=HC.gov | D=24124 | E=37883 | F=31637 | G=27100 | H=6617
+r3: A=Alabama | B=AL | C=HC.gov | D=359582 | E=445785 | F=428447 | G=393774 | H=17287
+r4: A=Arkansas | B=AR | C=HC.gov | D=139328 | E=198000 | F=174882 | G=159130 | H=25020
+r5: A=Arizona | B=AZ | C=HC.gov | D=293841 | E=418915 | F=390259 | G=352886 | H=31881
+r6: A=California | B=CA | C=SBM | D=3984153 | E=8630988 | F=3124752 | G=2201898 | H=NR
+r7: A=Colorado | B=CO | C=SBM | D=278051 | E=340731 | F=269343 | G=208267 | H=NR
+r8: A=Connecticut | B=CT | C=SBM | D=402735 | E=698385 | F=157464 | G=131412 | H=273810
+r9: A=District Of Columbia | B=DC | C=SBM | D=16172 | E=20770 | F=16856 | G=3430 | H=3914
+r10: A=Delaware | B=DE | C=HC.gov | D=37052 | E=54436 | F=49904 | G=44917 | H=5131
+r11: A=Florida | B=FL | C=HC.gov | D=3218279 | E=4534002 | F=4464334 | G=4301360 | H=68270
+r12: A=Georgia | B=GA | C=HC.gov | D=1121582 | E=1488208 | F=1408671 | G=1334674 | H=86125
+r13: A=Hawaii | B=HI | C=HC.gov | D=21454 | E=30265 | F=25406 | G=21648 | H=5383
+r14: A=Iowa | B=IA | C=HC.gov | D=99014 | E=137435 | F=124945 | G=111925 | H=13737
+r15: A=Idaho | B=ID | C=SBM | D=100328 | E=148173 | F=108294 | G=101506 | H=12224
+r16: A=Illinois | B=IL | C=HC.gov | D=363682 | E=506808 | F=457408 | G=411564 | H=53988
+r17: A=Indiana | B=IN | C=HC.gov | D=263962 | E=357291 | F=330968 | G=298379 | H=28506
+r18: A=Kansas | B=KS | C=HC.gov | D=148421 | E=201637 | F=192563 | G=174747 | H=9146
+r19: A=Kentucky | B=KY | C=SBM | D=254359 | E=337168 | F=86460 | G=65705 | H=241307
+r20: A=Louisiana | B=LA | C=HC.gov | D=200527 | E=256070 | F=238615 | G=223124 | H=18411
+r21: A=Massachusetts | B=MA | C=SBM | D=795194 | E=1520478 | F=833228 | G=483464 | H=535119
+r22: A=Maryland | B=MD | C=SBM | D=485346 | E=1032547 | F=369675 | G=226191 | H=552457
+r23: A=Maine | B=ME | C=SBM | D=58130 | E=86018 | F=74655 | G=56740 | H=10407
+r24: A=Michigan | B=MI | C=HC.gov | D=349614 | E=498666 | F=465621 | G=421525 | H=37029
+r25: A=Minnesota | B=MN | C=SBM | D=268131 | E=403495 | F=360123 | G=163596 | H=39938
+r26: A=Missouri | B=MO | C=HC.gov | D=325639 | E=427255 | F=391134 | G=365295 | H=40672
+r27: A=Mississippi | B=MS | C=HC.gov | D=270265 | E=321203 | F=314114 | G=298055 | H=6953
+r28: A=Montana | B=MT | C=HC.gov | D=56703 | E=88277 | F=76547 | G=68092 | H=12526
+r29: A=North Carolina | B=NC | C=HC.gov | D=869230 | E=1159173 | F=1098264 | G=1039586 | H=73177
+r30: A=North Dakota | B=ND | C=HC.gov | D=25594 | E=44778 | F=41609 | G=38308 | H=3610
+r31: A=Nebraska | B=NE | C=HC.gov | D=85636 | E=136810 | F=128048 | G=120403 | H=9705
+r32: A=New Hampshire | B=NH | C=HC.gov | D=54962 | E=78647 | F=72730 | G=58968 | H=6891
+r33: A=New Jersey | B=NJ | C=SBM | D=359504 | E=546078 | F=459800 | G=405609 | H=64525
+r34: A=New Mexico | B=NM | C=SBM | D=49859 | E=68251 | F=67918 | G=52400 | H=NR
+r35: A=Nevada | B=NV | C=SBM | D=77649 | E=120577 | F=112591 | G=96753 | H=6028
+r36: A=New York | B=NY | C=SBM | D=1764374 | E=3045934 | F=582902 | G=336029 | H=NR
+r37: A=Ohio | B=OH | C=HC.gov | D=434965 | E=571365 | F=534397 | G=477830 | H=40731
+r38: A=Oklahoma | B=OK | C=HC.gov | D=235842 | E=322705 | F=303997 | G=290452 | H=21307
+r39: A=Oregon | B=OR | C=HC.gov | D=127103 | E=183319 | F=165241 | G=141604 | H=20391
+r40: A=Pennsylvania | B=PA | C=SBM | D=406494 | E=573014 | F=532451 | G=462276 | H=38827
+r41: A=Rhode Island | B=RI | C=SBM | D=107720 | E=150708 | F=72538 | G=46970 | H=15966
+r42: A=South Carolina | B=SC | C=HC.gov | D=488771 | E=630704 | F=616748 | G=581793 | H=13843
+r43: A=South Dakota | B=SD | C=HC.gov | D=38426 | E=63440 | F=57671 | G=54438 | H=7382
+r44: A=Tennessee | B=TN | C=HC.gov | D=503071 | E=639948 | F=618664 | G=569965 | H=21170
+r45: A=Texas | B=TX | C=HC.gov | D=2714400 | E=3898349 | F=3802971 | G=3594131 | H=94301
+r46: A=Utah | B=UT | C=HC.gov | D=207903 | E=411389 | F=390125 | G=372708 | H=23791
+r47: A=Virginia | B=VA | C=SBM | D=305574 | E=471975 | F=440929 | G=393663 | H=29497
+r48: A=Vermont | B=VT | C=SBM | D=40607 | E=63654 | F=38629 | G=30553 | H=23624
+r49: A=Washington | B=WA | C=SBM | D=651583 | E=1209456 | F=350328 | G=240344 | H=769811
+r50: A=Wisconsin | B=WI | C=HC.gov | D=228442 | E=308786 | F=292080 | G=263501 | H=18750
+r51: A=West Virginia | B=WV | C=HC.gov | D=50671 | E=65856 | F=59370 | G=54687 | H=6884
+r52: A=Wyoming | B=WY | C=HC.gov | D=31536 | E=50678 | F=47935 | G=43855 | H=2796
+r53: A=Total | B=Total | C=HC.gov | D=13389621 | E=18568083 | F=17795305 | G=16710424 | H=831411
+r54: A=Total | B=Total | C=SBM | D=10405963 | E=19468400 | F=8058936 | G=5706806 | H=NR
+r55: A=Total | B=Total | C=All | D=23795584 | E=38036483 | F=25854241 | G=22417230 | H=NR
+
+### Sheet "(2) by Enrollment Status": 55 rows x 8 columns (Excel rows 1..55, columns A..H)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Number of Consumers with a Marketplace Plan Selection | E=New Consumers | F=Total Re-enrollees | G=Active Re-enrollees | H=Automatic Re-enrollees
+r2: A=Alaska | B=AK | C=HC.gov | D=27464 | E=6083 | F=21381 | G=15495 | H=5886
+r3: A=Alabama | B=AL | C=HC.gov | D=386195 | E=110272 | F=275923 | G=170472 | H=105451
+r4: A=Arkansas | B=AR | C=HC.gov | D=156607 | E=53127 | F=103480 | G=56525 | H=46955
+r5: A=Arizona | B=AZ | C=HC.gov | D=348055 | E=102716 | F=245339 | G=148318 | H=97021
+r6: A=California | B=CA | C=SBM | D=1784653 | E=306382 | F=1478271 | G=455635 | H=1022636
+r7: A=Colorado | B=CO | C=SBM | D=237106 | E=48135 | F=188971 | G=110114 | H=78857
+r8: A=Connecticut | B=CT | C=SBM | D=129000 | E=28593 | F=100407 | G=31375 | H=69032
+r9: A=District Of Columbia | B=DC | C=SBM | D=14799 | E=2705 | F=12094 | G=1460 | H=10634
+r10: A=Delaware | B=DE | C=HC.gov | D=44842 | E=10718 | F=34124 | G=20364 | H=13760
+r11: A=Florida | B=FL | C=HC.gov | D=4211902 | E=1009429 | F=3202473 | G=2390303 | H=812170
+r12: A=Georgia | B=GA | C=HC.gov | D=1305114 | E=350675 | F=954439 | G=675563 | H=278876
+r13: A=Hawaii | B=HI | C=HC.gov | D=22170 | E=4109 | F=18061 | G=11238 | H=6823
+r14: A=Iowa | B=IA | C=HC.gov | D=111423 | E=27542 | F=83881 | G=50477 | H=33404
+r15: A=Idaho | B=ID | C=SBM | D=103783 | E=18369 | F=85414 | G=23266 | H=62148
+r16: A=Illinois | B=IL | C=HC.gov | D=398814 | E=116437 | F=282377 | G=186428 | H=95949
+r17: A=Indiana | B=IN | C=HC.gov | D=295772 | E=90052 | F=205720 | G=134626 | H=71094
+r18: A=Kansas | B=KS | C=HC.gov | D=171376 | E=45348 | F=126028 | G=85913 | H=40115
+r19: A=Kentucky | B=KY | C=SBM | D=75317 | E=18760 | F=56557 | G=10560 | H=45997
+r20: A=Louisiana | B=LA | C=HC.gov | D=212493 | E=68975 | F=143518 | G=80677 | H=62841
+r21: A=Massachusetts | B=MA | C=SBM | D=311199 | E=65913 | F=245286 | G=49276 | H=196010
+r22: A=Maryland | B=MD | C=SBM | D=213895 | E=56220 | F=157675 | G=33919 | H=123756
+r23: A=Maine | B=ME | C=SBM | D=62586 | E=10245 | F=52341 | G=19528 | H=32813
+r24: A=Michigan | B=MI | C=HC.gov | D=418100 | E=110299 | F=307801 | G=195516 | H=112285
+r25: A=Minnesota | B=MN | C=SBM | D=135001 | E=36206 | F=98795 | G=15663 | H=83132
+r26: A=Missouri | B=MO | C=HC.gov | D=359369 | E=93603 | F=265766 | G=180002 | H=85764
+r27: A=Mississippi | B=MS | C=HC.gov | D=286410 | E=82756 | F=203654 | G=142275 | H=61379
+r28: A=Montana | B=MT | C=HC.gov | D=66336 | E=15653 | F=50683 | G=32914 | H=17769
+r29: A=North Carolina | B=NC | C=HC.gov | D=1027930 | E=218335 | F=809595 | G=520788 | H=288807
+r30: A=North Dakota | B=ND | C=HC.gov | D=38535 | E=7014 | F=31521 | G=21019 | H=10502
+r31: A=Nebraska | B=NE | C=HC.gov | D=117882 | E=26132 | F=91750 | G=71040 | H=20710
+r32: A=New Hampshire | B=NH | C=HC.gov | D=65117 | E=13709 | F=51408 | G=29901 | H=21507
+r33: A=New Jersey | B=NJ | C=SBM | D=397942 | E=100919 | F=297023 | G=60592 | H=236431
+r34: A=New Mexico | B=NM | C=SBM | D=56472 | E=11348 | F=45124 | G=20654 | H=24470
+r35: A=Nevada | B=NV | C=SBM | D=99312 | E=25553 | F=73759 | G=22965 | H=50794
+r36: A=New York | B=NY | C=SBM | D=288681 | E=38222 | F=250459 | G=88241 | H=162218
+r37: A=Ohio | B=OH | C=HC.gov | D=477793 | E=141893 | F=335900 | G=219367 | H=116533
+r38: A=Oklahoma | B=OK | C=HC.gov | D=277436 | E=68787 | F=208649 | G=133624 | H=75025
+r39: A=Oregon | B=OR | C=HC.gov | D=145509 | E=29960 | F=115549 | G=83751 | H=31798
+r40: A=Pennsylvania | B=PA | C=SBM | D=434571 | E=89745 | F=344826 | G=77309 | H=267517
+r41: A=Rhode Island | B=RI | C=SBM | D=36121 | E=10164 | F=25957 | G=2928 | H=23029
+r42: A=South Carolina | B=SC | C=HC.gov | D=571175 | E=137448 | F=433727 | G=307184 | H=126543
+r43: A=South Dakota | B=SD | C=HC.gov | D=52974 | E=9537 | F=43437 | G=30112 | H=13325
+r44: A=Tennessee | B=TN | C=HC.gov | D=555103 | E=154054 | F=401049 | G=273806 | H=127243
+r45: A=Texas | B=TX | C=HC.gov | D=3484632 | E=957080 | F=2527552 | G=1821679 | H=705873
+r46: A=Utah | B=UT | C=HC.gov | D=366939 | E=77681 | F=289258 | G=229494 | H=59764
+r47: A=Virginia | B=VA | C=SBM | D=400058 | E=57029 | F=343029 | G=73105 | H=269924
+r48: A=Vermont | B=VT | C=SBM | D=30027 | E=4982 | F=25045 | G=2080 | H=22965
+r49: A=Washington | B=WA | C=SBM | D=272494 | E=59813 | F=212681 | G=48973 | H=163708
+r50: A=Wisconsin | B=WI | C=HC.gov | D=266327 | E=60605 | F=205722 | G=148437 | H=57285
+r51: A=West Virginia | B=WV | C=HC.gov | D=51046 | E=17571 | F=33475 | G=20100 | H=13375
+r52: A=Wyoming | B=WY | C=HC.gov | D=42293 | E=8861 | F=33432 | G=24314 | H=9118
+r53: A=Total | B=Total | C=HC.gov | D=16363133 | E=4226461 | F=12136672 | G=8511722 | H=3624950
+r54: A=Total | B=Total | C=SBM | D=5083017 | E=989303 | F=4093714 | G=1147643 | H=2946071
+r55: A=Total | B=Total | C=All | D=21446150 | E=5215764 | F=16230386 | G=9659365 | H=6571021
+
+### Sheet "(3) by Switching Status": 34 rows x 6 columns (Excel rows 1..34, columns A..F)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Active Re-enrollees | E=Active Re-enrollees who Switched Plans | F=Active Re-enrollees who Remained in the Same Plan or a Crosswalked Plan
+r2: A=Alaska | B=AK | C=HC.gov | D=15495 | E=5152 | F=10343
+r3: A=Alabama | B=AL | C=HC.gov | D=170472 | E=76200 | F=94272
+r4: A=Arkansas | B=AR | C=HC.gov | D=56525 | E=31828 | F=24697
+r5: A=Arizona | B=AZ | C=HC.gov | D=148318 | E=77919 | F=70399
+r6: A=Delaware | B=DE | C=HC.gov | D=20364 | E=7972 | F=12392
+r7: A=Florida | B=FL | C=HC.gov | D=2390303 | E=1301895 | F=1088408
+r8: A=Georgia | B=GA | C=HC.gov | D=675563 | E=407251 | F=268312
+r9: A=Hawaii | B=HI | C=HC.gov | D=11238 | E=3950 | F=7288
+r10: A=Iowa | B=IA | C=HC.gov | D=50477 | E=16824 | F=33653
+r11: A=Illinois | B=IL | C=HC.gov | D=186428 | E=75902 | F=110526
+r12: A=Indiana | B=IN | C=HC.gov | D=134626 | E=69188 | F=65438
+r13: A=Kansas | B=KS | C=HC.gov | D=85913 | E=47558 | F=38355
+r14: A=Louisiana | B=LA | C=HC.gov | D=80677 | E=37502 | F=43175
+r15: A=Michigan | B=MI | C=HC.gov | D=195516 | E=72902 | F=122614
+r16: A=Missouri | B=MO | C=HC.gov | D=180002 | E=97313 | F=82689
+r17: A=Mississippi | B=MS | C=HC.gov | D=142275 | E=86444 | F=55831
+r18: A=Montana | B=MT | C=HC.gov | D=32914 | E=12003 | F=20911
+r19: A=North Carolina | B=NC | C=HC.gov | D=520788 | E=276034 | F=244754
+r20: A=North Dakota | B=ND | C=HC.gov | D=21019 | E=6790 | F=14229
+r21: A=Nebraska | B=NE | C=HC.gov | D=71040 | E=31941 | F=39099
+r22: A=New Hampshire | B=NH | C=HC.gov | D=29901 | E=10177 | F=19724
+r23: A=Ohio | B=OH | C=HC.gov | D=219367 | E=108794 | F=110573
+r24: A=Oklahoma | B=OK | C=HC.gov | D=133624 | E=74304 | F=59320
+r25: A=Oregon | B=OR | C=HC.gov | D=83751 | E=24801 | F=58950
+r26: A=South Carolina | B=SC | C=HC.gov | D=307184 | E=161930 | F=145254
+r27: A=South Dakota | B=SD | C=HC.gov | D=30112 | E=12617 | F=17495
+r28: A=Tennessee | B=TN | C=HC.gov | D=273806 | E=161365 | F=112441
+r29: A=Texas | B=TX | C=HC.gov | D=1821679 | E=1209740 | F=611939
+r30: A=Utah | B=UT | C=HC.gov | D=229494 | E=100135 | F=129359
+r31: A=Wisconsin | B=WI | C=HC.gov | D=148437 | E=58816 | F=89621
+r32: A=West Virginia | B=WV | C=HC.gov | D=20100 | E=7253 | F=12847
+r33: A=Wyoming | B=WY | C=HC.gov | D=24314 | E=9952 | F=14362
+r34: A=Total | B=Total | C=HC.gov | D=8511722 | E=4682452 | F=3829270
+
+### Sheet "(4) by Week": 57 rows x 16 columns (Excel rows 1..57, columns A..P)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Number of Consumers with a Marketplace Plan Selection | E=Week 1\n(Nov. 1-4, 2023) | F=Week 2\n(Nov. 5-11, 2023) | G=Week 3\n(Nov. 12-18, 2023) | H=Week 4\n(Nov. 19-25, 2023) | I=Week 5\n(Nov. 26 - Dec. 2, 2023) | J=Week 6\n(Dec. 3-9, 2023) | K=Week 7\n(Dec. 10-16, 2023) | L=Week 8\n(Dec. 17-23, 2023) | M=Week 9\n(Dec. 24-30, 2023) | N=Week 10\n(Dec. 31, 2023-Jan. 6, 2024) | O=Week 11\n(Jan. 7-13, 2024) | P=Week 12\n(Jan. 14-16, 2024)*†
+r2: A=Alaska | B=AK | C=HC.gov | D=27464 | E=1552 | F=3621 | G=5709 | H=7292 | I=9572 | J=12407 | K=26503 | L=26573 | M=26475 | N=26574 | O=26944 | P=27464
+r3: A=Alabama | B=AL | C=HC.gov | D=386195 | E=23046 | F=51771 | G=79425 | H=100677 | I=131019 | J=162736 | K=354650 | L=361143 | M=366209 | N=371176 | O=379269 | P=386195
+r4: A=Arkansas | B=AR | C=HC.gov | D=156607 | E=6672 | F=17327 | G=27652 | H=34372 | I=45558 | J=58682 | K=141860 | L=145017 | M=147125 | N=149438 | O=153461 | P=156607
+r5: A=Arizona | B=AZ | C=HC.gov | D=348055 | E=16124 | F=42200 | G=67823 | H=85175 | I=112113 | J=142653 | K=320326 | L=325503 | M=329223 | N=332686 | O=340167 | P=348055
+r6: A=California | B=CA | C=SBM | D=1784653 | E=246964 | F=315525 | G=366868 | H=384656 | I=416054 | J=454324 | K=1716077 | L=1733137 | M=1749064 | N=1731602 | O=1736391 | P=1745275
+r7: A=Colorado | B=CO | C=SBM | D=237106 | E=11474 | F=29608 | G=45546 | H=55796 | I=77020 | J=93867 | K=210643 | L=214862 | M=218728 | N=222235 | O=229384 | P=237106
+r8: A=Connecticut | B=CT | C=SBM | D=129000 | E=5017 | F=12946 | G=20565 | H=26221 | I=30736 | J=35351 | K=120785 | L=121841 | M=122931 | N=124647 | O=126972 | P=129000
+r9: A=District Of Columbia | B=DC | C=SBM | D=14799 | E=262 | F=640 | G=835 | H=1117 | I=1433 | J=1572 | K=14150 | L=14214 | M=14248 | N=14224 | O=14301 | P=14513
+r10: A=Delaware | B=DE | C=HC.gov | D=44842 | E=2039 | F=4841 | G=7806 | H=9667 | I=13137 | J=17133 | K=41716 | L=42154 | M=42455 | N=42933 | O=43872 | P=44842
+r11: A=Florida | B=FL | C=HC.gov | D=4211902 | E=261948 | F=711653 | G=1148789 | H=1452725 | I=1833689 | J=2271047 | K=3986564 | L=4034546 | M=4078996 | N=4095508 | O=4152871 | P=4211902
+r12: A=Georgia | B=GA | C=HC.gov | D=1305114 | E=82202 | F=225478 | G=343109 | H=429756 | I=543881 | J=659718 | K=1215801 | L=1230364 | M=1245660 | N=1259844 | O=1281411 | P=1305114
+r13: A=Hawaii | B=HI | C=HC.gov | D=22170 | E=1224 | F=2652 | G=4080 | H=5145 | I=6617 | J=8507 | K=21492 | L=21615 | M=21564 | N=21515 | O=21720 | P=22170
+r14: A=Iowa | B=IA | C=HC.gov | D=111423 | E=5005 | F=12839 | G=21795 | H=27415 | I=36530 | J=46305 | K=104699 | L=106338 | M=107113 | N=108116 | O=109560 | P=111423
+r15: A=Idaho | B=ID | C=SBM | D=103783 | E=6079 | F=8821 | G=15298 | H=17560 | I=22457 | J=27794 | K=103783 | L=103783 | M=103783 | N=103783 | O=103783 | P=103783
+r16: A=Illinois | B=IL | C=HC.gov | D=398814 | E=16576 | F=42714 | G=70379 | H=91921 | I=125507 | J=167292 | K=373565 | L=378222 | M=382369 | N=381057 | O=388493 | P=398814
+r17: A=Indiana | B=IN | C=HC.gov | D=295772 | E=14021 | F=37417 | G=67868 | H=85734 | I=109776 | J=137217 | K=272008 | L=276820 | M=280282 | N=284357 | O=289991 | P=295772
+r18: A=Kansas | B=KS | C=HC.gov | D=171376 | E=9369 | F=25501 | G=39878 | H=49619 | I=63484 | J=78520 | K=160335 | L=162243 | M=163946 | N=165289 | O=168137 | P=171376
+r19: A=Kentucky | B=KY | C=SBM | D=75317 | E=1535 | F=3378 | G=5548 | H=7061 | I=9707 | J=12843 | K=68253 | L=69648 | M=70273 | N=71248 | O=73040 | P=75317
+r20: A=Louisiana | B=LA | C=HC.gov | D=212493 | E=10930 | F=28313 | G=44426 | H=55281 | I=70282 | J=86695 | K=191827 | L=196600 | M=199829 | N=202018 | O=207953 | P=212493
+r21: A=Massachusetts | B=MA | C=SBM | D=311199 | E=7695 | F=17863 | G=27848 | H=34003 | I=40318 | J=49582 | K=276688 | L=285034 | M=276818 | N=281528 | O=290162 | P=298899
+r22: A=Maryland | B=MD | C=SBM | D=213895 | E=5226 | F=12798 | G=20304 | H=24873 | I=35685 | J=45146 | K=198453 | L=201443 | M=206101 | N=206085 | O=210546 | P=213895
+r23: A=Maine | B=ME | C=SBM | D=62586 | E=3238 | F=6849 | G=9655 | H=11254 | I=13192 | J=18751 | K=61401 | L=61261 | M=61359 | N=61473 | O=61746 | P=62586
+r24: A=Michigan | B=MI | C=HC.gov | D=418100 | E=21914 | F=54682 | G=84806 | H=106753 | I=139472 | J=175792 | K=388099 | L=394191 | M=397838 | N=402327 | O=409517 | P=418100
+r25: A=Minnesota | B=MN | C=SBM | D=135001 | E=2911 | F=5761 | G=9282 | H=11780 | I=16507 | J=22193 | K=125384 | L=126159 | M=127560 | N=128311 | O=132393 | P=135001
+r26: A=Missouri | B=MO | C=HC.gov | D=359369 | E=21529 | F=56106 | G=90497 | H=111473 | I=142010 | J=174796 | K=335893 | L=340534 | M=343912 | N=348547 | O=353446 | P=359369
+r27: A=Mississippi | B=MS | C=HC.gov | D=286410 | E=23196 | F=69284 | G=95487 | H=113047 | I=134376 | J=156789 | K=264809 | L=269236 | M=272799 | N=277484 | O=282327 | P=286410
+r28: A=Montana | B=MT | C=HC.gov | D=66336 | E=2718 | F=6659 | G=10998 | H=14093 | I=19329 | J=25856 | K=62798 | L=63252 | M=63597 | N=63742 | O=64944 | P=66336
+r29: A=North Carolina | B=NC | C=HC.gov | D=1027930 | E=58916 | F=155480 | G=240869 | H=302211 | I=384601 | J=473900 | K=987520 | L=996250 | M=1002597 | N=1006669 | O=1014728 | P=1027930
+r30: A=North Dakota | B=ND | C=HC.gov | D=38535 | E=1541 | F=3978 | G=6414 | H=8376 | I=11543 | J=15541 | K=37098 | L=37277 | M=37406 | N=37576 | O=38000 | P=38535
+r31: A=Nebraska | B=NE | C=HC.gov | D=117882 | E=5395 | F=15312 | G=25749 | H=33647 | I=45704 | J=60102 | K=111849 | L=112983 | M=113901 | N=114491 | O=116088 | P=117882
+r32: A=New Hampshire | B=NH | C=HC.gov | D=65117 | E=2684 | F=6964 | G=11468 | H=14608 | I=19584 | J=25474 | K=62569 | L=62905 | M=63114 | N=63329 | O=63826 | P=65117
+r33: A=New Jersey | B=NJ | C=SBM | D=397942 | E=9655 | F=19775 | G=29197 | H=35764 | I=46778 | J=58673 | K=343009 | L=351989 | M=363025 | N=367609 | O=370057 | P=375884
+r34: A=New Mexico | B=NM | C=SBM | D=56472 | E=1881 | F=4717 | G=7673 | H=10219 | I=13889 | J=17043 | K=50513 | L=51244 | M=52039 | N=52604 | O=53781 | P=56472
+r35: A=Nevada | B=NV | C=SBM | D=99312 | E=3743 | F=8317 | G=12110 | H=14570 | I=19188 | J=23968 | K=90836 | L=92098 | M=93283 | N=94579 | O=96706 | P=99312
+r36: A=New York** | B=NY | C=SBM | D=288681 | E=0 | F=0 | G=14452 | H=27421 | I=43296 | J=61475 | K=270596 | L=274398 | M=277293 | N=279728 | O=279879 | P=282764
+r37: A=Ohio | B=OH | C=HC.gov | D=477793 | E=22622 | F=65656 | G=109546 | H=137003 | I=176292 | J=219601 | K=439155 | L=447498 | M=452844 | N=459517 | O=468396 | P=477793
+r38: A=Oklahoma | B=OK | C=HC.gov | D=277436 | E=13530 | F=37367 | G=65740 | H=82720 | I=102863 | J=125572 | K=260692 | L=264374 | M=267008 | N=269092 | O=273288 | P=277436
+r39: A=Oregon | B=OR | C=HC.gov | D=145509 | E=7545 | F=17879 | G=28939 | H=35818 | I=48152 | J=63847 | K=140075 | L=140755 | M=140539 | N=140771 | O=142724 | P=145509
+r40: A=Pennsylvania | B=PA | C=SBM | D=434571 | E=8480 | F=21610 | G=36082 | H=45780 | I=61394 | J=79325 | K=405391 | L=407027 | M=409079 | N=413277 | O=419832 | P=434571
+r41: A=Rhode Island | B=RI | C=SBM | D=36121 | E=391 | F=961 | G=1519 | H=2122 | I=2961 | J=3772 | K=31483 | L=32532 | M=33154 | N=30521 | O=32659 | P=33907
+r42: A=South Carolina | B=SC | C=HC.gov | D=571175 | E=37052 | F=102689 | G=156027 | H=191086 | I=240521 | J=292333 | K=536018 | L=542731 | M=548573 | N=554858 | O=562740 | P=571175
+r43: A=South Dakota | B=SD | C=HC.gov | D=52974 | E=2210 | F=5608 | G=9334 | H=11992 | I=16719 | J=22437 | K=51791 | L=52049 | M=52019 | N=52096 | O=52359 | P=52974
+r44: A=Tennessee | B=TN | C=HC.gov | D=555103 | E=35837 | F=103945 | G=149583 | H=183821 | I=228165 | J=274381 | K=513742 | L=521347 | M=527427 | N=535370 | O=545599 | P=555103
+r45: A=Texas | B=TX | C=HC.gov | D=3484632 | E=193372 | F=544703 | G=890734 | H=1126419 | I=1424675 | J=1767401 | K=3244428 | L=3291543 | M=3341711 | N=3368057 | O=3424637 | P=3484632
+r46: A=Utah | B=UT | C=HC.gov | D=366939 | E=22089 | F=61383 | G=97947 | H=122091 | I=157585 | J=196781 | K=349777 | L=352471 | M=354792 | N=357301 | O=361853 | P=366939
+r47: A=Virginia | B=VA | C=SBM | D=400058 | E=5176 | F=14815 | G=25362 | H=32951 | I=45372 | J=60441 | K=390125 | L=391508 | M=392758 | N=393990 | O=396041 | P=400058
+r48: A=Vermont | B=VT | C=SBM | D=30027 | E=976 | F=1039 | G=1417 | H=1755 | I=2090 | J=2813 | K=28586 | L=28720 | M=29021 | N=29119 | O=29689 | P=30027
+r49: A=Washington | B=WA | C=SBM | D=272494 | E=7245 | F=16539 | G=24687 | H=30296 | I=41566 | J=55388 | K=252590 | L=254511 | M=256859 | N=260821 | O=268527 | P=272494
+r50: A=Wisconsin | B=WI | C=HC.gov | D=266327 | E=13159 | F=35590 | G=58854 | H=74595 | I=99950 | J=128589 | K=251594 | L=254482 | M=256280 | N=258528 | O=261948 | P=266327
+r51: A=West Virginia | B=WV | C=HC.gov | D=51046 | E=2384 | F=5873 | G=10803 | H=13448 | I=17532 | J=22072 | K=45130 | L=46289 | M=46893 | N=48113 | O=49884 | P=51046
+r52: A=Wyoming | B=WY | C=HC.gov | D=42293 | E=2217 | F=5370 | G=8615 | H=10673 | I=14463 | J=19136 | K=40539 | L=40747 | M=40800 | N=40729 | O=41428 | P=42293
+r53: A=Total | B=Total | C=HC.gov | D=16363133 | E=940618 | F=2560855 | G=4081149 | H=5128653 | I=6524701 | J=8089312 | K=15334922 | L=15538052 | M=15715296 | N=15839108 | O=16091581 | P=16363133
+r54: A=Total | B=Total | C=SBM | D=5083017 | E=327948 | F=501962 | G=674248 | H=775199 | I=939643 | J=1124321 | K=4758746 | L=4815409 | M=4857376 | N=4867384 | O=4925889 | P=5000864
+r55: A=Total | B=Total | C=All | D=21446150 | E=1268566 | F=3062817 | G=4755397 | H=5903852 | I=7464344 | J=9213633 | K=20093668 | L=20353461 | M=20572672 | N=20706492 | O=21017470 | P=21363997
+r56: A=*HC.gov states include data through January 16 for Week 12. SBMs with Open Enrollment Peri...
+r57: A=† For SBMs with Open Enrollment Periods that end after Week 12, final plan selection count...
+
+### Sheet "(5) by Premium and FA": 55 rows x 16 columns (Excel rows 1..55, columns A..P)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Number of Consumers with a Marketplace Plan Selection | E=Average Premium | F=Average Premium after APTC | G=Consumers with a Premium ≤$10 after APTC | H=Consumers with APTC and/or CSRs | I=Consumers with CSRs | J=Consumers with 73% Actuarial Value | K=Consumers with 87% Actuarial Value | L=Consumers with 94% Actuarial Value | M=CSRs Reserved for Members of Federally Recognized Tribes and Alaska Native Claims Settleme... | N=Consumers with APTC | O=Average APTC among Consumers Receiving APTC | P=Average Premium after APTC among Consumers Receiving APTC
+r2: A=Alaska | B=AK | C=HC.gov | D=27464 | E=967 | F=230 | G=7044 | H=23610 | I=4784 | J=143 | K=1847 | L=1546 | M=1248 | N=23436 | O=865 | P=122
+r3: A=Alabama | B=AL | C=HC.gov | D=386195 | E=706 | F=75 | G=207187 | H=371423 | I=261255 | J=15763 | K=44501 | L=200347 | M=644 | N=371010 | O=656 | P=55
+r4: A=Arkansas | B=AR | C=HC.gov | D=156607 | E=555 | F=116 | G=53553 | H=144896 | I=98927 | J=11805 | K=30994 | L=54743 | M=1385 | N=144575 | O=476 | P=82
+r5: A=Arizona | B=AZ | C=HC.gov | D=348055 | E=523 | F=121 | G=148992 | H=310132 | I=168812 | J=23585 | K=49267 | L=94381 | M=1579 | N=309366 | O=452 | P=75
+r6: A=California | B=CA | C=SBM | D=1784653 | E=655 | F=195 | G=425260 | H=1555528 | I=765245 | J=NR | K=NR | L=NR | M=NR | N=1554271 | O=526 | P=143
+r7: A=Colorado | B=CO | C=SBM | D=237106 | E=556 | F=204 | G=67874 | H=183473 | I=63466 | J=NR | K=NR | L=NR | M=NR | N=183198 | O=455 | P=133
+r8: A=Connecticut | B=CT | C=SBM | D=129000 | E=897 | F=233 | G=27495 | H=111811 | I=56116 | J=NR | K=NR | L=NR | M=NR | N=111789 | O=766 | P=153
+r9: A=District Of Columbia | B=DC | C=SBM | D=14799 | E=894 | F=775 | G=90 | H=3136 | I=385 | J=NR | K=NR | L=NR | M=NR | N=3129 | O=561 | P=447
+r10: A=Delaware | B=DE | C=HC.gov | D=44842 | E=723 | F=196 | G=7971 | H=40458 | I=12390 | J=681 | K=5762 | L=5846 | M=101 | N=40409 | O=585 | P=147
+r11: A=Florida | B=FL | C=HC.gov | D=4211902 | E=617 | F=65 | G=2077409 | H=4098736 | I=2630196 | J=55812 | K=378015 | L=2194705 | M=1664 | N=4096559 | O=568 | P=49
+r12: A=Georgia | B=GA | C=HC.gov | D=1305114 | E=583 | F=75 | G=685036 | H=1248351 | I=843753 | J=21624 | K=116026 | L=705580 | M=523 | N=1247382 | O=531 | P=52
+r13: A=Hawaii | B=HI | C=HC.gov | D=22170 | E=696 | F=248 | G=2457 | H=18299 | I=5708 | J=461 | K=2243 | L=2900 | M=104 | N=18259 | O=544 | P=183
+r14: A=Iowa | B=IA | C=HC.gov | D=111423 | E=585 | F=132 | G=39180 | H=99765 | I=33543 | J=1219 | K=12887 | L=19301 | M=136 | N=99630 | O=507 | P=93
+r15: A=Idaho | B=ID | C=SBM | D=103783 | E=462 | F=121 | G=27753 | H=89786 | I=33447 | J=NR | K=NR | L=NR | M=NR | N=89715 | O=395 | P=77
+r16: A=Illinois | B=IL | C=HC.gov | D=398814 | E=676 | F=189 | G=96888 | H=356725 | I=188497 | J=21127 | K=63324 | L=103689 | M=357 | N=355916 | O=545 | P=141
+r17: A=Indiana | B=IN | C=HC.gov | D=295772 | E=532 | F=129 | G=120431 | H=263915 | I=141321 | J=13906 | K=38192 | L=89022 | M=201 | N=263430 | O=452 | P=82
+r18: A=Kansas | B=KS | C=HC.gov | D=171376 | E=634 | F=111 | G=74965 | H=160185 | I=90678 | J=3209 | K=17239 | L=68890 | M=1340 | N=159923 | O=561 | P=77
+r19: A=Kentucky | B=KY | C=SBM | D=75317 | E=621 | F=206 | G=8073 | H=63059 | I=29132 | J=NR | K=NR | L=NR | M=NR | N=62649 | O=497 | P=134
+r20: A=Louisiana | B=LA | C=HC.gov | D=212493 | E=710 | F=90 | G=121961 | H=203883 | I=97583 | J=6524 | K=26235 | L=64511 | M=313 | N=203693 | O=647 | P=65
+r21: A=Massachusetts | B=MA | C=SBM | D=311199 | E=507 | F=197 | G=59285 | H=255939 | I=249453 | J=NR | K=NR | L=NR | M=NR | N=250386 | O=385 | P=118
+r22: A=Maryland | B=MD | C=SBM | D=213895 | E=475 | F=179 | G=27169 | H=163929 | I=51025 | J=NR | K=NR | L=NR | M=NR | N=163796 | O=388 | P=112
+r23: A=Maine | B=ME | C=SBM | D=62586 | E=707 | F=229 | G=6195 | H=52436 | I=17226 | J=NR | K=NR | L=NR | M=NR | N=52401 | O=564 | P=163
+r24: A=Michigan | B=MI | C=HC.gov | D=418100 | E=518 | F=137 | G=139422 | H=375397 | I=175587 | J=23220 | K=52807 | L=98222 | M=1338 | N=374042 | O=426 | P=98
+r25: A=Minnesota | B=MN | C=SBM | D=135001 | E=501 | F=297 | G=2265 | H=78567 | I=10850 | J=NR | K=NR | L=NR | M=NR | N=78382 | O=351 | P=207
+r26: A=Missouri | B=MO | C=HC.gov | D=359369 | E=650 | F=92 | G=183343 | H=338128 | I=178475 | J=13367 | K=47932 | L=116009 | M=1167 | N=337708 | O=594 | P=61
+r27: A=Mississippi | B=MS | C=HC.gov | D=286410 | E=616 | F=36 | G=188355 | H=281061 | I=202262 | J=8580 | K=26273 | L=167286 | M=123 | N=280895 | O=592 | P=25
+r28: A=Montana | B=MT | C=HC.gov | D=66336 | E=604 | F=162 | G=19724 | H=58539 | I=19361 | J=2587 | K=8710 | L=6551 | M=1513 | N=58149 | O=504 | P=112
+r29: A=North Carolina | B=NC | C=HC.gov | D=1027930 | E=609 | F=77 | G=547448 | H=980966 | I=511073 | J=20531 | K=93006 | L=396372 | M=1164 | N=980133 | O=558 | P=55
+r30: A=North Dakota | B=ND | C=HC.gov | D=38535 | E=520 | F=132 | G=11603 | H=34598 | I=9855 | J=511 | K=5263 | L=3237 | M=844 | N=34494 | O=433 | P=99
+r31: A=Nebraska | B=NE | C=HC.gov | D=117882 | E=670 | F=120 | G=43798 | H=111769 | I=35856 | J=1937 | K=11494 | L=21855 | M=570 | N=111680 | O=580 | P=93
+r32: A=New Hampshire | B=NH | C=HC.gov | D=65117 | E=453 | F=202 | G=12025 | H=47024 | I=20619 | J=3649 | K=9329 | L=7605 | M=36 | N=46775 | O=350 | P=124
+r33: A=New Jersey | B=NJ | C=SBM | D=397942 | E=661 | F=201 | G=63311 | H=351746 | I=206747 | J=NR | K=NR | L=NR | M=NR | N=351652 | O=521 | P=156
+r34: A=New Mexico | B=NM | C=SBM | D=56472 | E=604 | F=151 | G=17864 | H=46490 | I=12887 | J=NR | K=NR | L=NR | M=NR | N=46456 | O=551 | P=80
+r35: A=Nevada | B=NV | C=SBM | D=99312 | E=530 | F=154 | G=13862 | H=85410 | I=48129 | J=NR | K=NR | L=NR | M=NR | N=85178 | O=438 | P=103
+r36: A=New York | B=NY | C=SBM | D=288681 | E=714 | F=410 | G=16386 | H=205574 | I=64097 | J=NR | K=NR | L=NR | M=NR | N=205574 | O=455 | P=247
+r37: A=Ohio | B=OH | C=HC.gov | D=477793 | E=581 | F=136 | G=206432 | H=427501 | I=183635 | J=19449 | K=50241 | L=113735 | M=210 | N=426977 | O=498 | P=81
+r38: A=Oklahoma | B=OK | C=HC.gov | D=277436 | E=632 | F=79 | G=155820 | H=268796 | I=138774 | J=4107 | K=26136 | L=75040 | M=33491 | N=266919 | O=575 | P=57
+r39: A=Oregon | B=OR | C=HC.gov | D=145509 | E=655 | F=231 | G=21955 | H=118167 | I=39327 | J=9783 | K=18432 | L=9991 | M=1121 | N=117714 | O=524 | P=164
+r40: A=Pennsylvania | B=PA | C=SBM | D=434571 | E=641 | F=180 | G=84480 | H=378447 | I=128273 | J=NR | K=NR | L=NR | M=NR | N=378342 | O=530 | P=133
+r41: A=Rhode Island | B=RI | C=SBM | D=36121 | E=545 | F=152 | G=10936 | H=31210 | I=13452 | J=NR | K=NR | L=NR | M=NR | N=31196 | O=454 | P=106
+r42: A=South Carolina | B=SC | C=HC.gov | D=571175 | E=599 | F=69 | G=337379 | H=547462 | I=243616 | J=6364 | K=30706 | L=206155 | M=391 | N=547213 | O=553 | P=50
+r43: A=South Dakota | B=SD | C=HC.gov | D=52974 | E=695 | F=114 | G=19159 | H=50575 | I=20081 | J=3019 | K=7623 | L=7754 | M=1685 | N=50436 | O=611 | P=92
+r44: A=Tennessee | B=TN | C=HC.gov | D=555103 | E=622 | F=73 | G=329828 | H=526171 | I=293599 | J=13617 | K=49287 | L=230148 | M=547 | N=525633 | O=580 | P=45
+r45: A=Texas | B=TX | C=HC.gov | D=3484632 | E=566 | F=50 | G=2158968 | H=3359306 | I=1697497 | J=23928 | K=181570 | L=1485222 | M=6777 | N=3357161 | O=536 | P=33
+r46: A=Utah | B=UT | C=HC.gov | D=366939 | E=468 | F=67 | G=183736 | H=350446 | I=197064 | J=13343 | K=50265 | L=131311 | M=2145 | N=349705 | O=421 | P=48
+r47: A=Virginia | B=VA | C=SBM | D=400058 | E=473 | F=119 | G=137980 | H=351570 | I=130496 | J=NR | K=NR | L=NR | M=NR | N=350008 | O=405 | P=75
+r48: A=Vermont | B=VT | C=SBM | D=30027 | E=874 | F=243 | G=3598 | H=26688 | I=8354 | J=NR | K=NR | L=NR | M=NR | N=26592 | O=702 | P=178
+r49: A=Washington | B=WA | C=SBM | D=272494 | E=595 | F=271 | G=36871 | H=195149 | I=90947 | J=NR | K=NR | L=NR | M=NR | N=194683 | O=453 | P=160
+r50: A=Wisconsin | B=WI | C=HC.gov | D=266327 | E=671 | F=166 | G=80966 | H=236018 | I=93812 | J=8429 | K=29268 | L=54946 | M=1169 | N=235587 | O=572 | P=117
+r51: A=West Virginia | B=WV | C=HC.gov | D=51046 | E=1119 | F=118 | G=25293 | H=49372 | I=19394 | J=930 | K=6810 | L=11591 | M=63 | N=49334 | O=1035 | P=88
+r52: A=Wyoming | B=WY | C=HC.gov | D=42293 | E=937 | F=118 | G=18824 | H=40197 | I=9557 | J=164 | K=2651 | L=6313 | M=429 | N=40149 | O=863 | P=80
+r53: A=Total | B=Total | C=HC.gov | D=16363133 | E=602 | F=81 | G=8327152 | H=15541871 | I=8666891 | J=353374 | K=1494335 | L=6754804 | M=64378 | N=15524292 | O=548 | P=56
+r54: A=Total | B=Total | C=SBM | D=5083017 | E=615 | F=207 | G=1036747 | H=4229948 | I=1979727 | J=NR | K=NR | L=NR | M=NR | N=4219397 | O=492 | P=139
+r55: A=Total | B=Total | C=All | D=21446150 | E=605 | F=111 | G=9363899 | H=19771819 | I=10646618 | J=NR | K=NR | L=NR | M=NR | N=19743689 | O=536 | P=74
+
+### Sheet "(6) by Demographics": 56 rows x 26 columns (Excel rows 1..56, columns A..Z)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Number of Consumers with a Marketplace Plan Selection | E=Age < 18 | F=Age 18-25 | G=Age 26-34 | H=Age 35-44 | I=Age 45-54 | J=Age 55-64 | K=Age ≥ 65 | L=Male | M=Female | N=Hispanic | O=American Indian / Alaska Native, Non-Hispanic | P=Asian, Non-Hispanic | Q=Native Hawaiian / Pacific Islander, Non-Hispanic | R=Black / African American, Non-Hispanic | S=White, Non-Hispanic | T=Other Race, Non-Hispanic | U=Multiracial, Non-Hispanic | V=Unknown Race, Non-Hispanic | W=Non-Hispanic | X=Unknown Hispanic | Y=Rural | Z=Non-Rural
+r2: A=Alaska | B=AK | C=HC.gov | D=27464 | E=4335 | F=1879 | G=4455 | H=5194 | I=4688 | J=6591 | K=322 | L=13177 | M=14287 | N=1410 | O=1178 | P=1547 | Q=120 | R=327 | S=16704 | T=197 | U=1062 | V=4919 | W=22271 | X=3783 | Y=13661 | Z=13803
+r3: A=Alabama | B=AL | C=HC.gov | D=386195 | E=12649 | F=40629 | G=70831 | H=85293 | I=87192 | J=87222 | K=2379 | L=176113 | M=210082 | N=8716 | O=1038 | P=11149 | Q=88 | R=46397 | S=124981 | T=1688 | U=3659 | V=188479 | W=237785 | X=139694 | Y=122977 | Z=263218
+r4: A=Arkansas | B=AR | C=HC.gov | D=156607 | E=19082 | F=15597 | G=24226 | H=29153 | I=30006 | J=37558 | K=985 | L=70656 | M=85951 | N=5313 | O=866 | P=3225 | Q=85 | R=7294 | S=59351 | T=421 | U=1732 | V=78320 | W=104575 | X=46719 | Y=62514 | Z=94093
+r5: A=Arizona | B=AZ | C=HC.gov | D=348055 | E=46518 | F=31819 | G=49065 | H=58048 | I=64879 | J=93862 | K=3864 | L=168462 | M=179593 | N=41632 | O=1138 | P=14148 | Q=253 | R=5406 | S=97115 | T=1767 | U=4211 | V=182385 | W=174992 | X=131431 | Y=35495 | Z=312560
+r6: A=California | B=CA | C=SBM | D=1784653 | E=137235 | F=160498 | G=318958 | H=296698 | I=335584 | J=513628 | K=22052 | L=867771 | M=916881 | N=407849 | O=4134 | P=349360 | Q=1455 | R=39635 | S=485892 | T=107577 | U=41664 | V=347087 | W=NR | X=NR | Y=NR | Z=NR
+r7: A=Colorado | B=CO | C=SBM | D=237106 | E=28100 | F=18756 | G=36877 | H=39843 | I=38787 | J=62695 | K=12048 | L=113267 | M=123807 | N=14317 | O=596 | P=11382 | Q=159 | R=2047 | S=103214 | T=+ | U=3675 | V=101716 | W=NR | X=NR | Y=NR | Z=NR
+r8: A=Connecticut | B=CT | C=SBM | D=129000 | E=8950 | F=14023 | G=17859 | H=18105 | I=23392 | J=44185 | K=2486 | L=58205 | M=70795 | N=17885 | O=77 | P=6126 | Q=39 | R=6458 | S=62437 | T=1894 | U=2011 | V=32073 | W=NR | X=NR | Y=NR | Z=NR
+r9: A=District Of Columbia | B=DC | C=SBM | D=14799 | E=1536 | F=882 | G=3765 | H=3428 | I=2459 | J=2504 | K=225 | L=6999 | M=7800 | N=163 | O=25 | P=605 | Q=4 | R=1476 | S=4570 | T=540 | U=112 | V=7304 | W=NR | X=NR | Y=NR | Z=NR
+r10: A=Delaware | B=DE | C=HC.gov | D=44842 | E=5839 | F=3702 | G=6424 | H=7349 | I=7686 | J=13161 | K=681 | L=20624 | M=24218 | N=2845 | O=141 | P=2961 | Q=13 | R=4128 | S=18549 | T=317 | U=728 | V=15160 | W=30988 | X=11009 | Y=11279 | Z=33563
+r11: A=Florida | B=FL | C=HC.gov | D=4211902 | E=459551 | F=475922 | G=688847 | H=816224 | I=806412 | J=865894 | K=99052 | L=2035315 | M=2176587 | N=668173 | O=2099 | P=69277 | Q=897 | R=200527 | S=546346 | T=16939 | U=18333 | V=2689311 | W=1274868 | X=2268861 | Y=128926 | Z=4082976
+r12: A=Georgia | B=GA | C=HC.gov | D=1305114 | E=111200 | F=159292 | G=225886 | H=262431 | I=267522 | J=259955 | K=18828 | L=622621 | M=682493 | N=88025 | O=748 | P=80572 | Q=240 | R=124352 | S=195778 | T=6030 | U=8215 | V=801154 | W=668829 | X=548260 | Y=247278 | Z=1057836
+r13: A=Hawaii | B=HI | C=HC.gov | D=22170 | E=1600 | F=1172 | G=2866 | H=4324 | I=4704 | J=7051 | K=453 | L=10193 | M=11977 | N=1473 | O=65 | P=7119 | Q=517 | R=172 | S=7446 | T=348 | U=2471 | V=2559 | W=18853 | X=1844 | Y=7798 | Z=14372
+r14: A=Iowa | B=IA | C=HC.gov | D=111423 | E=8525 | F=9056 | G=16650 | H=19647 | I=19613 | J=37081 | K=851 | L=53794 | M=57629 | N=2896 | O=137 | P=2358 | Q=55 | R=1447 | S=57150 | T=254 | U=807 | V=46319 | W=79203 | X=29324 | Y=55466 | Z=55957
+r15: A=Idaho | B=ID | C=SBM | D=103783 | E=24022 | F=10147 | G=13843 | H=15570 | I=14829 | J=25008 | K=364 | L=48116 | M=55640 | N=3082 | O=979 | P=1931 | Q=154 | R=840 | S=77009 | T=4570 | U=+ | V=15218 | W=NR | X=NR | Y=NR | Z=NR
+r16: A=Illinois | B=IL | C=HC.gov | D=398814 | E=30628 | F=34422 | G=70687 | H=69392 | I=72594 | J=115813 | K=5278 | L=193740 | M=205074 | N=30948 | O=320 | P=33951 | Q=87 | R=14953 | S=168593 | T=2288 | U=3952 | V=143722 | W=266139 | X=101727 | Y=55038 | Z=343776
+r17: A=Indiana | B=IN | C=HC.gov | D=295772 | E=27943 | F=25459 | G=46114 | H=57508 | I=58581 | J=77539 | K=2628 | L=147517 | M=148255 | N=9177 | O=216 | P=10456 | Q=44 | R=7811 | S=97659 | T=796 | U=1905 | V=167708 | W=177001 | X=109594 | Y=71745 | Z=224027
+r18: A=Kansas | B=KS | C=HC.gov | D=171376 | E=15228 | F=17469 | G=27528 | H=33778 | I=32111 | J=43611 | K=1651 | L=82292 | M=89084 | N=9847 | O=762 | P=5055 | Q=62 | R=3702 | S=61636 | T=718 | U=2370 | V=87224 | W=101330 | X=60199 | Y=63776 | Z=107600
+r19: A=Kentucky | B=KY | C=SBM | D=75317 | E=6262 | F=6112 | G=10521 | H=12243 | I=14046 | J=25333 | K=800 | L=33531 | M=41784 | N=2871 | O=60 | P=2762 | Q=34 | R=3218 | S=57603 | T=+ | U=1101 | V=7668 | W=NR | X=NR | Y=NR | Z=NR
+r20: A=Louisiana | B=LA | C=HC.gov | D=212493 | E=16268 | F=18382 | G=33022 | H=44844 | I=44344 | J=53671 | K=1962 | L=105374 | M=107119 | N=4922 | O=429 | P=7324 | Q=40 | R=15348 | S=50979 | T=716 | U=1503 | V=131232 | W=107845 | X=99726 | Y=40192 | Z=172301
+r21: A=Massachusetts | B=MA | C=SBM | D=311199 | E=16369 | F=32070 | G=62285 | H=63381 | I=58878 | J=73184 | K=5032 | L=140837 | M=170362 | N=1819 | O=188 | P=31212 | Q=235 | R=21835 | S=148429 | T=7208 | U=3789 | V=96484 | W=NR | X=NR | Y=NR | Z=NR
+r22: A=Maryland | B=MD | C=SBM | D=213895 | E=13417 | F=21818 | G=40286 | H=38032 | I=38313 | J=51921 | K=10108 | L=93419 | M=120476 | N=28701 | O=210 | P=28814 | Q=250 | R=40746 | S=69628 | T=4727 | U=6180 | V=34639 | W=NR | X=NR | Y=NR | Z=NR
+r23: A=Maine | B=ME | C=SBM | D=62586 | E=7495 | F=3873 | G=8312 | H=9994 | I=10819 | J=21713 | K=380 | L=28989 | M=33597 | N=161 | O=90 | P=613 | Q=10 | R=273 | S=33713 | T=269 | U=1560 | V=25897 | W=NR | X=NR | Y=NR | Z=NR
+r24: A=Michigan | B=MI | C=HC.gov | D=418100 | E=47262 | F=35290 | G=64337 | H=68516 | I=73894 | J=124886 | K=3915 | L=209006 | M=209094 | N=9095 | O=1101 | P=12196 | Q=87 | R=12045 | S=161273 | T=3232 | U=3950 | V=215121 | W=264131 | X=144874 | Y=89261 | Z=328839
+r25: A=Minnesota | B=MN | C=SBM | D=135001 | E=16630 | F=10076 | G=18602 | H=19557 | I=20258 | J=49320 | K=558 | L=64987 | M=70014 | N=2744 | O=479 | P=3836 | Q=53 | R=2754 | S=82685 | T=687 | U=1903 | V=39860 | W=NR | X=NR | Y=NR | Z=NR
+r26: A=Missouri | B=MO | C=HC.gov | D=359369 | E=27847 | F=30836 | G=55515 | H=72250 | I=73464 | J=96545 | K=2912 | L=179046 | M=180323 | N=6501 | O=810 | P=9151 | Q=107 | R=8877 | S=111415 | T=1215 | U=2631 | V=218662 | W=212097 | X=140771 | Y=119182 | Z=240187
+r27: A=Mississippi | B=MS | C=HC.gov | D=286410 | E=13671 | F=32576 | G=47190 | H=62691 | I=65276 | J=63124 | K=1882 | L=132065 | M=154345 | N=2982 | O=162 | P=5154 | Q=73 | R=32012 | S=36864 | T=1008 | U=842 | V=207313 | W=162916 | X=120512 | Y=182212 | Z=104198
+r28: A=Montana | B=MT | C=HC.gov | D=66336 | E=8732 | F=5535 | G=10666 | H=11856 | I=11081 | J=18236 | K=230 | L=31901 | M=34435 | N=1718 | O=1224 | P=693 | Q=30 | R=134 | S=42774 | T=255 | U=1333 | V=18175 | W=52948 | X=11670 | Y=48827 | Z=17509
+r29: A=North Carolina | B=NC | C=HC.gov | D=1027930 | E=96245 | F=97741 | G=175081 | H=199139 | I=212401 | J=235754 | K=11569 | L=499194 | M=528736 | N=83558 | O=2422 | P=30026 | Q=202 | R=60853 | S=278854 | T=4419 | U=7968 | V=559628 | W=569146 | X=375226 | Y=263246 | Z=764684
+r30: A=North Dakota | B=ND | C=HC.gov | D=38535 | E=9169 | F=3285 | G=5687 | H=6060 | I=4895 | J=9243 | K=196 | L=18974 | M=19561 | N=1030 | O=747 | P=841 | Q=14 | R=764 | S=21921 | T=125 | U=621 | V=12472 | W=30218 | X=7287 | Y=23966 | Z=14569
+r31: A=Nebraska | B=NE | C=HC.gov | D=117882 | E=20821 | F=10831 | G=16686 | H=20795 | I=19674 | J=28357 | K=718 | L=58585 | M=59297 | N=5500 | O=433 | P=2320 | Q=31 | R=1649 | S=51850 | T=245 | U=967 | V=54887 | W=77055 | X=35327 | Y=57719 | Z=60163
+r32: A=New Hampshire | B=NH | C=HC.gov | D=65117 | E=5994 | F=5105 | G=10406 | H=10972 | I=11002 | J=21159 | K=479 | L=30861 | M=34256 | N=2055 | O=60 | P=2085 | Q=13 | R=370 | S=38533 | T=373 | U=700 | V=20928 | W=50034 | X=13028 | Y=27619 | Z=37498
+r33: A=New Jersey | B=NJ | C=SBM | D=397942 | E=31830 | F=35934 | G=70505 | H=65597 | I=74642 | J=108770 | K=10664 | L=186249 | M=211693 | N=44752 | O=430 | P=52420 | Q=532 | R=23845 | S=170119 | T=6166 | U=6007 | V=93671 | W=NR | X=NR | Y=NR | Z=NR
+r34: A=New Mexico | B=NM | C=SBM | D=56472 | E=5171 | F=4309 | G=7097 | H=8332 | I=10408 | J=20059 | K=1096 | L=25343 | M=31129 | N=9771 | O=994 | P=2197 | Q=14 | R=543 | S=24382 | T=476 | U=817 | V=17278 | W=NR | X=NR | Y=NR | Z=NR
+r35: A=Nevada | B=NV | C=SBM | D=99312 | E=15374 | F=7535 | G=13128 | H=16125 | I=17366 | J=27492 | K=2279 | L=46404 | M=52908 | N=9029 | O=520 | P=15980 | Q=230 | R=3060 | S=34286 | T=1654 | U=3404 | V=31149 | W=NR | X=NR | Y=NR | Z=NR
+r36: A=New York | B=NY | C=SBM | D=288681 | E=9541 | F=24411 | G=54974 | H=52328 | I=56193 | J=87370 | K=3864 | L=138026 | M=150655 | N=31994 | O=382 | P=29131 | Q=195 | R=17730 | S=170239 | T=6329 | U=6063 | V=26618 | W=NR | X=NR | Y=NR | Z=NR
+r37: A=Ohio | B=OH | C=HC.gov | D=477793 | E=44881 | F=39605 | G=73190 | H=85876 | I=90703 | J=139058 | K=4480 | L=241633 | M=236160 | N=9955 | O=298 | P=12117 | Q=59 | R=16787 | S=161220 | T=1859 | U=3802 | V=271696 | W=291339 | X=176499 | Y=99079 | Z=378714
+r38: A=Oklahoma | B=OK | C=HC.gov | D=277436 | E=31570 | F=25757 | G=42520 | H=58495 | I=55590 | J=61051 | K=2453 | L=135211 | M=142225 | N=12142 | O=24836 | P=7165 | Q=92 | R=4957 | S=64752 | T=689 | U=7281 | V=155522 | W=158923 | X=106371 | Y=120899 | Z=156537
+r39: A=Oregon | B=OR | C=HC.gov | D=145509 | E=11781 | F=9204 | G=20439 | H=25987 | I=28611 | J=48137 | K=1350 | L=66044 | M=79465 | N=8918 | O=755 | P=9353 | Q=208 | R=1422 | S=86343 | T=1076 | U=3970 | V=33464 | W=116964 | X=19627 | Y=32486 | Z=113023
+r40: A=Pennsylvania | B=PA | C=SBM | D=434571 | E=29509 | F=33454 | G=70070 | H=71757 | I=76969 | J=147870 | K=4942 | L=202242 | M=232329 | N=19141 | O=508 | P=32186 | Q=211 | R=16559 | S=266340 | T=5666 | U=5343 | V=88617 | W=NR | X=NR | Y=NR | Z=NR
+r41: A=Rhode Island | B=RI | C=SBM | D=36121 | E=1679 | F=3215 | G=6456 | H=6447 | I=6852 | J=10533 | K=939 | L=16254 | M=19863 | N=4673 | O=76 | P=1021 | Q=26 | R=1309 | S=15299 | T=1180 | U=34 | V=12503 | W=NR | X=NR | Y=NR | Z=NR
+r42: A=South Carolina | B=SC | C=HC.gov | D=571175 | E=47387 | F=60875 | G=96720 | H=111570 | I=115990 | J=133697 | K=4936 | L=278177 | M=292998 | N=30522 | O=565 | P=10227 | Q=113 | R=31985 | S=127455 | T=2410 | U=3128 | V=364770 | W=296746 | X=243907 | Y=123164 | Z=448011
+r43: A=South Dakota | B=SD | C=HC.gov | D=52974 | E=10635 | F=4794 | G=8079 | H=8858 | I=7342 | J=13050 | K=216 | L=25760 | M=27214 | N=1573 | O=1446 | P=768 | Q=7 | R=433 | S=33830 | T=144 | U=1025 | V=13748 | W=43503 | X=7898 | Y=33974 | Z=19000
+r44: A=Tennessee | B=TN | C=HC.gov | D=555103 | E=38502 | F=52156 | G=98062 | H=113563 | I=118228 | J=129103 | K=5489 | L=277956 | M=277147 | N=31327 | O=521 | P=12315 | Q=73 | R=22342 | S=149412 | T=2035 | U=3662 | V=333416 | W=304882 | X=218894 | Y=158934 | Z=396169
+r45: A=Texas | B=TX | C=HC.gov | D=3484632 | E=428818 | F=415323 | G=565343 | H=654226 | I=663716 | J=679353 | K=77853 | L=1654391 | M=1830241 | N=620578 | O=4621 | P=162401 | Q=782 | R=143046 | S=390260 | T=10777 | U=18481 | V=2133686 | W=1247267 | X=1616787 | Y=473635 | Z=3010997
+r46: A=Utah | B=UT | C=HC.gov | D=366939 | E=104234 | F=46738 | G=63408 | H=58110 | I=45562 | J=45635 | K=3252 | L=179174 | M=187765 | N=27045 | O=1274 | P=6489 | Q=684 | R=1084 | S=101252 | T=766 | U=3072 | V=225273 | W=172424 | X=167470 | Y=53331 | Z=313608
+r47: A=Virginia | B=VA | C=SBM | D=400058 | E=51966 | F=37200 | G=58560 | H=68155 | I=73872 | J=99924 | K=10381 | L=190840 | M=209218 | N=16954 | O=546 | P=47897 | Q=184 | R=25992 | S=153446 | T=2524 | U=6164 | V=146351 | W=NR | X=NR | Y=NR | Z=NR
+r48: A=Vermont | B=VT | C=SBM | D=30027 | E=1815 | F=2527 | G=4734 | H=5305 | I=5645 | J=9656 | K=345 | L=14317 | M=15709 | N=360 | O=45 | P=313 | Q=15 | R=146 | S=15511 | T=210 | U=+ | V=13427 | W=NR | X=NR | Y=NR | Z=NR
+r49: A=Washington | B=WA | C=SBM | D=272494 | E=18304 | F=26107 | G=47096 | H=49119 | I=48621 | J=76957 | K=6290 | L=123031 | M=149463 | N=21434 | O=2474 | P=34073 | Q=3498 | R=7738 | S=132216 | T=4051 | U=2035 | V=70812 | W=NR | X=NR | Y=NR | Z=NR
+r50: A=Wisconsin | B=WI | C=HC.gov | D=266327 | E=17426 | F=19876 | G=36459 | H=39928 | I=44476 | J=106526 | K=1636 | L=127285 | M=139042 | N=8139 | O=858 | P=7061 | Q=61 | R=4944 | S=140672 | T=756 | U=2223 | V=101613 | W=195385 | X=62803 | Y=96955 | Z=169372
+r51: A=West Virginia | B=WV | C=HC.gov | D=51046 | E=2603 | F=3700 | G=7304 | H=9998 | I=11599 | J=15475 | K=367 | L=24621 | M=26425 | N=641 | O=73 | P=828 | Q=3 | R=610 | S=23432 | T=102 | U=404 | V=24953 | W=34017 | X=16388 | Y=22101 | Z=28945
+r52: A=Wyoming | B=WY | C=HC.gov | D=42293 | E=6470 | F=3864 | G=6595 | H=7209 | I=6620 | J=11365 | K=170 | L=19589 | M=22704 | N=2440 | O=323 | P=520 | Q=24 | R=154 | S=28403 | T=158 | U=769 | V=9502 | W=33319 | X=6534 | Y=32144 | Z=10149
+r53: A=Total | B=Total | C=HC.gov | D=16363133 | E=1733414 | F=1737891 | G=2670288 | H=3119284 | I=3160456 | J=3678763 | K=263037 | L=7889351 | M=8473782 | N=1741096 | O=51666 | P=540852 | Q=5164 | R=776332 | S=3552802 | T=64123 | U=117777 | V=9513321 | W=7577993 | X=7044044 | Y=2974879 | Z=13388254
+r54: A=Total | B=Total | C=SBM | D=5083017 | E=425205 | F=452947 | G=863928 | H=860016 | I=927933 | J=1458122 | K=94853 | L=2398827 | M=2684123 | N=637700 | O=12813 | P=651859 | Q=7298 | R=216204 | S=2107018 | T=155728 | U=91862 | V=1208372 | W=NR | X=NR | Y=NR | Z=NR
+r55: A=Total | B=Total | C=All | D=21446150 | E=2158619 | F=2190838 | G=3534216 | H=3979300 | I=4088389 | J=5136885 | K=357890 | L=10288178 | M=11157905 | N=2378796 | O=64479 | P=1192711 | Q=12462 | R=992536 | S=5659820 | T=219851 | U=209639 | V=10721693 | W=NR | X=NR | Y=NR | Z=NR
+r56: A="+" indicates that a race category is not an option on an SBM's application and thus not a...
+
+### Sheet "(7) by Metal Level": 56 rows x 9 columns (Excel rows 1..56, columns A..I)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Number of Consumers with a Marketplace Plan Selection | E=Catastrophic | F=Bronze | G=Silver | H=Gold | I=Platinum
+r2: A=Alaska | B=AK | C=HC.gov | D=27464 | E=+ | F=11197 | G=3721 | H=12546 | I=+
+r3: A=Alabama | B=AL | C=HC.gov | D=386195 | E=2021 | F=90440 | G=283062 | H=10672 | I=+
+r4: A=Arkansas | B=AR | C=HC.gov | D=156607 | E=+ | F=37722 | G=112935 | H=5950 | I=+
+r5: A=Arizona | B=AZ | C=HC.gov | D=348055 | E=258 | F=128534 | G=201802 | H=17461 | I=+
+r6: A=California | B=CA | C=SBM | D=1784653 | E=15969 | F=460034 | G=1079327 | H=159969 | I=69354
+r7: A=Colorado | B=CO | C=SBM | D=237106 | E=1937 | F=96052 | G=73920 | H=65197 | I=+
+r8: A=Connecticut | B=CT | C=SBM | D=129000 | E=1576 | F=35648 | G=69287 | H=22489 | I=+
+r9: A=District Of Columbia | B=DC | C=SBM | D=14799 | E=420 | F=4565 | G=3207 | H=4168 | I=2439
+r10: A=Delaware | B=DE | C=HC.gov | D=44842 | E=146 | F=11587 | G=13061 | H=19508 | I=540
+r11: A=Florida | B=FL | C=HC.gov | D=4211902 | E=2742 | F=1292350 | G=2674179 | H=226291 | I=16340
+r12: A=Georgia | B=GA | C=HC.gov | D=1305114 | E=1963 | F=351039 | G=870231 | H=79691 | I=2190
+r13: A=Hawaii | B=HI | C=HC.gov | D=22170 | E=223 | F=5691 | G=6075 | H=6620 | I=3561
+r14: A=Iowa | B=IA | C=HC.gov | D=111423 | E=92 | F=41603 | G=34482 | H=35246 | I=+
+r15: A=Idaho | B=ID | C=SBM | D=103783 | E=264 | F=53715 | G=38244 | H=11350 | I=210
+r16: A=Illinois | B=IL | C=HC.gov | D=398814 | E=633 | F=150128 | G=218068 | H=29117 | I=868
+r17: A=Indiana | B=IN | C=HC.gov | D=295772 | E=+ | F=116178 | G=171103 | H=8491 | I=+
+r18: A=Kansas | B=KS | C=HC.gov | D=171376 | E=117 | F=59577 | G=93773 | H=17909 | I=+
+r19: A=Kentucky | B=KY | C=SBM | D=75317 | E=516 | F=30668 | G=37430 | H=6703 | I=+
+r20: A=Louisiana | B=LA | C=HC.gov | D=212493 | E=+ | F=94148 | G=106044 | H=12301 | I=+
+r21: A=Massachusetts | B=MA | C=SBM | D=311199 | E=387 | F=27780 | G=271998 | H=8512 | I=2522
+r22: A=Maryland | B=MD | C=SBM | D=213895 | E=2138 | F=50695 | G=55420 | H=102286 | I=3356
+r23: A=Maine | B=ME | C=SBM | D=62586 | E=501 | F=28427 | G=27456 | H=5716 | I=486
+r24: A=Michigan | B=MI | C=HC.gov | D=418100 | E=1810 | F=191315 | G=202535 | H=22440 | I=+
+r25: A=Minnesota | B=MN | C=SBM | D=135001 | E=3407 | F=63323 | G=42578 | H=25693 | I=+
+r26: A=Missouri | B=MO | C=HC.gov | D=359369 | E=779 | F=147847 | G=196476 | H=14267 | I=+
+r27: A=Mississippi | B=MS | C=HC.gov | D=286410 | E=+ | F=72106 | G=211147 | H=3157 | I=+
+r28: A=Montana | B=MT | C=HC.gov | D=66336 | E=304 | F=39115 | G=20377 | H=6540 | I=+
+r29: A=North Carolina | B=NC | C=HC.gov | D=1027930 | E=2582 | F=421708 | G=527815 | H=75825 | I=+
+r30: A=North Dakota | B=ND | C=HC.gov | D=38535 | E=343 | F=14616 | G=9520 | H=14056 | I=+
+r31: A=Nebraska | B=NE | C=HC.gov | D=117882 | E=33 | F=69146 | G=36639 | H=12064 | I=+
+r32: A=New Hampshire | B=NH | C=HC.gov | D=65117 | E=454 | F=22137 | G=29149 | H=13377 | I=+
+r33: A=New Jersey | B=NJ | C=SBM | D=397942 | E=988 | F=67074 | G=324273 | H=5607 | I=+
+r34: A=New Mexico | B=NM | C=SBM | D=56472 | E=+ | F=2418 | G=13514 | H=40540 | I=+
+r35: A=Nevada | B=NV | C=SBM | D=99312 | E=272 | F=36499 | G=58066 | H=4475 | I=+
+r36: A=New York | B=NY | C=SBM | D=288681 | E=2994 | F=135986 | G=105329 | H=28060 | I=16312
+r37: A=Ohio | B=OH | C=HC.gov | D=477793 | E=2342 | F=241564 | G=211342 | H=22545 | I=+
+r38: A=Oklahoma | B=OK | C=HC.gov | D=277436 | E=318 | F=128536 | G=109543 | H=39039 | I=+
+r39: A=Oregon | B=OR | C=HC.gov | D=145509 | E=+ | F=65644 | G=55874 | H=23991 | I=+
+r40: A=Pennsylvania | B=PA | C=SBM | D=434571 | E=1258 | F=100226 | G=148314 | H=184773 | I=+
+r41: A=Rhode Island | B=RI | C=SBM | D=36121 | E=+ | F=7886 | G=14350 | H=13021 | I=864
+r42: A=South Carolina | B=SC | C=HC.gov | D=571175 | E=2296 | F=293049 | G=250303 | H=25527 | I=+
+r43: A=South Dakota | B=SD | C=HC.gov | D=52974 | E=276 | F=25929 | G=20464 | H=6305 | I=+
+r44: A=Tennessee | B=TN | C=HC.gov | D=555103 | E=402 | F=223916 | G=316386 | H=14399 | I=+
+r45: A=Texas | B=TX | C=HC.gov | D=3484632 | E=2182 | F=570001 | G=1722670 | H=1189779 | I=+
+r46: A=Utah | B=UT | C=HC.gov | D=366939 | E=+ | F=154242 | G=203338 | H=8440 | I=919
+r47: A=Virginia | B=VA | C=SBM | D=400058 | E=1795 | F=160289 | G=138917 | H=94941 | I=4116
+r48: A=Vermont | B=VT | C=SBM | D=30027 | E=197 | F=9486 | G=12726 | H=6251 | I=1367
+r49: A=Washington | B=WA | C=SBM | D=272494 | E=368 | F=96856 | G=118852 | H=56418 | I=+
+r50: A=Wisconsin | B=WI | C=HC.gov | D=266327 | E=1385 | F=129867 | G=101471 | H=32528 | I=1076
+r51: A=West Virginia | B=WV | C=HC.gov | D=51046 | E=66 | F=21498 | G=20226 | H=9256 | I=+
+r52: A=Wyoming | B=WY | C=HC.gov | D=42293 | E=+ | F=8096 | G=9390 | H=24807 | I=+
+r53: A=Total | B=Total | C=HC.gov | D=16363133 | E=23767 | F=5230526 | G=9043201 | H=2040145 | I=25494
+r54: A=Total | B=Total | C=SBM | D=5083017 | E=34987 | F=1467627 | G=2633208 | H=846169 | I=101026
+r55: A=Total | B=Total | C=All | D=21446150 | E=58754 | F=6698153 | G=11676409 | H=2886314 | I=126520
+r56: A="+" indicates that a state Marketplace does not have any catastrophic or platinum metal le...
+
+### Sheet "(8) by FPL": 55 rows x 14 columns (Excel rows 1..55, columns A..N)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Number of Consumers with a Marketplace Plan Selection | E=<100% of FPL | F=≥100% to ≤138% of FPL | G=≥100% to ≤150% of FPL | H=>150% to ≤200% of FPL | I=>200% to ≤250% of FPL | J=>250% to ≤300% of FPL | K=>300% to ≤400% of FPL | L=>400% to ≤500% of FPL | M=>500% of FPL | N=Other/Unknown FPL
+r2: A=Alaska | B=AK | C=HC.gov | D=27464 | E=276 | F=1103 | G=2317 | H=4323 | I=4808 | J=3661 | K=4930 | L=1978 | M=3214 | N=1957
+r3: A=Alabama | B=AL | C=HC.gov | D=386195 | E=5879 | F=192991 | G=228883 | H=63542 | I=35197 | J=17075 | K=19036 | L=6704 | M=7083 | N=2796
+r4: A=Arkansas | B=AR | C=HC.gov | D=156607 | E=814 | F=15913 | G=56640 | H=37708 | I=22008 | J=11883 | K=11736 | L=4575 | M=5909 | N=5334
+r5: A=Arizona | B=AZ | C=HC.gov | D=348055 | E=2246 | F=28576 | G=114197 | H=74262 | I=51724 | J=28187 | K=29585 | L=12783 | M=17417 | N=17654
+r6: A=California | B=CA | C=SBM | D=1784653 | E=10307 | F=87175 | G=278204 | H=438827 | I=285784 | J=227125 | K=231051 | L=97931 | M=123811 | N=91613
+r7: A=Colorado | B=CO | C=SBM | D=237106 | E=2962 | F=4032 | G=14786 | H=36414 | I=31516 | J=29074 | K=36073 | L=18387 | M=27540 | N=40354
+r8: A=Connecticut | B=CT | C=SBM | D=129000 | E=3060 | F=8795 | G=12991 | H=21792 | I=17479 | J=13063 | K=19019 | L=9992 | M=16508 | N=15096
+r9: A=District Of Columbia | B=DC | C=SBM | D=14799 | E=422 | F=89 | G=120 | H=161 | I=700 | J=590 | K=789 | L=673 | M=639 | N=10705
+r10: A=Delaware | B=DE | C=HC.gov | D=44842 | E=372 | F=2909 | G=8374 | H=9167 | I=7182 | J=5199 | K=6000 | L=2803 | M=4098 | N=1647
+r11: A=Florida | B=FL | C=HC.gov | D=4211902 | E=69772 | F=2256043 | G=2718501 | H=603978 | I=323140 | J=168069 | K=154275 | L=57884 | M=75610 | N=40673
+r12: A=Georgia | B=GA | C=HC.gov | D=1305114 | E=16977 | F=709984 | G=834058 | H=195566 | I=87098 | J=50904 | K=47648 | L=20017 | M=28259 | N=24587
+r13: A=Hawaii | B=HI | C=HC.gov | D=22170 | E=922 | F=1118 | G=3006 | H=4495 | I=3658 | J=2667 | K=3128 | L=1264 | M=1853 | N=1177
+r14: A=Iowa | B=IA | C=HC.gov | D=111423 | E=552 | F=5794 | G=23908 | H=22022 | I=16233 | J=11558 | K=17245 | L=7304 | M=7851 | N=4750
+r15: A=Idaho | B=ID | C=SBM | D=103783 | E=2469 | F=2831 | G=8193 | H=24051 | I=23241 | J=14181 | K=13819 | L=4864 | M=4553 | N=8412
+r16: A=Illinois | B=IL | C=HC.gov | D=398814 | E=6462 | F=36049 | G=111131 | H=83106 | I=52762 | J=34316 | K=49278 | L=20532 | M=25004 | N=16223
+r17: A=Indiana | B=IN | C=HC.gov | D=295772 | E=1567 | F=32241 | G=112127 | H=62914 | I=30602 | J=22941 | K=24541 | L=11004 | M=14717 | N=15359
+r18: A=Kansas | B=KS | C=HC.gov | D=171376 | E=2880 | F=65642 | G=82256 | H=28288 | I=17841 | J=13165 | K=12434 | L=4909 | M=5804 | N=3799
+r19: A=Kentucky | B=KY | C=SBM | D=75317 | E=642 | F=2824 | G=8534 | H=18573 | I=14337 | J=9021 | K=8500 | L=2970 | M=2701 | N=10039
+r20: A=Louisiana | B=LA | C=HC.gov | D=212493 | E=1208 | F=25267 | G=93833 | H=48480 | I=22404 | J=15973 | K=15042 | L=5965 | M=6716 | N=2872
+r21: A=Massachusetts | B=MA | C=SBM | D=311199 | E=21629 | F=16461 | G=30595 | H=59859 | I=56648 | J=37016 | K=36494 | L=15111 | M=16806 | N=37041
+r22: A=Maryland | B=MD | C=SBM | D=213895 | E=21843 | F=9704 | G=21599 | H=42744 | I=31951 | J=19113 | K=22255 | L=8145 | M=8385 | N=37860
+r23: A=Maine | B=ME | C=SBM | D=62586 | E=1991 | F=1749 | G=4581 | H=10777 | I=10493 | J=7503 | K=11292 | L=4539 | M=5272 | N=6138
+r24: A=Michigan | B=MI | C=HC.gov | D=418100 | E=3486 | F=32012 | G=122597 | H=83921 | I=64882 | J=41378 | K=45739 | L=18494 | M=21085 | N=16518
+r25: A=Minnesota | B=MN | C=SBM | D=135001 | E=57 | F=43 | G=55 | H=100 | I=24259 | J=19320 | K=24853 | L=9917 | M=9979 | N=46461
+r26: A=Missouri | B=MO | C=HC.gov | D=359369 | E=1644 | F=47546 | G=154459 | H=84660 | I=40143 | J=20702 | K=26611 | L=10091 | M=11988 | N=9071
+r27: A=Mississippi | B=MS | C=HC.gov | D=286410 | E=2147 | F=181844 | G=210749 | H=44647 | I=14229 | J=6168 | K=4626 | L=1289 | M=1195 | N=1360
+r28: A=Montana | B=MT | C=HC.gov | D=66336 | E=220 | F=2730 | G=8522 | H=12718 | I=10385 | J=9416 | K=11437 | L=5074 | M=5887 | N=2677
+r29: A=North Carolina | B=NC | C=HC.gov | D=1027930 | E=18655 | F=338504 | G=507098 | H=164873 | I=116223 | J=69651 | K=71960 | L=29309 | M=35817 | N=14344
+r30: A=North Dakota | B=ND | C=HC.gov | D=38535 | E=412 | F=1344 | G=3770 | H=8251 | I=6911 | J=4961 | K=6496 | L=2793 | M=3788 | N=1153
+r31: A=Nebraska | B=NE | C=HC.gov | D=117882 | E=457 | F=7679 | G=25158 | H=20140 | I=22164 | J=15407 | K=17179 | L=6628 | M=8191 | N=2558
+r32: A=New Hampshire | B=NH | C=HC.gov | D=65117 | E=468 | F=2490 | G=8484 | H=11132 | I=8604 | J=6540 | K=10200 | L=5122 | M=6244 | N=8323
+r33: A=New Jersey | B=NJ | C=SBM | D=397942 | E=17601 | F=37105 | G=69867 | H=84524 | I=58023 | J=41009 | K=55586 | L=22765 | M=23393 | N=25174
+r34: A=New Mexico | B=NM | C=SBM | D=56472 | E=933 | F=3940 | G=6747 | H=10923 | I=9466 | J=7040 | K=7720 | L=3216 | M=3518 | N=6909
+r35: A=Nevada | B=NV | C=SBM | D=99312 | E=2447 | F=10739 | G=22471 | H=22252 | I=17491 | J=9336 | K=8902 | L=3451 | M=3221 | N=9741
+r36: A=New York | B=NY | C=SBM | D=288681 | E=269 | F=491 | G=702 | H=1011 | I=62043 | J=47398 | K=53159 | L=20888 | M=20104 | N=83107
+r37: A=Ohio | B=OH | C=HC.gov | D=477793 | E=2771 | F=49266 | G=166814 | H=100062 | I=64466 | J=36840 | K=40623 | L=17021 | M=20756 | N=28440
+r38: A=Oklahoma | B=OK | C=HC.gov | D=277436 | E=1713 | F=42707 | G=120013 | H=65977 | I=39446 | J=20597 | K=15038 | L=5261 | M=5856 | N=3535
+r39: A=Oregon | B=OR | C=HC.gov | D=145509 | E=697 | F=3030 | G=11190 | H=23021 | I=22024 | J=17222 | K=28281 | L=13896 | M=18756 | N=10422
+r40: A=Pennsylvania | B=PA | C=SBM | D=434571 | E=10512 | F=43893 | G=81714 | H=93171 | I=67886 | J=44920 | K=53541 | L=22412 | M=23867 | N=36548
+r41: A=Rhode Island | B=RI | C=SBM | D=36121 | E=70 | F=3969 | G=6117 | H=8500 | I=5859 | J=4032 | K=4223 | L=1665 | M=1752 | N=3903
+r42: A=South Carolina | B=SC | C=HC.gov | D=571175 | E=9682 | F=253158 | G=301553 | H=85420 | I=63889 | J=34613 | K=36669 | L=14930 | M=17089 | N=7330
+r43: A=South Dakota | B=SD | C=HC.gov | D=52974 | E=215 | F=4508 | G=8821 | H=9608 | I=10781 | J=7344 | K=8232 | L=3602 | M=3730 | N=641
+r44: A=Tennessee | B=TN | C=HC.gov | D=555103 | E=11639 | F=261406 | G=310781 | H=87056 | I=52690 | J=30134 | K=27910 | L=10685 | M=13694 | N=10514
+r45: A=Texas | B=TX | C=HC.gov | D=3484632 | E=79915 | F=1852128 | G=2133460 | H=487028 | I=329839 | J=158724 | K=137789 | L=52122 | M=64567 | N=41188
+r46: A=Utah | B=UT | C=HC.gov | D=366939 | E=7789 | F=51421 | G=133065 | H=63739 | I=54772 | J=35969 | K=35573 | L=14056 | M=15485 | N=6491
+r47: A=Virginia | B=VA | C=SBM | D=400058 | E=20661 | F=56894 | G=110912 | H=76514 | I=60046 | J=35792 | K=37897 | L=15343 | M=18504 | N=24389
+r48: A=Vermont | B=VT | C=SBM | D=30027 | E=393 | F=840 | G=2227 | H=5996 | I=5353 | J=4054 | K=5155 | L=2492 | M=3145 | N=1212
+r49: A=Washington | B=WA | C=SBM | D=272494 | E=11823 | F=5192 | G=21588 | H=56342 | I=42270 | J=23347 | K=33913 | L=16887 | M=23106 | N=43218
+r50: A=Wisconsin | B=WI | C=HC.gov | D=266327 | E=1392 | F=46571 | G=64398 | H=41585 | I=34092 | J=26372 | K=41850 | L=18914 | M=24041 | N=13683
+r51: A=West Virginia | B=WV | C=HC.gov | D=51046 | E=199 | F=4714 | G=17243 | H=11592 | I=6756 | J=4220 | K=5309 | L=2242 | M=2826 | N=659
+r52: A=Wyoming | B=WY | C=HC.gov | D=42293 | E=390 | F=6339 | G=8054 | H=6362 | I=7536 | J=5273 | K=6429 | L=3109 | M=4582 | N=558
+r53: A=Total | B=Total | C=HC.gov | D=16363133 | E=253818 | F=6563027 | G=8705460 | H=2649643 | I=1644489 | J=937129 | K=972829 | L=392360 | M=489112 | N=318293
+r54: A=Total | B=Total | C=SBM | D=5083017 | E=130091 | F=296766 | G=702003 | H=1012531 | I=824845 | J=592934 | K=664241 | L=281648 | M=336804 | N=537920
+r55: A=Total | B=Total | C=All | D=21446150 | E=383909 | F=6859793 | G=9407463 | H=3662174 | I=2469334 | J=1530063 | K=1637070 | L=674008 | M=825916 | N=856213
+
+### Sheet "(9) Dental": 55 rows x 11 columns (Excel rows 1..55, columns A..K)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Number of Consumers with a Marketplace Standalone Dental Plan (SADP) Selection | E=Age < 18 | F=Age 18-25 | G=Age 26-34 | H=Age 35-44 | I=Age 45-54 | J=Age 55-64 | K=Age ≥65
+r2: A=Alaska | B=AK | C=HC.gov | D=5398 | E=305 | F=329 | G=1289 | H=1272 | I=1015 | J=1123 | K=65
+r3: A=Alabama | B=AL | C=HC.gov | D=65920 | E=923 | F=7514 | G=14162 | H=14115 | I=13578 | J=15089 | K=539
+r4: A=Arkansas | B=AR | C=HC.gov | D=11653 | E=2517 | F=861 | G=1834 | H=2111 | I=1834 | J=2352 | K=144
+r5: A=Arizona | B=AZ | C=HC.gov | D=34673 | E=4836 | F=2621 | G=5884 | H=5958 | I=5864 | J=9058 | K=452
+r6: A=California | B=CA | C=SBM | D=350468 | E=18535 | F=29602 | G=85159 | H=66888 | I=61538 | J=84567 | K=4179
+r7: A=Colorado | B=CO | C=SBM | D=75112 | E=7882 | F=4966 | G=16736 | H=15660 | I=11522 | J=14960 | K=3386
+r8: A=Connecticut | B=CT | C=SBM | D=14055 | E=877 | F=1312 | G=3073 | H=2211 | I=2410 | J=3834 | K=338
+r9: A=District Of Columbia | B=DC | C=SBM | D=4262 | E=323 | F=186 | G=1044 | H=1125 | I=747 | J=591 | K=246
+r10: A=Delaware | B=DE | C=HC.gov | D=4319 | E=407 | F=324 | G=661 | H=820 | I=756 | J=1255 | K=96
+r11: A=Florida | B=FL | C=HC.gov | D=249497 | E=26347 | F=24032 | G=40611 | H=46303 | I=48945 | J=59799 | K=3460
+r12: A=Georgia | B=GA | C=HC.gov | D=89198 | E=9076 | F=9076 | G=16804 | H=17241 | I=17469 | J=18530 | K=1002
+r13: A=Hawaii | B=HI | C=HC.gov | D=9145 | E=724 | F=464 | G=1206 | H=1824 | I=1932 | J=2825 | K=170
+r14: A=Iowa | B=IA | C=HC.gov | D=15843 | E=1252 | F=1264 | G=2907 | H=3027 | I=2664 | J=4570 | K=159
+r15: A=Idaho | B=ID | C=SBM | D=17982 | E=5167 | F=1576 | G=2934 | H=3060 | I=2311 | J=2752 | K=182
+r16: A=Illinois | B=IL | C=HC.gov | D=77566 | E=5683 | F=5704 | G=15671 | H=14397 | I=13902 | J=21226 | K=983
+r17: A=Indiana | B=IN | C=HC.gov | D=18306 | E=1889 | F=1375 | G=3118 | H=3586 | I=3393 | J=4724 | K=221
+r18: A=Kansas | B=KS | C=HC.gov | D=13433 | E=1172 | F=1292 | G=2519 | H=2739 | I=2399 | J=3177 | K=135
+r19: A=Kentucky | B=KY | C=SBM | D=8828 | E=977 | F=906 | G=1861 | H=1742 | I=1374 | J=1823 | K=145
+r20: A=Louisiana | B=LA | C=HC.gov | D=17545 | E=769 | F=1272 | G=2980 | H=3824 | I=3666 | J=4855 | K=179
+r21: A=Massachusetts | B=MA | C=SBM | D=146305 | E=9414 | F=13961 | G=30283 | H=28060 | I=24590 | J=32022 | K=7975
+r22: A=Maryland | B=MD | C=SBM | D=13789 | E=1921 | F=1455 | G=2518 | H=2020 | I=1474 | J=1564 | K=2837
+r23: A=Maine | B=ME | C=SBM | D=7953 | E=1246 | F=463 | G=1325 | H=1591 | I=1318 | J=1820 | K=190
+r24: A=Michigan | B=MI | C=HC.gov | D=67514 | E=9567 | F=4809 | G=12207 | H=12778 | I=11003 | J=16468 | K=682
+r25: A=Minnesota | B=MN | C=SBM | D=34243 | E=3826 | F=2632 | G=7789 | H=6194 | I=4932 | J=8387 | K=483
+r26: A=Missouri | B=MO | C=HC.gov | D=22480 | E=1906 | F=1676 | G=4242 | H=4497 | I=4064 | J=5851 | K=244
+r27: A=Mississippi | B=MS | C=HC.gov | D=9214 | E=896 | F=967 | G=1467 | H=1660 | I=1811 | J=2340 | K=73
+r28: A=Montana | B=MT | C=HC.gov | D=14375 | E=2157 | F=1095 | G=2771 | H=2838 | I=2261 | J=3173 | K=80
+r29: A=North Carolina | B=NC | C=HC.gov | D=83211 | E=5251 | F=6677 | G=16908 | H=16780 | I=16692 | J=20104 | K=799
+r30: A=North Dakota | B=ND | C=HC.gov | D=3438 | E=355 | F=269 | G=796 | H=785 | I=515 | J=691 | K=27
+r31: A=Nebraska | B=NE | C=HC.gov | D=8515 | E=1858 | F=641 | G=1305 | H=1693 | I=1409 | J=1527 | K=82
+r32: A=New Hampshire | B=NH | C=HC.gov | D=10127 | E=1301 | F=704 | G=1953 | H=1799 | I=1666 | J=2614 | K=90
+r33: A=New Jersey | B=NJ | C=SBM | D=124298 | E=11481 | F=11559 | G=27411 | H=22451 | I=21707 | J=26380 | K=3309
+r34: A=New Mexico | B=NM | C=SBM | D=15026 | E=1750 | F=1144 | G=2537 | H=2587 | I=2566 | J=4206 | K=236
+r35: A=Nevada | B=NV | C=SBM | D=20984 | E=3837 | F=1524 | G=3582 | H=4029 | I=3342 | J=4335 | K=331
+r36: A=New York | B=NY | C=SBM | D=26096 | E=1079 | F=2061 | G=5801 | H=5584 | I=4922 | J=6476 | K=173
+r37: A=Ohio | B=OH | C=HC.gov | D=38532 | E=4399 | F=2577 | G=7398 | H=7122 | I=6597 | J=9950 | K=489
+r38: A=Oklahoma | B=OK | C=HC.gov | D=31527 | E=6478 | F=2540 | G=4684 | H=5854 | I=5046 | J=6681 | K=244
+r39: A=Oregon | B=OR | C=HC.gov | D=36626 | E=2373 | F=2263 | G=7191 | H=8369 | I=7088 | J=9024 | K=318
+r40: A=Pennsylvania | B=PA | C=SBM | D=101947 | E=7125 | F=8418 | G=21981 | H=19602 | I=16859 | J=26353 | K=1609
+r41: A=Rhode Island | B=RI | C=SBM | D=20044 | E=805 | F=1661 | G=3958 | H=3579 | I=3669 | J=5434 | K=938
+r42: A=South Carolina | B=SC | C=HC.gov | D=42803 | E=5348 | F=3850 | G=8057 | H=7787 | I=7498 | J=10040 | K=223
+r43: A=South Dakota | B=SD | C=HC.gov | D=4241 | E=241 | F=357 | G=952 | H=1025 | I=692 | J=941 | K=33
+r44: A=Tennessee | B=TN | C=HC.gov | D=44504 | E=2762 | F=3636 | G=9598 | H=8888 | I=8583 | J=10703 | K=334
+r45: A=Texas | B=TX | C=HC.gov | D=307869 | E=51142 | F=30670 | G=52267 | H=55876 | I=52714 | J=60419 | K=4781
+r46: A=Utah | B=UT | C=HC.gov | D=40317 | E=11054 | F=3757 | G=8255 | H=7205 | I=5119 | J=4710 | K=217
+r47: A=Virginia | B=VA | C=SBM | D=71291 | E=8716 | F=5725 | G=12851 | H=12784 | I=12418 | J=17017 | K=1780
+r48: A=Vermont | B=VT | C=SBM | D=3292 | E=247 | F=251 | G=507 | H=602 | I=520 | J=894 | K=271
+r49: A=Washington | B=WA | C=SBM | D=86797 | E=12844 | F=8549 | G=17411 | H=16084 | I=13277 | J=16174 | K=2458
+r50: A=Wisconsin | B=WI | C=HC.gov | D=35777 | E=2129 | F=2657 | G=7221 | H=6593 | I=6134 | J=10741 | K=302
+r51: A=West Virginia | B=WV | C=HC.gov | D=4073 | E=149 | F=295 | G=604 | H=715 | I=875 | J=1359 | K=76
+r52: A=Wyoming | B=WY | C=HC.gov | D=7300 | E=579 | F=684 | G=1598 | H=1544 | I=1312 | J=1543 | K=40
+r53: A=Total | B=Total | C=HC.gov | D=1424939 | E=165845 | F=126252 | G=259120 | H=271025 | I=258496 | J=327462 | K=16739
+r54: A=Total | B=Total | C=SBM | D=1142772 | E=98052 | F=97951 | G=248761 | H=215853 | I=191496 | J=259589 | K=31066
+r55: A=Total | B=Total | C=All | D=2567711 | E=263897 | F=224203 | G=507881 | H=486878 | I=449992 | J=587051 | K=47805
+
+### Sheet "(10) BHP": 4 rows x 14 columns (Excel rows 1..4, columns A..N)
+(whole sheet shown; Excel row numbers)
+r1: A=State Name | B=State Abbr. | C=Platform | D=Basic Health Program (BHP) Plan Enrollment | E=BHP, New Enrollee | F=BHP, Re-enrollee | G=Age < 18 | H=Age 18-25 | I=Age 26-34 | J=Age 35-44 | K=Age 45-54 | L=Age ≥55 | M=Male | N=Female
+r2: A=Minnesota | B=MN | C=SBM | D=103638 | E=NR | F=NR | G=1751 | H=13732 | I=24639 | J=25967 | K=18324 | L=19225 | M=47528 | N=56110
+r3: A=New York | B=NY | C=SBM | D=1198396 | E=8571 | F=1189825 | G=0 | H=179382 | I=293232 | J=286621 | K=243000 | L=196161 | M=582979 | N=615417
+r4: A=Total | B=Total | C=SBM | D=1302034 | E=NR | F=NR | G=1751 | H=193114 | I=317871 | J=312588 | K=261324 | L=215386 | M=630507 | N=671527

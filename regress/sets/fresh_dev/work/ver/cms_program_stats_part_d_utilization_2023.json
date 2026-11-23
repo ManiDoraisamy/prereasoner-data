@@ -1,0 +1,30 @@
+{
+ "id": "cms_program_stats_part_d_utilization_2023",
+ "answers": [
+  {
+   "id": "cms_program_stats_part_d_utilization_2023#1",
+   "answer": "74.81698021",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 1_CPS_12UPD', header=None)\nsection_idx = df[df[0].astype(str).str.contains('Average Prescription Drug Events', na=False) & df[0].astype(str).str.contains('Enrollee', na=False)].index[0]\nsub_df = df.iloc[section_idx:section_idx + 6]\nrow = sub_df[sub_df[0].astype(str).str.contains('Deemed Eligible', na=False)].iloc[0]\ncol = [c for c in df.columns if df.iloc[3, c] == 2023 and 'Medicare Advantage' in str(df.iloc[4, c])][0]\nresult = float(row[col])"
+  },
+  {
+   "id": "cms_program_stats_part_d_utilization_2023#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 1_CPS_12UPD', header=None)\nrow = df[df[0].astype(str).str.strip() == 'Overall Enrollees'].iloc[0]\nmapd_col = [c for c in df.columns if df.iloc[3, c] == 2023 and 'Medicare Advantage' in str(df.iloc[4, c])][0]\npdp_col = [c for c in df.columns if df.iloc[3, c] == 2023 and 'Stand-Alone' in str(df.iloc[4, c])][0]\nresult = 'yes' if float(row[mapd_col]) > float(row[pdp_col]) else 'no'"
+  },
+  {
+   "id": "cms_program_stats_part_d_utilization_2023#3",
+   "answer": "[\"New York\", \"Connecticut\", \"Kentucky\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 6_CPS_12UPD', header=None)\nstates_50 = {\n    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',\n    'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',\n    'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi',\n    'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',\n    'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania',\n    'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',\n    'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'\n}\nmask = df[0].astype(str).str.strip().isin(states_50)\ndf_states = df[mask].copy()\ndf_states[7] = pd.to_numeric(df_states[7], errors='coerce')\ntop3 = df_states.sort_values(by=7, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()"
+  },
+  {
+   "id": "cms_program_stats_part_d_utilization_2023#4",
+   "answer": "7091569",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 5_CPS_12UPD', header=None)\nfemale = df.loc[df[0].astype(str).str.strip() == 'Female', 1].values[0]\nmale = df.loc[df[0].astype(str).str.strip() == 'Male', 1].values[0]\nresult = int(female) - int(male)"
+  },
+  {
+   "id": "cms_program_stats_part_d_utilization_2023#6",
+   "answer": "33863",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 10_CPS_12UPD', header=None)\nrow = df[df[0].astype(str).str.strip() == '65 Years and Over'].iloc[0]\ncol_idx = [c for c in df.columns if 'Catastrophic' in str(df.iloc[3, c]) and 'Gross Drug Cost' in str(df.iloc[3, c])][0]\nresult = float(row[col_idx])"
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "file": "nydoh_nursing_home_bed_census.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 809,
+   "cols": 19,
+   "shown_whole": false
+  }
+ ],
+ "chars": 25865
+}

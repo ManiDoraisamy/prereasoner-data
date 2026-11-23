@@ -1,0 +1,87 @@
+{
+ "id": "nchs_hus_adult_ed_visits",
+ "file": "nchs_hus_adult_ed_visits.xlsx",
+ "questions": [
+  {
+   "question": "In 2019, what percentage of adults aged 18 to 64 covered by Medicaid had at least one emergency department visit in the previous 12 months?",
+   "sheet": "A",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "37.7",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\none_or_more_col = None\nfor c in range(1, 47):\n    if df.iloc[4, c] == 2019 or str(df.iloc[4, c]).strip() == '2019':\n        one_or_more_col = c\n        break\n\nmedicaid_row = None\nfor r in range(len(df)):\n    if 'Medicaid' in str(df.iloc[r, 0]):\n        medicaid_row = r\n        break\n\nresult = float(df.iloc[medicaid_row, one_or_more_col])",
+   "qid": "nchs_hus_adult_ed_visits#1",
+   "pass1": true,
+   "result": 37.7,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between men and women aged 18 and over, which sex had a higher age-adjusted percentage of adults with two or more emergency department visits in 2019?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Female",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\ntwo_or_more_col = None\nfor c in range(47, df.shape[1]):\n    if df.iloc[4, c] == 2019 or str(df.iloc[4, c]).strip() == '2019':\n        two_or_more_col = c\n        break\n\nmale_row = df[df[0].astype(str).str.strip() == 'Male'].index[0]\nfemale_row = df[df[0].astype(str).str.strip() == 'Female'].index[0]\n\nmale_val = float(df.iloc[male_row, two_or_more_col])\nfemale_val = float(df.iloc[female_row, two_or_more_col])\n\nresult = 'Female' if female_val > male_val else 'Male'",
+   "qid": "nchs_hus_adult_ed_visits#2",
+   "pass1": true,
+   "result": "Female",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which two geographic regions had the highest age-adjusted percentages of adults with one or more emergency department visits in 2019?",
+   "sheet": "A",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"South\", \"Northeast\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\ncol_2019 = None\nfor c in range(1, 47):\n    if df.iloc[4, c] == 2019 or str(df.iloc[4, c]).strip() == '2019':\n        col_2019 = c\n        break\n\nregions = ['Northeast', 'Midwest', 'South', 'West']\ndata = {}\nfor r in range(len(df)):\n    label = str(df.iloc[r, 0]).strip()\n    if label in regions:\n        data[label] = float(df.iloc[r, col_2019])\n\nsorted_regions = sorted(data.keys(), key=lambda k: data[k], reverse=True)\nresult = sorted_regions[:2]",
+   "qid": "nchs_hus_adult_ed_visits#3",
+   "pass1": true,
+   "result": [
+    "South",
+    "Northeast"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In which year between 1997 and 2019 was the crude rate of adults aged 18 and over with one or more emergency department visits at its lowest?",
+   "sheet": "A",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "1999",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\ncrude_row = None\nfor r in range(len(df)):\n    if 'crude' in str(df.iloc[r, 0]).lower():\n        crude_row = r\n        break\n\nyears_data = {}\nfor c in range(1, 47):\n    year_val = str(df.iloc[4, c]).strip()\n    if year_val.isdigit():\n        val = float(df.iloc[crude_row, c])\n        years_data[year_val] = val\n\nresult = min(years_data, key=years_data.get)",
+   "qid": "nchs_hus_adult_ed_visits#4",
+   "pass1": true,
+   "result": "1999",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2019, was the percentage of adults with two or more emergency department visits higher for those living outside metropolitan statistical areas than for those living within them?",
+   "sheet": "A",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\ncol_2019_two = None\nfor c in range(47, df.shape[1]):\n    if df.iloc[4, c] == 2019 or str(df.iloc[4, c]).strip() == '2019':\n        col_2019_two = c\n        break\n\nwithin_row = df[df[0].astype(str).str.contains('Within MSA', na=False)].index[0]\noutside_row = df[df[0].astype(str).str.contains('Outside MSA', na=False)].index[0]\n\nval_within = float(df.iloc[within_row, col_2019_two])\nval_outside = float(df.iloc[outside_row, col_2019_two])\n\nresult = 'yes' if val_outside > val_within else 'no'",
+   "qid": "nchs_hus_adult_ed_visits#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2019, by how many percentage points did the proportion of seniors aged 75 and over with two or more emergency department visits exceed that of adults aged 65 to 74?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "4.6",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\ncol_2019_two = None\nfor c in range(47, df.shape[1]):\n    if df.iloc[4, c] == 2019 or str(df.iloc[4, c]).strip() == '2019':\n        col_2019_two = c\n        break\n\nrow_65_74 = df[df[0].astype(str).str.contains('65\u201374', na=False)].index[0]\nrow_75_over = df[df[0].astype(str).str.contains('75 years and over', na=False)].index[0]\n\nval_65_74 = float(df.iloc[row_65_74, col_2019_two])\nval_75_over = float(df.iloc[row_75_over, col_2019_two])\n\nresult = round(val_75_over - val_65_74, 2)",
+   "qid": "nchs_hus_adult_ed_visits#6",
+   "pass1": true,
+   "result": 4.6,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

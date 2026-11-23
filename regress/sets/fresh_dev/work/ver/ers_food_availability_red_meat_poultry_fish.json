@@ -1,0 +1,30 @@
+{
+ "id": "ers_food_availability_red_meat_poultry_fish",
+ "answers": [
+  {
+   "id": "ers_food_availability_red_meat_poultry_fish#1",
+   "answer": "2010",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Boneless', header=None)\n\n# Find the header row containing Beef, Chicken\n# In sheet 'Boneless': row 2 has Beef (col C, idx 2), Chicken4 (col H, idx 7), Year is col A (idx 0)\n# Data starts around row 7 (idx 6)\nyear_col = 0\nbeef_col = 2\nchicken_col = 7\n\ndata = df.iloc[6:119, [year_col, beef_col, chicken_col]].dropna()\ndata.columns = ['Year', 'Beef', 'Chicken']\ndata['Year'] = pd.to_numeric(data['Year'])\ndata['Beef'] = pd.to_numeric(data['Beef'])\ndata['Chicken'] = pd.to_numeric(data['Chicken'])\n\nexceeded = data[data['Chicken'] > data['Beef']]\nfirst_year = int(exceeded['Year'].min())\nresult = str(first_year)"
+  },
+  {
+   "id": "ers_food_availability_red_meat_poultry_fish#2",
+   "answer": "203.935209",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Boneless', header=None)\n\n# Year is in column A (0), Total2 is in column L (11)\ndf_data = df.iloc[6:120, [0, 11]].dropna()\ndf_data.columns = ['Year', 'Total']\ndf_data['Year'] = pd.to_numeric(df_data['Year'])\ndf_data['Total'] = pd.to_numeric(df_data['Total'])\n\nrow_2019 = df_data[df_data['Year'] == 2019]\nresult = float(row_2019['Total'].iloc[0])"
+  },
+  {
+   "id": "ers_food_availability_red_meat_poultry_fish#4",
+   "answer": "[\"Beef\", \"Pork\", \"Lamb\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Boneless', header=None)\n\n# Red meats: Beef (col C/2), Veal (col D/3), Pork (col E/4), Lamb (col F/5)\nmeats = {'Beef': 2, 'Veal': 3, 'Pork': 4, 'Lamb': 5}\n\n# Find row for 2019\nyears = pd.to_numeric(df.iloc[6:120, 0], errors='coerce')\nrow_idx = years[years == 2019].index[0]\n\nvals = {meat: float(df.iloc[row_idx, col]) for meat, col in meats.items()}\ntop_3 = sorted(vals, key=vals.get, reverse=True)[:3]\nresult = top_3"
+  },
+  {
+   "id": "ers_food_availability_red_meat_poultry_fish#5",
+   "answer": "11",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Boneless', header=None)\n\n# Year is col 0, Chicken is col 7\ndata = df.iloc[6:120, [0, 7]].copy()\ndata.columns = ['Year', 'Chicken']\ndata['Year'] = pd.to_numeric(data['Year'], errors='coerce')\ndata['Chicken'] = pd.to_numeric(data['Chicken'], errors='coerce')\n\nsubset = data[(data['Year'] >= 2000) & (data['Year'] <= 2020)]\nresult = int((subset['Chicken'] > 60).sum())"
+  },
+  {
+   "id": "ers_food_availability_red_meat_poultry_fish#6",
+   "answer": "16.22",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Carcass', header=None)\n\n# Year is col 0, Turkey is col 8 (I)\ndata = df.iloc[6:120, [0, 8]].copy()\ndata.columns = ['Year', 'Turkey']\ndata['Year'] = pd.to_numeric(data['Year'], errors='coerce')\ndata['Turkey'] = pd.to_numeric(data['Turkey'], errors='coerce')\n\nsubset = data[(data['Year'] >= 2010) & (data['Year'] <= 2019)]\nresult = round(float(subset['Turkey'].mean()), 2)"
+  }
+ ]
+}

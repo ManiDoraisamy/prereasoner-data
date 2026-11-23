@@ -1,0 +1,35 @@
+{
+ "id": "nys_state_park_annual_attendance",
+ "answers": [
+  {
+   "id": "nys_state_park_annual_attendance#1",
+   "answer": "1532389753",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nresult = int(df['Attendance'].sum())"
+  },
+  {
+   "id": "nys_state_park_annual_attendance#2",
+   "answer": "291",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nresult = int((df['Attendance'] == 0).sum())"
+  },
+  {
+   "id": "nys_state_park_annual_attendance#3",
+   "answer": "1961135",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nresult = int(df[(df['Year'] == 2025) & (df['Facility'] == 'Green Lakes State Park')]['Attendance'].iloc[0])"
+  },
+  {
+   "id": "nys_state_park_annual_attendance#4",
+   "answer": "Allegany Quaker Area",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nsub = df[(df['Year'] == 2025) & (df['Facility'].isin(['Allegany Quaker Area', 'Allegany Red House Area']))]\nresult = str(sub.loc[sub['Attendance'].idxmax(), 'Facility'])"
+  },
+  {
+   "id": "nys_state_park_annual_attendance#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\natt = df[(df['Year'] == 2003) & (df['Facility'] == 'Robert Moses St Pk - Thousand Islands')]['Attendance'].iloc[0]\nresult = 'yes' if att > 200000 else 'no'"
+  },
+  {
+   "id": "nys_state_park_annual_attendance#6",
+   "answer": "Thousand Islands",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nresult = str(df['OPRHP Region'].value_counts().index[0])"
+  }
+ ]
+}

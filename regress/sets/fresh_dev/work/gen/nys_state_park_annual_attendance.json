@@ -1,0 +1,60 @@
+{
+ "id": "nys_state_park_annual_attendance",
+ "file": "nys_state_park_annual_attendance.csv",
+ "questions": [
+  {
+   "question": "What was the total recorded attendance across all facilities in the dataset over the entire recorded time period?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "1532389753",
+   "program": "import pandas as pd\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nresult = int(df['Attendance'].sum())",
+   "qid": "nys_state_park_annual_attendance#1"
+  },
+  {
+   "question": "How many facility records had an attendance count of zero?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "291",
+   "program": "import pandas as pd\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nresult = int((df['Attendance'] == 0).sum())",
+   "qid": "nys_state_park_annual_attendance#2"
+  },
+  {
+   "question": "In 2025, how many visitors went to Green Lakes State Park?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1961135",
+   "program": "import pandas as pd\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nval = df[(df['Year'] == 2025) & (df['Facility'] == 'Green Lakes State Park')]['Attendance'].iloc[0]\nresult = int(val)",
+   "qid": "nys_state_park_annual_attendance#3"
+  },
+  {
+   "question": "Between Allegany Quaker Area and Allegany Red House Area, which had higher attendance in 2025?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Allegany Quaker Area",
+   "program": "import pandas as pd\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nsub = df[(df['Year'] == 2025) & (df['Facility'].isin(['Allegany Quaker Area', 'Allegany Red House Area']))]\nresult = str(sub.sort_values(by='Attendance', ascending=False).iloc[0]['Facility'])",
+   "qid": "nys_state_park_annual_attendance#4"
+  },
+  {
+   "question": "Did Robert Moses St Pk - Thousand Islands report more than 200,000 visitors in 2003?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\natt = df[(df['Year'] == 2003) & (df['Facility'] == 'Robert Moses St Pk - Thousand Islands')]['Attendance'].iloc[0]\nresult = 'yes' if att > 200000 else 'no'",
+   "qid": "nys_state_park_annual_attendance#5"
+  },
+  {
+   "question": "Which park administrative region has the highest number of annual facility records in the dataset?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Thousand Islands",
+   "program": "import pandas as pd\ndf = pd.read_csv('nys_state_park_annual_attendance.csv')\nresult = str(df['OPRHP Region'].value_counts().idxmax())",
+   "qid": "nys_state_park_annual_attendance#6"
+  }
+ ]
+}

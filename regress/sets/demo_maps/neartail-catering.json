@@ -1,0 +1,64 @@
+{
+ "dataset": "neartail-catering",
+ "kind": "world",
+ "uploads": [
+  {
+   "name": "catering",
+   "columns": [
+    "restaurant",
+    "event",
+    "amount"
+   ],
+   "rows": 6
+  }
+ ],
+ "normalized": [
+  {
+   "name": "catering",
+   "upload": "catering",
+   "columns": [
+    "restaurant",
+    "event",
+    "amount"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [],
+ "entity_columns": [
+  {
+   "upload": "catering",
+   "table": "catering",
+   "column": "restaurant",
+   "column_index": 0,
+   "label": "restaurant",
+   "type_qid": "Q11707",
+   "cells": 6,
+   "cells_matched_exactly": 6,
+   "routed_as_place": false,
+   "bridged": true,
+   "cells_matched": 6,
+   "has_country": true,
+   "bridge": "catering connected to knowledgebase",
+   "entity_table": "restaurant"
+  }
+ ],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 0,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 0,
+  "country": 209,
+  "exchange_rate": 0,
+  "restaurant": 6,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 3.0
+}

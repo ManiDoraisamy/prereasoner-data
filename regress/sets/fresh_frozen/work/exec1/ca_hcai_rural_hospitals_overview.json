@@ -1,0 +1,87 @@
+{
+ "id": "ca_hcai_rural_hospitals_overview",
+ "file": "ca_hcai_rural_hospitals_overview.xlsx",
+ "questions": [
+  {
+   "question": "How many facilities in the dataset are designated as Critical Access Hospitals?",
+   "sheet": "in",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "37",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nresult = int((df['CAH'] == 'Yes').sum())",
+   "qid": "ca_hcai_rural_hospitals_overview#1",
+   "pass1": true,
+   "result": 37,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many total emergency department visits were recorded at Bear Valley Community Hospital?",
+   "sheet": "in",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "12297",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nval = df.loc[df['FacilityName'] == 'BEAR VALLEY COMMUNITY HOSPITAL', 'EDVisits'].values[0]\nresult = int(val)",
+   "qid": "ca_hcai_rural_hospitals_overview#2",
+   "pass1": false,
+   "result": null,
+   "error": "KeyError: 'EDVisits'",
+   "reject1": "program failed"
+  },
+  {
+   "question": "Are there more than 50 hospitals classified as rural in this report?",
+   "sheet": "in",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nrural_count = (df['Rural'] == 'Yes').sum()\nresult = 'yes' if rural_count > 50 else 'no'",
+   "qid": "ca_hcai_rural_hospitals_overview#3",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which facility reported more discharges: Barstow Community Hospital or Barton Memorial Hospital?",
+   "sheet": "in",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "BARSTOW COMMUNITY HOSPITAL",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nhospitals = ['BARSTOW COMMUNITY HOSPITAL', 'BARTON MEMORIAL HOSPITAL']\nsub = df[df['FacilityName'].isin(hospitals)]\nresult = sub.sort_values(by='Discharges', ascending=False)['FacilityName'].iloc[0]",
+   "qid": "ca_hcai_rural_hospitals_overview#4",
+   "pass1": true,
+   "result": "BARSTOW COMMUNITY HOSPITAL",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What is the total number of licensed beds across all facilities in the dataset?",
+   "sheet": "in",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "83672",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nresult = int(df['LicensedBeds'].sum())",
+   "qid": "ca_hcai_rural_hospitals_overview#5",
+   "pass1": true,
+   "result": 83672,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What are the names of the two hospitals located in El Dorado County?",
+   "sheet": "in",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"BARTON MEMORIAL HOSPITAL\", \"MARSHALL MEDICAL CENTER\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nresult = df.loc[df['CountyName'] == 'El Dorado', 'FacilityName'].tolist()",
+   "qid": "ca_hcai_rural_hospitals_overview#6",
+   "pass1": true,
+   "result": [
+    "BARTON MEMORIAL HOSPITAL",
+    "MARSHALL MEDICAL CENTER"
+   ],
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

@@ -1,0 +1,90 @@
+{
+ "id": "medicaid_chip_eligibility_levels",
+ "file": "medicaid_chip_eligibility_levels.csv",
+ "questions": [
+  {
+   "question": "What is the Medicaid income eligibility limit for pregnant women in Iowa, as a percentage of the federal poverty level?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "375",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_chip_eligibility_levels.csv')\nval = df.loc[df['State'] == 'Iowa', 'Pregnant Women Medicaid'].values[0]\nresult = int(val.replace('%', ''))",
+   "qid": "medicaid_chip_eligibility_levels#1",
+   "pass1": true,
+   "result": 375,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states or territories in the dataset had not adopted the Medicaid expansion for adults?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "19",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_chip_eligibility_levels.csv')\nresult = int((df['Expansion to Adults'] == 'No').sum())",
+   "qid": "medicaid_chip_eligibility_levels#2",
+   "pass1": true,
+   "result": 19,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which states offer a separate CHIP program for pregnant women?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Colorado\", \"Missouri\", \"New Jersey\", \"Rhode Island\", \"Virginia\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_chip_eligibility_levels.csv')\nresult = sorted(df.loc[df['Pregnant Women CHIP'].notna(), 'State'].tolist())",
+   "qid": "medicaid_chip_eligibility_levels#3",
+   "pass1": true,
+   "result": [
+    "Colorado",
+    "Missouri",
+    "New Jersey",
+    "Rhode Island",
+    "Virginia"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between California and Texas, which state has a higher Medicaid income eligibility standard for children ages 6 to 18?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "California",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_chip_eligibility_levels.csv')\nsubset = df[df['State'].isin(['California', 'Texas'])].copy()\nsubset['limit'] = subset['Medicaid Ages 6-18'].str.rstrip('%').astype(float)\nresult = subset.loc[subset['limit'].idxmax(), 'State']",
+   "qid": "medicaid_chip_eligibility_levels#4",
+   "pass1": true,
+   "result": "California",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did Alaska expand Medicaid coverage to low-income adults under the Affordable Care Act?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_chip_eligibility_levels.csv')\nval = df.loc[df['State'] == 'Alaska', 'Expansion to Adults'].values[0]\nresult = 'no' if val == 'No' else 'yes'",
+   "qid": "medicaid_chip_eligibility_levels#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Across all states and the District of Columbia, what is the average Medicaid income threshold for infants from birth to age 1, rounded to two decimal places?",
+   "sheet": "",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "209.61",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_chip_eligibility_levels.csv')\nvals = df['Medicaid Ages 0-1'].str.rstrip('%').astype(float)\nresult = round(float(vals.mean()), 2)",
+   "qid": "medicaid_chip_eligibility_levels#6",
+   "pass1": true,
+   "result": 209.61,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

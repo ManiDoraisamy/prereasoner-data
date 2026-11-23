@@ -37,19 +37,15 @@ BACKBONES = {"bge-small": BackboneSpec("bge-small", "BAAI/bge-small-en-v1.5", 38
              "xlmr-base": BackboneSpec("xlmr-base", "FacebookAI/xlm-roberta-base", 768, 12, 278_043_648, 192_001_536, "e73636d4f797dec63c3081bb6ed5c7b0bb3f2089"),
              # parameters with the pooler as the others count them (566,705,152 without it), from the pinned config
              "bge-m3": BackboneSpec("bge-m3", "BAAI/bge-m3", 1024, 24, 567_754_752, 256_002_048, "5617a9f61b028005a4858fdac845db406aefb181")}
-# bge-m3's copy is the pinned revision's weights as safetensors beside its own config and tokenizer files: the hub holds
-# only pytorch_model.bin, which transformers will not load under torch < 2.6 (a lease's pod runs 2.4)
-_LOCAL = {"xlmr-base": "C:/work/datasets/models/xlm-roberta-base", "bge-m3": "C:/work/datasets/models/bge-m3"}
-
-
 def source_of(spec: BackboneSpec) -> tuple[str, bool]:
-    """Where a backbone loads from, and whether only local files will do. NAMED_BACKBONE_DIR/<name> first, as a pod's own copy; on a machine with no copy, the hub, which only a lease may reach."""
+    """Where a backbone loads from, and whether only local files will do. NAMED_BACKBONE_DIR/<name> first: a copy of the
+    pinned revision's weights beside its own config and tokenizer files (a pod's, or a machine's: bge-m3's hub revision
+    holds only pytorch_model.bin, which transformers will not load under torch < 2.6, so a copy holds it as
+    safetensors); with none, the hub at the pinned revision, read from the local cache unless NAMED_BACKBONE_ONLINE is
+    set (the image bakes that cache: Dockerfile)."""
     root = os.environ.get("NAMED_BACKBONE_DIR")
     if root and (Path(root) / spec.name).exists():
         return str(Path(root) / spec.name), True
-    local = _LOCAL.get(spec.name)
-    if local and Path(local).exists():
-        return local, True
     return spec.hub, not os.environ.get("NAMED_BACKBONE_ONLINE")
 
 

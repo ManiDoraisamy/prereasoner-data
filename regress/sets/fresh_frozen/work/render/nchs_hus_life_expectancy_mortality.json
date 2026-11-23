@@ -1,0 +1,12 @@
+{
+ "file": "nchs_hus_life_expectancy_mortality.xlsx",
+ "sheets": [
+  {
+   "name": "A",
+   "rows": 209,
+   "cols": 10,
+   "shown_whole": true
+  }
+ ],
+ "chars": 19433
+}

@@ -1,0 +1,42 @@
+{
+ "file": "cms_program_stats_home_health_2023.xlsx",
+ "sheets": [
+  {
+   "name": "Table of Contents",
+   "rows": 7,
+   "cols": 2,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HHA 1_CPS_07UHH",
+   "rows": 35,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HHA 2_CPS_07UHH",
+   "rows": 47,
+   "cols": 17,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HHA 3_CPS_07UHH",
+   "rows": 78,
+   "cols": 15,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HHA 4_CPS_07UHH",
+   "rows": 75,
+   "cols": 5,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HHA 6_CPS_07UHH",
+   "rows": 33,
+   "cols": 9,
+   "shown_whole": true
+  }
+ ],
+ "chars": 30515
+}

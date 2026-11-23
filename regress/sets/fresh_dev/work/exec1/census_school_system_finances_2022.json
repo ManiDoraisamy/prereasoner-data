@@ -1,0 +1,84 @@
+{
+ "id": "census_school_system_finances_2022",
+ "file": "census_school_system_finances_2022.xlsx",
+ "questions": [
+  {
+   "question": "In fiscal year 2022, how much total revenue from federal sources did California public elementary-secondary school systems receive, in thousands of dollars?",
+   "sheet": "1",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "16297551",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='1', header=None)\ncal_row = df[df[0].astype(str).str.contains('California', case=False, na=False)].index[0]\nresult = int(df.iloc[cal_row, 3])",
+   "qid": "census_school_system_finances_2022#1",
+   "pass1": true,
+   "result": 16297551,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states and the District of Columbia reported more than 10,000,000 thousand dollars in total elementary-secondary school system debt outstanding at the end of fiscal year 2022?",
+   "sheet": "10",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "13",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='10', header=None)\ndata_rows = df.iloc[11:72].dropna(subset=[0])\ndata_rows = data_rows[~data_rows[0].astype(str).str.contains('United States|Note|SOURCE', case=False)]\ndebt_col = pd.to_numeric(data_rows[2], errors='coerce')\nresult = int((debt_col > 10000000).sum())",
+   "qid": "census_school_system_finances_2022#2",
+   "pass1": true,
+   "result": 13,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In fiscal year 2022, what was the combined general administration support services expenditure for Connecticut, Maine, Massachusetts, New Hampshire, Rhode Island, and Vermont, in thousands of dollars?",
+   "sheet": "7",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "841846",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='7', header=None)\nstates = ['Connecticut', 'Maine', 'Massachusetts', 'New Hampshire', 'Rhode Island', 'Vermont']\npattern = '|'.join(states)\nmatched = df[df[0].astype(str).str.contains(pattern, case=False, na=False)]\nresult = int(pd.to_numeric(matched[5], errors='coerce').sum())",
+   "qid": "census_school_system_finances_2022#3",
+   "pass1": true,
+   "result": 841846,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the average per pupil current spending on instruction across California, Oregon, and Washington in fiscal year 2022, in dollars rounded to two decimal places?",
+   "sheet": "8",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "9605.94",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='8', header=None)\nstates = ['California', 'Oregon', 'Washington']\npattern = '|'.join(states)\nmatched = df[df[0].astype(str).str.contains(pattern, case=False, na=False)]\nvals = pd.to_numeric(matched[5], errors='coerce')\nresult = round(float(vals.mean()), 2)",
+   "qid": "census_school_system_finances_2022#4",
+   "pass1": true,
+   "result": 9605.94,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In fiscal year 2022, did Texas public elementary-secondary school systems issue more long-term debt than California public school systems?",
+   "sheet": "10",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='10', header=None)\ntx_row = df[df[0].astype(str).str.contains('Texas', case=False, na=False)].index[0]\nca_row = df[df[0].astype(str).str.contains('California', case=False, na=False)].index[0]\ntx_debt = float(df.iloc[tx_row, 5])\nca_debt = float(df.iloc[ca_row, 5])\nresult = 'yes' if tx_debt > ca_debt else 'no'",
+   "qid": "census_school_system_finances_2022#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "For Vermont public school systems in fiscal year 2022, which major revenue source\u2014Federal sources, State sources, or Local sources\u2014provided the largest percentage of total funding?",
+   "sheet": "5",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "State sources",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='5', header=None)\nvt_row = df[df[0].astype(str).str.contains('Vermont', case=False, na=False)].index[0]\nshares = {\n    str(df.iloc[5, 3]): float(df.iloc[vt_row, 3]),\n    str(df.iloc[5, 5]): float(df.iloc[vt_row, 5]),\n    str(df.iloc[5, 7]): float(df.iloc[vt_row, 7]),\n}\nresult = max(shares, key=shares.get)",
+   "qid": "census_school_system_finances_2022#6",
+   "pass1": true,
+   "result": "State sources",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

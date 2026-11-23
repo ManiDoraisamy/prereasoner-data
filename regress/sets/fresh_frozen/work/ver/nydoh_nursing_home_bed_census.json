@@ -1,0 +1,30 @@
+{
+ "id": "nydoh_nursing_home_bed_census",
+ "answers": [
+  {
+   "id": "nydoh_nursing_home_bed_census#1",
+   "answer": "Metropolitan Area Regional Office - New York City",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\nresult = df['Area Office'].value_counts().idxmax()"
+  },
+  {
+   "id": "nydoh_nursing_home_bed_census#2",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\nresult = int((df['Bed Type'] == 'PEDVENTCAP').sum())"
+  },
+  {
+   "id": "nydoh_nursing_home_bed_census#3",
+   "answer": "14625",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\nresult = int(df['Available Capacity'].sum())"
+  },
+  {
+   "id": "nydoh_nursing_home_bed_census#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\nresult = 'yes' if (df['State'] == 'NY').all() else 'no'"
+  },
+  {
+   "id": "nydoh_nursing_home_bed_census#6",
+   "answer": "Queens",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\ncounts = df[df['County'].isin(['Kings', 'Queens'])]['County'].value_counts()\nresult = counts.idxmax()"
+  }
+ ]
+}

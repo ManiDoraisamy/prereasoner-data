@@ -1,0 +1,35 @@
+{
+ "id": "census_apportionment_2020",
+ "answers": [
+  {
+   "id": "census_apportionment_2020#1",
+   "answer": "39576757",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('STATE', case=False, na=False)].index[0]\ndf_data = df.iloc[header_idx + 1:].copy()\ndf_data = df_data[~df_data.iloc[:, 0].astype(str).str.contains('TOTAL|Footnotes', case=False, na=False)].dropna(subset=[0, 1])\nrow = df_data[df_data.iloc[:, 0].astype(str).str.strip() == 'California']\nresult = int(row.iloc[0, 1])"
+  },
+  {
+   "id": "census_apportionment_2020#2",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\nheader_idx = df[df[0].astype(str).str.strip() == 'STATE'].index[0]\ndata = df.iloc[header_idx + 1:].copy()\ndata = data[data[0].notna() & ~data[0].astype(str).str.startswith(('TOTAL', 'Footnotes'))]\ndata[3] = pd.to_numeric(data[3])\nresult = data[data[3] >= 2][0].iloc[0]"
+  },
+  {
+   "id": "census_apportionment_2020#3",
+   "answer": "7",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\nheader_idx = df[df[0].astype(str).str.strip() == 'STATE'].index[0]\ndata = df.iloc[header_idx + 1:].copy()\ndata = data[data[0].notna() & ~data[0].astype(str).str.startswith(('TOTAL', 'Footnotes'))]\ndata[3] = pd.to_numeric(data[3])\nresult = int((data[3] < 0).sum())"
+  },
+  {
+   "id": "census_apportionment_2020#4",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\nheader_idx = df[df[0].astype(str).str.strip() == 'STATE'].index[0]\ndata = df.iloc[header_idx + 1:].copy()\ndata = data[data[0].notna() & ~data[0].astype(str).str.startswith(('TOTAL', 'Footnotes'))]\ndata[1] = pd.to_numeric(data[1])\nresult = data.sort_values(by=1, ascending=False).head(3)[0].tolist()"
+  },
+  {
+   "id": "census_apportionment_2020#5",
+   "answer": "7612763",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\nheader_idx = df[df[0].astype(str).str.strip() == 'STATE'].index[0]\ndata = df.iloc[header_idx + 1:].copy()\ndata = data[data[0].notna() & ~data[0].astype(str).str.startswith(('TOTAL', 'Footnotes'))]\npop_dict = dict(zip(data[0].astype(str).str.strip(), pd.to_numeric(data[1])))\nresult = int(pop_dict['Texas'] - pop_dict['Florida'])"
+  },
+  {
+   "id": "census_apportionment_2020#6",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\nheader_idx = df[df[0].astype(str).str.strip() == 'STATE'].index[0]\ndata = df.iloc[header_idx + 1:].copy()\ndata = data[data[0].notna() & ~data[0].astype(str).str.startswith(('TOTAL', 'Footnotes'))]\ndata[1] = pd.to_numeric(data[1])\nresult = \"yes\" if (data[1] < 600000).any() else \"no\""
+  }
+ ]
+}

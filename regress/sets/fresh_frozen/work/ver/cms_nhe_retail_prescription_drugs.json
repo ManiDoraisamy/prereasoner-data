@@ -1,0 +1,30 @@
+{
+ "id": "cms_nhe_retail_prescription_drugs",
+ "answers": [
+  {
+   "id": "cms_nhe_retail_prescription_drugs#1",
+   "answer": "467",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\n\n# Find row for 2024 in Amount in Billions section (rows before row 33)\namount_rows = df.iloc[4:32]\nrow_2024 = amount_rows[amount_rows[0].astype(str).str.strip() == '2024']\nresult = float(row_2024[1].values[0])\nif result.is_integer():\n    result = int(result)"
+  },
+  {
+   "id": "cms_nhe_retail_prescription_drugs#2",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\n\namount_rows = df.iloc[4:32]\nrow_2020 = amount_rows[amount_rows[0].astype(str).str.strip() == '2020']\n# Column E (index 4) is Private Health Insurance, Column F (index 5) is Medicare\nprivate_hi = float(row_2020[4].values[0])\nmedicare = float(row_2020[5].values[0])\nresult = 'yes' if medicare > private_hi else 'no'"
+  },
+  {
+   "id": "cms_nhe_retail_prescription_drugs#4",
+   "answer": "34.9",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\n\n# Percent distribution starts around row index 62 (row 63)\npct_dist_rows = df.iloc[62:90]\nrow_2024 = pct_dist_rows[pct_dist_rows[0].astype(str).str.strip() == '2024']\n# Medicare is column F (index 5)\nresult = float(row_2024[5].values[0])"
+  },
+  {
+   "id": "cms_nhe_retail_prescription_drugs#5",
+   "answer": "5",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\n\n# Percent change section is rows 33 to 61 (0-indexed 33 to 60)\npct_change_rows = df.iloc[33:61].copy()\n\ndef parse_year(val):\n    s = str(val).strip()\n    try:\n        return int(float(s[:4]))\n    except:\n        return None\n\npct_change_rows['year'] = pct_change_rows[0].apply(parse_year)\nsubset = pct_change_rows[(pct_change_rows['year'] >= 2015) & (pct_change_rows['year'] <= 2024)]\n# Out of pocket is column C (index 2)\noop_growth = pd.to_numeric(subset[2], errors='coerce')\nresult = int((oop_growth < 0).sum())"
+  },
+  {
+   "id": "cms_nhe_retail_prescription_drugs#6",
+   "answer": "16.1",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\n\namount_rows = df.iloc[4:32]\nrow_2023 = amount_rows[amount_rows[0].astype(str).str.strip() == '2023']\n# Private Health Insurance is column E (index 4), Medicare is column F (index 5)\nprivate_hi = float(row_2023[4].values[0])\nmedicare = float(row_2023[5].values[0])\nresult = round(private_hi - medicare, 2)"
+  }
+ ]
+}

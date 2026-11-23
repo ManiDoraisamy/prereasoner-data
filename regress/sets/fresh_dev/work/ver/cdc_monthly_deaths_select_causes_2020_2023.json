@@ -1,0 +1,35 @@
+{
+ "id": "cdc_monthly_deaths_select_causes_2020_2023",
+ "answers": [
+  {
+   "id": "cdc_monthly_deaths_select_causes_2020_2023#1",
+   "answer": "2021-01",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\npeak_row = df.loc[df['COVID-19 (Underlying Cause of Death)'].idxmax()]\nresult = f\"{peak_row['Year']}-{int(peak_row['Month']):02d}\""
+  },
+  {
+   "id": "cdc_monthly_deaths_select_causes_2020_2023#2",
+   "answer": "698359",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\nresult = int(df[df['Year'] == 2020]['Diseases of Heart'].sum())"
+  },
+  {
+   "id": "cdc_monthly_deaths_select_causes_2020_2023#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\nresult = 'yes' if (df[df['Year'] == 2022]['All Cause'] > 300000).any() else 'no'"
+  },
+  {
+   "id": "cdc_monthly_deaths_select_causes_2020_2023#4",
+   "answer": "45398",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\ndf_2021 = df[df['Year'] == 2021]\nresult = int(df_2021['COVID-19 (Multiple Cause of Death)'].sum() - df_2021['COVID-19 (Underlying Cause of Death)'].sum())"
+  },
+  {
+   "id": "cdc_monthly_deaths_select_causes_2020_2023#5",
+   "answer": "7",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\ndf_2021 = df[df['Year'] == 2021]\nresult = int((df_2021['Accidents (Unintentional Injuries)'] > 19000).sum())"
+  },
+  {
+   "id": "cdc_monthly_deaths_select_causes_2020_2023#6",
+   "answer": "11189",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\nresult = round(df[df['Year'] == 2020]['Alzheimer Disease'].mean())"
+  }
+ ]
+}

@@ -1,0 +1,60 @@
+{
+ "id": "nchs_hus_mammography_use",
+ "file": "nchs_hus_mammography_use.xlsx",
+ "questions": [
+  {
+   "question": "What percentage of uninsured women aged 40 to 64 reported having a mammogram within the past 2 years in 2019?",
+   "sheet": "A",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "40.6",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\ncol_2019 = [c for c in range(df.shape[1]) if str(df.iloc[3, c]).strip() == '2019'][0]\n\nuninsured_val = None\nfor r in range(len(df)):\n    if str(df.iloc[r, 0]).strip() == 'Uninsured':\n        uninsured_val = float(df.iloc[r, col_2019])\n        break\n\nresult = uninsured_val",
+   "qid": "nchs_hus_mammography_use#1"
+  },
+  {
+   "question": "In 2019, which age group had a higher mammography rate: women aged 50\u201364 years or women aged 65\u201374 years?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "65\u201374 years",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\ncol_2019 = [c for c in range(df.shape[1]) if str(df.iloc[3, c]).strip() == '2019'][0]\n\ntargets = ['50\u201364 years', '65\u201374 years']\nrates = {}\nfor r in range(len(df)):\n    val = str(df.iloc[r, 0]).strip()\n    for t in targets:\n        if val.replace('-', '\u2013') == t.replace('-', '\u2013'):\n            rates[val] = float(df.iloc[r, col_2019])\n\nresult = max(rates, key=rates.get)",
+   "qid": "nchs_hus_mammography_use#2"
+  },
+  {
+   "question": "In which survey year did the age-adjusted percentage of women aged 40 and over who received a mammogram in the past two years reach its peak?",
+   "sheet": "A",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2000",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\nrow_idx = None\nfor r in range(len(df)):\n    if 'Total, 40 years and over, age adjusted' in str(df.iloc[r, 0]):\n        row_idx = r\n        break\n\nyear_rates = {}\nfor c in range(1, df.shape[1]):\n    val = str(df.iloc[3, c]).strip()\n    if val.isdigit():\n        year_rates[val] = float(df.iloc[row_idx, c])\n\nresult = str(max(year_rates, key=year_rates.get))",
+   "qid": "nchs_hus_mammography_use#3"
+  },
+  {
+   "question": "In 2019, was the mammogram screening rate among women aged 40 and over with some college education or more higher than 70%?",
+   "sheet": "A",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\ncol_2019 = [c for c in range(df.shape[1]) if str(df.iloc[3, c]).strip() == '2019'][0]\n\nrate = None\nfor r in range(81, 86):\n    if 'Some college or more' in str(df.iloc[r, 0]):\n        rate = float(df.iloc[r, col_2019])\n        break\n\nresult = \"yes\" if rate > 70 else \"no\"",
+   "qid": "nchs_hus_mammography_use#4"
+  },
+  {
+   "question": "Among women aged 40 and over by poverty level, which two income categories had the highest mammography screening rates in 2019?",
+   "sheet": "A",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"400% or more\", \"200%\u2013399%\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\ncol_2019 = [c for c in range(df.shape[1]) if str(df.iloc[3, c]).strip() == '2019'][0]\n\npoverty_rates = {}\nfor r in range(55, 59):\n    cat = str(df.iloc[r, 0]).strip()\n    poverty_rates[cat] = float(df.iloc[r, col_2019])\n\nsorted_cats = sorted(poverty_rates, key=poverty_rates.get, reverse=True)\nresult = sorted_cats[:2]",
+   "qid": "nchs_hus_mammography_use#5"
+  },
+  {
+   "question": "In 2018, by how many percentage points did the mammography rate for women aged 40\u201364 with private health insurance exceed that of uninsured women in the same age group?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "35.7",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_mammography_use.xlsx', sheet_name='A', header=None)\ncol_2018 = [c for c in range(df.shape[1]) if str(df.iloc[3, c]).strip() == '2018'][0]\n\nprivate_rate = None\nuninsured_rate = None\nfor r in range(75, 81):\n    cell = str(df.iloc[r, 0]).strip()\n    if cell == 'Private':\n        private_rate = float(df.iloc[r, col_2018])\n    elif cell == 'Uninsured':\n        uninsured_rate = float(df.iloc[r, col_2018])\n\nresult = round(private_rate - uninsured_rate, 1)",
+   "qid": "nchs_hus_mammography_use#6"
+  }
+ ]
+}

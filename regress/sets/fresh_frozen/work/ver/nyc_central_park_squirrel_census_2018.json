@@ -1,0 +1,35 @@
+{
+ "id": "nyc_central_park_squirrel_census_2018",
+ "answers": [
+  {
+   "id": "nyc_central_park_squirrel_census_2018#1",
+   "answer": "1347",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = int((df['Shift'] == 'AM').sum())"
+  },
+  {
+   "id": "nyc_central_park_squirrel_census_2018#2",
+   "answer": "Cinnamon",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = str(df['Primary Fur Color'].value_counts().index[1])"
+  },
+  {
+   "id": "nyc_central_park_squirrel_census_2018#3",
+   "answer": "2018-10-13",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\ntop_date = str(df['Date'].value_counts().idxmax())\nresult = pd.to_datetime(top_date, format='%m%d%Y').strftime('%Y-%m-%d')"
+  },
+  {
+   "id": "nyc_central_park_squirrel_census_2018#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = 'yes' if df['Foraging'].sum() > df['Eating'].sum() else 'no'"
+  },
+  {
+   "id": "nyc_central_park_squirrel_census_2018#5",
+   "answer": "[\"14D\", \"32E\", \"14E\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = df['Hectare'].value_counts().head(3).index.tolist()"
+  },
+  {
+   "id": "nyc_central_park_squirrel_census_2018#6",
+   "answer": "451",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = int(df['Running'].sum() - df['Chasing'].sum())"
+  }
+ ]
+}

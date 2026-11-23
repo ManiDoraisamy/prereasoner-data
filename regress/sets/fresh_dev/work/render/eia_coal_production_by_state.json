@@ -1,0 +1,12 @@
+{
+ "file": "eia_coal_production_by_state.xlsx",
+ "sheets": [
+  {
+   "name": "table1",
+   "rows": 113,
+   "cols": 7,
+   "shown_whole": true
+  }
+ ],
+ "chars": 7967
+}

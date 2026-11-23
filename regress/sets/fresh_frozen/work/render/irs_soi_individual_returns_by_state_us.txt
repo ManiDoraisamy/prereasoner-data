@@ -1,0 +1,202 @@
+FILE irs_soi_individual_returns_by_state_us.xlsx (Excel workbook) with 1 sheet(s): ["Sheet1"]
+
+### Sheet "Sheet1": 197 rows x 12 columns (Excel rows 1..197, columns A..L)
+merged cells: I5:I7, A172:L172, A187:L187, A183:L183, A177:L177, A174:L174, D5:D7, A193:L193, B3:L3, G5:G7, A189:L189, A192:L192, A2:L2, A195:L195, A175:L175, A185:L185, A194:L194, A181:L181, A188:L188, H5:H7, J5:J7, A184:L184, A180:L180, A190:L190, C4:L4, C5:C7, A173:L173, E5:E7, K5:K7, F5:F7, A176:L176, A186:L186, A191:L191, A182:L182, B4:B7, A1:L1, A178:L178, A179:XFD179, A3:A7, A197:L197
+(whole sheet shown; Excel row numbers)
+r1: A=Table 2.  Individual Income and Tax Data, by State  and Size of Adjusted Gross Income, Tax...
+r2: A=[Money amounts are in thousands of dollars]
+r3: A=Item | B=UNITED STATES
+r4: B=All returns | C=Size of adjusted gross income
+r5: C=Under $1 | D=$1 under $10,000 | E=$10,000 under $25,000 | F=$25,000 under $50,000 | G=$50,000 under $75,000 | H=$75,000 under $100,000 | I=$100,000 under $200,000 | J=$200,000 under $500,000 | K=$500,000 under $1,000,000 | L=$1,000,000 or more
+r6: (blank)
+r7: (blank)
+r8: B=1 | C=2 | D=3 | E=4 | F=5 | G=6 | H=7 | I=8 | J=9 | K=10 | L=11
+r9: A=Number of returns [1] | B=159949000 | C=2324150 | D=15319070 | E=25373450 | F=36030260 | G=24178700 | H=15696120 | I=27532250 | J=10930590 | K=1765090 | L=799320
+r10: A=Number of single returns | B=79879620 | C=1517700 | D=12566600 | E=16746260 | F=21324410 | G=12952320 | H=6443330 | I=6484060 | J=1538490 | K=207810 | L=98640
+r11: A=Number of joint returns | B=54480420 | C=596500 | D=1417250 | E=2957150 | F=6059120 | G=6515640 | H=6981770 | I=18859460 | J=8938240 | K=1490890 | L=664400
+r12: A=Number of head of household returns | B=21382000 | C=106120 | D=1052810 | E=5178600 | F=7524650 | G=3764360 | H=1760610 | I=1614770 | J=317440 | K=43250 | L=19390
+r13: A=Number of electronically filed returns | B=149657570 | C=1552610 | D=13702790 | E=23752980 | F=34056020 | G=22866140 | H=14828080 | I=26073370 | J=10380010 | K=1684560 | L=761020
+r14: A=Number of computer prepared paper returns | B=5190240 | C=339780 | D=856550 | E=819170 | F=976830 | G=640930 | H=420800 | I=743240 | J=317190 | K=51510 | L=24230
+r15: A=Number of returns with paid preparer's signature | B=84664120 | C=1277380 | D=7264790 | E=12854790 | F=17634410 | G=12323800 | H=8588210 | I=15636560 | J=6968500 | K=1392330 | L=723350
+r16: A=Number of returns with direct deposit | B=96679730 | C=625870 | D=7788790 | E=18928580 | F=25781200 | G=15878110 | H=9096720 | I=14246120 | J=3871760 | K=350090 | L=112500
+r17: A=Number of returns with virtual currency indicator | B=2193990 | C=42140 | D=109890 | E=183930 | F=309190 | G=282000 | H=231590 | I=554640 | J=367700 | K=78430 | L=34480
+r18: A=Number of individuals [2] | B=293957500 | C=3336540 | D=15196100 | E=38383840 | F=60357800 | G=42729400 | H=31453790 | I=65792460 | J=29477160 | K=5002400 | L=2228020
+r19: A=Total number of volunteer prepared returns [3] | B=2729510 | C=22910 | D=640740 | E=659300 | F=790280 | G=365970 | H=134020 | I=107120 | J=9080 | K=90 | L=0
+r20: A=Number of volunteer income tax assistance (VITA) prepared returns | B=1528400 | C=15850 | D=359240 | E=390120 | F=492460 | G=192730 | H=46180 | I=29250 | J=2560 | K=10 | L=0
+r21: A=Number of military volunteer prepared returns | B=23880 | C=30 | D=950 | E=2760 | F=9380 | G=4190 | H=2570 | I=3610 | J=400 | K=0 | L=0
+r22: A=Number of tax counseling for the elderly (TCE) prepared returns | B=1177230 | C=7040 | D=280550 | E=266420 | F=288440 | G=169050 | H=85270 | I=74260 | J=6120 | K=80 | L=0
+r23: A=Number of volunteer prepared returns with earned income credit | B=312470 | C=600 | D=105670 | E=118180 | F=81060 | G=6960 | H=0 | I=0 | J=0 | K=0 | L=0
+r24: A=Number of refund anticipation check returns [4] | B=21013290 | C=80950 | D=1359690 | E=5236270 | F=6929570 | G=3475930 | H=1653220 | I=1955040 | J=310040 | K=11130 | L=1460
+r25: A=Number of elderly returns [5] | B=42939460 | C=1015630 | D=3979220 | E=5555560 | F=7522110 | G=6346760 | H=4974870 | I=9194370 | J=3466330 | K=573450 | L=311150
+r26: A=Adjusted gross income (AGI) [6] | B=15234086106 | C=-142722222 | D=77256907 | E=437847723 | F=1333647953 | G=1488316474 | H=1360619465 | I=3808740349 | J=3148728613 | K=1185544059 | L=2536106785
+r27: A=Total income:  Number | B=159097470 | C=1473240 | D=15318450 | E=25373450 | F=36030260 | G=24178700 | H=15696120 | I=27532250 | J=10930590 | K=1765090 | L=799320
+r28: A=Amount | B=15378445114 | C=-139730002 | D=79449074 | E=445792744 | F=1346247578 | G=1500347920 | H=1370646046 | I=3838514096 | J=3182342180 | K=1201854227 | L=2552981251
+r29: A=Salaries and wages in AGI:  Number | B=128043220 | C=491620 | D=9456990 | E=18766460 | F=30691260 | G=20600510 | H=13104540 | I=23245250 | J=9503620 | K=1525050 | L=657920
+r30: A=Amount | B=10171094747 | C=23417260 | D=65313298 | E=327705828 | F=1110149026 | G=1184058159 | H=1021083462 | I=2781334070 | J=2199722079 | K=706674885 | L=751636680
+r31: A=Taxable interest:  Number | B=55016930 | C=646120 | D=3155420 | E=4254390 | F=7057230 | G=7312690 | H=6526280 | I=15356080 | J=8325510 | K=1610080 | L=773120
+r32: A=Amount | B=311468789 | C=4811505 | D=2336099 | E=5411737 | F=10031412 | G=12196381 | H=13399610 | I=44835816 | J=53186785 | K=30061879 | L=135197565
+r33: A=Tax-exempt interest: [7] Number | B=6743960 | C=67740 | D=174940 | E=280810 | F=492610 | G=612980 | H=644890 | I=1917050 | J=1664760 | K=521970 | L=366230
+r34: A=Amount | B=64471481 | C=682934 | D=305975 | E=659095 | F=1477897 | G=2118618 | H=2461252 | I=9344860 | J=14507492 | K=8966348 | L=23947010
+r35: A=Ordinary dividends:  Number | B=33488590 | C=402320 | D=1552000 | E=2097250 | F=3479960 | G=3845340 | H=3681520 | I=9740550 | J=6559790 | K=1423810 | L=706050
+r36: A=Amount | B=497802404 | C=3466275 | D=2523526 | E=5824321 | F=11615632 | G=15655843 | H=18310858 | I=74802728 | J=102508584 | K=58350715 | L=204743922
+r37: A=Qualified dividends: [8]  Number | B=30832310 | C=358160 | D=1372260 | E=1868800 | F=3122840 | G=3492260 | H=3369810 | I=9014250 | J=6191690 | K=1363170 | L=679080
+r38: A=Amount | B=330511932 | C=1925951 | D=1389530 | E=3157284 | F=6603292 | G=9203750 | H=11122647 | I=49133178 | J=68310109 | K=38698109 | L=140968082
+r39: A=State and local income tax refunds:  Number | B=2982690 | C=14400 | D=40140 | E=89160 | F=288810 | G=525930 | H=607620 | I=1093420 | J=261480 | K=37660 | L=24060
+r40: A=Amount | B=4285242 | C=44593 | D=32558 | E=80770 | F=250925 | G=489110 | H=619393 | I=1347444 | J=542910 | K=217921 | L=659618
+r41: A=Business or profession net income (less loss):  Number | B=30691060 | C=777840 | D=3501370 | E=6595080 | F=5640560 | G=3496920 | H=2504590 | I=5084310 | J=2424550 | K=450090 | L=215760
+r42: A=Amount | B=389534282 | C=-21496739 | D=8682212 | E=46780507 | F=37268230 | G=30359627 | H=27516271 | I=81739704 | J=95304311 | K=39965106 | L=43415053
+r43: A=Net capital gain (less loss):  Number | B=29481840 | C=564380 | D=1263910 | E=1815040 | F=2972660 | G=3234580 | H=3096550 | I=8364920 | J=6047130 | K=1406320 | L=716340
+r44: A=Amount | B=943479996 | C=10512335 | D=72997 | E=1742314 | F=5170794 | G=8216960 | H=10834833 | I=55031690 | J=121297726 | K=96216305 | L=634384042
+r45: A=Taxable individual retirement arrangements distributions:  Number | B=16672230 | C=118940 | D=812030 | E=1577750 | F=2338810 | G=2317740 | H=2123660 | I=4762860 | J=2136040 | K=340200 | L=144210
+r46: A=Amount | B=434589540 | C=1849332 | D=3368285 | E=12621238 | F=26944926 | G=35371006 | H=42319322 | I=148732617 | J=121257818 | K=26870445 | L=15254551
+r47: A=Taxable pensions and annuities:  Number | B=29675070 | C=178480 | D=1591760 | E=3334610 | F=5131090 | G=4695930 | H=3922570 | I=7724550 | J=2668780 | K=302600 | L=124720
+r48: A=Amount | B=928820112 | C=2588055 | D=7438228 | E=35654315 | F=86889727 | G=116303478 | H=126970415 | I=344850329 | J=174731564 | K=22756944 | L=10637057
+r49: A=Number of farm returns | B=1773240 | C=126720 | D=81950 | E=149780 | F=243770 | G=227020 | H=207280 | I=465950 | J=203150 | K=41480 | L=26140
+r50: A=Unemployment compensation:  Number | B=4706000 | C=18430 | D=157800 | E=721550 | F=1252340 | G=772200 | H=527280 | I=903540 | J=308560 | K=36820 | L=7490
+r51: A=Amount | B=30455671 | C=156715 | D=699648 | E=4199172 | F=7738809 | G=4992548 | H=3426889 | I=6251695 | J=2574620 | K=344365 | L=71210
+r52: A=Taxable social security benefits:  Number | B=25608500 | C=4340 | D=156240 | E=2867380 | F=5272980 | G=4500910 | H=3682140 | I=6554320 | J=2115710 | K=302980 | L=151490
+r53: A=Amount | B=523454692 | C=18979 | D=336218 | E=7268703 | F=45927905 | G=81286668 | H=88715392 | I=203839714 | J=77817565 | K=12026306 | L=6217242
+r54: A=Partnership/S-corp net income (less loss):  Number | B=9590010 | C=349250 | D=220220 | E=480560 | F=854080 | G=833860 | H=796970 | I=2402860 | J=2310270 | K=787720 | L=554220
+r55: A=Amount | B=993675572 | C=-55822274 | D=-1588350 | E=-184146 | F=4334475 | G=8264525 | H=11231012 | I=59927569 | J=173796809 | K=171574413 | L=622141539
+r56: A=Total rental and royalty net income (less loss):  Number | B=9177090 | C=311990 | D=371790 | E=679580 | F=1083180 | G=1139180 | H=1078150 | I=2494550 | J=1377290 | K=373260 | L=268140
+r57: A=Amount | B=78142041 | C=-5570425 | D=-102410 | E=1094591 | F=828338 | G=966980 | H=2054510 | I=15249904 | J=23017199 | K=12168268 | L=28435086
+r58: A=Total statutory adjustments:  Number | B=35616390 | C=309000 | D=2941360 | E=5907950 | F=6049020 | G=5127220 | H=3576120 | I=7549910 | J=3107080 | K=664600 | L=384130
+r59: A=Amount | B=144359008 | C=2992220 | D=2192167 | E=7945021 | F=12599625 | G=12031446 | H=10026581 | I=29773747 | J=33613567 | K=16310168 | L=16874466
+r60: A=Educator expenses:  Number | B=3764580 | C=9870 | D=29250 | E=151170 | F=503780 | G=702580 | H=510090 | I=1367550 | J=459340 | K=25790 | L=5150
+r61: A=Amount | B=1139337 | C=2796 | D=7599 | E=40732 | F=139701 | G=200690 | H=152737 | I=441281 | J=144648 | K=7648 | L=1505
+r62: A=Self-employed (Keogh) retirement plans:  Number | B=939660 | C=3290 | D=4270 | E=12810 | F=34780 | G=43680 | H=48350 | I=208580 | J=345300 | K=145010 | L=93590
+r63: A=Amount | B=29493030 | C=83270 | D=31100 | E=96925 | F=340020 | G=526267 | H=667232 | I=3733007 | J=10513031 | K=6928950 | L=6573228
+r64: A=Self-employed health insurance deduction:  Number | B=3578530 | C=73570 | D=146530 | E=273220 | F=437860 | G=385670 | H=326390 | I=818360 | J=695960 | K=241890 | L=179090
+r65: A=Amount | B=31114668 | C=479492 | D=439770 | E=851008 | F=1733088 | G=2007343 | H=2053496 | I=6866875 | J=9006524 | K=4119999 | L=3557073
+r66: A=Individual retirement arrangement payments:  Number | B=2414660 | C=12980 | D=36810 | E=152150 | F=502220 | G=503270 | H=310880 | I=663140 | J=185090 | K=31960 | L=16170
+r67: A=Amount | B=13326565 | C=75041 | D=133071 | E=549969 | F=2023314 | G=2360136 | H=1736470 | I=4182539 | J=1712164 | K=365399 | L=188462
+r68: A=Student loan interest deduction:  Number | B=6770180 | C=51950 | D=136780 | E=400780 | F=1397820 | G=1701910 | H=1065020 | I=2015930 | J=0 | K=0 | L=0
+r69: A=Amount | B=5204444 | C=55971 | D=120408 | E=343441 | F=1109782 | G=1350956 | H=637405 | I=1586481 | J=0 | K=0 | L=0
+r70: A=Total standard deduction: Number | B=142676150 | C=0 | D=15143850 | E=24977070 | F=34856510 | G=22477570 | H=13858510 | I=22792520 | J=7473890 | K=841760 | L=254470
+r71: A=Amount | B=2790356888 | C=0 | D=206668524 | E=427258518 | F=625767476 | G=431452676 | H=301730975 | I=570783281 | J=197596904 | K=22390394 | L=6708140
+r72: A=Basic standard deduction: Number | B=142676150 | C=0 | D=15143850 | E=24977070 | F=34856510 | G=22477570 | H=13858510 | I=22792520 | J=7473890 | K=841760 | L=254470
+r73: A=Amount | B=2727942703 | C=0 | D=200019845 | E=418283979 | F=614598882 | G=422226164 | H=294306333 | I=556842486 | J=193273864 | K=21863614 | L=6527536
+r74: A=Additional standard deduction: Number | B=27831260 | C=0 | D=3185740 | E=4252960 | F=5120670 | G=4209500 | H=3275030 | I=5741980 | J=1756060 | K=214710 | L=74610
+r75: A=Amount | B=62414214 | C=0 | D=6648681 | E=8974541 | F=11168602 | G=9226514 | H=7424643 | I=13940794 | J=4323046 | K=526786 | L=180607
+r76: A=Total itemized deductions:  Number | B=14940520 | C=0 | D=172450 | E=394370 | F=1172220 | G=1700420 | H=1837230 | I=4739240 | J=3456470 | K=923280 | L=544830
+r77: A=Amount | B=678049857 | C=0 | D=4328317 | E=10519405 | F=32902278 | G=48610865 | H=53359851 | I=160096824 | J=152162178 | K=58984569 | L=157085570
+r78: A=Total medical and dental expense deduction:  Number | B=3763530 | C=0 | D=120840 | E=267020 | F=678030 | G=727650 | H=583280 | I=1050410 | J=312040 | K=20540 | L=3720
+r79: A=Amount | B=84844252 | C=0 | D=2253864 | E=5056949 | F=12740607 | G=14628941 | H=12191160 | I=24780460 | J=10936378 | K=1595401 | L=660492
+r80: A=State and local income taxes:  Number | B=10475220 | C=0 | D=42460 | E=128960 | F=568270 | G=1080380 | H=1307230 | I=3592930 | J=2629240 | K=699240 | L=426530
+r81: A=Amount | B=208504345 | C=0 | D=150265 | E=333344 | F=1422841 | G=3682966 | H=6062280 | I=27765805 | J=47378596 | K=31303783 | L=90404465
+r82: A=State and local general sales taxes:  Number | B=3778620 | C=0 | D=94110 | E=209300 | F=475090 | G=513320 | H=446760 | I=985170 | J=738020 | K=206420 | L=110430
+r83: A=Amount | B=9409549 | C=0 | D=80779 | E=230691 | F=806620 | G=1037036 | H=978616 | I=2519873 | J=2468842 | K=760592 | L=526500
+r84: A=Real estate taxes:  Number | B=12614210 | C=0 | D=106550 | E=252440 | F=740650 | G=1292610 | H=1536690 | I=4191430 | J=3162980 | K=846140 | L=484720
+r85: A=Amount | B=107709798 | C=0 | D=670556 | E=1479804 | F=4057173 | G=6836745 | H=8374127 | I=26783996 | J=31146688 | K=13588625 | L=14772084
+r86: A=Personal property taxes:  Number | B=5399650 | C=0 | D=37690 | E=102560 | F=377270 | G=612190 | H=693150 | I=1856180 | J=1301250 | K=289880 | L=129480
+r87: A=Amount | B=4743607 | C=0 | D=27471 | E=86949 | F=411787 | G=569641 | H=547575 | I=1410100 | J=1132613 | K=315594 | L=241877
+r88: A=Limited state and local taxes:  Number | B=14732750 | C=0 | D=157780 | E=372430 | F=1109870 | G=1665210 | H=1815080 | I=4705760 | J=3443010 | K=920500 | L=543120
+r89: A=Amount | B=120634470 | C=0 | D=733585 | E=1768510 | F=5744212 | G=10446025 | H=13451991 | I=41079591 | J=33050788 | K=9022776 | L=5336992
+r90: A=Total taxes paid:  Number | B=14755070 | C=0 | D=158530 | E=374170 | F=1114010 | G=1669240 | H=1818150 | I=4711460 | J=3445340 | K=920860 | L=543300
+r91: A=Amount | B=122842318 | C=0 | D=745850 | E=1840174 | F=6204539 | G=10888933 | H=13700433 | I=41359128 | J=33236137 | K=9109066 | L=5758058
+r92: A=Home mortgage interest paid:  Number | B=11345810 | C=0 | D=87160 | E=202320 | F=625830 | G=1153780 | H=1393650 | I=3839940 | J=2917550 | K=755870 | L=369690
+r93: A=Amount | B=165571020 | C=0 | D=1051008 | E=2332170 | F=7075051 | G=12727513 | H=15521562 | I=50988617 | J=52226588 | K=15764890 | L=7883621
+r94: A=Home mortgage interest paid to personal seller:  Number | B=270230 | C=0 | D=1940 | E=4590 | F=16720 | G=30180 | H=32610 | I=84060 | J=64160 | K=20830 | L=15140
+r95: A=Amount | B=3263166 | C=0 | D=20644 | E=45061 | F=169579 | G=303016 | H=328484 | I=864490 | J=828382 | K=384054 | L=319456
+r96: A=Deductible points:  Number | B=634270 | C=0 | D=3980 | E=9090 | F=28170 | G=51380 | H=65680 | I=209460 | J=188510 | K=52230 | L=25770
+r97: A=Amount | B=999904 | C=0 | D=2906 | E=11322 | F=64685 | G=126717 | H=140911 | I=373779 | J=225663 | K=38474 | L=15447
+r98: A=Investment interest paid:  Number | B=839940 | C=0 | D=4890 | E=9070 | F=20160 | G=26630 | H=31850 | I=132850 | J=248670 | K=162250 | L=203570
+r99: A=Amount | B=35819998 | C=0 | D=21544 | E=45537 | F=118776 | G=164858 | H=209540 | I=1026983 | J=3060523 | K=3472845 | L=27699392
+r100: A=Total charitable contributions:  Number | B=11562200 | C=0 | D=81830 | E=226600 | F=798190 | G=1194440 | H=1336820 | I=3699240 | J=2903850 | K=813360 | L=507870
+r101: A=Amount | B=210916402 | C=0 | D=121040 | E=809558 | F=4881244 | G=7744471 | H=9089273 | I=33109452 | J=40328476 | K=21097553 | L=93735335
+r102: A=Other non-limited miscellaneous deduction:  Number | B=1005880 | C=0 | D=6240 | E=22400 | F=87980 | G=105780 | H=105870 | I=284100 | J=221940 | K=77950 | L=93620
+r103: A=Amount | B=52036833 | C=0 | D=71834 | E=316231 | F=1479834 | G=1942321 | H=2098147 | I=7428408 | J=10895604 | K=7272596 | L=20531858
+r104: A=Qualified business income deduction:  Number | B=26391030 | C=0 | D=54330 | E=1849360 | F=4054880 | G=3441180 | H=2951260 | I=7322090 | J=4998910 | K=1108930 | L=610100
+r105: A=Amount | B=213733168 | C=0 | D=10326 | E=1175473 | F=6379357 | G=8087366 | H=8427685 | I=30443849 | J=45812942 | K=21322791 | L=92073379
+r106: A=Taxable income:  Number | B=129356370 | C=0 | D=375520 | E=13245300 | F=34977800 | G=24104110 | H=15663460 | I=27503570 | J=10924430 | K=1763720 | L=798460
+r107: A=Amount | B=11904975416 | C=0 | D=747164 | E=63541649 | F=674000512 | G=1002206360 | H=998160271 | I=3048513558 | J=2753822980 | K=1083111246 | L=2280871676
+r108: A=Income tax before credits:  Number | B=129593580 | C=89360 | D=591280 | E=13453120 | F=34813600 | G=24048200 | H=15638020 | I=27477360 | J=10920600 | K=1763580 | L=798450
+r109: A=Amount | B=2266127876 | C=186993 | D=152022 | E=6507220 | F=73453972 | G=118803946 | H=132427239 | I=454044008 | J=531004015 | K=271348284 | L=678200177
+r110: A=Alternative minimum tax:  Number | B=153970 | C=2640 | D=300 | E=410 | F=1300 | G=1830 | H=2890 | I=15270 | J=31600 | K=23430 | L=74290
+r111: A=Amount | B=2775547 | C=97638 | D=3733 | E=8455 | F=16173 | G=17641 | H=21329 | I=136331 | J=385427 | K=404348 | L=1684472
+r112: A=Excess advance premium tax credit repayment:  Number | B=5614330 | C=83310 | D=314290 | E=860910 | F=1995320 | G=1086290 | H=540770 | I=582890 | J=132030 | K=14120 | L=4410
+r113: A=Amount | B=7565805 | C=19327 | D=71541 | E=225188 | F=1306839 | G=1671299 | H=1229894 | I=2065041 | J=832980 | K=109130 | L=34566
+r114: A=Total tax credits:  [9] Number | B=60248610 | C=23260 | D=154020 | E=4890470 | F=15959910 | G=9715440 | H=6594270 | I=14335180 | J=7011820 | K=1015740 | L=548520
+r115: A=Amount | B=151043533 | C=19920 | D=22763 | E=1526456 | F=16952101 | G=19428455 | H=16833546 | I=41839675 | J=23460762 | K=5970700 | L=24989155
+r116: A=Foreign tax credit:  Number | B=11804930 | C=2020 | D=58080 | E=255530 | F=935890 | G=1242160 | H=1268940 | I=3671030 | J=3047150 | K=834700 | L=489430
+r117: A=Amount | B=31186906 | C=711 | D=3380 | E=25874 | F=202626 | G=385211 | H=468672 | I=2000852 | J=4548787 | K=4169540 | L=19381253
+r118: A=Child and dependent care credit:  Number | B=5761870 | C=70 | D=1270 | E=161550 | F=1089970 | G=751220 | H=610640 | I=1856650 | J=1081200 | K=166670 | L=42620
+r119: A=Amount | B=3533047 | C=42 | D=309 | E=41324 | F=668415 | G=456496 | H=380839 | I=1193593 | J=664403 | K=100319 | L=27307
+r120: A=Nonrefundable education credit:  Number | B=7188150 | C=3710 | D=22760 | E=1081560 | F=2253260 | G=1309100 | H=810110 | I=1707660 | J=0 | K=0 | L=0
+r121: A=Amount | B=7517401 | C=873 | D=4122 | E=489623 | F=2399123 | G=1585445 | H=927417 | I=2110798 | J=0 | K=0 | L=0
+r122: A=Retirement savings contributions credit:  Number | B=9773370 | C=1510 | D=11700 | E=1494470 | F=5993590 | G=2272100 | H=0 | I=0 | J=0 | K=0 | L=0
+r123: A=Amount | B=2018110 | C=599 | D=1713 | E=312001 | F=1306875 | G=396922 | H=0 | I=0 | J=0 | K=0 | L=0
+r124: A=Nonrefundable child and other dependent tax credit:  Number | B=38503650 | C=10600 | D=36660 | E=2020310 | F=9733140 | G=6765850 | H=4845080 | I=10464100 | J=4612840 | K=15070 | L=0
+r125: A=Amount | B=83769784 | C=5007 | D=10259 | E=610136 | F=11587081 | G=14888484 | H=12993622 | I=30189970 | J=13464785 | K=20440 | L=0
+r126: A=Residential clean energy credit:  Number | B=1518210 | C=630 | D=1900 | E=35490 | F=257960 | G=306290 | H=239170 | I=443790 | J=186240 | K=33510 | L=13240
+r127: A=Amount | B=7791024 | C=419 | D=685 | E=18302 | F=403205 | G=922548 | H=1091550 | I=3015974 | J=1742446 | K=383928 | L=211967
+r128: A=Energy efficient home improvement credit:  Number | B=2612610 | C=710 | D=2460 | E=41470 | F=263510 | G=384180 | H=378880 | I=975550 | J=478560 | K=68260 | L=19050
+r129: A=Amount | B=2324249 | C=211 | D=810 | E=16527 | F=187992 | G=319198 | H=326651 | I=890427 | J=484253 | K=76238 | L=21942
+r130: A=Self-employment tax:  Number | B=21811720 | C=181060 | D=2705240 | E=5157470 | F=3535660 | G=2258290 | H=1690430 | I=3583370 | J=1963540 | K=461750 | L=274920
+r131: A=Amount | B=80746376 | C=527444 | D=1970961 | E=9728711 | F=9870456 | G=7155846 | H=6050625 | I=16370462 | J=15304108 | K=5858243 | L=7909520
+r132: A=Total premium tax credit:  Number | B=8868100 | C=246450 | D=872460 | E=2314950 | F=3160080 | G=1264680 | H=552600 | I=456870 | J=0 | K=0 | L=0
+r133: A=Amount | B=59881173 | C=2299129 | D=6178576 | E=15489566 | F=20615388 | G=8783722 | H=3756979 | I=2757813 | J=0 | K=0 | L=0
+r134: A=Advance premium tax credit:  Number | B=9672510 | C=263490 | D=926860 | E=2419190 | F=3208310 | G=1400320 | H=648160 | I=651610 | J=135880 | K=14250 | L=4450
+r135: A=Amount | B=67575908 | C=2311470 | D=6435402 | E=15940883 | F=21727309 | G=10349551 | H=4945739 | I=4739277 | J=980769 | K=110479 | L=35029
+r136: A=Total tax payments:  Number | B=148785360 | C=937320 | D=10700220 | E=23092190 | F=34575980 | G=23586080 | H=15396300 | I=27165110 | J=10800750 | K=1741390 | L=790020
+r137: A=Amount | B=2480907808 | C=6325543 | D=10222837 | E=69905374 | F=136241154 | G=137673734 | H=139753545 | I=453780027 | J=520728460 | K=268755486 | L=737521648
+r138: A=Earned income credit:  [10] Number | B=23923110 | C=131470 | D=4530230 | E=9925930 | F=8476700 | G=858770 | H=0 | I=0 | J=0 | K=0 | L=0
+r139: A=Amount | B=65006308 | C=198543 | D=4262542 | E=34554022 | F=25131841 | G=859360 | H=0 | I=0 | J=0 | K=0 | L=0
+r140: A=Earned income credit with no qualifying children:  Number | B=6649870 | C=83170 | D=3246740 | E=3319960 | F=0 | G=0 | H=0 | I=0 | J=0 | K=0 | L=0
+r141: A=Amount | B=2394450 | C=24327 | D=1296204 | E=1073919 | F=0 | G=0 | H=0 | I=0 | J=0 | K=0 | L=0
+r142: A=Earned income credit with one qualifying child:  Number | B=8471050 | C=23670 | D=803320 | E=3458700 | F=4185350 | G=0 | H=0 | I=0 | J=0 | K=0 | L=0
+r143: A=Amount | B=23022338 | C=63834 | D=1695082 | E=13335588 | F=7927834 | G=0 | H=0 | I=0 | J=0 | K=0 | L=0
+r144: A=Earned income credit with two qualifying children:  Number | B=5647060 | C=15240 | D=322680 | E=2080450 | F=2812750 | G=415950 | H=0 | I=0 | J=0 | K=0 | L=0
+r145: A=Amount | B=24290481 | C=64915 | D=820242 | E=12738379 | F=10347223 | G=319722 | H=0 | I=0 | J=0 | K=0 | L=0
+r146: A=Earned income credit with three or more qualifying children:  Number | B=3155130 | C=9390 | D=157490 | E=1066820 | F=1478600 | G=442820 | H=0 | I=0 | J=0 | K=0 | L=0
+r147: A=Amount | B=15299042 | C=45470 | D=451013 | E=7406137 | F=6856781 | G=539641 | H=0 | I=0 | J=0 | K=0 | L=0
+r148: A=Excess earned income credit (refundable): [11] Number | B=20549900 | C=87990 | D=3596540 | E=8628120 | F=7529150 | G=708100 | H=0 | I=0 | J=0 | K=0 | L=0
+r149: A=Amount | B=54853654 | C=142010 | D=3540408 | E=28798625 | F=21697738 | G=674873 | H=0 | I=0 | J=0 | K=0 | L=0
+r150: A=Additional child tax credit:  Number | B=17207180 | C=81700 | D=1055510 | E=6087470 | F=7318380 | G=1968050 | H=459530 | I=208540 | J=27980 | K=20 | L=0
+r151: A=Amount | B=33740750 | C=220791 | D=780228 | E=11536534 | F=15730826 | G=3971493 | H=890733 | I=541443 | J=68672 | K=30 | L=0
+r152: A=Refundable education credit: [12] Number | B=5788640 | C=82080 | D=488740 | E=1288040 | F=1496510 | G=779440 | H=501680 | I=1152160 | J=0 | K=0 | L=0
+r153: A=Amount | B=5030108 | C=76579 | D=434379 | E=1131732 | F=1267125 | G=682999 | H=418206 | I=1019088 | J=0 | K=0 | L=0
+r154: A=Net premium tax credit:  Number | B=2402000 | C=115640 | D=252990 | E=698960 | F=841160 | G=292440 | H=113690 | I=87130 | J=0 | K=0 | L=0
+r155: A=Amount | B=2651973 | C=157839 | D=195630 | E=542695 | F=879838 | G=446958 | H=216310 | I=212703 | J=0 | K=0 | L=0
+r156: A=Income tax after credits:  Number | B=114486260 | C=69500 | D=505310 | E=9815220 | F=26515360 | G=21857040 | H=15082190 | I=27195910 | J=10890240 | K=1759240 | L=796260
+r157: A=Amount | B=2115085827 | C=167071 | D=129321 | E=4980884 | F=56502269 | G=99375737 | H=115593862 | I=412204592 | J=507543384 | K=265377474 | L=653211233
+r158: A=Total tax liability:  [13] Number | B=124406730 | C=282810 | D=3257690 | E=14098240 | F=28347250 | G=22411630 | H=15247170 | I=27286260 | J=10913630 | K=1763400 | L=798640
+r159: A=Amount | B=2259884586 | C=790810 | D=2156136 | E=14925909 | F=66986636 | G=107313774 | H=122444782 | I=431252062 | J=534766706 | K=282325731 | L=696922040
+r160: A=Total additional Medicare tax:  Number | B=7609840 | C=13600 | D=1410 | E=3530 | F=8230 | G=8300 | H=12470 | I=490250 | J=5228230 | K=1284700 | L=559110
+r161: A=Amount | B=15253148 | C=19117 | D=2076 | E=4376 | F=14997 | G=11477 | H=11848 | I=138396 | J=4174489 | K=4221668 | L=6654704
+r162: A=Net investment income tax:  Number | B=8100650 | C=30 | D=370 | E=1440 | F=2340 | G=1910 | H=3080 | I=157790 | J=5633270 | K=1555100 | L=745330
+r163: A=Amount | B=39129479 | C=796 | D=560 | E=978 | F=703 | G=1023 | H=1319 | I=50030 | J=5554592 | K=6248231 | L=27271247
+r164: A=Tax due at time of filing:  [14] Number | B=43577930 | C=171120 | D=2241850 | E=3097250 | F=7390310 | G=6654470 | H=5570350 | I=11313070 | J=5785270 | K=1004640 | L=349610
+r165: A=Amount | B=264455501 | C=317530 | D=1136563 | E=3786757 | F=10133375 | G=13436610 | H=14848514 | I=48571171 | J=65677012 | K=40434875 | L=66113094
+r166: A=Total overpayments:  Number | B=109733180 | C=875990 | D=9636290 | E=21122280 | F=28225110 | G=17404110 | H=10055960 | I=16118690 | J=5099930 | K=749450 | L=445380
+r167: A=Amount | B=480097262 | C=5844852 | D=9190659 | E=58678724 | F=79182964 | G=43521171 | H=31876318 | I=70163492 | J=50377808 | K=26049315 | L=105211959
+r168: A=Overpayments refunded:  [15] Number | B=106328020 | C=828990 | D=9565540 | E=21005700 | F=28006290 | G=17140740 | H=9781230 | I=15264590 | J=4201120 | K=397760 | L=136060
+r169: A=Amount | B=349346343 | C=4612332 | D=8968450 | E=58237457 | F=78224178 | G=42339599 | H=30481815 | I=63535959 | J=34278410 | K=10025276 | L=18642867
+r170: A=Credited to next year's estimated tax:  Number | B=4277580 | C=60870 | D=87890 | E=158360 | F=302480 | G=353470 | H=357060 | I=1106260 | J=1098080 | K=407330 | L=345780
+r171: A=Amount | B=130750906 | C=1232521 | D=222205 | E=441271 | F=958790 | G=1181573 | H=1394499 | I=6627530 | J=16099392 | K=16024033 | L=86569092
+r172: A=** Not shown to avoid disclosure of information about specific taxpayers. However, the dat...
+r173: A=[1] "Number," here, and elsewhere, represents number of returns, unless otherwise specifie...
+r174: A=[2] Beginning in 2018, personal exemption deductions were suspended  for the primary, seco...
+r175: A=[3] The "Number of volunteer prepared returns" shows counts of  returns prepared by IRS-ce...
+r176: A=[4] These data do not distinguish between refund anticipation  loans and refund advances.
+r177: A=[5] Includes primary taxpayers 60 years of age or older.
+r178: A=[6] Less deficit.
+r179: A=[7] Not included in total income.
+r180: A=[8] "Qualified dividends" are ordinary dividends received that meet certain conditions and...
+r181: A=[9] "Total tax credits" represent the summation of taxpayer reported credit items made up ...
+r182: A=[10] "Earned income credit" includes both the refundable and non-refundable portions. The ...
+r183: A=[11] The refundable portion of the "earned income credit" equals "total income tax" minus ...
+r184: A=[12] The "refundable education credit" can partially or totally offset tax liability as we...
+r185: A=[13] "Total tax liability" differs from "Income tax," in that "Total tax liability" includ...
+r186: A=[14] Reflects payments to or withholdings made to "Total tax liability". This is the amoun...
+r187: A=[15] The amount of overpayments the tax filer requested to have refunded.
+r188: A=[16] Returns from Puerto Rico represent individuals who are employees of the U.S governmen...
+r189: A=https://www.irs.gov/taxtopics/tc901
+r190: A=[17] Includes, for example, returns filed from Army Post Office and Fleet Post Office addr...
+r191: A=[18] Less than $500.
+r192: A=NOTE: This table presents aggregates of all returns filed and processed through the Indivi...
+r193: A=This table is based on tax returns as initially processed by IRS and does not reflect amen...
+r194: A=Classification by State was usually based on the taxpayer's home address. However, some ta...
+r195: A=For explanation of the tax law changes which could affect the year-to-year analysis of dat...
+r196: A=Note: Number of returns and amounts may not add to totals because of rounding.
+r197: A=SOURCE: IRS, Statistics of Income Division, Individual Master File System, August 2026.

@@ -1,0 +1,88 @@
+{
+ "id": "fhwa_drivers_licenses_2022",
+ "file": "fhwa_drivers_licenses_2022.xlsx",
+ "questions": [
+  {
+   "question": "In 2022, how many total licensed drivers of all ages were recorded in California?",
+   "sheet": "TOTAL",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "27632103",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='TOTAL', header=None)\n# Locate header row with STATE\nheader_idx = df[df.iloc[:, 0] == 'STATE'].index[0]\nstate_col = 0\ntotal_col = df.iloc[header_idx].tolist().index('TOTAL')\n\n# Find California row\nca_row = df[df.iloc[:, state_col].astype(str).str.startswith('California')].index[0]\nresult = int(df.iloc[ca_row, total_col])",
+   "qid": "fhwa_drivers_licenses_2022#1",
+   "pass1": true,
+   "result": 27632103,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states had the highest number of total licensed drivers in 2022?",
+   "sheet": "TOTAL",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='TOTAL', header=None)\nheader_idx = df[df.iloc[:, 0] == 'STATE'].index[0]\ntotal_col = df.iloc[header_idx].tolist().index('TOTAL')\n\ndata = df.iloc[header_idx + 1 : 65].copy()  # rows 15 to 65 (0-indexed 14 to 64)\ndata = data[~data.iloc[:, 0].astype(str).str.lower().str.startswith('total')]\n\ndata['state_clean'] = data.iloc[:, 0].astype(str).str.replace(r'\\s*\\(\\d+\\)', '', regex=True).str.strip()\ndata['total_drivers'] = pd.to_numeric(data.iloc[:, total_col])\ntop3 = data.sort_values(by='total_drivers', ascending=False).head(3)\nresult = top3['state_clean'].tolist()",
+   "qid": "fhwa_drivers_licenses_2022#2",
+   "pass1": true,
+   "result": [
+    "California",
+    "Texas",
+    "Florida"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did Texas have more licensed female drivers than male drivers in 2022?",
+   "sheet": "FEMALES",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf_f = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='FEMALES', header=None)\ndf_m = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='MALES', header=None)\n\nrow_f = df_f[df_f.iloc[:, 0].astype(str).str.startswith('Texas')].index[0]\nrow_m = df_m[df_m.iloc[:, 0].astype(str).str.startswith('Texas')].index[0]\n\ntotal_f = float(df_f.iloc[row_f, 16])\ntotal_m = float(df_m.iloc[row_m, 16])\n\nresult = 'yes' if total_f > total_m else 'no'",
+   "qid": "fhwa_drivers_licenses_2022#3",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states reported any licensed drivers under age 16 in 2022?",
+   "sheet": "TOTAL",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='TOTAL', header=None)\n# Column T is index 19 (<16)\n# State rows are rows 15 to 65 (index 14 to 64)\nstates_df = df.iloc[14:65].copy()\nunder_16 = pd.to_numeric(states_df.iloc[:, 19], errors='coerce').fillna(0)\nresult = int((under_16 > 0).sum())",
+   "qid": "fhwa_drivers_licenses_2022#4",
+   "pass1": false,
+   "result": 11,
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  },
+  {
+   "question": "What was the difference between the number of female and male licensed drivers aged 85 and over across the nation in 2022?",
+   "sheet": "TOTAL",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "321645.101",
+   "program": "import pandas as pd\n\ndf_f = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='FEMALES', header=None)\ndf_m = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='MALES', header=None)\n\n# Total row is row 66 (index 65), column P (index 15) is 85 AND OVER\nfemale_85_over = float(df_f.iloc[65, 15])\nmale_85_over = float(df_m.iloc[65, 15])\n\nresult = round(abs(female_85_over - male_85_over), 3)",
+   "qid": "fhwa_drivers_licenses_2022#5",
+   "pass1": true,
+   "result": 321645.101,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2022, what was the total number of licensed young drivers who were exactly 16 years old nationwide?",
+   "sheet": "TOTAL",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1076583",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='TOTAL', header=None)\n# Row 66 (index 65) is Total, column U (index 20) is age 16\nresult = int(df.iloc[65, 20])",
+   "qid": "fhwa_drivers_licenses_2022#6",
+   "pass1": true,
+   "result": 1076583,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "file": "nces_digest_degrees_conferred.xlsx",
+ "sheets": [
+  {
+   "name": "Digest 2022 Table 318.10",
+   "rows": 74,
+   "cols": 20,
+   "shown_whole": true
+  }
+ ],
+ "chars": 14818
+}

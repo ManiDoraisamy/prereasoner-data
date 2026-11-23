@@ -1,0 +1,12 @@
+{
+ "file": "ca_cdph_health_care_personnel_flu_vaccination.xlsx",
+ "sheets": [
+  {
+   "name": "HCP_FLU_BY_HOSP_CNTY",
+   "rows": 401,
+   "cols": 23,
+   "shown_whole": false
+  }
+ ],
+ "chars": 28435
+}

@@ -1,0 +1,15 @@
+{
+ "frozen_sources": 54,
+ "dev_sources": 52,
+ "same_url": [],
+ "same_sha256": [],
+ "same_socrata_view": [],
+ "same_landing_page": [
+  "nchs_hus2022_hypertension",
+  "nchs_hus_health_care_employment",
+  "nchs_hus_mammography_use"
+ ],
+ "same_name_pattern": [
+  "nces_digest_tuition_fees_room_board"
+ ]
+}

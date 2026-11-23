@@ -1,0 +1,40 @@
+{
+ "id": "cms_program_stats_providers_2023",
+ "answers": [
+  {
+   "id": "cms_program_stats_providers_2023#2",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 4_CPS_19PRV', header=None)\n\nheader_row_idx = None\nfor idx, row in df.iterrows():\n    if row.astype(str).str.contains('Short Stay Hospital Beds', case=False).any():\n        header_row_idx = idx\n        break\n\nheaders = df.iloc[header_row_idx].tolist()\nbeds_col = None\nstate_col = 0\nfor col_idx, val in enumerate(headers):\n    if str(val).strip() == 'Short Stay Hospital Beds':\n        beds_col = col_idx\n        break\n\ndata = df.iloc[header_row_idx + 1:].copy()\nfl_beds = float(data[data[state_col].astype(str).str.strip() == 'Florida'][beds_col].values[0])\nca_beds = float(data[data[state_col].astype(str).str.strip() == 'California'][beds_col].values[0])\n\nresult = 'yes' if fl_beds > ca_beds else 'no'"
+  },
+  {
+   "id": "cms_program_stats_providers_2023#7",
+   "answer": "1550360",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 2_CPS_19PRV', header=None)\n# Look for 'Skilled Nursing Facilities' followed by 'Number of beds' or directly in MDCR PROVIDERS 4_CPS_19PRV\n# In Sheet 2:\n# r36: Skilled Nursing Facilities\n# r37: Number of beds | 2023 is column G (index 6)\nrow_idx = None\nfor idx, val in df[0].items():\n    if pd.notna(val) and 'skilled nursing facilities' in str(val).lower():\n        row_idx = idx\n        break\n\n# next row is 'Number of beds'\nbeds_row = row_idx + 1\nresult = int(df.iloc[beds_row, 6])\n"
+  },
+  {
+   "id": "cms_program_stats_providers_2023#8",
+   "answer": "0",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 5_CPS_19PRV', header=None)\n# Row 4 has headers, r3 has: Provider State/Other ... Rural Health Clinics (col H, index 7)\n# Data rows r8 to r58 (Alabama to Wyoming) + District of Columbia\nheader_row = 2\ncol_idx = None\nfor c in range(df.shape[1]):\n    if 'rural health clinics' in str(df.iloc[header_row, c]).lower():\n        col_idx = c\n        break\n\nstates_df = df.iloc[7:58] # Alabama to Wyoming (including DC)\nresult = int((pd.to_numeric(states_df[col_idx], errors='coerce') >= 1000).sum())\n"
+  },
+  {
+   "id": "cms_program_stats_providers_2023#9",
+   "answer": "Non Profit - Corporation",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 3_CPS_19PRV', header=None)\n# Skilled Nursing Facilities non-profit control categories:\n# Non Profit - Church Related, Non Profit - Corporation, Non Profit - Other\ncategories = ['Non Profit - Church Related', 'Non Profit - Corporation', 'Non Profit - Other']\nsubset = df[df[0].isin(categories)].copy()\nsubset[6] = pd.to_numeric(subset[6])\nmax_row = subset.loc[subset[6].idxmax()]\nresult = str(max_row[0])\n"
+  },
+  {
+   "id": "cms_program_stats_providers_2023#10",
+   "answer": "[\"Internal Medicine\", \"Family Practice\", \"Emergency Medicine\", \"Anesthesiology\", \"Obstetrics & Gynecology\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 6_CPS_19PRV', header=None)\n# Physician specialties start around row index 8 (r9: Primary Care) to row index 78 (r79)\n# 'All Physician Specialties' is at r8 (idx 7)\n# 'Non-Physician Practitioners' starts at r80 (idx 79)\nstart_idx = df[df[0].str.contains('All Physician Specialties', na=False)].index[0] + 1\nend_idx = df[df[0].str.contains('Non-Physician Practitioners', na=False)].index[0]\n\nsub_df = df.iloc[start_idx:end_idx].copy()\n# Filter out subheadings (which have NaN or non-numeric in column 5/2023)\nsub_df['val'] = pd.to_numeric(sub_df[5], errors='coerce')\nsub_df = sub_df.dropna(subset=['val'])\n\ntop5 = sub_df.sort_values(by='val', ascending=False).head(5)\nresult = top5[0].tolist()\n"
+  },
+  {
+   "id": "cms_program_stats_providers_2023#11",
+   "answer": "55",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 5_CPS_19PRV', header=None)\n# Find 'Organ Procurement Organizations' column\ncol_idx = None\nfor c in range(df.shape[1]):\n    if 'organ procurement' in str(df.iloc[2, c]).lower():\n        col_idx = c\n        break\n\n# Find 'United States' row\nus_row = df[df[0].str.strip() == 'United States'].index[0]\nresult = int(df.iloc[us_row, col_idx])\n"
+  },
+  {
+   "id": "cms_program_stats_providers_2023#12",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 7_CPS_19PRV', header=None)\ntx_val = df.loc[df[0].str.strip() == 'Texas', 5].values[0]\nny_val = df.loc[df[0].str.strip() == 'New York', 5].values[0]\nresult = 'Texas' if float(tx_val) > float(ny_val) else 'New York'\n"
+  }
+ ]
+}

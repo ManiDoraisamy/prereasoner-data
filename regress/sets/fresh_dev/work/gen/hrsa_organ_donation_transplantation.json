@@ -1,0 +1,60 @@
+{
+ "id": "hrsa_organ_donation_transplantation",
+ "file": "hrsa_organ_donation_transplantation.xlsx",
+ "questions": [
+  {
+   "question": "Between 2021 and 2025, which calendar year had the highest total number of living organ donors recovered nationally?",
+   "sheet": "Overview - National",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2025",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hrsa_organ_donation_transplantation.xlsx', sheet_name='Overview - National')\nfiltered = df[(df['Organ'] == 'All') & (df['Year'].isin([2021, 2022, 2023, 2024, 2025]))].copy()\nfiltered['Number of living organ donors recovered'] = pd.to_numeric(filtered['Number of living organ donors recovered'], errors='coerce')\nmax_row = filtered.loc[filtered['Number of living organ donors recovered'].idxmax()]\nresult = str(int(max_row['Year']))",
+   "qid": "hrsa_organ_donation_transplantation#1"
+  },
+  {
+   "question": "According to the organ donor demographics summary, how many living organ donors were classified as uninsured?",
+   "sheet": "Donor Demographics",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "2188",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hrsa_organ_donation_transplantation.xlsx', sheet_name='Donor Demographics')\nrow = df[(df['Category'].str.contains('Insurance', na=False)) & (df['Level'] == 'Uninsured')]\nresult = int(row['Donor Count'].values[0])",
+   "qid": "hrsa_organ_donation_transplantation#2"
+  },
+  {
+   "question": "In 2025, how many more male candidates than female candidates were added to the transplant waitlists across all organ types?",
+   "sheet": "Waitlist-Candidate Registration",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "16985",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hrsa_organ_donation_transplantation.xlsx', sheet_name='Waitlist-Candidate Registration')\nrow = df[(df['Candidate/Registration'] == 'Candidates') & (df['Year of Addition'] == 2025) & (df['Organ Type'] == 'All')].iloc[0]\nmale = int(row['Sex: Male'])\nfemale = int(row['Sex: Female'])\nresult = male - female",
+   "qid": "hrsa_organ_donation_transplantation#3"
+  },
+  {
+   "question": "Which three individual organs had the highest number of distinct recipients from deceased donors in 2023?",
+   "sheet": "Recipient Demographics",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Kidney\", \"Liver\", \"Heart\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hrsa_organ_donation_transplantation.xlsx', sheet_name='Recipient Demographics')\nsub = df[(df['Transplant Year'] == 2023) & (df['Donor Type'] == 'Deceased Donor') & (df['Organ Transplanted'] != 'All Transplanted Organ Types')].copy()\nsub['Total Distinct Recipients'] = pd.to_numeric(sub['Total Distinct Recipients'], errors='coerce')\ntop3 = sub.sort_values(by='Total Distinct Recipients', ascending=False).head(3)\nresult = top3['Organ Transplanted'].tolist()",
+   "qid": "hrsa_organ_donation_transplantation#4"
+  },
+  {
+   "question": "Based on the donor demographics data, did female living donors outnumber male living donors overall?",
+   "sheet": "Donor Demographics",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hrsa_organ_donation_transplantation.xlsx', sheet_name='Donor Demographics')\nsub = df[(df['Category'].str.contains('Sex', na=False)) & (df['Donor Type Filter'] == 'Living Donor')]\nfemale_count = int(sub[sub['Level'] == 'Female']['Donor Count'].values[0])\nmale_count = int(sub[sub['Level'] == 'Male']['Donor Count'].values[0])\nresult = 'yes' if female_count > male_count else 'no'",
+   "qid": "hrsa_organ_donation_transplantation#5"
+  },
+  {
+   "question": "What was the total number of living donor liver transplant recipients nationwide from 2021 through 2025?",
+   "sheet": "Overview - National",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "3142",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('hrsa_organ_donation_transplantation.xlsx', sheet_name='Overview - National')\nsub = df[(df['Organ'] == 'Liver') & (df['Year'].isin([2021, 2022, 2023, 2024, 2025]))]\nresult = int(pd.to_numeric(sub['Number of living donor organ transplant recipients'], errors='coerce').sum())",
+   "qid": "hrsa_organ_donation_transplantation#6"
+  }
+ ]
+}

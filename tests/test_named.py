@@ -1138,13 +1138,17 @@ def test_a_backbone_read_from_a_copy_here_is_uploaded_and_read_there() -> None:
     assert lease.backbone_upload("bge-small") is None
     assert "NAMED_BACKBONE_ONLINE=1" in remote_command("bge-small", 500, 3)
     with tempfile.TemporaryDirectory() as folder:
-        held = dict(backbone._LOCAL)
-        backbone._LOCAL["bge-m3"] = folder
+        held = os.environ.get("NAMED_BACKBONE_DIR")
+        os.environ["NAMED_BACKBONE_DIR"] = folder
+        os.mkdir(os.path.join(folder, "bge-m3"))
         try:
-            assert lease.backbone_upload("bge-m3") == (folder, "/workspace/backbones/bge-m3")
+            assert backbone.source_of(backbone.BACKBONES["bge-m3"]) == (os.path.join(folder, "bge-m3"), True)
+            assert lease.backbone_upload("bge-m3") == (os.path.join(folder, "bge-m3"), "/workspace/backbones/bge-m3")
         finally:
-            backbone._LOCAL.clear()
-            backbone._LOCAL.update(held)
+            if held is None:
+                os.environ.pop("NAMED_BACKBONE_DIR")
+            else:
+                os.environ["NAMED_BACKBONE_DIR"] = held
     command = remote_command("bge-m3", 500, 3, uploaded_backbone=True)
     assert "NAMED_BACKBONE_DIR=/workspace/backbones" in command and "NAMED_BACKBONE_ONLINE" not in command
 

@@ -1,0 +1,35 @@
+{
+ "id": "census_state_government_finances_2022",
+ "answers": [
+  {
+   "id": "census_state_government_finances_2022#1",
+   "answer": "8638712",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\xa0', ' ').str.strip()\ncal_col = header_row[header_row == 'California'].index[0]\n\nrow_labels = df.iloc[:, 0].astype(str).str.replace('\\xa0', ' ').str.strip()\nmotor_fuels_row = row_labels[row_labels == 'Motor Fuels Sales Tax'].index[0]\n\nresult = int(df.iat[motor_fuels_row, cal_col])"
+  },
+  {
+   "id": "census_state_government_finances_2022#2",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\xa0', ' ').str.strip()\ntx_col = header_row[header_row == 'Texas'].index[0]\nny_col = header_row[header_row == 'New York'].index[0]\n\nrow_labels = df.iloc[:, 0].astype(str).str.replace('\\xa0', ' ').str.strip()\ntaxes_row = row_labels[row_labels == 'Total Taxes'].index[0]\n\ntx_taxes = float(df.iat[taxes_row, tx_col])\nny_taxes = float(df.iat[taxes_row, ny_col])\n\nresult = 'yes' if tx_taxes > ny_taxes else 'no'"
+  },
+  {
+   "id": "census_state_government_finances_2022#3",
+   "answer": "[\"California\", \"Texas\", \"Pennsylvania\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\xa0', ' ').str.strip()\nrow_labels = df.iloc[:, 0].astype(str).str.replace('\\xa0', ' ').str.strip()\n\nhosp_row = row_labels[row_labels == 'Hospitals'].index[0]\n\nstate_cols = [c for c in range(2, df.shape[1]) if header_row[c] not in ['United States', 'nan']]\nspending = {}\nfor c in state_cols:\n    val = df.iat[hosp_row, c]\n    try:\n        spending[df.iat[4, c]] = float(val)\n    except (ValueError, TypeError):\n        continue\n\ntop_3 = sorted(spending.items(), key=lambda x: x[1], reverse=True)[:3]\nresult = [item[0] for item in top_3]"
+  },
+  {
+   "id": "census_state_government_finances_2022#4",
+   "answer": "Florida",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\xa0', ' ').str.strip()\nfl_col = header_row[header_row == 'Florida'].index[0]\nga_col = header_row[header_row == 'Georgia'].index[0]\n\nrow_labels = df.iloc[:, 0].astype(str).str.replace('\\xa0', ' ').str.strip()\nhighway_row = row_labels[row_labels == 'Highways'].index[0]\n\nfl_val = float(df.iat[highway_row, fl_col])\nga_val = float(df.iat[highway_row, ga_col])\n\nresult = df.iat[4, fl_col] if fl_val > ga_val else df.iat[4, ga_col]"
+  },
+  {
+   "id": "census_state_government_finances_2022#5",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\xa0', ' ').str.strip()\nrow_labels = df.iloc[:, 0].astype(str).str.replace('\\xa0', ' ').str.strip()\n\nedu_row = row_labels[row_labels == 'Education'].index[0]\n\nstate_cols = [c for c in range(2, df.shape[1]) if header_row[c] not in ['United States', 'nan']]\ncount = 0\nfor c in state_cols:\n    try:\n        val = float(df.iat[edu_row, c])\n        if val > 30000000:\n            count += 1\n    except (ValueError, TypeError):\n        continue\n\nresult = count"
+  },
+  {
+   "id": "census_state_government_finances_2022#6",
+   "answer": "17682041",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\xa0', ' ').str.strip()\nrow_labels = df.iloc[:, 0].astype(str).str.replace('\\xa0', ' ').str.strip()\n\nsev_row = row_labels[row_labels == 'Severance Taxes'].index[0]\n\ntarget_states = ['Texas', 'New Mexico', 'Alaska']\ntotal = 0\nfor state in target_states:\n    c = header_row[header_row == state].index[0]\n    total += int(df.iat[sev_row, c])\n\nresult = total"
+  }
+ ]
+}

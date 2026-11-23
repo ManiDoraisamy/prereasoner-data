@@ -1,0 +1,489 @@
+FILE epa_air_quality_statistics_by_city_2025.xlsx (Excel workbook) with 1 sheet(s): ["AQ Stats by City 2025"]
+
+### Sheet "AQ Stats by City 2025": 484 rows x 13 columns (Excel rows 1..484, columns A..M)
+merged cells: A483:M483, A475:M475, A479:M479, A471:M471, A476:M476, A484:M484, A470:M470, A480:M480, A472:M472, A474:M474, A482:M482, A1:B1, A473:M473, A477:M477, A481:M481, A2:M2, A478:M478
+(whole sheet shown; Excel row numbers)
+r1: A=Air Quality Statistics by City, 2025
+r2: A=Note: The values shown are the highest among the sites in each area. Exceptional events da...
+r3: A=Core Based Statistical Area (CBSA) | B=CBSA FIPS Code | C=Population (2020 Census) | D=CO           8-hour (ppm) | E=Lead             3-month (µg/m3) | F=NO2        AM     (ppb) | G=NO2           1-hour (ppb) | H=Ozone              8-hour (ppb) | I=PM10         24-hour (µg/m3) | J=PM2.5         Wtd AM (µg/m3) | K=PM2.5         24-hour (µg/m3) | L=SO2          1-hour (ppb) | M=SO2      Wtd AM (ppb)
+r4: A=Aberdeen, SD | B=10100 | C=42287 | D=ND | E=ND | F=ND | G=ND | H=ND | I=118 | J=6 | K=25 | L=ND | M=ND
+r5: A=Adrian, MI | B=10300 | C=99423 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=8 | K=33.6 | L=ND | M=ND
+r6: A=Akron, OH | B=10420 | C=702219 | D=ND | E=ND | F=ND | G=ND | H=70 | I=48 | J=8.3 | K=21.2 | L=4 | M=0.2
+r7: A=Albany, GA | B=10500 | C=148922 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.7 | K=19 | L=ND | M=ND
+r8: A=Albany-Schenectady-Troy, NY | B=10580 | C=899262 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=7.3 | K=25.3 | L=ND | M=ND
+r9: A=Albuquerque, NM | B=10740 | C=916528 | D=1.7 | E=ND | F=10.4 | G=101 | H=68 | I=276 | J=9.2 | K=20.5 | L=IN | M=0.4
+r10: A=Alexandria, LA | B=10780 | C=152192 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.4 | K=16.4 | L=ND | M=ND
+r11: A=Allentown-Bethlehem-Easton, PA-NJ | B=10900 | C=861889 | D=ND | E=ND | F=8.1 | G=40.5 | H=68 | I=41 | J=7.2 | K=22.3 | L=7.2 | M=0.7
+r12: A=Amarillo, TX | B=11100 | C=268691 | D=ND | E=ND | F=ND | G=ND | H=67 | I=ND | J=3.4 | K=15.4 | L=2 | M=0.1
+r13: A=Anchorage, AK | B=11260 | C=398328 | D=2.6 | E=ND | F=ND | G=ND | H=ND | I=141 | J=5.1 | K=23.8 | L=ND | M=ND
+r14: A=Ann Arbor, MI | B=11460 | C=372258 | D=ND | E=ND | F=ND | G=ND | H=70 | I=ND | J=7.6 | K=29.9 | L=ND | M=ND
+r15: A=Appleton, WI | B=11540 | C=243147 | D=ND | E=ND | F=ND | G=ND | H=63 | I=ND | J=8.3 | K=44.3 | L=12.8 | M=0.9
+r16: A=Ardmore, OK | B=11620 | C=58149 | D=ND | E=ND | F=ND | G=ND | H=74 | I=ND | J=6.6 | K=14.3 | L=ND | M=ND
+r17: A=Arecibo, PR | B=11640 | C=182705 | D=ND | E=0.01 | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=ND | M=ND
+r18: A=Arkadelphia, AR | B=11660 | C=21446 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=ND | K=ND | L=ND | M=ND
+r19: A=Asheville, NC | B=11700 | C=469015 | D=ND | E=ND | F=ND | G=ND | H=62 | I=38 | J=6.3 | K=14 | L=ND | M=ND
+r20: A=Ashtabula, OH | B=11780 | C=97574 | D=ND | E=ND | F=ND | G=ND | H=70 | I=ND | J=ND | K=ND | L=ND | M=ND
+r21: A=Athens, TN | B=11940 | C=53276 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=6.9 | K=15.2 | L=ND | M=ND
+r22: A=Athens-Clarke County, GA | B=12020 | C=215415 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=7.9 | K=19.7 | L=ND | M=ND
+r23: A=Atlanta-Sandy Springs-Alpharetta, GA | B=12060 | C=6089815 | D=1.4 | E=IN | F=14.9 | G=50 | H=72 | I=32 | J=9 | K=17 | L=5.7 | M=1.3
+r24: A=Atlantic City-Hammonton, NJ | B=12100 | C=274534 | D=ND | E=ND | F=ND | G=ND | H=59 | I=ND | J=5.7 | K=16.7 | L=1.4 | M=0
+r25: A=Augusta-Richmond County, GA-SC | B=12260 | C=611000 | D=ND | E=ND | F=ND | G=ND | H=60 | I=58 | J=9.7 | K=22 | L=38.7 | M=0.2
+r26: A=Augusta-Waterville, ME | B=12300 | C=123642 | D=ND | E=ND | F=ND | G=ND | H=62 | I=63 | J=5.7 | K=18.8 | L=ND | M=ND
+r27: A=Austin-Round Rock-Georgetown, TX | B=12420 | C=2283371 | D=2.4 | E=ND | F=11.2 | G=43.1 | H=71 | I=127 | J=9.4 | K=21.4 | L=3.9 | M=0.3
+r28: A=Bakersfield, CA | B=12540 | C=909235 | D=0.8 | E=ND | F=15.3 | G=43.5 | H=84 | I=128 | J=13.7 | K=34.9 | L=ND | M=ND
+r29: A=Baltimore-Columbia-Towson, MD | B=12580 | C=2844510 | D=0.6 | E=ND | F=14.4 | G=IN | H=66 | I=ND | J=6.7 | K=19.2 | L=ND | M=ND
+r30: A=Bangor, ME | B=12620 | C=152199 | D=ND | E=ND | F=ND | G=ND | H=64 | I=87 | J=5.4 | K=19.3 | L=ND | M=ND
+r31: A=Bartlesville, OK | B=12780 | C=52455 | D=ND | E=ND | F=ND | G=ND | H=67 | I=ND | J=7.3 | K=20.3 | L=ND | M=ND
+r32: A=Baton Rouge, LA | B=12940 | C=870569 | D=0.6 | E=0.01 | F=7.7 | G=39 | H=66 | I=65 | J=8.9 | K=16.3 | L=25.6 | M=0.9
+r33: A=Bay City, MI | B=13020 | C=103856 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.6 | K=29.4 | L=ND | M=ND
+r34: A=Beatrice, NE | B=13100 | C=21704 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=6.7 | K=23.3 | L=ND | M=ND
+r35: A=Beaumont-Port Arthur, TX | B=13140 | C=397565 | D=ND | E=ND | F=5.6 | G=28.5 | H=67 | I=ND | J=8.6 | K=19.4 | L=15.9 | M=1.6
+r36: A=Beaver Dam, WI | B=13180 | C=89396 | D=1 | E=ND | F=ND | G=ND | H=64 | I=104 | J=7.7 | K=35.4 | L=1.3 | M=0.2
+r37: A=Bellingham, WA | B=13380 | C=226847 | D=ND | E=ND | F=ND | G=ND | H=47 | I=ND | J=5 | K=10.3 | L=ND | M=ND
+r38: A=Bemidji, MN | B=13420 | C=46228 | D=ND | E=ND | F=ND | G=ND | H=73 | I=ND | J=8.4 | K=57.6 | L=ND | M=ND
+r39: A=Bend, OR | B=13460 | C=198253 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=4.6 | K=20.9 | L=ND | M=ND
+r40: A=Bennington, VT | B=13540 | C=37347 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=5.2 | K=21 | L=ND | M=ND
+r41: A=Berlin, NH | B=13620 | C=31268 | D=0.9 | E=ND | F=ND | G=ND | H=69 | I=ND | J=ND | K=ND | L=ND | M=ND
+r42: A=Big Spring, TX | B=13700 | C=34860 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=193.4 | M=8.7
+r43: A=Billings, MT | B=13740 | C=184167 | D=ND | E=ND | F=6.4 | G=32 | H=56 | I=ND | J=5.7 | K=16.2 | L=16 | M=0.8
+r44: A=Birmingham-Hoover, AL | B=13820 | C=1115289 | D=1.1 | E=ND | F=12 | G=47.4 | H=64 | I=56 | J=10.1 | K=23.2 | L=52.9 | M=1.4
+r45: A=Bismarck, ND | B=13900 | C=133626 | D=0.9 | E=ND | F=3.3 | G=26.9 | H=66 | I=162 | J=7.6 | K=45.1 | L=8.7 | M=0.9
+r46: A=Blacksburg-Christiansburg, VA | B=13980 | C=166378 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=ND | K=ND | L=3.1 | M=0.4
+r47: A=Bloomington, IN | B=14020 | C=161039 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.2 | K=18.3 | L=ND | M=ND
+r48: A=Boise City, ID | B=14260 | C=764718 | D=0.6 | E=ND | F=7.4 | G=IN | H=67 | I=67 | J=6.4 | K=17.5 | L=IN | M=0.4
+r49: A=Borger, TX | B=14420 | C=20617 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=IN | M=2.2
+r50: A=Boston-Cambridge-Newton, MA-NH | B=14460 | C=4941632 | D=1.2 | E=ND | F=11.3 | G=43 | H=67 | I=63 | J=7.1 | K=23.3 | L=12.6 | M=0.8
+r51: A=Boulder, CO | B=14500 | C=330758 | D=ND | E=ND | F=ND | G=ND | H=69 | I=71 | J=6.8 | K=17.6 | L=ND | M=ND
+r52: A=Bowling Green, KY | B=14540 | C=179639 | D=ND | E=ND | F=ND | G=ND | H=59 | I=ND | J=6.5 | K=15.2 | L=ND | M=ND
+r53: A=Bozeman, MT | B=14580 | C=118960 | D=0.4 | E=ND | F=1.3 | G=20.7 | H=ND | I=ND | J=IN | K=IN | L=ND | M=ND
+r54: A=Brainerd, MN | B=14660 | C=96189 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.2 | K=60.8 | L=ND | M=ND
+r55: A=Bremerton-Silverdale-Port Orchard, WA | B=14740 | C=275611 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=4.3 | K=10 | L=ND | M=ND
+r56: A=Bridgeport-Stamford-Norwalk, CT | B=14860 | C=957419 | D=ND | E=ND | F=7.8 | G=40.9 | H=82 | I=42 | J=6.9 | K=19.4 | L=5.8 | M=0.2
+r57: A=Brookings, SD | B=15100 | C=34375 | D=ND | E=ND | F=ND | G=ND | H=67 | I=91 | J=9.6 | K=30.9 | L=ND | M=ND
+r58: A=Brownsville-Harlingen, TX | B=15180 | C=421017 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=13 | K=38.6 | L=ND | M=ND
+r59: A=Brunswick, GA | B=15260 | C=113495 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=7.6 | K=18.9 | L=ND | M=ND
+r60: A=Buffalo-Cheektowaga, NY | B=15380 | C=1166902 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=ND | K=ND | L=ND | M=ND
+r61: A=Burlington-South Burlington, VT | B=15540 | C=225562 | D=0 | E=ND | F=ND | G=ND | H=62 | I=26 | J=4.9 | K=26.2 | L=IN | M=0.1
+r62: A=Butte-Silver Bow, MT | B=15580 | C=35133 | D=ND | E=ND | F=ND | G=ND | H=ND | I=57 | J=5.9 | K=21.8 | L=ND | M=ND
+r63: A=Cadillac, MI | B=15620 | C=48725 | D=ND | E=ND | F=1 | G=IN | H=64 | I=ND | J=5.3 | K=26.4 | L=ND | M=ND
+r64: A=Cambridge, MD | B=15700 | C=32531 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=5.5 | K=13.5 | L=1.9 | M=0.2
+r65: A=Cañon City, CO | B=15860 | C=48939 | D=ND | E=ND | F=ND | G=ND | H=ND | I=47 | J=4.4 | K=11.5 | L=ND | M=ND
+r66: A=Canton-Massillon, OH | B=15940 | C=401574 | D=ND | E=0 | F=ND | G=ND | H=66 | I=50 | J=9.5 | K=22 | L=ND | M=ND
+r67: A=Cape Coral-Fort Myers, FL | B=15980 | C=760822 | D=ND | E=ND | F=ND | G=ND | H=65 | I=44 | J=6.6 | K=12.7 | L=ND | M=ND
+r68: A=Carlsbad-Artesia, NM | B=16100 | C=62314 | D=ND | E=ND | F=6.2 | G=35 | H=79 | I=ND | J=ND | K=ND | L=ND | M=ND
+r69: A=Carson City, NV | B=16180 | C=58639 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=4.7 | K=10.8 | L=ND | M=ND
+r70: A=Casper, WY | B=16220 | C=79955 | D=ND | E=ND | F=4.1 | G=30.4 | H=60 | I=ND | J=3 | K=10.7 | L=14.6 | M=0.7
+r71: A=Cedar City, UT | B=16260 | C=57289 | D=ND | E=ND | F=6 | G=29.3 | H=67 | I=ND | J=6 | K=14.4 | L=ND | M=ND
+r72: A=Cedar Rapids, IA | B=16300 | C=276520 | D=ND | E=ND | F=ND | G=ND | H=67 | I=57 | J=7.8 | K=23 | L=15.3 | M=0.4
+r73: A=Chambersburg-Waynesboro, PA | B=16540 | C=155932 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=ND | K=ND | L=ND | M=ND
+r74: A=Champaign-Urbana, IL | B=16580 | C=222538 | D=0.4 | E=ND | F=ND | G=ND | H=67 | I=ND | J=7.8 | K=22.7 | L=3 | M=0.7
+r75: A=Charleston, WV | B=16620 | C=258859 | D=0.8 | E=ND | F=ND | G=ND | H=54 | I=ND | J=7.2 | K=14.9 | L=4.9 | M=0.7
+r76: A=Charleston-North Charleston, SC | B=16700 | C=799636 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=ND | K=ND | L=ND | M=ND
+r77: A=Charlotte-Concord-Gastonia, NC-SC | B=16740 | C=2660329 | D=1.3 | E=ND | F=12.7 | G=43.3 | H=63 | I=35 | J=9.3 | K=17.4 | L=2.1 | M=0.1
+r78: A=Charlottesville, VA | B=16820 | C=221524 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=6.6 | K=16.6 | L=ND | M=ND
+r79: A=Chattanooga, TN-GA | B=16860 | C=562647 | D=ND | E=ND | F=ND | G=ND | H=64 | I=ND | J=8.6 | K=22 | L=ND | M=ND
+r80: A=Cheyenne, WY | B=16940 | C=100512 | D=0.2 | E=ND | F=2.8 | G=24.3 | H=68 | I=51 | J=2.9 | K=9.4 | L=1.1 | M=0.1
+r81: A=Chicago-Naperville-Elgin, IL-IN-WI | B=16980 | C=9618502 | D=1 | E=0.03 | F=18.9 | G=47.7 | H=79 | I=146 | J=10.7 | K=35.8 | L=63 | M=1.2
+r82: A=Chico, CA | B=17020 | C=211632 | D=IN | E=ND | F=4.5 | G=25.8 | H=58 | I=48 | J=IN | K=IN | L=ND | M=ND
+r83: A=Cincinnati, OH-KY-IN | B=17140 | C=2256884 | D=1.3 | E=ND | F=17.3 | G=51 | H=75 | I=78 | J=10.7 | K=24.8 | L=86 | M=1.6
+r84: A=Clarksville, TN-KY | B=17300 | C=320535 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=7.4 | K=17.3 | L=ND | M=ND
+r85: A=Clearlake, CA | B=17340 | C=68163 | D=ND | E=ND | F=ND | G=ND | H=49 | I=29 | J=4.1 | K=17.9 | L=ND | M=ND
+r86: A=Cleveland, MS | B=17380 | C=30985 | D=ND | E=ND | F=ND | G=ND | H=58 | I=ND | J=7.5 | K=17.7 | L=ND | M=ND
+r87: A=Cleveland-Elyria, OH | B=17460 | C=2088251 | D=3.6 | E=0.01 | F=10 | G=40 | H=70 | I=97 | J=10.7 | K=28.2 | L=11 | M=0.4
+r88: A=Coco, PR | B=17640 | C=25789 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=IN | M=IN
+r89: A=College Station-Bryan, TX | B=17780 | C=268248 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.7 | K=15.5 | L=42.5 | M=2.4
+r90: A=Colorado Springs, CO | B=17820 | C=755105 | D=0.7 | E=ND | F=ND | G=ND | H=69 | I=52 | J=4.7 | K=12.2 | L=ND | M=ND
+r91: A=Columbia, MO | B=17860 | C=210864 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=ND | K=ND | L=ND | M=ND
+r92: A=Columbia, SC | B=17900 | C=829470 | D=0.7 | E=ND | F=3.8 | G=35 | H=61 | I=40 | J=7.8 | K=16 | L=1.8 | M=0.2
+r93: A=Columbus, GA-AL | B=17980 | C=328883 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=9.2 | K=21.2 | L=ND | M=ND
+r94: A=Columbus, IN | B=18020 | C=82208 | D=ND | E=ND | F=ND | G=ND | H=64 | I=ND | J=6.9 | K=17.5 | L=ND | M=ND
+r95: A=Columbus, OH | B=18140 | C=2138926 | D=0.8 | E=IN | F=8.5 | G=39 | H=72 | I=91 | J=9.9 | K=23.9 | L=4 | M=1.4
+r96: A=Concord, NH | B=18180 | C=153808 | D=ND | E=ND | F=ND | G=ND | H=58 | I=ND | J=ND | K=ND | L=IN | M=1
+r97: A=Cookeville, TN | B=18260 | C=113982 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=5.6 | K=13 | L=ND | M=ND
+r98: A=Corning, NY | B=18500 | C=93584 | D=0.4 | E=ND | F=ND | G=ND | H=60 | I=ND | J=5.7 | K=28.1 | L=1.9 | M=0.1
+r99: A=Corpus Christi, TX | B=18580 | C=421933 | D=ND | E=ND | F=ND | G=ND | H=64 | I=177 | J=11.2 | K=31.1 | L=11.5 | M=0.7
+r100: A=Corsicana, TX | B=18620 | C=52624 | D=ND | E=ND | F=2.3 | G=30.8 | H=68 | I=ND | J=7.8 | K=16.7 | L=16.9 | M=0.7
+r101: A=Crestview-Fort Walton Beach-Destin, FL | B=18880 | C=286973 | D=ND | E=ND | F=ND | G=ND | H=59 | I=48 | J=ND | K=ND | L=ND | M=ND
+r102: A=Cullowhee, NC | B=19000 | C=57226 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=6.2 | K=17.4 | L=ND | M=ND
+r103: A=Dallas-Fort Worth-Arlington, TX | B=19100 | C=7637387 | D=1.2 | E=ND | F=11.1 | G=46.8 | H=85 | I=82 | J=9.2 | K=20.4 | L=14.2 | M=0.3
+r104: A=Dalton, GA | B=19140 | C=142837 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=ND | K=ND | L=ND | M=ND
+r105: A=Daphne-Fairhope-Foley, AL | B=19300 | C=231767 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=6.7 | K=12.9 | L=ND | M=ND
+r106: A=Davenport-Moline-Rock Island, IA-IL | B=19340 | C=384324 | D=0.7 | E=ND | F=4.9 | G=30.7 | H=69 | I=88 | J=8.4 | K=26.2 | L=4.8 | M=0
+r107: A=Dayton-Kettering, OH | B=19430 | C=814049 | D=ND | E=ND | F=ND | G=ND | H=69 | I=52 | J=8.6 | K=21.5 | L=ND | M=ND
+r108: A=Decatur, AL | B=19460 | C=156494 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=6.9 | K=13.7 | L=ND | M=ND
+r109: A=Decatur, IL | B=19500 | C=103998 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=8.3 | K=19.2 | L=38.6 | M=1.4
+r110: A=Deltona-Daytona Beach-Ormond Beach, FL | B=19660 | C=668921 | D=ND | E=ND | F=ND | G=ND | H=60 | I=65 | J=6.9 | K=14.7 | L=ND | M=ND
+r111: A=Deming, NM | B=19700 | C=25427 | D=ND | E=ND | F=ND | G=ND | H=ND | I=361 | J=ND | K=ND | L=ND | M=ND
+r112: A=Denver-Aurora-Lakewood, CO | B=19740 | C=2963821 | D=1.5 | E=ND | F=21.6 | G=57 | H=73 | I=107 | J=7.4 | K=18.6 | L=5 | M=0.7
+r113: A=Detroit-Warren-Dearborn, MI | B=19820 | C=4392041 | D=1.8 | E=0.03 | F=12.9 | G=41.9 | H=72 | I=103 | J=11.4 | K=36.5 | L=85.4 | M=2.5
+r114: A=Dickinson, ND | B=19860 | C=34591 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=6.2 | K=33.5 | L=5.1 | M=2.1
+r115: A=Dodge City, KS | B=19980 | C=34287 | D=ND | E=ND | F=ND | G=ND | H=ND | I=146 | J=5.4 | K=13.3 | L=ND | M=ND
+r116: A=Douglas, GA | B=20060 | C=51378 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.4 | K=19 | L=ND | M=ND
+r117: A=Dover, DE | B=20100 | C=181851 | D=ND | E=ND | F=ND | G=ND | H=68 | I=ND | J=7 | K=19.9 | L=ND | M=ND
+r118: A=Duluth, MN-WI | B=20260 | C=291638 | D=ND | E=0 | F=2.9 | G=32.2 | H=70 | I=135 | J=9.7 | K=61.3 | L=2 | M=0.4
+r119: A=Durango, CO | B=20420 | C=55638 | D=ND | E=ND | F=3.4 | G=15.2 | H=68 | I=ND | J=ND | K=ND | L=ND | M=ND
+r120: A=Durham-Chapel Hill, NC | B=20500 | C=649903 | D=ND | E=ND | F=ND | G=ND | H=61 | I=30 | J=7.4 | K=16.3 | L=ND | M=ND
+r121: A=Dyersburg, TN | B=20540 | C=36801 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=6.7 | K=14.9 | L=ND | M=ND
+r122: A=Eagle Pass, TX | B=20580 | C=57887 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.6 | K=23.5 | L=ND | M=ND
+r123: A=East Stroudsburg, PA | B=20700 | C=168327 | D=ND | E=ND | F=ND | G=ND | H=64 | I=ND | J=IN | K=IN | L=ND | M=ND
+r124: A=Eau Claire, WI | B=20740 | C=172007 | D=ND | E=ND | F=ND | G=ND | H=57 | I=88 | J=8.6 | K=44.5 | L=ND | M=ND
+r125: A=Effingham, IL | B=20820 | C=34668 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=ND | K=ND | L=ND | M=ND
+r126: A=El Centro, CA | B=20940 | C=179702 | D=ND | E=ND | F=10.3 | G=53.8 | H=82 | I=330 | J=9.9 | K=29.9 | L=4.8 | M=0.4
+r127: A=El Dorado, AR | B=20980 | C=39054 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=9.9 | K=18 | L=ND | M=ND
+r128: A=Elizabethtown-Fort Knox, KY | B=21060 | C=155572 | D=ND | E=ND | F=ND | G=ND | H=64 | I=ND | J=6.9 | K=17.1 | L=ND | M=ND
+r129: A=Elkhart-Goshen, IN | B=21140 | C=207047 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=9.2 | K=27.7 | L=ND | M=ND
+r130: A=Elko, NV | B=21220 | C=55557 | D=ND | E=ND | F=ND | G=ND | H=59 | I=134 | J=ND | K=ND | L=ND | M=ND
+r131: A=Ellensburg, WA | B=21260 | C=44337 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=5.7 | K=21 | L=ND | M=ND
+r132: A=El Paso, TX | B=21340 | C=868859 | D=2.2 | E=ND | F=14.1 | G=IN | H=71 | I=1361 | J=16.9 | K=126.3 | L=6.3 | M=0.3
+r133: A=Erie, PA | B=21500 | C=270876 | D=0.6 | E=ND | F=4.9 | G=33.1 | H=54 | I=47 | J=6.8 | K=24.5 | L=ND | M=ND
+r134: A=Española, NM | B=21580 | C=40363 | D=ND | E=ND | F=ND | G=ND | H=63 | I=ND | J=ND | K=ND | L=ND | M=ND
+r135: A=Eugene-Springfield, OR | B=21660 | C=382971 | D=ND | E=ND | F=ND | G=ND | H=57 | I=56 | J=6.8 | K=29.8 | L=ND | M=ND
+r136: A=Eureka-Arcata, CA | B=21700 | C=136463 | D=ND | E=ND | F=ND | G=ND | H=47 | I=49 | J=6.9 | K=20.6 | L=ND | M=ND
+r137: A=Evanston, WY | B=21740 | C=20450 | D=ND | E=ND | F=ND | G=ND | H=ND | I=45 | J=ND | K=ND | L=ND | M=ND
+r138: A=Evansville, IN-KY | B=21780 | C=314049 | D=1 | E=ND | F=3.3 | G=29.3 | H=67 | I=57 | J=8.5 | K=21.1 | L=71.2 | M=1.6
+r139: A=Fairbanks, AK | B=21820 | C=95655 | D=1.8 | E=ND | F=ND | G=ND | H=51 | I=88 | J=10.2 | K=56.6 | L=13.8 | M=1.8
+r140: A=Fairmont, WV | B=21900 | C=56205 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.1 | K=17 | L=ND | M=ND
+r141: A=Fallon, NV | B=21980 | C=25516 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=ND | K=ND | L=ND | M=ND
+r142: A=Fargo, ND-MN | B=22020 | C=249843 | D=ND | E=ND | F=3.3 | G=26.9 | H=70 | I=ND | J=8.6 | K=54.3 | L=3.4 | M=1.8
+r143: A=Farmington, NM | B=22140 | C=121661 | D=ND | E=ND | F=8.9 | G=35.9 | H=67 | I=70 | J=ND | K=ND | L=IN | M=IN
+r144: A=Fernley, NV | B=22280 | C=59235 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=ND | K=ND | L=ND | M=ND
+r145: A=Findlay, OH | B=22300 | C=74920 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=7 | M=1
+r146: A=Flagstaff, AZ | B=22380 | C=145101 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=ND | K=ND | L=ND | M=ND
+r147: A=Flint, MI | B=22420 | C=406211 | D=ND | E=IN | F=ND | G=ND | H=62 | I=ND | J=IN | K=IN | L=ND | M=ND
+r148: A=Florence, SC | B=22500 | C=199964 | D=ND | E=IN | F=ND | G=ND | H=64 | I=ND | J=8.4 | K=21.1 | L=ND | M=ND
+r149: A=Fond du Lac, WI | B=22540 | C=104154 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=ND | K=ND | L=ND | M=ND
+r150: A=Fort Collins, CO | B=22660 | C=359066 | D=1 | E=ND | F=6.5 | G=33.9 | H=73 | I=ND | J=6.2 | K=15.3 | L=ND | M=ND
+r151: A=Fort Dodge, IA | B=22700 | C=36999 | D=ND | E=ND | F=ND | G=ND | H=ND | I=67 | J=IN | K=IN | L=ND | M=ND
+r152: A=Fort Madison-Keokuk, IA-IL-MO | B=22800 | C=57809 | D=ND | E=ND | F=ND | G=ND | H=69 | I=ND | J=8 | K=21.2 | L=11.9 | M=0.8
+r153: A=Fort Payne, AL | B=22840 | C=71608 | D=ND | E=ND | F=ND | G=ND | H=64 | I=ND | J=6.3 | K=13.6 | L=ND | M=ND
+r154: A=Fort Smith, AR-OK | B=22900 | C=244310 | D=ND | E=ND | F=4.2 | G=26.1 | H=54 | I=ND | J=8.4 | K=17.2 | L=28 | M=0.6
+r155: A=Fort Wayne, IN | B=23060 | C=419601 | D=ND | E=ND | F=ND | G=ND | H=69 | I=ND | J=8.9 | K=26.1 | L=ND | M=ND
+r156: A=Fremont, NE | B=23340 | C=37167 | D=ND | E=0.04 | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=ND | M=ND
+r157: A=Fresno, CA | B=23420 | C=1008654 | D=1.2 | E=ND | F=14.4 | G=46.8 | H=80 | I=102 | J=11.5 | K=32.6 | L=IN | M=0.4
+r158: A=Gadsden, AL | B=23460 | C=103436 | D=ND | E=ND | F=ND | G=ND | H=63 | I=ND | J=8.2 | K=16.3 | L=ND | M=ND
+r159: A=Gainesville, FL | B=23540 | C=339247 | D=ND | E=ND | F=ND | G=ND | H=55 | I=ND | J=6.4 | K=12.4 | L=ND | M=ND
+r160: A=Gainesville, GA | B=23580 | C=203136 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.5 | K=17.1 | L=ND | M=ND
+r161: A=Gardnerville Ranchos, NV | B=23820 | C=49488 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=4.6 | K=12 | L=ND | M=ND
+r162: A=Gettysburg, PA | B=23900 | C=103852 | D=0.5 | E=ND | F=2.4 | G=12.2 | H=66 | I=ND | J=IN | K=IN | L=IN | M=0.4
+r163: A=Gillette, WY | B=23940 | C=61045 | D=IN | E=ND | F=1.1 | G=6.8 | H=60 | I=240 | J=3.6 | K=10.4 | L=IN | M=1.7
+r164: A=Glenwood Springs, CO | B=24060 | C=79043 | D=ND | E=ND | F=2.2 | G=IN | H=64 | I=91 | J=4.2 | K=15.4 | L=ND | M=ND
+r165: A=Granbury, TX | B=24180 | C=61598 | D=ND | E=ND | F=ND | G=ND | H=71 | I=ND | J=ND | K=ND | L=ND | M=ND
+r166: A=Grand Forks, ND-MN | B=24220 | C=104362 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=7.7 | K=45.5 | L=ND | M=ND
+r167: A=Grand Island, NE | B=24260 | C=77038 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=5.8 | K=18.1 | L=ND | M=ND
+r168: A=Grand Junction, CO | B=24300 | C=155703 | D=ND | E=ND | F=ND | G=ND | H=62 | I=48 | J=5.7 | K=15.6 | L=ND | M=ND
+r169: A=Grand Rapids-Kentwood, MI | B=24340 | C=1087592 | D=0.9 | E=0.01 | F=10.7 | G=41.4 | H=69 | I=91 | J=11.1 | K=35 | L=1.6 | M=0.1
+r170: A=Grants Pass, OR | B=24420 | C=88090 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.6 | K=25.8 | L=ND | M=ND
+r171: A=Greeley, CO | B=24540 | C=328981 | D=0.6 | E=ND | F=5.8 | G=37.3 | H=71 | I=ND | J=8 | K=19.4 | L=ND | M=ND
+r172: A=Green Bay, WI | B=24580 | C=328268 | D=ND | E=ND | F=ND | G=ND | H=67 | I=ND | J=8.5 | K=48.4 | L=ND | M=ND
+r173: A=Greensboro-High Point, NC | B=24660 | C=776566 | D=ND | E=ND | F=ND | G=ND | H=62 | I=29 | J=6.8 | K=14.7 | L=ND | M=ND
+r174: A=Greenville, NC | B=24780 | C=170243 | D=ND | E=ND | F=ND | G=ND | H=54 | I=ND | J=5.9 | K=13.7 | L=ND | M=ND
+r175: A=Greenville-Anderson, SC | B=24860 | C=928195 | D=ND | E=ND | F=6.1 | G=38 | H=61 | I=36 | J=8.1 | K=17.6 | L=1.6 | M=0
+r176: A=Guayama, PR | B=25020 | C=68442 | D=ND | E=ND | F=ND | G=ND | H=ND | I=46 | J=ND | K=ND | L=ND | M=ND
+r177: A=Gulfport-Biloxi, MS | B=25060 | C=416259 | D=ND | E=ND | F=3.3 | G=25.5 | H=66 | I=ND | J=7.7 | K=16.3 | L=2.9 | M=0.9
+r178: A=Hagerstown-Martinsburg, MD-WV | B=25180 | C=293844 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=7.3 | K=18.4 | L=ND | M=ND
+r179: A=Hammond, LA | B=25220 | C=133157 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.4 | K=14.2 | L=ND | M=ND
+r180: A=Hanford-Corcoran, CA | B=25260 | C=152486 | D=ND | E=ND | F=6.6 | G=34.4 | H=71 | I=97 | J=11.1 | K=32.6 | L=ND | M=ND
+r181: A=Harrisburg-Carlisle, PA | B=25420 | C=591712 | D=ND | E=ND | F=ND | G=ND | H=63 | I=48 | J=8.1 | K=22.5 | L=ND | M=ND
+r182: A=Harrison, AR | B=25460 | C=44598 | D=ND | E=ND | F=ND | G=ND | H=59 | I=ND | J=ND | K=ND | L=ND | M=ND
+r183: A=Harrisonburg, VA | B=25500 | C=135571 | D=ND | E=ND | F=7.3 | G=36.5 | H=60 | I=36 | J=6.7 | K=19 | L=1.4 | M=0.4
+r184: A=Hartford-East Hartford-Middletown, CT | B=25540 | C=1213531 | D=0.7 | E=ND | F=12.5 | G=42.1 | H=76 | I=55 | J=7.1 | K=21.9 | L=ND | M=ND
+r185: A=Heber, UT | B=25720 | C=77145 | D=ND | E=ND | F=4.3 | G=25.9 | H=68 | I=ND | J=4.2 | K=11.7 | L=ND | M=ND
+r186: A=Helena, MT | B=25740 | C=83058 | D=0.4 | E=ND | F=ND | G=ND | H=58 | I=ND | J=7.5 | K=25.9 | L=IN | M=0.7
+r187: A=Hickory-Lenoir-Morganton, NC | B=25860 | C=365276 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=7.4 | K=18.7 | L=0.5 | M=0
+r188: A=Hilo, HI | B=25900 | C=200629 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=5.3 | K=15.3 | L=240.2 | M=5.5
+r189: A=Hobbs, NM | B=26020 | C=74455 | D=ND | E=ND | F=5.8 | G=41.2 | H=62 | I=ND | J=8.2 | K=30.2 | L=ND | M=ND
+r190: A=Holland, MI | B=26090 | C=120502 | D=ND | E=ND | F=2.9 | G=IN | H=75 | I=ND | J=9 | K=29 | L=ND | M=ND
+r191: A=Homosassa Springs, FL | B=26140 | C=153843 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=24.9 | M=0.9
+r192: A=Hot Springs, AR | B=26300 | C=100180 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=9.5 | K=25 | L=ND | M=ND
+r193: A=Houma-Thibodaux, LA | B=26380 | C=207137 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=7.8 | K=16.6 | L=ND | M=ND
+r194: A=Houston-The Woodlands-Sugar Land, TX | B=26420 | C=7122240 | D=1.2 | E=ND | F=17.3 | G=55.7 | H=88 | I=290 | J=12.3 | K=24.4 | L=14.6 | M=0.5
+r195: A=Huntington-Ashland, WV-KY-OH | B=26580 | C=359862 | D=ND | E=ND | F=ND | G=ND | H=66 | I=36 | J=7.4 | K=17.5 | L=6.7 | M=1.4
+r196: A=Huntsville, AL | B=26620 | C=491723 | D=ND | E=ND | F=ND | G=ND | H=59 | I=52 | J=7.5 | K=15.9 | L=ND | M=ND
+r197: A=Idaho Falls, ID | B=26820 | C=157429 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=ND | K=ND | L=ND | M=ND
+r198: A=Indiana, PA | B=26860 | C=83246 | D=ND | E=ND | F=ND | G=ND | H=64 | I=ND | J=6.8 | K=20.4 | L=20.7 | M=0.6
+r199: A=Indianapolis-Carmel-Anderson, IN | B=26900 | C=2111040 | D=1.4 | E=ND | F=10.8 | G=36 | H=70 | I=77 | J=10.5 | K=27.7 | L=2.8 | M=0.1
+r200: A=Iowa City, IA | B=26980 | C=175419 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.3 | K=22.6 | L=ND | M=ND
+r201: A=Ithaca, NY | B=27060 | C=105740 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=ND | K=ND | L=ND | M=ND
+r202: A=Jackson, MS | B=27140 | C=591978 | D=1 | E=ND | F=ND | G=ND | H=60 | I=51 | J=9.5 | K=18.6 | L=2.5 | M=0.4
+r203: A=Jackson, TN | B=27180 | C=180504 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.2 | K=15.7 | L=ND | M=ND
+r204: A=Jackson, WY-ID | B=27220 | C=34961 | D=0.2 | E=ND | F=1.2 | G=IN | H=63 | I=53 | J=2.2 | K=8 | L=ND | M=ND
+r205: A=Jacksonville, FL | B=27260 | C=1605848 | D=1.1 | E=ND | F=10.1 | G=44.5 | H=64 | I=47 | J=8.4 | K=18.1 | L=56.2 | M=2
+r206: A=Janesville-Beloit, WI | B=27500 | C=163687 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=ND | K=ND | L=ND | M=ND
+r207: A=Jasper, IN | B=27540 | C=55887 | D=ND | E=ND | F=ND | G=ND | H=ND | I=46 | J=7.6 | K=18 | L=ND | M=ND
+r208: A=Johnstown, PA | B=27780 | C=133472 | D=0.5 | E=ND | F=5.4 | G=32.9 | H=64 | I=36 | J=7 | K=20.1 | L=9.2 | M=0.8
+r209: A=Joplin, MO | B=27900 | C=181409 | D=ND | E=ND | F=ND | G=ND | H=60 | I=185 | J=ND | K=ND | L=ND | M=ND
+r210: A=Juneau, AK | B=27940 | C=32255 | D=ND | E=ND | F=ND | G=ND | H=ND | I=36 | J=5.2 | K=24.9 | L=ND | M=ND
+r211: A=Kahului-Wailuku-Lahaina, HI | B=27980 | C=164754 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=3.8 | K=9 | L=ND | M=ND
+r212: A=Kalamazoo-Portage, MI | B=28020 | C=261670 | D=ND | E=ND | F=ND | G=ND | H=68 | I=ND | J=9.1 | K=31.3 | L=ND | M=ND
+r213: A=Kalispell, MT | B=28060 | C=104357 | D=ND | E=ND | F=ND | G=ND | H=54 | I=61 | J=7.4 | K=24.6 | L=ND | M=ND
+r214: A=Kansas City, MO-KS | B=28140 | C=2192035 | D=0.8 | E=ND | F=13 | G=55.7 | H=79 | I=118 | J=8.7 | K=24 | L=6.2 | M=1.3
+r215: A=Kapaa, HI | B=28180 | C=73298 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=IN | M=1.7
+r216: A=Keene, NH | B=28300 | C=76458 | D=ND | E=ND | F=ND | G=ND | H=58 | I=ND | J=6.4 | K=21.4 | L=ND | M=ND
+r217: A=Killeen-Temple, TX | B=28660 | C=475367 | D=ND | E=ND | F=3.3 | G=IN | H=71 | I=ND | J=7 | K=17.2 | L=ND | M=ND
+r218: A=Kingsport-Bristol, TN-VA | B=28700 | C=307614 | D=ND | E=0.06 | F=ND | G=ND | H=63 | I=ND | J=6.1 | K=12.9 | L=54 | M=2.5
+r219: A=Kingsville, TX | B=28780 | C=31390 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=IN | K=IN | L=ND | M=ND
+r220: A=Kinston, NC | B=28820 | C=55122 | D=ND | E=ND | F=ND | G=ND | H=56 | I=ND | J=ND | K=ND | L=ND | M=ND
+r221: A=Klamath Falls, OR | B=28900 | C=69413 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.8 | K=25.8 | L=ND | M=ND
+r222: A=Knoxville, TN | B=28940 | C=879773 | D=IN | E=ND | F=0.8 | G=3.8 | H=63 | I=ND | J=6.4 | K=14.2 | L=3.3 | M=0.1
+r223: A=Kokomo, IN | B=29020 | C=83658 | D=ND | E=ND | F=ND | G=ND | H=70 | I=ND | J=6.7 | K=15.9 | L=ND | M=ND
+r224: A=Laconia, NH | B=29060 | C=63705 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=4.4 | K=19.4 | L=ND | M=ND
+r225: A=La Crosse-Onalaska, WI-MN | B=29100 | C=139627 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=ND | K=ND | L=ND | M=ND
+r226: A=Lafayette, LA | B=29180 | C=478384 | D=ND | E=ND | F=ND | G=ND | H=62 | I=55 | J=7.6 | K=16.3 | L=ND | M=ND
+r227: A=Lafayette-West Lafayette, IN | B=29200 | C=223716 | D=ND | E=ND | F=ND | G=ND | H=69 | I=ND | J=7.9 | K=18.7 | L=ND | M=ND
+r228: A=La Grande, OR | B=29260 | C=26196 | D=ND | E=ND | F=ND | G=ND | H=ND | I=32 | J=ND | K=ND | L=ND | M=ND
+r229: A=Lake Charles, LA | B=29340 | C=222402 | D=ND | E=ND | F=5.6 | G=IN | H=65 | I=58 | J=7.7 | K=18 | L=2.1 | M=0.8
+r230: A=Lake City, FL | B=29380 | C=69698 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=ND | K=ND | L=ND | M=ND
+r231: A=Lake Havasu City-Kingman, AZ | B=29420 | C=213267 | D=ND | E=ND | F=ND | G=ND | H=ND | I=328 | J=IN | K=IN | L=ND | M=ND
+r232: A=Lakeland-Winter Haven, FL | B=29460 | C=725046 | D=ND | E=ND | F=ND | G=ND | H=63 | I=ND | J=ND | K=ND | L=12.4 | M=1
+r233: A=Lancaster, PA | B=29540 | C=552984 | D=ND | E=ND | F=ND | G=ND | H=66 | I=62 | J=8.1 | K=27.8 | L=ND | M=ND
+r234: A=Lansing-East Lansing, MI | B=29620 | C=541297 | D=ND | E=ND | F=5.5 | G=34.4 | H=67 | I=69 | J=7.8 | K=32.8 | L=2.9 | M=0.9
+r235: A=Laramie, WY | B=29660 | C=37066 | D=ND | E=ND | F=ND | G=ND | H=65 | I=255 | J=2.4 | K=7.2 | L=ND | M=ND
+r236: A=Laredo, TX | B=29700 | C=267114 | D=1.4 | E=ND | F=ND | G=ND | H=71 | I=117 | J=9.7 | K=IN | L=ND | M=ND
+r237: A=Las Cruces, NM | B=29740 | C=219561 | D=ND | E=ND | F=7.5 | G=46.8 | H=75 | I=601 | J=13.1 | K=96.6 | L=ND | M=ND
+r238: A=Las Vegas-Henderson-Paradise, NV | B=29820 | C=2265461 | D=2.4 | E=ND | F=18.8 | G=47.3 | H=75 | I=122 | J=8.1 | K=25.1 | L=3.4 | M=0.6
+r239: A=Lawrence, KS | B=29940 | C=118785 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=ND | K=ND | L=ND | M=ND
+r240: A=Lawrenceburg, TN | B=29980 | C=44159 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=6.4 | K=13.1 | L=ND | M=ND
+r241: A=Lawton, OK | B=30020 | C=126652 | D=ND | E=ND | F=ND | G=ND | H=70 | I=ND | J=6.9 | K=13.8 | L=ND | M=ND
+r242: A=Lebanon, NH-VT | B=30100 | C=221211 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=6 | K=24.2 | L=ND | M=ND
+r243: A=Lebanon, PA | B=30140 | C=143257 | D=ND | E=ND | F=ND | G=ND | H=67 | I=ND | J=7.4 | K=20.7 | L=ND | M=ND
+r244: A=Lewiston-Auburn, ME | B=30340 | C=111139 | D=ND | E=ND | F=ND | G=ND | H=61 | I=50 | J=5.3 | K=17.7 | L=ND | M=ND
+r245: A=Lexington-Fayette, KY | B=30460 | C=516811 | D=ND | E=ND | F=6.6 | G=35.8 | H=65 | I=25 | J=7 | K=16.3 | L=4.3 | M=1.1
+r246: A=Lima, OH | B=30620 | C=102206 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=7.8 | K=20.6 | L=4 | M=1.1
+r247: A=Lincoln, NE | B=30700 | C=340217 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=6.9 | K=19.5 | L=ND | M=ND
+r248: A=Little Rock-North Little Rock-Conway, AR | B=30780 | C=748031 | D=1.8 | E=ND | F=8.5 | G=IN | H=68 | I=37 | J=10.6 | K=21.6 | L=IN | M=0.8
+r249: A=Logan, UT-ID | B=30860 | C=147348 | D=ND | E=ND | F=4.4 | G=26.7 | H=63 | I=ND | J=4.9 | K=12.3 | L=ND | M=ND
+r250: A=Longview, TX | B=30980 | C=286184 | D=ND | E=ND | F=2.2 | G=16.9 | H=67 | I=ND | J=8.3 | K=19.6 | L=34.6 | M=0.9
+r251: A=Los Angeles-Long Beach-Anaheim, CA | B=31080 | C=13200998 | D=5.4 | E=0.02 | F=19.2 | G=63.8 | H=94 | I=183 | J=12.8 | K=42.2 | L=5.8 | M=0.3
+r252: A=Louisville/Jefferson County, KY-IN | B=31140 | C=1285439 | D=1 | E=ND | F=13.2 | G=45.9 | H=75 | I=75 | J=8.8 | K=21.4 | L=19.9 | M=0.9
+r253: A=Lubbock, TX | B=31180 | C=321368 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=5.2 | K=20.6 | L=ND | M=ND
+r254: A=Ludington, MI | B=31220 | C=29052 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=ND | K=ND | L=ND | M=ND
+r255: A=Lynchburg, VA | B=31340 | C=261593 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=5.9 | K=13.8 | L=ND | M=ND
+r256: A=Macon-Bibb County, GA | B=31420 | C=233802 | D=ND | E=ND | F=ND | G=ND | H=58 | I=ND | J=9.4 | K=20.8 | L=2.3 | M=0.1
+r257: A=Madera, CA | B=31460 | C=156255 | D=ND | E=ND | F=4.6 | G=20.4 | H=70 | I=103 | J=9.3 | K=26.7 | L=ND | M=ND
+r258: A=Madison, WI | B=31540 | C=680796 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=ND | K=ND | L=ND | M=ND
+r259: A=Manchester-Nashua, NH | B=31700 | C=422937 | D=0.7 | E=ND | F=ND | G=ND | H=65 | I=52 | J=4.7 | K=21.3 | L=1.9 | M=0.4
+r260: A=Manitowoc, WI | B=31820 | C=81359 | D=ND | E=ND | F=ND | G=ND | H=64 | I=ND | J=ND | K=ND | L=ND | M=ND
+r261: A=Mankato, MN | B=31860 | C=103566 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=9.3 | K=42.8 | L=ND | M=ND
+r262: A=Marietta, OH | B=31930 | C=59771 | D=ND | E=ND | F=ND | G=ND | H=68 | I=ND | J=ND | K=ND | L=29 | M=1.7
+r263: A=Marquette, MI | B=32100 | C=66017 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=IN | K=45.5 | L=ND | M=ND
+r264: A=Marshall, MN | B=32140 | C=25269 | D=ND | E=ND | F=ND | G=ND | H=67 | I=98 | J=IN | K=38 | L=ND | M=ND
+r265: A=Mayagüez, PR | B=32420 | C=97605 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=ND | K=ND | L=ND | M=ND
+r266: A=McAlester, OK | B=32540 | C=43773 | D=ND | E=0.01 | F=ND | G=ND | H=64 | I=ND | J=8.9 | K=24 | L=ND | M=ND
+r267: A=McAllen-Edinburg-Mission, TX | B=32580 | C=870781 | D=ND | E=ND | F=ND | G=ND | H=58 | I=167 | J=9.9 | K=26.9 | L=ND | M=ND
+r268: A=Medford, OR | B=32780 | C=223259 | D=ND | E=ND | F=ND | G=ND | H=60 | I=30 | J=7.4 | K=23 | L=ND | M=ND
+r269: A=Memphis, TN-MS-AR | B=32820 | C=1337779 | D=0.7 | E=0.03 | F=8.5 | G=32.6 | H=74 | I=79 | J=8.8 | K=19.8 | L=1.7 | M=0.4
+r270: A=Merced, CA | B=32900 | C=281202 | D=ND | E=ND | F=ND | G=ND | H=69 | I=75 | J=7.7 | K=24.4 | L=ND | M=ND
+r271: A=Meridian, MS | B=32940 | C=97587 | D=ND | E=ND | F=ND | G=ND | H=56 | I=ND | J=ND | K=ND | L=ND | M=ND
+r272: A=Miami, OK | B=33060 | C=30285 | D=ND | E=0.04 | F=ND | G=ND | H=58 | I=147 | J=9.2 | K=24.6 | L=ND | M=ND
+r273: A=Miami-Fort Lauderdale-Pompano Beach, FL | B=33100 | C=6138333 | D=1.3 | E=ND | F=14.6 | G=51 | H=62 | I=63 | J=8 | K=16.5 | L=1.5 | M=0.2
+r274: A=Michigan City-La Porte, IN | B=33140 | C=112417 | D=ND | E=ND | F=ND | G=ND | H=75 | I=ND | J=8.5 | K=28.9 | L=ND | M=ND
+r275: A=Middlesborough, KY | B=33180 | C=24097 | D=ND | E=ND | F=ND | G=ND | H=59 | I=ND | J=8.1 | K=19 | L=ND | M=ND
+r276: A=Milwaukee-Waukesha, WI | B=33340 | C=1574731 | D=ND | E=ND | F=ND | G=ND | H=72 | I=104 | J=8.8 | K=36.8 | L=ND | M=ND
+r277: A=Minneapolis-St. Paul-Bloomington, MN-WI | B=33460 | C=3690261 | D=2.3 | E=0.23 | F=10.9 | G=41 | H=77 | I=112 | J=10.4 | K=56.8 | L=8.2 | M=1.2
+r278: A=Minot, ND | B=33500 | C=77546 | D=ND | E=ND | F=1.6 | G=10.9 | H=64 | I=ND | J=8.3 | K=49.1 | L=IN | M=1.5
+r279: A=Missoula, MT | B=33540 | C=117922 | D=ND | E=ND | F=ND | G=ND | H=49 | I=50 | J=6.8 | K=19.1 | L=ND | M=ND
+r280: A=Mobile, AL | B=33660 | C=430197 | D=ND | E=ND | F=ND | G=ND | H=59 | I=25 | J=7.4 | K=13.6 | L=6.5 | M=0.6
+r281: A=Modesto, CA | B=33700 | C=552878 | D=1 | E=ND | F=6.6 | G=31.2 | H=69 | I=96 | J=8.5 | K=27.1 | L=ND | M=ND
+r282: A=Monroe, LA | B=33740 | C=207104 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=8 | K=17 | L=ND | M=ND
+r283: A=Montgomery, AL | B=33860 | C=386047 | D=ND | E=ND | F=ND | G=ND | H=59 | I=28 | J=8.1 | K=16 | L=ND | M=ND
+r284: A=Morehead City, NC | B=33980 | C=67686 | D=ND | E=ND | F=ND | G=ND | H=59 | I=ND | J=ND | K=ND | L=ND | M=ND
+r285: A=Morristown, TN | B=34100 | C=142709 | D=ND | E=ND | F=ND | G=ND | H=59 | I=ND | J=ND | K=ND | L=ND | M=ND
+r286: A=Mount Pleasant, TX | B=34420 | C=43711 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=20.2 | M=1.3
+r287: A=Mount Vernon, OH | B=34540 | C=62721 | D=ND | E=ND | F=ND | G=ND | H=64 | I=ND | J=ND | K=ND | L=ND | M=ND
+r288: A=Mount Vernon-Anacortes, WA | B=34580 | C=129523 | D=ND | E=ND | F=ND | G=ND | H=42 | I=ND | J=4.5 | K=9.5 | L=ND | M=ND
+r289: A=Muncie, IN | B=34620 | C=111903 | D=ND | E=0.1 | F=ND | G=ND | H=69 | I=ND | J=8 | K=21.3 | L=ND | M=ND
+r290: A=Muscatine, IA | B=34700 | C=43235 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.6 | K=22 | L=9.2 | M=0.3
+r291: A=Muskegon, MI | B=34740 | C=175824 | D=ND | E=ND | F=ND | G=ND | H=69 | I=ND | J=ND | K=ND | L=ND | M=ND
+r292: A=Myrtle Beach-Conway-North Myrtle Beach, SC-NC | B=34820 | C=487722 | D=ND | E=ND | F=6.3 | G=35 | H=61 | I=83 | J=7.7 | K=17.7 | L=6 | M=0.2
+r293: A=Naples-Marco Island, FL | B=34940 | C=375752 | D=ND | E=ND | F=ND | G=ND | H=59 | I=ND | J=ND | K=ND | L=ND | M=ND
+r294: A=Nashville-Davidson--Murfreesboro--Franklin, TN | B=34980 | C=1989519 | D=1.4 | E=ND | F=11.9 | G=49 | H=67 | I=37 | J=8.1 | K=17.4 | L=3 | M=0.3
+r295: A=New Castle, IN | B=35220 | C=48914 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.5 | K=19.4 | L=ND | M=ND
+r296: A=New Haven-Milford, CT | B=35300 | C=864835 | D=0.8 | E=ND | F=11.3 | G=IN | H=79 | I=32 | J=6.9 | K=19.1 | L=IN | M=0.2
+r297: A=New Orleans-Metairie, LA | B=35380 | C=1271845 | D=1.1 | E=0.01 | F=9 | G=42.8 | H=66 | I=56 | J=7.8 | K=16.5 | L=21.2 | M=0.9
+r298: A=New York-Newark-Jersey City, NY-NJ-PA | B=35620 | C=20140470 | D=1.1 | E=ND | F=16.9 | G=56 | H=75 | I=36 | J=10 | K=40.9 | L=6.3 | M=0.6
+r299: A=Niles, MI | B=35660 | C=154316 | D=ND | E=ND | F=ND | G=ND | H=70 | I=ND | J=ND | K=ND | L=ND | M=ND
+r300: A=Nogales, AZ | B=35700 | C=47669 | D=ND | E=ND | F=ND | G=ND | H=ND | I=188 | J=11 | K=27.7 | L=ND | M=ND
+r301: A=North Port-Sarasota-Bradenton, FL | B=35840 | C=833716 | D=ND | E=ND | F=ND | G=ND | H=62 | I=44 | J=IN | K=IN | L=IN | M=0.5
+r302: A=Norwich-New London, CT | B=35980 | C=268555 | D=ND | E=ND | F=ND | G=ND | H=76 | I=ND | J=5.7 | K=15.9 | L=ND | M=ND
+r303: A=Ocala, FL | B=36100 | C=375908 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=ND | K=ND | L=ND | M=ND
+r304: A=Odessa, TX | B=36220 | C=165171 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.4 | K=22.2 | L=ND | M=ND
+r305: A=Ogden-Clearfield, UT | B=36260 | C=694863 | D=0.7 | E=ND | F=9.3 | G=46.3 | H=75 | I=108 | J=5.6 | K=18.7 | L=ND | M=ND
+r306: A=Ogdensburg-Massena, NY | B=36300 | C=108505 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=85.1 | M=3.5
+r307: A=Oklahoma City, OK | B=36420 | C=1425695 | D=1.1 | E=ND | F=11.9 | G=31 | H=71 | I=122 | J=8.6 | K=17.6 | L=1 | M=0
+r308: A=Omaha-Council Bluffs, NE-IA | B=36540 | C=967604 | D=1.1 | E=0.11 | F=1.6 | G=6.3 | H=67 | I=95 | J=7.7 | K=22.8 | L=47.5 | M=0.6
+r309: A=Orlando-Kissimmee-Sanford, FL | B=36740 | C=2673376 | D=1.1 | E=ND | F=12.3 | G=39.8 | H=66 | I=61 | J=7.4 | K=15.6 | L=3.4 | M=0.7
+r310: A=Owensboro, KY | B=36980 | C=121559 | D=ND | E=ND | F=4.6 | G=23.2 | H=65 | I=ND | J=8.5 | K=21.6 | L=10.4 | M=0.3
+r311: A=Oxnard-Thousand Oaks-Ventura, CA | B=37100 | C=843843 | D=ND | E=ND | F=5.5 | G=29 | H=72 | I=86 | J=7.1 | K=14.6 | L=ND | M=ND
+r312: A=Paducah, KY-IL | B=37140 | C=98660 | D=ND | E=ND | F=4.9 | G=36.6 | H=61 | I=ND | J=7.3 | K=16.5 | L=13.7 | M=1
+r313: A=Pahrump, NV | B=37220 | C=51591 | D=ND | E=ND | F=ND | G=ND | H=ND | I=210 | J=ND | K=ND | L=ND | M=ND
+r314: A=Palatka, FL | B=37260 | C=73321 | D=ND | E=ND | F=ND | G=ND | H=ND | I=87 | J=ND | K=ND | L=6 | M=0.7
+r315: A=Palm Bay-Melbourne-Titusville, FL | B=37340 | C=606612 | D=ND | E=ND | F=ND | G=ND | H=62 | I=43 | J=5 | K=10.5 | L=ND | M=ND
+r316: A=Panama City, FL | B=37460 | C=175216 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=ND | K=ND | L=ND | M=ND
+r317: A=Payson, AZ | B=37740 | C=53272 | D=ND | E=0.05 | F=ND | G=ND | H=74 | I=218 | J=ND | K=ND | L=48.9 | M=0.8
+r318: A=Pensacola-Ferry Pass-Brent, FL | B=37860 | C=509905 | D=ND | E=ND | F=ND | G=ND | H=63 | I=46 | J=6.6 | K=14 | L=IN | M=0.5
+r319: A=Peoria, IL | B=37900 | C=402391 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=9.3 | K=26.9 | L=5.8 | M=0.7
+r320: A=Philadelphia-Camden-Wilmington, PA-NJ-DE-MD | B=37980 | C=6245051 | D=2.2 | E=ND | F=18.8 | G=55 | H=74 | I=50 | J=9.6 | K=24.4 | L=7.6 | M=0.7
+r321: A=Phoenix-Mesa-Chandler, AZ | B=38060 | C=4845832 | D=2.7 | E=ND | F=25.1 | G=57 | H=75 | I=514 | J=10.9 | K=30.5 | L=3 | M=0.5
+r322: A=Pierre, SD | B=38180 | C=20745 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=4.2 | K=19.9 | L=ND | M=ND
+r323: A=Pittsburgh, PA | B=38300 | C=2370930 | D=5 | E=ND | F=8.2 | G=35.8 | H=71 | I=53 | J=9.4 | K=27.2 | L=57 | M=2.1
+r324: A=Platteville, WI | B=38420 | C=51938 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.8 | K=31.2 | L=ND | M=ND
+r325: A=Pocatello, ID | B=38540 | C=94896 | D=ND | E=ND | F=ND | G=ND | H=54 | I=115 | J=ND | K=ND | L=30 | M=3.8
+r326: A=Point Pleasant, WV-OH | B=38580 | C=54673 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=103 | M=2.9
+r327: A=Ponca City, OK | B=38620 | C=43700 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.8 | K=18.3 | L=IN | M=0.4
+r328: A=Ponce, PR | B=38660 | C=224142 | D=0.4 | E=ND | F=ND | G=ND | H=ND | I=42 | J=6.3 | K=16.2 | L=ND | M=ND
+r329: A=Portland-South Portland, ME | B=38860 | C=551740 | D=ND | E=ND | F=5 | G=IN | H=69 | I=103 | J=IN | K=IN | L=ND | M=ND
+r330: A=Portland-Vancouver-Hillsboro, OR-WA | B=38900 | C=2512859 | D=1.3 | E=ND | F=9 | G=32.6 | H=66 | I=97 | J=6.3 | K=18.7 | L=IN | M=0.3
+r331: A=Port St. Lucie, FL | B=38940 | C=487657 | D=ND | E=ND | F=ND | G=ND | H=59 | I=64 | J=6.9 | K=14.5 | L=ND | M=ND
+r332: A=Portsmouth, OH | B=39020 | C=74008 | D=ND | E=ND | F=ND | G=ND | H=ND | I=111 | J=8.9 | K=21.6 | L=IN | M=IN
+r333: A=Poughkeepsie-Newburgh-Middletown, NY | B=39100 | C=697221 | D=ND | E=ND | F=ND | G=ND | H=68 | I=ND | J=5.7 | K=16.3 | L=ND | M=ND
+r334: A=Prescott Valley-Prescott, AZ | B=39150 | C=236209 | D=ND | E=ND | F=ND | G=ND | H=67 | I=ND | J=ND | K=ND | L=ND | M=ND
+r335: A=Price, UT | B=39220 | C=20412 | D=ND | E=ND | F=2.1 | G=11.1 | H=66 | I=ND | J=4.2 | K=14.3 | L=ND | M=ND
+r336: A=Prineville, OR | B=39260 | C=24738 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=7.2 | K=23 | L=ND | M=ND
+r337: A=Providence-Warwick, RI-MA | B=39300 | C=1676579 | D=1.1 | E=ND | F=10.8 | G=41.4 | H=69 | I=27 | J=7.4 | K=22.2 | L=2.6 | M=0.4
+r338: A=Provo-Orem, UT | B=39340 | C=671185 | D=0.8 | E=ND | F=8.1 | G=41.8 | H=67 | I=90 | J=6.1 | K=18.9 | L=ND | M=ND
+r339: A=Pueblo, CO | B=39380 | C=168162 | D=ND | E=ND | F=ND | G=ND | H=66 | I=61 | J=5.1 | K=12.7 | L=ND | M=ND
+r340: A=Quincy, IL-MO | B=39500 | C=75769 | D=ND | E=ND | F=ND | G=ND | H=76 | I=ND | J=8.4 | K=30.3 | L=ND | M=ND
+r341: A=Racine, WI | B=39540 | C=197727 | D=ND | E=ND | F=ND | G=ND | H=75 | I=ND | J=ND | K=ND | L=ND | M=ND
+r342: A=Raleigh-Cary, NC | B=39580 | C=1413982 | D=1.1 | E=ND | F=IN | G=ND | H=59 | I=30 | J=7.5 | K=17.6 | L=2.1 | M=0.1
+r343: A=Rapid City, SD | B=39660 | C=139074 | D=ND | E=ND | F=3.8 | G=23.1 | H=59 | I=144 | J=5.9 | K=14.9 | L=1.9 | M=0
+r344: A=Reading, PA | B=39740 | C=428849 | D=ND | E=ND | F=ND | G=ND | H=69 | I=ND | J=7.6 | K=25.4 | L=IN | M=1
+r345: A=Red Bluff, CA | B=39780 | C=65829 | D=ND | E=ND | F=ND | G=ND | H=63 | I=55 | J=5.7 | K=16.1 | L=ND | M=ND
+r346: A=Redding, CA | B=39820 | C=182155 | D=ND | E=ND | F=ND | G=ND | H=61 | I=27 | J=6.4 | K=19.3 | L=ND | M=ND
+r347: A=Red Wing, MN | B=39860 | C=47582 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=ND | K=ND | L=ND | M=ND
+r348: A=Reno, NV | B=39900 | C=490596 | D=1.3 | E=ND | F=9.9 | G=42.9 | H=68 | I=80 | J=7.6 | K=18.3 | L=3.2 | M=0.2
+r349: A=Richmond, VA | B=40060 | C=1314434 | D=0.9 | E=ND | F=13 | G=46 | H=61 | I=33 | J=6.8 | K=16.6 | L=4.1 | M=0.2
+r350: A=Richmond-Berea, KY | B=40080 | C=106864 | D=ND | E=0.02 | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=ND | M=ND
+r351: A=Riverside-San Bernardino-Ontario, CA | B=40140 | C=4599839 | D=1.4 | E=0.01 | F=24.7 | G=62.7 | H=103 | I=281 | J=13.2 | K=38.8 | L=2.6 | M=0.5
+r352: A=Riverton, WY | B=40180 | C=39234 | D=0.4 | E=ND | F=0.9 | G=8.5 | H=65 | I=57 | J=5 | K=16.7 | L=63.9 | M=0.6
+r353: A=Roanoke, VA | B=40220 | C=315251 | D=0.4 | E=ND | F=4.2 | G=28.7 | H=59 | I=ND | J=6.3 | K=14.7 | L=3.1 | M=0.8
+r354: A=Roanoke Rapids, NC | B=40260 | C=66093 | D=ND | E=ND | F=IN | G=ND | H=ND | I=ND | J=6.5 | K=15.4 | L=ND | M=ND
+r355: A=Rochester, MN | B=40340 | C=226329 | D=ND | E=IN | F=ND | G=ND | H=64 | I=ND | J=8.7 | K=38.5 | L=ND | M=ND
+r356: A=Rochester, NY | B=40380 | C=1090135 | D=0.7 | E=ND | F=6.8 | G=IN | H=62 | I=28 | J=7.3 | K=33.2 | L=0.9 | M=0
+r357: A=Rockford, IL | B=40420 | C=338798 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=8.6 | K=32.1 | L=ND | M=ND
+r358: A=Rock Springs, WY | B=40540 | C=42272 | D=ND | E=ND | F=4.7 | G=31.1 | H=62 | I=186 | J=IN | K=IN | L=13.8 | M=1.3
+r359: A=Rocky Mount, NC | B=40580 | C=143870 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=ND | K=ND | L=ND | M=ND
+r360: A=Ruidoso, NM | B=40760 | C=20269 | D=ND | E=ND | F=ND | G=ND | H=IN | I=ND | J=ND | K=ND | L=ND | M=ND
+r361: A=Rutland, VT | B=40860 | C=60572 | D=ND | E=ND | F=ND | G=ND | H=60 | I=37 | J=6.5 | K=24.3 | L=1.3 | M=0.3
+r362: A=Sacramento-Roseville-Folsom, CA | B=40900 | C=2397382 | D=1 | E=ND | F=7.7 | G=32 | H=70 | I=44 | J=9.1 | K=21.1 | L=IN | M=IN
+r363: A=St. Cloud, MN | B=41060 | C=199671 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=7.7 | K=46.6 | L=ND | M=ND
+r364: A=St. George, UT | B=41100 | C=180279 | D=ND | E=ND | F=4.4 | G=28.9 | H=67 | I=ND | J=4.9 | K=12.8 | L=ND | M=ND
+r365: A=St. Joseph, MO-KS | B=41140 | C=121467 | D=ND | E=ND | F=ND | G=ND | H=63 | I=96 | J=9.3 | K=21.8 | L=ND | M=ND
+r366: A=St. Louis, MO-IL | B=41180 | C=2820253 | D=1.3 | E=0.05 | F=10 | G=43.8 | H=71 | I=463 | J=9.2 | K=23.1 | L=50 | M=0.9
+r367: A=St. Marys, PA | B=41260 | C=30990 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=ND | K=ND | L=ND | M=ND
+r368: A=Salem, OR | B=41420 | C=433353 | D=ND | E=ND | F=ND | G=ND | H=58 | I=ND | J=4 | K=14.9 | L=ND | M=ND
+r369: A=Salina, KS | B=41460 | C=60038 | D=ND | E=0.02 | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=ND | M=ND
+r370: A=Salinas, CA | B=41500 | C=439035 | D=0.7 | E=ND | F=3 | G=23 | H=50 | I=65 | J=5.8 | K=12.4 | L=ND | M=ND
+r371: A=Salisbury, MD-DE | B=41540 | C=418046 | D=IN | E=ND | F=12.4 | G=40.2 | H=68 | I=36 | J=7.1 | K=18.7 | L=5 | M=0.3
+r372: A=Salt Lake City, UT | B=41620 | C=1257936 | D=1.2 | E=ND | F=14.8 | G=47.3 | H=74 | I=145 | J=7.6 | K=20.2 | L=4.4 | M=0.8
+r373: A=San Antonio-New Braunfels, TX | B=41700 | C=2558143 | D=0.9 | E=ND | F=9.4 | G=43.8 | H=77 | I=127 | J=9 | K=24 | L=2 | M=0
+r374: A=San Diego-Chula Vista-Carlsbad, CA | B=41740 | C=3298634 | D=2.3 | E=0.02 | F=11.8 | G=54.8 | H=87 | I=130 | J=14.3 | K=34.7 | L=0.9 | M=0.1
+r375: A=Sandpoint, ID | B=41760 | C=47110 | D=ND | E=ND | F=ND | G=ND | H=ND | I=53 | J=ND | K=ND | L=ND | M=ND
+r376: A=San Jose-Sunnyvale-Santa Clara, CA | B=41940 | C=2000468 | D=ND | E=0.02 | F=ND | G=ND | H=59 | I=33 | J=4.4 | K=11.2 | L=ND | M=ND
+r377: A=San Juan-Bayamón-Caguas, PR | B=41980 | C=2081265 | D=0.6 | E=ND | F=ND | G=ND | H=ND | I=62 | J=6.7 | K=16.6 | L=0.4 | M=0
+r378: A=San Luis Obispo-Paso Robles, CA | B=42020 | C=282424 | D=ND | E=ND | F=3.3 | G=23.1 | H=72 | I=74 | J=7.3 | K=19.5 | L=ND | M=ND
+r379: A=Santa Cruz-Watsonville, CA | B=42100 | C=270861 | D=ND | E=ND | F=ND | G=ND | H=46 | I=ND | J=4.8 | K=15.6 | L=ND | M=ND
+r380: A=Santa Fe, NM | B=42140 | C=154823 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=IN | K=IN | L=ND | M=ND
+r381: A=Santa Maria-Santa Barbara, CA | B=42200 | C=448229 | D=0.8 | E=ND | F=2 | G=21 | H=60 | I=95 | J=9.5 | K=16.6 | L=2 | M=0.2
+r382: A=Santa Rosa-Petaluma, CA | B=42220 | C=488863 | D=ND | E=ND | F=ND | G=ND | H=ND | I=30 | J=ND | K=ND | L=ND | M=ND
+r383: A=Savannah, GA | B=42340 | C=404798 | D=ND | E=ND | F=ND | G=ND | H=56 | I=ND | J=8.5 | K=18.1 | L=32.8 | M=1
+r384: A=Sayre, PA | B=42380 | C=59967 | D=ND | E=ND | F=2.4 | G=IN | H=59 | I=ND | J=IN | K=IN | L=ND | M=ND
+r385: A=Scottsbluff, NE | B=42420 | C=37893 | D=ND | E=ND | F=ND | G=ND | H=63 | I=ND | J=IN | K=IN | L=ND | M=ND
+r386: A=Scranton--Wilkes-Barre, PA | B=42540 | C=567559 | D=0.6 | E=ND | F=8.8 | G=43 | H=65 | I=52 | J=5.7 | K=18.9 | L=2.1 | M=0.2
+r387: A=Seattle-Tacoma-Bellevue, WA | B=42660 | C=4018762 | D=0.5 | E=ND | F=14.6 | G=45.9 | H=62 | I=41 | J=8 | K=24.5 | L=IN | M=0.1
+r388: A=Sebastian-Vero Beach, FL | B=42680 | C=159788 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=ND | K=ND | L=ND | M=ND
+r389: A=Sebring-Avon Park, FL | B=42700 | C=101235 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=ND | K=ND | L=ND | M=ND
+r390: A=Sevierville, TN | B=42940 | C=98380 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=ND | K=ND | L=ND | M=ND
+r391: A=Sheboygan, WI | B=43100 | C=118034 | D=ND | E=ND | F=ND | G=ND | H=74 | I=ND | J=ND | K=ND | L=ND | M=ND
+r392: A=Sheridan, WY | B=43260 | C=30921 | D=ND | E=ND | F=IN | G=IN | H=IN | I=42 | J=5 | K=14.4 | L=IN | M=IN
+r393: A=Show Low, AZ | B=43320 | C=106717 | D=ND | E=ND | F=ND | G=ND | H=ND | I=46 | J=ND | K=ND | L=ND | M=ND
+r394: A=Shreveport-Bossier City, LA | B=43340 | C=393406 | D=ND | E=ND | F=ND | G=ND | H=66 | I=58 | J=8.8 | K=17.1 | L=4.8 | M=0.7
+r395: A=Sierra Vista-Douglas, AZ | B=43420 | C=125447 | D=ND | E=ND | F=ND | G=ND | H=67 | I=296 | J=ND | K=ND | L=ND | M=ND
+r396: A=Sioux City, IA-NE-SD | B=43580 | C=149940 | D=ND | E=ND | F=ND | G=ND | H=70 | I=ND | J=7.6 | K=22 | L=ND | M=ND
+r397: A=Sioux Falls, SD | B=43620 | C=276730 | D=0.5 | E=ND | F=6 | G=26.4 | H=63 | I=81 | J=5.8 | K=21.7 | L=1.1 | M=0.1
+r398: A=Somerset, KY | B=43700 | C=65034 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=6.7 | K=14.5 | L=ND | M=ND
+r399: A=Somerset, PA | B=43740 | C=74129 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=ND | K=ND | L=ND | M=ND
+r400: A=Sonora, CA | B=43760 | C=55620 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=ND | K=ND | L=ND | M=ND
+r401: A=South Bend-Mishawaka, IN-MI | B=43780 | C=324501 | D=ND | E=ND | F=4 | G=31 | H=69 | I=ND | J=8.3 | K=29.1 | L=ND | M=ND
+r402: A=Spartanburg, SC | B=43900 | C=327997 | D=ND | E=ND | F=ND | G=ND | H=63 | I=ND | J=8.3 | K=17.3 | L=ND | M=ND
+r403: A=Spokane-Spokane Valley, WA | B=44060 | C=585784 | D=ND | E=ND | F=ND | G=ND | H=61 | I=232 | J=8.1 | K=45.9 | L=ND | M=ND
+r404: A=Springfield, IL | B=44100 | C=208640 | D=ND | E=ND | F=ND | G=ND | H=64 | I=ND | J=7.9 | K=25.3 | L=ND | M=ND
+r405: A=Springfield, MA | B=44140 | C=699162 | D=ND | E=ND | F=8.4 | G=42 | H=68 | I=ND | J=6.7 | K=21.4 | L=1.5 | M=0.2
+r406: A=Springfield, MO | B=44180 | C=475432 | D=ND | E=ND | F=ND | G=ND | H=64 | I=190 | J=6.6 | K=15.2 | L=ND | M=ND
+r407: A=Springfield, OH | B=44220 | C=136001 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=8.3 | K=21.1 | L=ND | M=ND
+r408: A=State College, PA | B=44300 | C=158172 | D=ND | E=ND | F=3.4 | G=28 | H=66 | I=ND | J=6.7 | K=20.2 | L=3.7 | M=0.5
+r409: A=Steamboat Springs, CO | B=44460 | C=24829 | D=ND | E=ND | F=ND | G=ND | H=ND | I=52 | J=4.8 | K=13.8 | L=ND | M=ND
+r410: A=Stockton, CA | B=44700 | C=779233 | D=ND | E=ND | F=7.8 | G=31 | H=59 | I=83 | J=8.8 | K=23.5 | L=ND | M=ND
+r411: A=Syracuse, NY | B=45060 | C=662057 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=6 | K=29.9 | L=ND | M=ND
+r412: A=Tallahassee, FL | B=45220 | C=384298 | D=0.7 | E=ND | F=ND | G=ND | H=59 | I=ND | J=7.5 | K=14.6 | L=1.2 | M=0.1
+r413: A=Tampa-St. Petersburg-Clearwater, FL | B=45300 | C=3175275 | D=0.8 | E=0.05 | F=8.9 | G=36 | H=67 | I=64 | J=7.6 | K=13.9 | L=46.8 | M=1.5
+r414: A=Taos, NM | B=45340 | C=34489 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=3.1 | K=8.5 | L=ND | M=ND
+r415: A=Terre Haute, IN | B=45460 | C=185031 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=8.9 | K=19.5 | L=3.2 | M=0.7
+r416: A=Texarkana, TX-AR | B=45500 | C=147519 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.7 | K=18.5 | L=ND | M=ND
+r417: A=Toledo, OH | B=45780 | C=646604 | D=ND | E=ND | F=ND | G=ND | H=71 | I=60 | J=10 | K=31.1 | L=21 | M=0.4
+r418: A=Topeka, KS | B=45820 | C=233152 | D=ND | E=ND | F=ND | G=ND | H=66 | I=109 | J=8.7 | K=22.3 | L=ND | M=ND
+r419: A=Torrington, CT | B=45860 | C=185186 | D=0.5 | E=ND | F=ND | G=ND | H=73 | I=ND | J=5 | K=21.6 | L=1.9 | M=0.1
+r420: A=Traverse City, MI | B=45900 | C=153448 | D=ND | E=ND | F=ND | G=ND | H=62 | I=ND | J=ND | K=ND | L=ND | M=ND
+r421: A=Trenton-Princeton, NJ | B=45940 | C=387340 | D=ND | E=ND | F=ND | G=ND | H=73 | I=ND | J=7.3 | K=17.7 | L=ND | M=ND
+r422: A=Troy, AL | B=45980 | C=33009 | D=ND | E=0.29 | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=ND | M=ND
+r423: A=Truckee-Grass Valley, CA | B=46020 | C=102241 | D=ND | E=ND | F=ND | G=ND | H=67 | I=ND | J=3.5 | K=9.8 | L=ND | M=ND
+r424: A=Tucson, AZ | B=46060 | C=1043433 | D=0.8 | E=ND | F=12.6 | G=39.8 | H=67 | I=332 | J=6.6 | K=17.9 | L=0.6 | M=0
+r425: A=Tulsa, OK | B=46140 | C=1015331 | D=0.7 | E=ND | F=5.5 | G=28.7 | H=69 | I=105 | J=8.5 | K=21.3 | L=2 | M=0.2
+r426: A=Tupelo, MS | B=46180 | C=163398 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=ND | K=ND | L=ND | M=ND
+r427: A=Tuscaloosa, AL | B=46220 | C=268674 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=7.1 | K=16.1 | L=ND | M=ND
+r428: A=Tyler, TX | B=46340 | C=233479 | D=ND | E=ND | F=1.6 | G=IN | H=64 | I=ND | J=ND | K=ND | L=ND | M=ND
+r429: A=Ukiah, CA | B=46380 | C=91601 | D=ND | E=ND | F=ND | G=ND | H=49 | I=38 | J=6.7 | K=19 | L=ND | M=ND
+r430: A=Urban Honolulu, HI | B=46520 | C=1016508 | D=0.5 | E=ND | F=2.4 | G=IN | H=46 | I=26 | J=4.1 | K=9 | L=8.7 | M=1.1
+r431: A=Valdosta, GA | B=46660 | C=148126 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.4 | K=18.9 | L=ND | M=ND
+r432: A=Vallejo, CA | B=46700 | C=453491 | D=ND | E=ND | F=ND | G=ND | H=54 | I=17 | J=ND | K=ND | L=ND | M=ND
+r433: A=Vermillion, SD | B=46820 | C=14967 | D=ND | E=ND | F=ND | G=ND | H=57 | I=ND | J=4.8 | K=18.8 | L=ND | M=ND
+r434: A=Vernal, UT | B=46860 | C=35620 | D=ND | E=ND | F=3 | G=19.4 | H=72 | I=ND | J=3.7 | K=12.4 | L=ND | M=ND
+r435: A=Victoria, TX | B=47020 | C=98331 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=ND | K=ND | L=ND | M=ND
+r436: A=Vincennes, IN | B=47180 | C=36282 | D=ND | E=ND | F=ND | G=ND | H=63 | I=ND | J=ND | K=ND | L=ND | M=ND
+r437: A=Vineland-Bridgeton, NJ | B=47220 | C=154152 | D=ND | E=ND | F=5.2 | G=32.3 | H=68 | I=ND | J=7 | K=18 | L=ND | M=ND
+r438: A=Vineyard Haven, MA | B=47240 | C=20600 | D=ND | E=ND | F=ND | G=ND | H=60 | I=ND | J=ND | K=ND | L=ND | M=ND
+r439: A=Virginia Beach-Norfolk-Newport News, VA-NC | B=47260 | C=1799674 | D=0.6 | E=ND | F=7.5 | G=40.3 | H=59 | I=39 | J=6.9 | K=15.8 | L=3.6 | M=0.9
+r440: A=Visalia, CA | B=47300 | C=473117 | D=ND | E=ND | F=6.7 | G=34.4 | H=81 | I=88 | J=11.5 | K=30.9 | L=ND | M=ND
+r441: A=Wabash, IN | B=47340 | C=30976 | D=ND | E=ND | F=ND | G=ND | H=66 | I=ND | J=ND | K=ND | L=ND | M=ND
+r442: A=Waco, TX | B=47380 | C=277547 | D=0.5 | E=ND | F=ND | G=ND | H=69 | I=ND | J=ND | K=ND | L=IN | M=0.2
+r443: A=Walla Walla, WA | B=47460 | C=62584 | D=ND | E=ND | F=ND | G=ND | H=ND | I=91 | J=ND | K=ND | L=ND | M=ND
+r444: A=Warner Robins, GA | B=47580 | C=191614 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=8.3 | K=18.1 | L=ND | M=ND
+r445: A=Warren, PA | B=47620 | C=38587 | D=ND | E=ND | F=ND | G=ND | H=IN | I=ND | J=IN | K=36.4 | L=50 | M=1.5
+r446: A=Washington, NC | B=47820 | C=44652 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=9.6 | M=0.5
+r447: A=Washington-Arlington-Alexandria, DC-VA-MD-WV | B=47900 | C=6385162 | D=1.6 | E=ND | F=15.5 | G=48.6 | H=68 | I=47 | J=7.8 | K=19.4 | L=8 | M=1.2
+r448: A=Waterloo-Cedar Falls, IA | B=47940 | C=168461 | D=ND | E=ND | F=ND | G=ND | H=67 | I=ND | J=7.8 | K=19 | L=ND | M=ND
+r449: A=Watertown, SD | B=47980 | C=34489 | D=ND | E=ND | F=ND | G=ND | H=55 | I=102 | J=7.4 | K=32.2 | L=ND | M=ND
+r450: A=Watertown-Fort Atkinson, WI | B=48020 | C=84900 | D=ND | E=ND | F=ND | G=ND | H=63 | I=ND | J=ND | K=ND | L=ND | M=ND
+r451: A=Watertown-Fort Drum, NY | B=48060 | C=116721 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=ND | K=ND | L=ND | M=ND
+r452: A=Wausau-Weston, WI | B=48140 | C=166428 | D=ND | E=ND | F=ND | G=ND | H=61 | I=ND | J=7.7 | K=46.8 | L=ND | M=ND
+r453: A=Weirton-Steubenville, WV-OH | B=48260 | C=116903 | D=ND | E=0.01 | F=ND | G=ND | H=65 | I=53 | J=9.1 | K=25.5 | L=30 | M=2.4
+r454: A=Wheeling, WV-OH | B=48540 | C=139513 | D=ND | E=0.37 | F=IN | G=IN | H=ND | I=134 | J=7.9 | K=19.6 | L=7 | M=2.1
+r455: A=Whitewater, WI | B=48580 | C=106478 | D=ND | E=ND | F=ND | G=ND | H=69 | I=ND | J=ND | K=ND | L=ND | M=ND
+r456: A=Wichita, KS | B=48620 | C=647610 | D=ND | E=ND | F=5.7 | G=IN | H=63 | I=122 | J=9.4 | K=21.2 | L=IN | M=0.3
+r457: A=Williamsport, PA | B=48700 | C=114188 | D=ND | E=ND | F=ND | G=ND | H=65 | I=ND | J=7 | K=21.7 | L=ND | M=ND
+r458: A=Williston, ND | B=48780 | C=40950 | D=ND | E=ND | F=ND | G=ND | H=ND | I=ND | J=ND | K=ND | L=8 | M=0.3
+r459: A=Wilmington, NC | B=48900 | C=285905 | D=ND | E=ND | F=ND | G=ND | H=55 | I=64 | J=7.3 | K=16.9 | L=ND | M=ND
+r460: A=Wilmington, OH | B=48940 | C=42018 | D=ND | E=ND | F=ND | G=ND | H=68 | I=ND | J=ND | K=ND | L=ND | M=ND
+r461: A=Winchester, VA-WV | B=49020 | C=142632 | D=ND | E=ND | F=ND | G=ND | H=62 | I=41 | J=7.7 | K=21.4 | L=ND | M=ND
+r462: A=Winston-Salem, NC | B=49180 | C=675966 | D=ND | E=ND | F=5.5 | G=33.2 | H=64 | I=39 | J=9.8 | K=18.5 | L=2.3 | M=0.1
+r463: A=Worcester, MA-CT | B=49340 | C=978529 | D=0.8 | E=ND | F=8.3 | G=40 | H=68 | I=68 | J=5.8 | K=24.1 | L=2.1 | M=0.2
+r464: A=Yakima, WA | B=49420 | C=256728 | D=ND | E=ND | F=ND | G=ND | H=ND | I=78 | J=8.3 | K=24.1 | L=ND | M=ND
+r465: A=York-Hanover, PA | B=49620 | C=456438 | D=ND | E=ND | F=7.8 | G=39.2 | H=66 | I=ND | J=7.5 | K=24.3 | L=4.7 | M=0.6
+r466: A=Youngstown-Warren-Boardman, OH-PA | B=49660 | C=541243 | D=ND | E=ND | F=ND | G=ND | H=71 | I=62 | J=8.8 | K=24.3 | L=8 | M=1.9
+r467: A=Yuba City, CA | B=49700 | C=181208 | D=ND | E=ND | F=5 | G=31.1 | H=64 | I=45 | J=6.7 | K=18.7 | L=ND | M=ND
+r468: A=Yuma, AZ | B=49740 | C=203881 | D=ND | E=ND | F=ND | G=ND | H=68 | I=219 | J=7.8 | K=18.2 | L=ND | M=ND
+r469: (blank)
+r470: A=µg/m3 - micrograms per cubic meter
+r471: A=ppb - parts per billion
+r472: A=ppm - parts per million
+r473: A=CO - Second maximum non-overlapping 8-hour concentration (applicable NAAQS is 9 ppm)
+r474: A=Lead - Maximum rolling 3 month average concentration (applicable NAAQS is 0.15 µg/m3)
+r475: A=NO2 (AM) - Arithmetic mean concentration (applicable NAAQS is 53 ppb)
+r476: A=NO2 (1-hour) - 98th percentile daily maximum 1-hour concentration (applicable NAAQS is 100...
+r477: A=Ozone - Fourth highest daily maximum 8-hour concentration (applicable NAAQS is 70 ppb)
+r478: A=PM10 - Second maximum 24-hour concentration (applicable NAAQS is 150 µg/m3)
+r479: A=PM2.5 (Wtd AM) - Weighted annual mean concentration (applicable NAAQS is 9.0 µg/m3)
+r480: A=PM2.5 (24-hour) - 98th percentile 24-hour concentration (applicable NAAQS is 35 µg/m3)
+r481: A=SO2 (1-hour) - 99th percentile daily maximum 1-hour concentration (applicable NAAQS is 75 ...
+r482: A=SO2 (Wtd AM) - Weighted annual mean concentration (applicable NAAQS is 10 ppb)
+r483: A=IN - Insufficient data to calculate summary statistic
+r484: A=ND - No Data

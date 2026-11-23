@@ -1,0 +1,326 @@
+{
+ "nchs_hus_life_expectancy_mortality": {
+  "file": "nchs_hus_life_expectancy_mortality.xlsx",
+  "bytes": 33954,
+  "sha256": "1ea4870e9fa130ed6273af533acc6c9ef5ef4ec9a087c43a15f20514ca27ca4f",
+  "retrieved_utc": "2026-11-10T03:21:20Z"
+ },
+ "nchs_hus_uninsured": {
+  "file": "nchs_hus_uninsured.xlsx",
+  "bytes": 59413,
+  "sha256": "d866d06c828c7f60bce40629e32eccd701ed72df0c7372db8eb6ac4fbedb7bcc",
+  "retrieved_utc": "2026-11-10T03:21:21Z"
+ },
+ "nchs_hus_overdose_mortality": {
+  "file": "nchs_hus_overdose_mortality.xlsx",
+  "bytes": 69705,
+  "sha256": "1925f8469567ad32ea6991bd3ac8fee504e1a98b6c4842ca1d8fb7039553c99f",
+  "retrieved_utc": "2026-11-10T03:21:22Z"
+ },
+ "nchs_hus_child_vaccination": {
+  "file": "nchs_hus_child_vaccination.xlsx",
+  "bytes": 31167,
+  "sha256": "2631d8f5b08ff5e05e641cb7aca7e446cc921c723f5d44f25df64c68e2613879",
+  "retrieved_utc": "2026-11-10T03:21:23Z"
+ },
+ "nchs_hus_adult_ed_visits": {
+  "file": "nchs_hus_adult_ed_visits.xlsx",
+  "bytes": 52489,
+  "sha256": "5b1f397edc924df31696577f10a7f6c6febe6442f50ccb1b8ebc5e4c31c5e735",
+  "retrieved_utc": "2026-11-10T03:21:24Z"
+ },
+ "nchs_nvsr_us_life_table": {
+  "file": "nchs_nvsr_us_life_table.xlsx",
+  "bytes": 20584,
+  "sha256": "d9ce5588403433666c26eaf178ed7afd0cd591c65b3b08dcba2b76fcf5dcdd3c",
+  "retrieved_utc": "2026-11-10T03:21:25Z"
+ },
+ "nchs_nvsr_california_life_table": {
+  "file": "nchs_nvsr_california_life_table.xlsx",
+  "bytes": 20608,
+  "sha256": "82031a5c62d8ce62cd50a7edf337a9fdc762527622fc9a593b2916ecb7ae44f8",
+  "retrieved_utc": "2026-11-10T03:21:26Z"
+ },
+ "cms_nhe_source_of_funds": {
+  "file": "cms_nhe_source_of_funds.xlsx",
+  "bytes": 16438,
+  "sha256": "d379d2746ece097b6f864543d99832882f7dbdc197d1a25473d53d22cdfd58c7",
+  "retrieved_utc": "2026-11-10T03:21:26Z"
+ },
+ "cms_nhe_retail_prescription_drugs": {
+  "file": "cms_nhe_retail_prescription_drugs.xlsx",
+  "bytes": 17524,
+  "sha256": "96303915c5d0044eae1a7fc04646d8fddda276d08ac98cecc9c0ff89447fa9af",
+  "retrieved_utc": "2026-11-10T03:21:26Z"
+ },
+ "cms_program_stats_hospice_2023": {
+  "file": "cms_program_stats_hospice_2023.xlsx",
+  "bytes": 39602,
+  "sha256": "6aaf2f519129ab10826f86d66ec4382a11a17ce938cd4a8dbf34e2bb37ebfe22",
+  "retrieved_utc": "2026-11-10T03:21:27Z"
+ },
+ "cms_program_stats_premiums_2023": {
+  "file": "cms_program_stats_premiums_2023.xlsx",
+  "bytes": 63284,
+  "sha256": "1e94a827297f219af347c1920782d7404e124266d98cfceb3f38c79e3e76d40e",
+  "retrieved_utc": "2026-11-10T03:21:28Z"
+ },
+ "cms_program_stats_deaths_2023": {
+  "file": "cms_program_stats_deaths_2023.xlsx",
+  "bytes": 44927,
+  "sha256": "833ba7a4407104fa6849419822b86690997070a1f09d2f8111269e5f19a96598",
+  "retrieved_utc": "2026-11-10T03:21:28Z"
+ },
+ "cms_program_stats_providers_2023": {
+  "file": "cms_program_stats_providers_2023.xlsx",
+  "bytes": 61940,
+  "sha256": "c6ea8eac27347f5d9ca8b778b04ec3187450585f4fac89dfb938f953e2b70e59",
+  "retrieved_utc": "2026-11-10T03:21:29Z"
+ },
+ "cms_program_stats_home_health_2023": {
+  "file": "cms_program_stats_home_health_2023.xlsx",
+  "bytes": 51371,
+  "sha256": "427ef255cf253f9a2f2569a5a1ad5c8a127b4458b50f36418596742a16df129e",
+  "retrieved_utc": "2026-11-10T03:21:30Z"
+ },
+ "cdc_leading_causes_of_death_us": {
+  "file": "cdc_leading_causes_of_death_us.csv",
+  "bytes": 842709,
+  "sha256": "1971e6664c76457a5c32e4c86aa103ba404b7be5d17ddb6e6dfc0075479c85d9",
+  "retrieved_utc": "2026-11-10T03:21:31Z"
+ },
+ "cdc_drug_poisoning_mortality_state": {
+  "file": "cdc_drug_poisoning_mortality_state.csv",
+  "bytes": 443356,
+  "sha256": "98f8097482e28c77369f80d51b9baed8f958bbba004d860b73708df4ce40692b",
+  "retrieved_utc": "2026-11-10T03:21:33Z"
+ },
+ "cdc_death_rates_life_expectancy": {
+  "file": "cdc_death_rates_life_expectancy.csv",
+  "bytes": 34059,
+  "sha256": "c2473acf4bcc22c876ebd67abf131e89ea46c3ed35f1cdf23025301ac39b3bdf",
+  "retrieved_utc": "2026-11-10T03:21:34Z"
+ },
+ "hhs_acf_child_victims_by_age": {
+  "file": "hhs_acf_child_victims_by_age.csv",
+  "bytes": 9596,
+  "sha256": "44d245506cb27d02cf57352dd14d1e79fb77ae2edeba8901274d68403628817b",
+  "retrieved_utc": "2026-11-10T03:21:34Z"
+ },
+ "medicaid_chip_eligibility_levels": {
+  "file": "medicaid_chip_eligibility_levels.csv",
+  "bytes": 5135,
+  "sha256": "bb9b257e316ababb38187cdd90f9c1536de97620f0791a3d146cb386a32d6e50",
+  "retrieved_utc": "2026-11-10T03:21:34Z"
+ },
+ "medicaid_managed_care_enrollment_2024": {
+  "file": "medicaid_managed_care_enrollment_2024.csv",
+  "bytes": 37383,
+  "sha256": "07420eea5ca092a4bfec114f06dab4601e7e1f30ad0592101302bf60092a8410",
+  "retrieved_utc": "2026-11-10T03:21:35Z"
+ },
+ "medicaid_new_adult_group_enrollment": {
+  "file": "medicaid_new_adult_group_enrollment.csv",
+  "bytes": 550361,
+  "sha256": "319b5ab1c3b3bdfb208677f772305fdb8935e975b26ee7fe64149f2d0f5c6b62",
+  "retrieved_utc": "2026-11-10T03:21:35Z"
+ },
+ "nydoh_cardiac_surgery_pci_by_hospital": {
+  "file": "nydoh_cardiac_surgery_pci_by_hospital.csv",
+  "bytes": 418841,
+  "sha256": "790fa5e14cbc49f3584f0177679a3026f4f7ced14dd6b525082a996eae6a310a",
+  "retrieved_utc": "2026-11-10T03:21:36Z"
+ },
+ "nydoh_nursing_home_bed_census": {
+  "file": "nydoh_nursing_home_bed_census.csv",
+  "bytes": 175707,
+  "sha256": "7ea3d2eb8ca17e57777d0e2a692d0ff60d5e3aedd537d47bfea0fff2b31e3eff",
+  "retrieved_utc": "2026-11-10T03:21:38Z"
+ },
+ "ct_accidental_drug_related_deaths": {
+  "file": "ct_accidental_drug_related_deaths.csv",
+  "bytes": 4871517,
+  "sha256": "e41e42ff9195d9f28feb1102e3c5d32a7cf1e182f4062093749905909a96d461",
+  "retrieved_utc": "2026-11-10T03:21:42Z"
+ },
+ "wadoh_school_immunization": {
+  "file": "wadoh_school_immunization.csv",
+  "bytes": 571026,
+  "sha256": "7fc3b0502998591b915975c34658ba2cec471ca5c7eeef79c2eaac877aae8cdc",
+  "retrieved_utc": "2026-11-10T03:21:45Z"
+ },
+ "ca_hcai_rural_hospitals_overview": {
+  "file": "ca_hcai_rural_hospitals_overview.xlsx",
+  "bytes": 71675,
+  "sha256": "9b553afbe260d28ae4c4169e857f39abf1020ccdff6760b87a3c8792525bc6a2",
+  "retrieved_utc": "2026-11-10T03:21:46Z"
+ },
+ "ca_hcai_ed_volume_capacity": {
+  "file": "ca_hcai_ed_volume_capacity.xlsx",
+  "bytes": 1427764,
+  "sha256": "ee718eb04c51fe22a8ce7e7703b36f5960c888e80186b35138c09bd1efadd90f",
+  "retrieved_utc": "2026-11-10T03:21:50Z"
+ },
+ "nyc_dohmh_leading_causes_of_death": {
+  "file": "nyc_dohmh_leading_causes_of_death.csv",
+  "bytes": 185195,
+  "sha256": "e60c7dc7e85e1c3893cd2d504718ed134388ab51e5130aabf65b9c33cfdae552",
+  "retrieved_utc": "2026-11-10T03:21:55Z"
+ },
+ "census_state_population_estimates_2023": {
+  "file": "census_state_population_estimates_2023.xlsx",
+  "bytes": 14964,
+  "sha256": "aec49456a006a06bdaba1ec90f032e0412617da40cdda26709074fbc6bb528e6",
+  "retrieved_utc": "2026-11-10T03:21:55Z"
+ },
+ "census_county_population_estimates_2023": {
+  "file": "census_county_population_estimates_2023.xlsx",
+  "bytes": 170197,
+  "sha256": "58c3e2dea35857422fad63591f20df04af7c77c42bf91af248d083ca0f5961b4",
+  "retrieved_utc": "2026-11-10T03:21:56Z"
+ },
+ "census_cps_median_household_income_by_state": {
+  "file": "census_cps_median_household_income_by_state.xlsx",
+  "bytes": 60918,
+  "sha256": "5cd4278aafb9852f9527bc03eadc43df03616000adce4799083fc3a48be313b2",
+  "retrieved_utc": "2026-11-10T03:21:57Z"
+ },
+ "census_cps_poverty_by_state": {
+  "file": "census_cps_poverty_by_state.xlsx",
+  "bytes": 17011,
+  "sha256": "c674d8812e46a8c324653500d99f1faf41c52dff2e238d675304bf80b083b455",
+  "retrieved_utc": "2026-11-10T03:21:57Z"
+ },
+ "census_monthly_retail_trade_sales": {
+  "file": "census_monthly_retail_trade_sales.xlsx",
+  "bytes": 441320,
+  "sha256": "190d718b853613163d3e9c3b5fe4444966ac3a7d908b60f0526df8692ccb6119",
+  "retrieved_utc": "2026-11-10T03:21:58Z"
+ },
+ "census_state_government_finances_2022": {
+  "file": "census_state_government_finances_2022.xlsx",
+  "bytes": 40034,
+  "sha256": "7f04d99fc34828edae86c8eb61f99120e4b0cecae78aab5a1b873d53e848e0b4",
+  "retrieved_utc": "2026-11-10T03:21:59Z"
+ },
+ "census_state_lottery_finances_2022": {
+  "file": "census_state_lottery_finances_2022.xlsx",
+  "bytes": 11339,
+  "sha256": "01322c83133f098a291d44b495914ae06e085121d551cf431a3c9e5a1f4a4813",
+  "retrieved_utc": "2026-11-10T03:21:59Z"
+ },
+ "ers_county_unemployment_median_income": {
+  "file": "ers_county_unemployment_median_income.xlsx",
+  "bytes": 2888683,
+  "sha256": "a997974255a85d8ef5d37d3e1a38719f12feff6225c6c1bf8aed974a62811fe3",
+  "retrieved_utc": "2026-11-10T03:22:05Z"
+ },
+ "ers_rural_urban_continuum_codes_2023": {
+  "file": "ers_rural_urban_continuum_codes_2023.xlsx",
+  "bytes": 162204,
+  "sha256": "aeaae451663c7ea70cd15ef26fdc991bebcaf3a39d658ab2133d321530777df5",
+  "retrieved_utc": "2026-11-10T03:22:06Z"
+ },
+ "ers_food_expenditure_series_nominal": {
+  "file": "ers_food_expenditure_series_nominal.xlsx",
+  "bytes": 24900,
+  "sha256": "7881a8ce58e329a134a0254f975dbc265e7fd0fcfa9450869b6fef2feda4402d",
+  "retrieved_utc": "2026-11-10T03:22:07Z"
+ },
+ "nces_digest_public_school_enrollment_by_state": {
+  "file": "nces_digest_public_school_enrollment_by_state.xlsx",
+  "bytes": 23556,
+  "sha256": "be040febe2cc14b461e78d4adf7561400a48c31a65e8e9fba53c345877aeb417",
+  "retrieved_utc": "2026-11-10T03:22:09Z"
+ },
+ "nces_digest_expenditure_per_pupil_by_state": {
+  "file": "nces_digest_expenditure_per_pupil_by_state.xlsx",
+  "bytes": 39199,
+  "sha256": "7bb667e1d264ed725c1bf806145feed6f771d6ddf2bf85ad045d8957ce4303e7",
+  "retrieved_utc": "2026-11-10T03:22:10Z"
+ },
+ "nces_digest_degrees_conferred": {
+  "file": "nces_digest_degrees_conferred.xlsx",
+  "bytes": 17609,
+  "sha256": "808086bac91faaa9185aa88a79a48dd8aada3cdc6d10120565d2f0373311ed3c",
+  "retrieved_utc": "2026-11-10T03:22:10Z"
+ },
+ "nces_digest_college_enrollment_recent_graduates": {
+  "file": "nces_digest_college_enrollment_recent_graduates.xlsx",
+  "bytes": 31585,
+  "sha256": "1b6817a4fc9ff87444843f6d0c7fb31b3cb31d5aca9ea21479f85742465eb37d",
+  "retrieved_utc": "2026-11-10T03:22:11Z"
+ },
+ "nces_digest_graduation_rates_by_state": {
+  "file": "nces_digest_graduation_rates_by_state.xlsx",
+  "bytes": 56894,
+  "sha256": "1913b92e5e754c99ef8aeeb443f79c7bde01243501cf608b23d66c6ef6c4e959",
+  "retrieved_utc": "2026-11-10T03:22:12Z"
+ },
+ "fhwa_motor_vehicle_registrations_2022": {
+  "file": "fhwa_motor_vehicle_registrations_2022.xlsx",
+  "bytes": 31021,
+  "sha256": "0ec04f904a0affd882905de5cf06af2ef942a92288c5e411fbecf48d57721d2e",
+  "retrieved_utc": "2026-11-10T03:22:13Z"
+ },
+ "fhwa_drivers_licenses_2022": {
+  "file": "fhwa_drivers_licenses_2022.xlsx",
+  "bytes": 66045,
+  "sha256": "a3e5d218a8dde087115df9b127d346a885926cec158f97fcd3a627387cf0ea01",
+  "retrieved_utc": "2026-11-10T03:22:14Z"
+ },
+ "fhwa_motor_fuel_use_2022": {
+  "file": "fhwa_motor_fuel_use_2022.xlsx",
+  "bytes": 21335,
+  "sha256": "9b42f46fc1c5dcfbac45e2d2cc3f214eb856b3393a9030d78690faa1a1c25b82",
+  "retrieved_utc": "2026-11-10T03:22:15Z"
+ },
+ "faa_commercial_service_enplanements_cy2025": {
+  "file": "faa_commercial_service_enplanements_cy2025.xlsx",
+  "bytes": 58419,
+  "sha256": "91c8d4457e9558b8bcb65c2a27cd9b95062e3c7b443e58e9714ba77942777b40",
+  "retrieved_utc": "2026-11-10T03:22:16Z"
+ },
+ "irs_soi_individual_returns_by_state_us": {
+  "file": "irs_soi_individual_returns_by_state_us.xlsx",
+  "bytes": 265549,
+  "sha256": "4bc45f2586fb924c1e0e7818773096bdcf71223b6407120ca058efaed728607a",
+  "retrieved_utc": "2026-11-10T03:22:17Z"
+ },
+ "chicago_cta_daily_boardings": {
+  "file": "chicago_cta_daily_boardings.csv",
+  "bytes": 325821,
+  "sha256": "49c9de6682dc04310a1687cf49a674404d8c28dd1bd552ce022f22a9734d70aa",
+  "retrieved_utc": "2026-11-10T03:22:20Z"
+ },
+ "chicago_affordable_rental_housing": {
+  "file": "chicago_affordable_rental_housing.csv",
+  "bytes": 119153,
+  "sha256": "852c74eb6f573ff94c73d9300f2c919b1b2505c160120478ef5a17a5dfc7a63d",
+  "retrieved_utc": "2026-11-10T03:22:22Z"
+ },
+ "nys_mta_daily_ridership": {
+  "file": "nys_mta_daily_ridership.csv",
+  "bytes": 162963,
+  "sha256": "08b2cc9cc7050eb7bc72244b8e97f63c9b07d60b1c6b90127b4249e44191b3db",
+  "retrieved_utc": "2026-11-10T03:22:24Z"
+ },
+ "nys_farmers_markets": {
+  "file": "nys_farmers_markets.csv",
+  "bytes": 166353,
+  "sha256": "485bcbac76f2892946c11b33bd1f93b8eb697769b767c223370d9cd07f48e427",
+  "retrieved_utc": "2026-11-10T03:22:29Z"
+ },
+ "ct_tax_revenue_by_month": {
+  "file": "ct_tax_revenue_by_month.csv",
+  "bytes": 80541,
+  "sha256": "89144889d3b526e29d2388d776e1b58628feadffdf95967e2be3a4d1de1e89a7",
+  "retrieved_utc": "2026-11-10T03:22:34Z"
+ },
+ "nyc_central_park_squirrel_census_2018": {
+  "file": "nyc_central_park_squirrel_census_2018.csv",
+  "bytes": 747760,
+  "sha256": "947d5e9f0206a552b8e48a400eab09e5ec8d0d73922fd6d8d37376d2ecf00b2a",
+  "retrieved_utc": "2026-11-10T03:22:36Z"
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "file": "census_state_lottery_finances_2022.xlsx",
+ "sheets": [
+  {
+   "name": "22Lottery",
+   "rows": 71,
+   "cols": 5,
+   "shown_whole": true
+  }
+ ],
+ "chars": 4070
+}

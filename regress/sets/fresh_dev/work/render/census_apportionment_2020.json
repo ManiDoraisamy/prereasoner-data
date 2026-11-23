@@ -1,0 +1,12 @@
+{
+ "file": "census_apportionment_2020.xlsx",
+ "sheets": [
+  {
+   "name": "Table 1",
+   "rows": 56,
+   "cols": 4,
+   "shown_whole": true
+  }
+ ],
+ "chars": 2761
+}

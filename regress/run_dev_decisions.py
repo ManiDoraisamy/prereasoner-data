@@ -1,52 +1,49 @@
-"""The program path's parity with the Decisions measurement it was ported from (decisions-probe-20261118: the stock arm
-with the kept closed questions, the tab in view named and the said call, tag eor1; DataBench, tag pgd1), on the 896 dev
-questions:
-messy dev, the WikiTableQuestions dev sample, DataBench dev and the fresh dev twin. No frozen set is read, and no Enron
-sheet.
+"""The dev replay: the Decisions path through the one own-data selection on the 896 dev questions (messy dev, the
+WikiTableQuestions dev sample, DataBench dev and our fresh dev set; regress/eval_sets.py loads them) and the demo gate's
+91 questions, each held to its measured reference. No frozen set is read.
 
-Every question runs through the one own-data selection, engine/tables.py TableQuery.select_query (no active sheet, as
-measured), on the request tables of its workbook, each table's grid the tab its loader built; engine.llm.DECISIONS_TRANSPORT
-is replaced by a replay of the measurement's own cache (cache/<hash[:2]>/<hash>.json, keyed by engine.llm.decision_hash):
-the API is never called, no key is read, and a body the cache does not hold raises. A miss means the serving path built a
-request the measurement did not; its body is written to <out>/misses/<hash>.json for a diff. Each question is then
-compared with its set's measured outcome (REFERENCE_TAGS, the latest layer that measured it): the listed answers (answer
-hashes, in order), their grades, the choice probabilities and the per-answer label (summarize.decided at level "answer").
+Every question runs through engine/tables.py TableQuery.select_query (no active sheet) on the request tables of its
+workbook, each table's grid the tab its loader built; engine.llm.DECISIONS_TRANSPORT is replaced by a replay of the
+recorded answers (regress/sets/calls, keyed by engine.llm.decision_hash): the API is never called, no key is read, and a
+body the store does not hold is a miss, its body written to <out>/misses/<hash>.json for a diff. Each question is then
+compared with its set's reference (regress/sets/dev_decisions/reference/<set>.jsonl.gz, the last kept measurement of
+every question): the listed answers (answer hashes, in order), their grades, the choice probabilities, the served
+label, any error and, on the demo set, the currency the convert question chose.
 
-The sets load exactly as the measurement's run_stock.py loaded them (its loaders, read from the experiment folders), and
-each workbook's tabs are the wire-form tabs its loader compiles (header and typed rows for messy, WikiTableQuestions and
-DataBench; the xlsx reader's tabs for the fresh dev twin). A workbook's questions share one request database
-(engine/prepared.py scratch_database), as a conversation's turns share a prepared workbook. The stock reader keeps the vectors of the texts it read before,
-and a batch's padding can move a vector in its last bits, so a run keeps the measurement's history by its order, at
---threads 4: --sets wtq and --sets messy,freshdev (as eor1 ran) and --sets freshdev,databench (as pgd1 ran), one process
-each. Results: regress/results/dev_decisions/<tag>/<set>.jsonl and summary_<sets>.json.
+A workbook's questions share one request database (engine/prepared.py scratch_database), as a conversation's turns
+share a prepared workbook. The stock reader keeps the vectors of the texts it read before, and a batch's padding can
+move a vector in its last bits, so a run keeps the reference's history by its order, at --threads 4: --sets wtq and
+--sets messy,freshdev and --sets databench, one process each (and --sets demo). Results:
+regress/results/dev_decisions/<tag>/<set>.jsonl and summary_<sets>.json.
 
---sets demo is the demo gate (tests/test_datasets.py: each dataset's prompt and its standalone eval.txt follow-ups) against
-vtdemo, graded on rows as vtdemo was: each question is a served request's own-data selection, on its own request database
-with the world layer's links registered (engine/knowledge_bridges.py link_request), so it reads the live knowledgebase
-through the Cloud SQL proxy. --demo-maps reads each dataset instead on the request database production built for it on
-2026-11-18 (build_maps.py's maps folder), the inputs demo25 read, with the links recorded there.
+A kept change is measured with --record (a body the store lacks is sent to the Decisions API, with the deployment's
+GOOGLE_API_KEY, and kept in regress/sets/calls/<date>-<tag>.jsonl) and --keep (the run's records become the sets'
+references); then python -m regress.eval_sets pack compresses the new calls, and the references and calls are
+committed with the change.
 
---csv is a new measurement, not parity: production receives each tab as CSV, so each tab is rendered to CSV text (the
-cells as the loader read them) and read as an upload is (csv_table, canonical table names); its bodies differ from the
-measurement's, so it needs --record DIR, which sends a body neither cache holds to the Decisions API (the deployment's
-GOOGLE_API_KEY) and keeps the answer in DIR for a replay.
+--sets demo is the demo gate (tests/test_datasets.py: each dataset's prompt and its standalone eval.txt follow-ups),
+graded on rows: each question is a served request's own-data selection, on its own request database with the world
+layer's links registered (engine/knowledge_bridges.py link_request), so it reads the live knowledgebase. --demo-maps
+reads each dataset instead on the request database production built for it on 2026-11-18 (regress/sets/demo_maps),
+with the links recorded there: the reference's inputs, so the knowledgebase's changes since do not enter.
 
---retry DIR measures serving's retry (engine/retry.py, owner 2026-11-21): each question whose answer is most likely wrong
-(closed.ERRED, which serving never asks back) is retried over its workbook's tables as TableQuery.serve retries it, and
-the retry's rows are graded (right, wrong, the sheet cannot answer it, or the retry failed); the retry model's answers
-are kept in DIR by their body's hash (a body DIR lacks is sent to the model, so a second run replays them).
+--csv is a new measurement, not parity: each tab is rendered to CSV text and read as an upload is (csv_table,
+canonical table names); its bodies differ, so it needs --record.
+
+--retry measures serving's retry (engine/retry.py): each question whose answer is most likely wrong (closed.ERRED) is
+retried over its workbook's tables as TableQuery.serve retries it, and its rows are graded (right, wrong, the sheet
+cannot answer it, or the retry failed); the retry model's answers are kept by body hash in regress/sets/retry_calls.
 
 usage: python -X utf8 -m regress.run_dev_decisions [--sets messy,freshdev] [--limit N] [--tag NAME] [--threads 4] [--resume]
-                                                   [--csv --record DIR] [--sets demo [--demo-maps DIR]] [--retry DIR]
+                                                   [--record] [--keep] [--csv] [--sets demo [--demo-maps [DIR]]] [--retry]
 """
 from __future__ import annotations
 
 import argparse
+import datetime
 import gzip
-import importlib.util
 import json
 import math
-import os
 import sys
 import time
 from dataclasses import dataclass
@@ -65,82 +62,66 @@ from engine.program.answer import ANSWERED, ERRED, WARNED
 from engine.program.closed import answer_key
 from engine.request_validation import canonical_table_name
 from engine.tables import TableQuery, csv_table, normalize_tables
+from regress import eval_sets
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPERIMENTS = Path("C:/work/prereasoner-data/training/readers/data/experiments")
-PROBE = EXPERIMENTS / "decisions-probe-20261118"
-# Each set against its kept stack (decisions-probe-20261118 results/e2e_<tag>_stock_<set>.jsonl.gz), measured in layers:
-# first the whole set, eor1 (the kept stack with the tab in view named and the said call) or, on DataBench, pgd1 (the
-# kept stack before those two, since no workbook of it has two tabs and no question of it reads a word pair), then each
-# kept change's rerun of the questions it touches (gs1, af1, wm1 and DataBench's wm1b; cf1 and cf1b, the cell as the sheet
-# wrote it; fg1 and fg1b, a prose column's word counts; ol1 and ol1b, each cell on one line; to1 and to1b, tied lines in
-# sheet order; fp1, every question again: a text column's figures read as numbers and lines taken by where they stand),
-# a later measurement of a question replacing an earlier one
-REFERENCE_TAGS = {"messy": ("eor1", "to1", "pl1b", "vt1", "ec2", "fp1"), "freshdev": ("eor1", "gs1", "wm1", "cf1", "fg1", "ol1", "to1", "vt1", "fp1"),
-                  "wtq": ("eor1", "af1", "wm1", "cf1", "fg1", "ol1", "to1", "pl1b", "ec2", "fp1"),
-                  "databench": ("pgd1", "wm1", "wm1b", "cf1", "cf1b", "fg1", "fg1b", "ol1", "ol1b", "to1", "to1b", "pl1", "pl1b", "vt1b", "ec2", "fp1")}
+REFERENCE = eval_sets.SETS / "dev_decisions" / "reference"
+DEMO_MAPS = eval_sets.SETS / "demo_maps"
+RETRY_CALLS = eval_sets.SETS / "retry_calls"
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
-# The demo set against vtdemo (results/e2e_vtdemo_con_stock.jsonl.gz): the stock arm on the connected catalog (place,
-# entity, currency and key links with each key's identities, the kept closed questions, the tab in view named, the
-# value targets' token bound), read on the request databases production built for the demo datasets on 2026-11-18 (the
-# day their money columns with no date convert on); then fp1, every demo question again with a text column's figures read
-# as numbers and lines taken by where they stand (five pools of eval-neartail-ecommerce change, no outcome).
-DEMO_REFERENCE = ("e2e_vtdemo_con_stock.jsonl.gz", "e2e_fp1_stock_demo.jsonl.gz")
+# The fields of a record that the reference keeps (its timing and comparison are the run's own)
+KEPT = ("id", "set", "kind", "label", "mass", "listed", "listed_answer", "listed_right", "choose_p", "read_as", "error", "miss", "convert_to", "calls")
 DEMO_AS_OF = "2026-11-18"
 CENT = 0.01                 # run_connected.py: a scalar within one cent, a row's cells to the cent
 
 
 class ReplayMiss(RuntimeError):
-    """A request body the measurement's cache does not hold."""
+    """A request body the recorded answers do not hold."""
 
 
 class Replay:
-    """engine.llm's transport over the measurement's cache: the recorded answer of a body, by its hash. Without
-    ``record`` it never calls the API; with it, a body neither cache holds is sent through engine.llm's own transport
-    and its answer kept in ``record`` (the same layout), so the run can be replayed."""
+    """engine.llm's Decisions transport over the recorded answers (eval_sets.CallStore), by body hash. Without ``record``
+    it never calls the API; with it, a body the store lacks is sent through engine.llm's own transport and its answer
+    kept in this run's batch, so the run can be replayed."""
 
-    def __init__(self, cache: Path, misses: Path, record: Path | None = None):
-        self.cache, self.misses, self.record = cache, misses, record
+    def __init__(self, store: eval_sets.CallStore, misses: Path, record: bool = False):
+        self.store, self.misses, self.record = store, misses, record
         self.send = llm.DECISIONS_TRANSPORT
         self.used: list[str] = []
 
     def __call__(self, payload: bytes) -> dict:
         digest = llm.decision_hash(payload)
-        held = self.cache / digest[:2] / f"{digest}.json"
-        if not held.exists() and self.record is not None:
-            held = self.record / digest[:2] / f"{digest}.json"
-            if not held.exists():
-                answer = self.send(payload)
-                held.parent.mkdir(parents=True, exist_ok=True)
-                held.write_bytes((json.dumps({"answers": answer["answers"], "tokens": answer["tokens"]}) + "\n").encode("utf-8"))
-        if not held.exists():
+        held = self.store.get(digest)
+        if held is None and self.record:
+            answer = self.send(payload)
+            held = {"answers": answer["answers"], "tokens": answer["tokens"]}
+            self.store.keep(digest, held)
+        if held is None:
             self.misses.mkdir(parents=True, exist_ok=True)
             (self.misses / f"{digest}.json").write_bytes(payload)
             raise ReplayMiss(digest)
         self.used.append(digest)
-        recorded = json.loads(held.read_text(encoding="utf-8"))
-        return {"answers": recorded["answers"], "tokens": recorded["tokens"]}
+        return {"answers": held["answers"], "tokens": held["tokens"]}
 
 
 class QueryReplay:
-    """engine.llm's retry transport (QUERY_TRANSPORT) over a folder of recorded answers by body hash: a body the folder
+    """engine.llm's retry transport (QUERY_TRANSPORT) over the recorded retry answers by body hash: a body the store
     lacks is sent to the retry model and its answer kept. ``tokens`` sums the input and output tokens sent anew."""
 
-    def __init__(self, folder: Path):
-        self.folder, self.send = folder, llm.QUERY_TRANSPORT
+    def __init__(self, store: eval_sets.CallStore):
+        self.store, self.send = store, llm.QUERY_TRANSPORT
         self.tokens = [0, 0]
 
     def __call__(self, payload: bytes) -> dict:
         digest = llm.decision_hash(payload)
-        held = self.folder / digest[:2] / f"{digest}.json"
-        if not held.exists():
-            answer = self.send(payload)
-            usage = answer.get("usage") or {}
+        held = self.store.get(digest)
+        if held is None:
+            held = self.send(payload)
+            usage = held.get("usage") or {}
             self.tokens[0] += int(usage.get("promptTokenCount") or 0)
             self.tokens[1] += int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0)
-            held.parent.mkdir(parents=True, exist_ok=True)
-            held.write_bytes((json.dumps(answer) + "\n").encode("utf-8"))
-        return json.loads(held.read_text(encoding="utf-8"))
+            self.store.keep(digest, held)
+        return held
 
 
 def retry_row(planner, item, selection) -> dict:
@@ -216,32 +197,11 @@ def kind_of(selection) -> str:
     return ERRED if selection.selected is None else WARNED if selection.warned else ANSWERED
 
 
-def _module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def experiment_modules():
-    """The measurement's loaders (run_e2e: wtq_dev_sample, load_databench, fresh_dev_items) and its decision rule
-    (summarize.decided). Its modules put NEXT_ENGINE on the path: it is this checkout, so every engine module is ours."""
-    os.environ["NEXT_ENGINE"] = str(ROOT)
-    for folder in (EXPERIMENTS / "clef-serve-20261109" / "local", EXPERIMENTS / "clef-reading-zs-20261109" / "work"):
-        if str(folder) not in sys.path:
-            sys.path.append(str(folder))
-    run_e2e = _module("run_e2e", EXPERIMENTS / "clef-serve-20261109" / "local" / "run_e2e.py")
-    summarize = _module("summarize", PROBE / "local" / "summarize.py")
-    return run_e2e, summarize
-
-
-def items_of(name, run_e2e, limit):
-    from training.named.evaluate import load_messy
+def items_of(name, limit):
+    """A dev set's questions (regress/eval_sets.py), the reference's order."""
     with capturing():
-        messy = load_messy("dev") if name == "messy" else None
-    source = (messy if name == "messy" else run_e2e.wtq_dev_sample() if name == "wtq" else run_e2e.fresh_dev_items() if name == "freshdev"
-              else run_e2e.load_databench("dev", max_rows=60000))
+        source = (eval_sets.messy() if name == "messy" else eval_sets.wtq_dev_sample() if name == "wtq"
+                  else eval_sets.fresh_dev() if name == "freshdev" else eval_sets.databench("dev", max_rows=60000))
     return [item for item in source if item.label == "gold"][:limit]
 
 
@@ -251,21 +211,24 @@ def graded(item, rows) -> bool:
 
 
 def label_of(kind: str, right: bool) -> str:
-    """The measurement's per-answer label (summarize.decided at level "answer"), whose name for an answer most likely
-    wrong (closed.ERRED, retried in serving) is "asked"."""
+    """The per-answer label; an answer most likely wrong (closed.ERRED, retried in serving) is "asked"."""
     if kind == ERRED:
         return "asked"
     return ("flagged_" if kind == WARNED else "") + ("right" if right else "wrong")
 
 
-def reference(name: str, probe: Path = PROBE) -> dict:
-    """Each question's measured outcome: the last of its set's layers (REFERENCE_TAGS, in order) that measured it."""
-    targets = list(DEMO_REFERENCE) if name == "demo" else [f"e2e_{tag}_stock_{name}.jsonl.gz" for tag in REFERENCE_TAGS[name]]
-    held = {}
-    for target in targets:
-        with gzip.open(probe / "results" / target, "rt", encoding="utf-8") as source:
-            held.update({row["id"]: row for row in map(json.loads, source) if row})
-    return held
+def reference(name: str, folder: Path = REFERENCE) -> dict:
+    """Each question's reference: its record in the set's last kept measurement."""
+    with gzip.open(folder / f"{name}.jsonl.gz", "rt", encoding="utf-8") as source:
+        return {row["id"]: row for row in map(json.loads, source) if row}
+
+
+def keep_reference(name: str, rows: list[dict], folder: Path = REFERENCE) -> None:
+    """A kept change's records as the set's reference: the fields KEPT, one line each, no timestamp in the archive."""
+    folder.mkdir(parents=True, exist_ok=True)
+    with open(folder / f"{name}.jsonl.gz", "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=9) as sink:
+        for row in rows:
+            sink.write((json.dumps({key: row.get(key) for key in KEPT if key in row}, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8"))
 
 
 @dataclass(frozen=True)
@@ -406,9 +369,10 @@ def main() -> int:
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--resume", action="store_true", help="skip questions already recorded (the stock reader's history then differs)")
     parser.add_argument("--csv", action="store_true", help="each tab rendered to CSV and read as an upload is (a new measurement, not parity)")
-    parser.add_argument("--record", type=Path, help="a cache folder: a body neither cache holds is sent to the Decisions API and kept here")
-    parser.add_argument("--demo-maps", type=Path, help="the demo set on the request databases demo25 read (build_maps.py's maps folder)")
-    parser.add_argument("--retry", type=Path, help="retry each erred question as serving does; the retry model's answers are kept here")
+    parser.add_argument("--record", action="store_true", help="a body the recorded answers lack is sent to the Decisions API and kept in regress/sets/calls")
+    parser.add_argument("--keep", action="store_true", help="the run's records become each measured set's reference (a kept change)")
+    parser.add_argument("--demo-maps", type=Path, nargs="?", const=DEMO_MAPS, help="the demo set on the request databases built for it on 2026-11-18 (default regress/sets/demo_maps)")
+    parser.add_argument("--retry", action="store_true", help="retry each erred question as serving does; the retry model's answers are kept in regress/sets/retry_calls")
     args = parser.parse_args()
     names = args.sets.split(",")
     if any(name not in SETS for name in names):
@@ -416,24 +380,25 @@ def main() -> int:
     torch.set_num_threads(args.threads)
     out = ROOT / "regress" / "results" / "dev_decisions" / args.tag
     out.mkdir(parents=True, exist_ok=True)
-    replay = Replay(PROBE / "cache", out / "misses", args.record)
+    batch = f"{datetime.date.today().isoformat()}-{args.tag}"
+    replay = Replay(eval_sets.CallStore(eval_sets.CALLS, batch), out / "misses", args.record)
     llm.DECISIONS_TRANSPORT = replay
     query_replay = None
-    if args.retry is not None:
-        query_replay = QueryReplay(args.retry)
+    if args.retry:
+        query_replay = QueryReplay(eval_sets.CallStore(RETRY_CALLS, batch))
         llm.QUERY_TRANSPORT = query_replay
     planner = TableQuery()
-    run_e2e, summarize = experiment_modules()
     totals = {}
     demo = DemoRequests(args.demo_maps) if "demo" in names else None
     for name in names:
-        items = demo_items(args.limit) if name == "demo" else items_of(name, run_e2e, args.limit)
+        items = demo_items(args.limit) if name == "demo" else items_of(name, args.limit)
         held = reference(name)
         target = out / f"{name}.jsonl"
         done = set()
         if args.resume and target.exists():
             done = {json.loads(line)["id"] for line in target.read_text(encoding="utf-8").splitlines() if line.strip()}
         counts = {"n": 0, "misses": 0, "errors": 0, "mismatches": 0, "labels": {}, "reference_labels": {}}
+        measured = []
         started = time.time()
         book, tables = None, None
         request = contextlib.ExitStack()
@@ -480,7 +445,7 @@ def main() -> int:
                 if theirs is None:
                     differs.append("no reference outcome")
                 else:
-                    reference_label = summarize.decided(theirs, "answer")[0]
+                    reference_label = theirs["label"]
                     row["reference_label"] = reference_label
                     counts["reference_labels"][reference_label] = counts["reference_labels"].get(reference_label, 0) + 1
                     if row["miss"] is None:
@@ -509,6 +474,7 @@ def main() -> int:
                     retried[row["retry"]["outcome"]] = retried.get(row["retry"]["outcome"], 0) + 1
                 sink.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
                 sink.flush()
+                measured.append(row)
                 if row["miss"] is not None:
                     print(f"MISS {name} {item.id}: {row['miss']} (body in {out / 'misses'})", flush=True)
                 elif differs:
@@ -520,6 +486,11 @@ def main() -> int:
             counts["retry_tokens_sent"] = list(query_replay.tokens)
         totals[name] = counts
         print(json.dumps({"set": name, **counts}), flush=True)
+        if args.keep:
+            if counts["misses"] or args.limit or args.resume:
+                raise SystemExit(f"{name}: a reference is a whole set measured in one run with no miss")
+            keep_reference(name, measured)
+            print(f"kept {name}'s reference ({len(measured)} questions)", flush=True)
     (out / f"summary_{'_'.join(names)}.json").write_bytes((json.dumps(totals, indent=1) + "\n").encode("utf-8"))
     clean = all(counts["misses"] == 0 and counts["mismatches"] == 0 for counts in totals.values())
     print("parity" if clean else "NOT at parity", flush=True)

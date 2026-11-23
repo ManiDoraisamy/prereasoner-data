@@ -1,0 +1,35 @@
+{
+ "id": "census_business_dynamics_by_state",
+ "answers": [
+  {
+   "id": "census_business_dynamics_by_state#1",
+   "answer": "11489625",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nrow = df[(df['year'] == 2022) & (df['st'] == 48)]\nresult = int(row['emp'].iloc[0])"
+  },
+  {
+   "id": "census_business_dynamics_by_state#2",
+   "answer": "14498",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nrow = df[(df['year'] == 2022) & (df['st'] == 48)]\nresult = int(row['estabs_entry'].iloc[0] - row['estabs_exit'].iloc[0])"
+  },
+  {
+   "id": "census_business_dynamics_by_state#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nnet_jobs = df[(df['year'] == 1978) & (df['st'] == 2)]['net_job_creation'].iloc[0]\nresult = 'yes' if net_jobs < 0 else 'no'"
+  },
+  {
+   "id": "census_business_dynamics_by_state#4",
+   "answer": "1978",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nresult = str(int(df['year'].min()))"
+  },
+  {
+   "id": "census_business_dynamics_by_state#5",
+   "answer": "[48, 51]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nsubset = df[(df['year'] == 2022) & (df['st'].isin([48, 49, 50, 51]))]\ntop_two = subset.sort_values(by='estabs', ascending=False).head(2)\nresult = [int(x) for x in top_two['st'].tolist()]"
+  },
+  {
+   "id": "census_business_dynamics_by_state#6",
+   "answer": "28234",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nsubset = df[(df['year'] == 2022) & (df['st'].isin([49, 50, 51]))]\nresult = int(subset['estabs_exit'].sum())"
+  }
+ ]
+}

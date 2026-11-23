@@ -1,0 +1,12 @@
+{
+ "file": "cdc_death_rates_life_expectancy.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 1071,
+   "cols": 5,
+   "shown_whole": true
+  }
+ ],
+ "chars": 59629
+}

@@ -1,0 +1,12 @@
+{
+ "file": "census_cps_median_household_income_by_state.xlsx",
+ "sheets": [
+  {
+   "name": "h08",
+   "rows": 116,
+   "cols": 89,
+   "shown_whole": false
+  }
+ ],
+ "chars": 81076
+}

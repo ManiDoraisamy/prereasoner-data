@@ -1,0 +1,88 @@
+{
+ "id": "macpac_medicaid_spending_by_state_fy2024",
+ "file": "macpac_medicaid_spending_by_state_fy2024.xlsx",
+ "questions": [
+  {
+   "question": "In fiscal year 2024, what was the total Medicaid spending for California in millions of dollars?",
+   "sheet": "Exhibit 16",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "157098.1152",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\nca_row = df[df[0].astype(str).str.strip() == 'California']\nresult = float(ca_row.iloc[0, 7])",
+   "qid": "macpac_medicaid_spending_by_state_fy2024#1",
+   "pass1": true,
+   "result": 157098.11517210002,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states had the highest total Medicaid expenditures in fiscal year 2024?",
+   "sheet": "Exhibit 16",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"New York\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\n# States are between row index 4 (Alabama) and 54 (Wyoming)\nstates_df = df.iloc[4:55].copy()\nstates_df[7] = pd.to_numeric(states_df[7])\ntop3 = states_df.sort_values(by=7, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()",
+   "qid": "macpac_medicaid_spending_by_state_fy2024#2",
+   "pass1": true,
+   "result": [
+    "California",
+    "New York",
+    "Texas"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Florida and Ohio, which state spent more on Medicaid benefits from federal funds in FY 2024?",
+   "sheet": "Exhibit 16",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Ohio",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\nfl_val = float(df[df[0].astype(str).str.strip() == 'Florida'].iloc[0, 2])\noh_val = float(df[df[0].astype(str).str.strip() == 'Ohio'].iloc[0, 2])\nresult = 'Florida' if fl_val > oh_val else 'Ohio'",
+   "qid": "macpac_medicaid_spending_by_state_fy2024#3",
+   "pass1": true,
+   "result": "Ohio",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states (including the District of Columbia) had total Medicaid spending of at least $20,000 million in FY 2024?",
+   "sheet": "Exhibit 16",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "15",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\nstates_df = df.iloc[4:55].copy()\nstates_df[7] = pd.to_numeric(states_df[7])\nresult = int((states_df[7] >= 20000).sum())",
+   "qid": "macpac_medicaid_spending_by_state_fy2024#4",
+   "pass1": true,
+   "result": 15,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In fiscal year 2024, what was the combined total Medicaid spending across the five US territories in millions of dollars?",
+   "sheet": "Exhibit 16",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "5379.960185",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\nterritories = ['American Samoa', 'Guam', 'Northern Mariana Islands', 'Puerto Rico', 'Virgin Islands']\nterr_df = df[df[0].astype(str).str.strip().isin(territories)]\nresult = float(pd.to_numeric(terr_df[7]).sum())",
+   "qid": "macpac_medicaid_spending_by_state_fy2024#5",
+   "pass1": true,
+   "result": 5379.960185,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did federal funds account for more than half of Wyoming's total Medicaid spending in FY 2024?",
+   "sheet": "Exhibit 16",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\nwy = df[df[0].astype(str).str.strip() == 'Wyoming'].iloc[0]\ntotal = float(wy[7])\nfederal = float(wy[9])\nresult = 'yes' if (federal / total) > 0.5 else 'no'",
+   "qid": "macpac_medicaid_spending_by_state_fy2024#6",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

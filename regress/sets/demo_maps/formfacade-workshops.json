@@ -1,0 +1,61 @@
+{
+ "dataset": "formfacade-workshops",
+ "kind": "own",
+ "uploads": [
+  {
+   "name": "feedback",
+   "columns": [
+    "workshop",
+    "attendee",
+    "city",
+    "rating"
+   ],
+   "rows": 10
+  }
+ ],
+ "normalized": [
+  {
+   "name": "feedback",
+   "upload": "feedback",
+   "columns": [
+    "workshop",
+    "attendee",
+    "city",
+    "rating"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [
+  {
+   "upload": "feedback",
+   "table": "feedback",
+   "column": "city",
+   "column_index": 2,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "feedback connected to knowledgebase",
+   "bridged": true,
+   "cells": 7,
+   "cells_matched": 7
+  }
+ ],
+ "entity_columns": [],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 26,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 26,
+  "country": 209,
+  "exchange_rate": 0,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 4.2
+}

@@ -1,0 +1,60 @@
+{
+ "id": "nydoh_hospital_maternity_information",
+ "file": "nydoh_hospital_maternity_information.csv",
+ "questions": [
+  {
+   "question": "How many total births were recorded across all New York State hospitals combined in 2023?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "200975",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nres = df[\n    (df['Year'] == 2023)\n    & (df['Hospital Name'] == 'Statewide - All Hospitals')\n    & (df['Measure Name'] == 'Total Births')\n]['Count'].iloc[0]\nresult = int(res)",
+   "qid": "nydoh_hospital_maternity_information#1"
+  },
+  {
+   "question": "For cesarean deliveries across New York State in 2023, which anesthesia type was administered more often: Spinal Anesthesia or Epidural/Local Anesthesia?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Spinal Anesthesia",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nsub = df[\n    (df['Year'] == 2023)\n    & (df['Hospital Name'] == 'Statewide - All Hospitals')\n    & (df['Measure Name'].isin(['Spinal Anesthesia', 'Epidural/Local Anesthesia']))\n    & (df['Denominator'] == 'Cesarean Deliveries')\n]\nresult = sub.loc[sub['Count'].idxmax(), 'Measure Name']",
+   "qid": "nydoh_hospital_maternity_information#2"
+  },
+  {
+   "question": "In 2023, did over half of the infants fed any breast milk statewide also receive formula supplementation?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\npct = df[\n    (df['Year'] == 2023)\n    & (df['Hospital Name'] == 'Statewide - All Hospitals')\n    & (df['Measure Name'] == 'Breast Fed Infants Supplemented w/Formula')\n]['Percent'].iloc[0]\nresult = 'yes' if pct > 50 else 'no'",
+   "qid": "nydoh_hospital_maternity_information#3"
+  },
+  {
+   "question": "Which reporting year has the greatest number of records in this maternity dataset?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2008",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nresult = str(df['Year'].value_counts().index[0])",
+   "qid": "nydoh_hospital_maternity_information#4"
+  },
+  {
+   "question": "What are the three hospital counties with the largest number of recorded entries in the dataset?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"NEW YORK\", \"KINGS\", \"SUFFOLK\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nresult = df['Hospital County'].value_counts().head(3).index.tolist()",
+   "qid": "nydoh_hospital_maternity_information#5"
+  },
+  {
+   "question": "In 2023, what was the combined statewide total of primary and repeat cesarean deliveries?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "69499",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nres = df[\n    (df['Year'] == 2023)\n    & (df['Hospital Name'] == 'Statewide - All Hospitals')\n    & (df['Measure Name'].isin(['Primary Cesarean', 'Repeat Cesarean']))\n]['Count'].sum()\nresult = int(res)",
+   "qid": "nydoh_hospital_maternity_information#6"
+  }
+ ]
+}

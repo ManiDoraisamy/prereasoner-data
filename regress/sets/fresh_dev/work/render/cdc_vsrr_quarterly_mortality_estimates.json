@@ -1,0 +1,12 @@
+{
+ "file": "cdc_vsrr_quarterly_mortality_estimates.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 924,
+   "cols": 69,
+   "shown_whole": false
+  }
+ ],
+ "chars": 62356
+}

@@ -1,0 +1,60 @@
+{
+ "id": "dot_bts_monthly_transportation_statistics",
+ "file": "dot_bts_monthly_transportation_statistics.csv",
+ "questions": [
+  {
+   "question": "How many freight rail carloads were moved in the United States during March 2019?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1030008",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ndf['Date_dt'] = pd.to_datetime(df['Date'])\nrow = df[(df['Date_dt'].dt.year == 2019) & (df['Date_dt'].dt.month == 3)].iloc[0]\nresult = int(row['Freight Rail Carloads'])",
+   "qid": "dot_bts_monthly_transportation_statistics#1"
+  },
+  {
+   "question": "In which month did seasonally adjusted transit ridership across other transit modes reach its all-time high?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2018-08",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ndf['Date_dt'] = pd.to_datetime(df['Date'])\npeak_row = df.loc[df['Transit Ridership - Other Transit Modes - Adjusted'].idxmax()]\nresult = peak_row['Date_dt'].strftime('%Y-%m')",
+   "qid": "dot_bts_monthly_transportation_statistics#2"
+  },
+  {
+   "question": "In August 2018, was the total value of U.S. transborder freight with Mexico higher than that with Canada?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ndf['Date_dt'] = pd.to_datetime(df['Date'])\nrow = df[(df['Date_dt'].dt.year == 2018) & (df['Date_dt'].dt.month == 8)].iloc[0]\nresult = 'yes' if row['Transborder - U.S. - Mexico Freight'] > row['Transborder - U.S. - Canada Freight'] else 'no'",
+   "qid": "dot_bts_monthly_transportation_statistics#3"
+  },
+  {
+   "question": "Across all recorded months, how many months had at least one fatality involving commercial air carriers?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "30",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\nresult = int((df['Air Safety - Air Carrier Fatalities'] > 0).sum())",
+   "qid": "dot_bts_monthly_transportation_statistics#4"
+  },
+  {
+   "question": "What was the combined number of air carrier fatalities across all months where more than 10 fatalities occurred?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "381",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\nresult = int(df.loc[df['Air Safety - Air Carrier Fatalities'] > 10, 'Air Safety - Air Carrier Fatalities'].sum())",
+   "qid": "dot_bts_monthly_transportation_statistics#5"
+  },
+  {
+   "question": "In March 2019, by how much did freight rail intermodal units exceed freight rail carloads?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "141895",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ndf['Date_dt'] = pd.to_datetime(df['Date'])\nrow = df[(df['Date_dt'].dt.year == 2019) & (df['Date_dt'].dt.month == 3)].iloc[0]\ndiff = row['Freight Rail Intermodal Units'] - row['Freight Rail Carloads']\nresult = int(diff)",
+   "qid": "dot_bts_monthly_transportation_statistics#6"
+  }
+ ]
+}

@@ -1,0 +1,35 @@
+{
+ "id": "nchs_nvsr_california_life_table",
+ "answers": [
+  {
+   "id": "nchs_nvsr_california_life_table#1",
+   "answer": "79.33352661",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\n# Age 0-1 is at row index 3, Column G (index 6) is expectation of life (ex)\nresult = float(df.iloc[3, 6])"
+  },
+  {
+   "id": "nchs_nvsr_california_life_table#2",
+   "answer": "19.69128799",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\n# Find row where column A starts with '65'\nrow = df[df[0].astype(str).str.startswith('65\u2013')].iloc[0]\nresult = float(row[6])"
+  },
+  {
+   "id": "nchs_nvsr_california_life_table#3",
+   "answer": "30\u201331",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\ndata = df.iloc[3:104].copy()\ndata.columns = ['Age', 'qx', 'lx', 'dx', 'Lx', 'Tx', 'ex']\ngroup1 = data[data['Age'].str.contains('20\u201321|20-21')].iloc[0]\ngroup2 = data[data['Age'].str.contains('30\u201331|30-31')].iloc[0]\nresult = str(group2['Age']) if float(group2['dx']) > float(group1['dx']) else str(group1['Age'])"
+  },
+  {
+   "id": "nchs_nvsr_california_life_table#4",
+   "answer": "14",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\ndata = df.iloc[3:104].copy()\nqx = pd.to_numeric(data[1], errors='coerce')\nresult = int((qx >= 0.10).sum())"
+  },
+  {
+   "id": "nchs_nvsr_california_life_table#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\ndata = df.iloc[3:104].copy()\nrow_80 = data[data[0].astype(str).str.startswith('80')].iloc[0]\nlx_80 = float(row_80[2])\nresult = 'yes' if lx_80 > 50000 else 'no'"
+  },
+  {
+   "id": "nchs_nvsr_california_life_table#6",
+   "answer": "[\"87\u201388\", \"88\u201389\", \"89\u201390\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\ndata = df.iloc[3:104].copy()\ndata[3] = pd.to_numeric(data[3], errors='coerce')\ntop3 = data.sort_values(by=3, ascending=False).head(3)\nresult = top3[0].tolist()"
+  }
+ ]
+}

@@ -1,0 +1,64 @@
+{
+ "dataset": "formesign-hospital-transfers",
+ "kind": "world",
+ "uploads": [
+  {
+   "name": "transfers",
+   "columns": [
+    "hospital",
+    "signed",
+    "transfers"
+   ],
+   "rows": 6
+  }
+ ],
+ "normalized": [
+  {
+   "name": "transfers",
+   "upload": "transfers",
+   "columns": [
+    "hospital",
+    "signed",
+    "transfers"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [],
+ "entity_columns": [
+  {
+   "upload": "transfers",
+   "table": "transfers",
+   "column": "hospital",
+   "column_index": 0,
+   "label": "hospital",
+   "type_qid": "Q16917",
+   "cells": 6,
+   "cells_matched_exactly": 3,
+   "routed_as_place": false,
+   "bridged": true,
+   "cells_matched": 5,
+   "has_country": true,
+   "bridge": "transfers connected to knowledgebase",
+   "entity_table": "hospital"
+  }
+ ],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 0,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 0,
+  "country": 209,
+  "exchange_rate": 0,
+  "hospital": 5,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 7.2
+}

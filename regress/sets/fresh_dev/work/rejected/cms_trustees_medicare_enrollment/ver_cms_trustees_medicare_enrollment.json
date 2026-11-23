@@ -1,0 +1,35 @@
+{
+ "id": "cms_trustees_medicare_enrollment",
+ "answers": [
+  {
+   "id": "cms_trustees_medicare_enrollment#1",
+   "answer": "66.701",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_medicare_enrollment.xlsx', sheet_name='Enrollment', header=None)\n# Row 2 contains header (index 1), data starts row 3 (index 2)\ndf.columns = [str(c).replace('\\n', ' ').strip() for c in df.iloc[1]]\ndf = df.iloc[2:].reset_index(drop=True)\ndf['Calendar Year'] = pd.to_numeric(df['Calendar Year'])\ndf['Total'] = pd.to_numeric(df['Total'])\nresult = float(df.loc[df['Calendar Year'] == 2023, 'Total'].iloc[0])"
+  },
+  {
+   "id": "cms_trustees_medicare_enrollment#2",
+   "answer": "2071",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_medicare_enrollment.xlsx', sheet_name='Enrollment', header=None)\ndf.columns = [str(c).replace('\\n', ' ').strip() for c in df.iloc[1]]\ndf = df.iloc[2:].reset_index(drop=True)\ndf['Calendar Year'] = pd.to_numeric(df['Calendar Year'])\ndf['Total'] = pd.to_numeric(df['Total'])\nexceed = df[df['Total'] > 100]\nresult = str(int(exceed.iloc[0]['Calendar Year']))"
+  },
+  {
+   "id": "cms_trustees_medicare_enrollment#3",
+   "answer": "5.224",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_medicare_enrollment.xlsx', sheet_name='Enrollment', header=None)\ndf.columns = [str(c).replace('\\n', ' ').strip() for c in df.iloc[1]]\ndf = df.iloc[2:].reset_index(drop=True)\ndf['Calendar Year'] = pd.to_numeric(df['Calendar Year'])\ndf['HI Part A'] = pd.to_numeric(df['HI Part A'])\ndf['SMI Part B'] = pd.to_numeric(df['SMI Part B'])\nrow_2020 = df[df['Calendar Year'] == 2020].iloc[0]\nresult = round(float(row_2020['HI Part A'] - row_2020['SMI Part B']), 6)"
+  },
+  {
+   "id": "cms_trustees_medicare_enrollment#4",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_medicare_enrollment.xlsx', sheet_name='Enrollment', header=None)\ndf.columns = [str(c).replace('\\n', ' ').strip() for c in df.iloc[1]]\ndf = df.iloc[2:].reset_index(drop=True)\ndf['Calendar Year'] = pd.to_numeric(df['Calendar Year'])\ndf['SMI Part D'] = pd.to_numeric(df['SMI Part D'])\nprior = df[df['Calendar Year'] < 2006]\nresult = \"yes\" if (prior['SMI Part D'] > 0).any() else \"no\""
+  },
+  {
+   "id": "cms_trustees_medicare_enrollment#5",
+   "answer": "12",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_medicare_enrollment.xlsx', sheet_name='Enrollment', header=None)\ndf.columns = [str(c).replace('\\n', ' ').strip() for c in df.iloc[1]]\ndf = df.iloc[2:].reset_index(drop=True)\ndf['Calendar Year'] = pd.to_numeric(df['Calendar Year'])\ndf['Total'] = pd.to_numeric(df['Total'])\nfiltered = df[(df['Calendar Year'] >= 2000) & (df['Calendar Year'] <= 2023)]\nresult = int((filtered['Total'] > 50).sum())"
+  },
+  {
+   "id": "cms_trustees_medicare_enrollment#6",
+   "answer": "32.5914",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_medicare_enrollment.xlsx', sheet_name='Enrollment', header=None)\ndf.columns = [str(c).replace('\\n', ' ').strip() for c in df.iloc[1]]\ndf = df.iloc[2:].reset_index(drop=True)\ndf['Calendar Year'] = pd.to_numeric(df['Calendar Year'])\ndf['SMI Part D'] = pd.to_numeric(df['SMI Part D'])\nperiod = df[(df['Calendar Year'] >= 2006) & (df['Calendar Year'] <= 2010)]\nresult = float(period['SMI Part D'].mean())"
+  }
+ ]
+}

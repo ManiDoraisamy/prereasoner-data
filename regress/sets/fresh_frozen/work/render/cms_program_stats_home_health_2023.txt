@@ -1,0 +1,294 @@
+FILE cms_program_stats_home_health_2023.xlsx (Excel workbook) with 6 sheet(s): ["Table of Contents", "MDCR HHA 1_CPS_07UHH", "MDCR HHA 2_CPS_07UHH", "MDCR HHA 3_CPS_07UHH", "MDCR HHA 4_CPS_07UHH", "MDCR HHA 6_CPS_07UHH"]
+
+### Sheet "Table of Contents": 7 rows x 2 columns (Excel rows 1..7, columns A..B)
+(whole sheet shown; Excel row numbers)
+r1: A=Original Medicare - Home Health Agency Utilization
+r2: A=Table Name | B=Description
+r3: A=MDCR HHA 1_CPS_07UHH | B=Medicare Home Health Agencies: Utilization and Program Payments for Original Medicare Bene...
+r4: A=MDCR HHA 2_CPS_07UHH | B=Medicare Home Health Agencies: Utilization and Program Payments for Original Medicare Bene...
+r5: A=MDCR HHA 3_CPS_07UHH | B=Medicare Home Health Agencies: Utilization and Program Payments for Original Medicare Bene...
+r6: A=MDCR HHA 4_CPS_07UHH | B=Medicare Home Health Agencies: Persons with Utilization and Total Service Visits for Origi...
+r7: A=MDCR HHA 6_CPS_07UHH | B=Medicare Home Health Agencies: Persons with Utilization, Total Service Visits, and Program...
+
+### Sheet "MDCR HHA 1_CPS_07UHH": 35 rows x 15 columns (Excel rows 1..35, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Home Health Agencies
+r2: A=Utilization and Program Payments for Original Medicare Beneficiaries, by Type of Entitleme...
+r3: A=Calendar Years 2018-2023
+r4: A=Type of Entitlement and Calendar Year | B=Total Original Medicare Enrollees | C=Total Persons With Utilization | D=Total Service Visits | E=Service Visits Per Person With Utilization | F=Service Visits Per 1,000 Original Medicare Enrollees | G=Total Episodes¹ | H=Service Visits Per Episode | I=Episodes Per Person With Utilization | J=Episodes Per 1,000 Original Medicare Enrollees | K=Total Program Payments | L=Program Payments Per Service Visit | M=Program Payments Per Episode | N=Program Payments Per Person With Utilization | O=Program Payments Per Original Medicare Enrollee
+r5: A=BLANK
+r6: A=All Beneficiaries
+r7: A=2018 | B=38665082.33 | C=3365951 | D=103969027 | E=30.8884553 | F=2688.964325 | G=6236655 | H=16.67063947 | I=1.852865654 | J=161.2994108 | K=1.793405427e+10 | L=172.4942013 | M=2875.58864 | N=5328.079426 | O=463.8307535
+r8: A=2019 | B=38577011.83 | C=3281493 | D=100229366 | E=30.54383051 | F=2598.163031 | G=6047416 | H=16.5739162 | I=1.84288554 | J=156.7621677 | K=1.785086407e+10 | L=178.1001395 | M=2951.816788 | N=5439.860475 | O=462.7331984
+r9: A=2020 | B=37776344.92 | C=3054588 | D=84201058 | E=27.56543861 | F=2228.936076 | G=9081444 | H=9.271769776 | I=2.973050375 | J=240.4002828 | K=1.708233167e+10 | L=202.8754991 | M=1881.014921 | N=5592.352117 | O=452.1965189
+r10: A=2021 | B=36356379.67 | C=3018466 | D=76785088 | E=25.43844721 | F=2112.011391 | G=9279712 | H=8.274511968 | I=3.074313906 | J=255.2430161 | K=1.687283456e+10 | L=219.741033 | M=1818.249808 | N=5589.870669 | O=464.0955649
+r11: A=2022 | B=35270914.33 | C=2831194 | D=69526267 | E=24.55722462 | F=1971.206823 | G=8595071 | H=8.089085826 | I=3.035846713 | J=243.6872183 | K=1.616112364e+10 | L=232.4463017 | M=1880.278085 | N=5708.236044 | O=458.1997361
+r12: A=2023 | B=34367702.83 | C=2714794 | D=67020616 | E=24.68718289 | F=1950.104618 | G=8319802 | H=8.055554207 | I=3.064616321 | J=242.0819931 | K=1.586488275e+10 | L=236.7164568 | M=1906.882249 | N=5843.862463 | O=461.6218555
+r13: (blank)
+r14: A=Aged Beneficiaries
+r15: A=2018 | B=32745302.17 | C=2989704 | D=92104947 | E=30.80737993 | F=2812.768272 | G=5466274 | H=16.84967621 | I=1.828366286 | J=166.9330755 | K=1.594503041e+10 | L=173.1180672 | M=2916.98338 | N=5333.31407 | O=486.9410069
+r16: A=2019 | B=33045794.83 | C=2934658 | D=89382238 | E=30.45746319 | F=2704.799157 | G=5341479 | H=16.73361217 | I=1.820136793 | J=161.6386904 | K=1.597891829e+10 | L=178.7706221 | M=2991.478257 | N=5444.899641 | O=483.5386279
+r17: A=2020 | B=32752718.83 | C=2747501 | D=75224312 | E=27.37917548 | F=2296.734887 | G=8033264 | H=9.364103059 | I=2.923843886 | J=245.270142 | K=1.518113829e+10 | L=201.8115937 | M=1889.784562 | N=5525.435038 | O=463.507728
+r18: A=2021 | B=31893638.42 | C=2745113 | D=69358714 | E=25.26625097 | F=2174.688039 | G=8314097 | H=8.342302718 | I=3.028690258 | J=260.6819859 | K=1.516283983e+10 | L=218.6147774 | M=1823.750652 | N=5523.575833 | O=475.4189418
+r19: A=2022 | B=31312011 | C=2605553 | D=63488032 | E=24.36643277 | F=2027.593565 | G=7794078 | H=8.14567573 | I=2.99133351 | J=248.9165579 | K=1.468074177e+10 | L=231.2363655 | M=1883.57645 | N=5634.405354 | O=468.8533666
+r20: A=2023 | B=30833932.33 | C=2521355 | D=61781851 | E=24.50343208 | F=2003.696782 | G=7625324 | H=8.102193559 | I=3.024296063 | J=247.303001 | K=1.45455908e+10 | L=235.4346878 | M=1907.537411 | N=5768.957881 | O=471.7397263
+r21: (blank)
+r22: A=Disabled Beneficiaries
+r23: A=2018 | B=5919780.167 | C=376247 | D=11864080 | E=31.53268996 | F=2004.141989 | G=770381 | H=15.40027597 | I=2.047540578 | J=130.1367582 | K=1989023864 | L=167.6509147 | M=2581.870352 | N=5286.484314 | O=335.9962377
+r24: A=2019 | B=5531217 | C=346835 | D=10847128 | E=31.27460608 | F=1961.074389 | G=705937 | H=15.36557512 | I=2.035368403 | J=127.6277897 | K=1871945780 | L=172.5752457 | M=2651.717901 | N=5397.222829 | O=338.4328946
+r25: A=2020 | B=5023626.083 | C=307087 | D=8976746 | E=29.23193102 | F=1786.905683 | G=1048180 | H=8.564126391 | I=3.413299814 | J=208.6500831 | K=1901193378 | L=211.7909294 | M=1813.804288 | N=6191.057838 | O=378.4504154
+r26: A=2021 | B=4462741.25 | C=273353 | D=7426374 | E=27.16770623 | F=1664.083482 | G=965615 | H=7.690822947 | I=3.532483638 | J=216.3726163 | K=1709994733 | L=230.2597112 | M=1770.886671 | N=6255.62819 | O=383.1713821
+r27: A=2022 | B=3958903.333 | C=225641 | D=6038235 | E=26.7603627 | F=1525.229209 | G=800993 | H=7.538436665 | I=3.549855744 | J=202.3269912 | K=1480381866 | L=245.1679781 | M=1848.183275 | N=6560.784015 | O=373.9373613
+r28: A=2023 | B=3533770.5 | C=193439 | D=5238765 | E=27.08225849 | F=1482.485917 | G=694478 | H=7.5434571 | I=3.590165375 | J=196.5260619 | K=1319291952 | L=251.832627 | M=1899.688618 | N=6820.196301 | O=373.338323
+r29: (blank)
+r30: A=¹Effective January 2020, under the Bipartisan Budget Act of 2018, the unit of Medicare pay...
+r31: A=BLANK
+r32: A=NOTES:  The utilization and expenditure data reported in this table are from home health P...
+r33: A=beneficiaries with Part A and/or Part B coverage.
+r34: (blank)
+r35: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR HHA 2_CPS_07UHH": 47 rows x 17 columns (Excel rows 1..47, columns A..Q)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Home Health Agencies
+r2: A=Utilization and Program Payments for Original Medicare Beneficiaries, by Demographic Chara...
+r3: A=Calendar Year 2023
+r4: A=Demographic Characteristics and Medicare-Medicaid Enrollment Status | B=Total Original Medicare Enrollees | C=Total Persons With Utilization | D=Total Service Visits | E=% of Total Service Visits | F=Service Visits Per Person With Utilization | G=Service Visits Per 1,000 Original Medicare Enrollees | H=Total Episodes¹ | I=Service Visits Per Episode | J=Episodes Per Person With Utilization | K=Episodes Per 1,000 Original Medicare Enrollees | L=Total Program Payments | M=% of Total Program Payments | N=Program Payments Per Service Visit | O=Program Payments Per Episode | P=Program Payments Per Person With Utilization | Q=Program Payments Per Original Medicare Enrollee
+r5: A=BLANK
+r6: A=Total | B=34367703 | C=2714794 | D=67020616 | E=100 | F=24.69 | G=1950 | H=8319802 | I=8.06 | J=3.06 | K=242 | L=15864882751 | M=100 | N=237 | O=1907 | P=5844 | Q=462
+r7: A=BLANK
+r8: A=Age
+r9: A=Under 65 Years | B=3533771 | C=193439 | D=5238765 | E=7.8 | F=27.08 | G=1482 | H=694478 | I=7.54 | J=3.59 | K=197 | L=1319291952 | M=8.3 | N=252 | O=1900 | P=6820 | Q=373
+r10: A=65 Years and Over | B=30833932 | C=2521355 | D=61781851 | E=92.2 | F=24.5 | G=2004 | H=7625324 | I=8.1 | J=3.02 | K=247 | L=14545590799 | M=91.7 | N=235 | O=1908 | P=5769 | Q=472
+r11: A=BLANK
+r12: A=Under 18 Years | B=1178 | C=* | D=† | E=† | F=† | G=† | H=† | I=† | J=† | K=† | L=† | M=† | N=† | O=† | P=† | Q=†
+r13: A=18-24 Years | B=58752 | C=† | D=† | E=† | F=† | G=† | H=† | I=† | J=† | K=† | L=† | M=† | N=† | O=† | P=† | Q=†
+r14: A=25-34 Years | B=313894 | C=6925 | D=173588 | E=0.3 | F=25.07 | G=553 | H=25562 | I=6.79 | J=3.69 | K=81 | L=47187375 | M=0.3 | N=272 | O=1846 | P=6814 | Q=150
+r15: A=35-44 Years | B=569149 | C=19574 | D=524053 | E=0.8 | F=26.77 | G=921 | H=74834 | I=7 | J=3.82 | K=131 | L=140476214 | M=0.9 | N=268 | O=1877 | P=7177 | Q=247
+r16: A=45-54 Years | B=852996 | C=43487 | D=1206779 | E=1.8 | F=27.75 | G=1415 | H=162712 | I=7.42 | J=3.74 | K=191 | L=308205297 | M=1.9 | N=255 | O=1894 | P=7087 | Q=361
+r17: A=55-64 Years | B=1737802 | C=122673 | D=3316462 | E=4.9 | F=27.03 | G=1908 | H=428825 | I=7.73 | J=3.5 | K=247 | L=818833205 | M=5.2 | N=247 | O=1909 | P=6675 | Q=471
+r18: A=65-74 Years | B=17391872 | C=726599 | D=15989133 | E=23.9 | F=22.01 | G=919 | H=2016383 | I=7.93 | J=2.78 | K=116 | L=3916700433 | M=24.7 | N=245 | O=1942 | P=5390 | Q=225
+r19: A=75-84 Years | B=9754678 | C=982129 | D=23767439 | E=35.5 | F=24.2 | G=2437 | H=2922958 | I=8.13 | J=2.98 | K=300 | L=5580926512 | M=35.2 | N=235 | O=1909 | P=5682 | Q=572
+r20: A=85-94 Years | B=3228465 | C=690917 | D=18614722 | E=27.8 | F=26.94 | G=5766 | H=2269917 | I=8.2 | J=3.29 | K=703 | L=4257121865 | M=26.8 | N=229 | O=1875 | P=6162 | Q=1319
+r21: A=95 Years or Over | B=458918 | C=121710 | D=3410557 | E=5.1 | F=28.02 | G=7432 | H=416066 | I=8.2 | J=3.42 | K=907 | L=790841989 | M=5 | N=232 | O=1901 | P=6498 | Q=1723
+r22: A=BLANK
+r23: A=Sex
+r24: A=Male | B=16221522 | C=1093584 | D=26790448 | E=40 | F=24.5 | G=1652 | H=3326349 | I=8.05 | J=3.04 | K=205 | L=6414700328 | M=40.4 | N=239 | O=1928 | P=5866 | Q=395
+r25: A=Female | B=18146181 | C=1621210 | D=40230168 | E=60 | F=24.81 | G=2217 | H=4993453 | I=8.06 | J=3.08 | K=275 | L=9450182423 | M=59.6 | N=235 | O=1893 | P=5829 | Q=521
+r26: A=BLANK
+r27: A=Race
+r28: A=Non-Hispanic White | B=26467086 | C=2151592 | D=51528708 | E=76.9 | F=23.95 | G=1947 | H=6367459 | I=8.09 | J=2.96 | K=241 | L=12032259033 | M=75.8 | N=234 | O=1890 | P=5592 | Q=455
+r29: A=Black (or African American) | B=2714198 | C=233155 | D=6174252 | E=9.2 | F=26.48 | G=2275 | H=804295 | I=7.68 | J=3.45 | K=296 | L=1499873670 | M=9.5 | N=243 | O=1865 | P=6433 | Q=553
+r30: A=Asian/Pacific Islander | B=1244924 | C=79859 | D=2032027 | E=3 | F=25.45 | G=1632 | H=266456 | I=7.63 | J=3.34 | K=214 | L=583216778 | M=3.7 | N=287 | O=2189 | P=7303 | Q=468
+r31: A=Hispanic | B=2444353 | C=170282 | D=5171085 | E=7.7 | F=30.37 | G=2116 | H=618916 | I=8.36 | J=3.63 | K=253 | L=1219856630 | M=7.7 | N=236 | O=1971 | P=7164 | Q=499
+r32: A=American Indian/Alaska Native | B=158825 | C=11143 | D=319361 | E=0.5 | F=28.66 | G=2011 | H=43936 | I=7.27 | J=3.94 | K=277 | L=73200924 | M=0.5 | N=229 | O=1666 | P=6569 | Q=461
+r33: A=Other | B=337173 | C=20881 | D=531423 | E=0.8 | F=25.45 | G=1576 | H=64497 | I=8.24 | J=3.09 | K=191 | L=136028202 | M=0.9 | N=256 | O=2109 | P=6514 | Q=403
+r34: A=Unknown | B=1001144 | C=47882 | D=1263760 | E=1.9 | F=26.39 | G=1262 | H=154243 | I=8.19 | J=3.22 | K=154 | L=320447515 | M=2 | N=254 | O=2078 | P=6692 | Q=320
+r35: A=BLANK
+r36: A=Medicare-Medicaid Enrollment (MME) Status
+r37: A=MME | B=4869432 | C=638310 | D=19589128 | E=29.2 | F=30.69 | G=4023 | H=2440312 | I=8.03 | J=3.82 | K=501 | L=4797584237 | M=30.2 | N=245 | O=1966 | P=7516 | Q=985
+r38: A=Non-MME | B=29498271 | C=2076484 | D=47431488 | E=70.8 | F=22.84 | G=1608 | H=5879490 | I=8.07 | J=2.83 | K=199 | L=11067298514 | M=69.8 | N=233 | O=1882 | P=5330 | Q=375
+r39: (blank)
+r40: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r41: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r42: (blank)
+r43: A=¹Effective January 2020, under the Bipartisan Budget Act of 2018, the unit of Medicare pay...
+r44: A=BLANK
+r45: A=NOTES:  The utilization and expenditure data in this table are from home health Part A and...
+r46: (blank)
+r47: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR HHA 3_CPS_07UHH": 78 rows x 15 columns (Excel rows 1..78, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Home Health Agencies
+r2: A=Utilization and Program Payments for Original Medicare Beneficiaries, by Area of Residence
+r3: A=Calendar Year 2023
+r4: A=Area of Residence | B=Total Original Medicare Enrollees | C=Total Persons With Utilization | D=Total Service Visits | E=Service Visits Per Person With Utilization | F=Service Visits Per 1,000 Original Medicare Enrollees | G=Total Episodes¹ | H=Service Visits Per Episode | I=Episodes Per Person With Utilization | J=Episodes Per 1,000 Original Medicare Enrollees | K=Total Program Payments | L=Program Payments Per Service Visit | M=Program Payments Per Episode | N=Program Payments Per Person With Utilization | O=Program Payments Per Original Medicare Enrollee
+r5: A=BLANK
+r6: A=All Areas | B=34367703 | C=2714794 | D=67020616 | E=24.69 | F=1950 | G=8319802 | H=8.06 | I=3.06 | J=242 | K=15864882751 | L=237 | M=1907 | N=5844 | O=462
+r7: A=United States | B=33694472 | C=2709302 | D=66885607 | E=24.69 | F=1985 | G=8303747 | H=8.05 | I=3.06 | J=246 | K=15842896010 | L=237 | M=1908 | N=5848 | O=470
+r8: A=BLANK
+r9: A=Alabama | B=471490 | C=47405 | D=1156118 | E=24.39 | F=2452 | G=159592 | H=7.24 | I=3.37 | J=338 | K=235745508 | L=204 | M=1477 | N=4973 | O=500
+r10: A=Alaska | B=111904 | C=3546 | D=71116 | E=20.06 | F=636 | G=8984 | H=7.92 | I=2.53 | J=80 | K=20066917 | L=282 | M=2234 | N=5659 | O=179
+r11: A=Arizona | B=745551 | C=42965 | D=847818 | E=19.73 | F=1137 | G=114131 | H=7.43 | I=2.66 | J=153 | K=210854443 | L=249 | M=1847 | N=4908 | O=283
+r12: A=Arkansas | B=382179 | C=29234 | D=691905 | E=23.67 | F=1810 | G=90880 | H=7.61 | I=3.11 | J=238 | K=141462375 | L=204 | M=1557 | N=4839 | O=370
+r13: A=California | B=3401066 | C=345898 | D=10134868 | E=29.3 | F=2980 | G=1265190 | H=8.01 | I=3.66 | J=372 | K=3031050254 | L=299 | M=2396 | N=8763 | O=891
+r14: A=Colorado | B=497942 | C=26834 | D=541800 | E=20.19 | F=1088 | G=69301 | H=7.82 | I=2.58 | J=139 | K=131362609 | L=242 | M=1896 | N=4895 | O=264
+r15: A=Connecticut | B=331320 | C=33769 | D=818073 | E=24.23 | F=2469 | G=85700 | H=9.55 | I=2.54 | J=259 | K=187639134 | L=229 | M=2189 | N=5557 | O=566
+r16: A=Delaware | B=166824 | C=13206 | D=243688 | E=18.45 | F=1461 | G=30012 | H=8.12 | I=2.27 | J=180 | K=61745907 | L=253 | M=2057 | N=4676 | O=370
+r17: A=District of Columbia | B=65489 | C=3927 | D=82049 | E=20.89 | F=1253 | G=10082 | H=8.14 | I=2.57 | J=154 | K=20192050 | L=246 | M=2003 | N=5142 | O=308
+r18: A=Florida | B=2281358 | C=251818 | D=7102327 | E=28.2 | F=3113 | G=765094 | H=9.28 | I=3.04 | J=335 | K=1388274087 | L=195 | M=1815 | N=5513 | O=609
+r19: A=Georgia | B=892976 | C=65454 | D=1471454 | E=22.48 | F=1648 | G=194030 | H=7.58 | I=2.96 | J=217 | K=334563125 | L=227 | M=1724 | N=5111 | O=375
+r20: A=Hawaii | B=141898 | C=4130 | D=74238 | E=17.98 | F=523 | G=9375 | H=7.92 | I=2.27 | J=66 | K=22746394 | L=306 | M=2426 | N=5508 | O=160
+r21: A=Idaho | B=204709 | C=13355 | D=316841 | E=23.72 | F=1548 | G=37464 | H=8.46 | I=2.81 | J=183 | K=65778386 | L=208 | M=1756 | N=4925 | O=321
+r22: A=Illinois | B=1402531 | C=117885 | D=2694448 | E=22.86 | F=1921 | G=366288 | H=7.36 | I=3.11 | J=261 | K=693689560 | L=257 | M=1894 | N=5884 | O=495
+r23: A=Indiana | B=714450 | C=43862 | D=985286 | E=22.46 | F=1379 | G=123097 | H=8 | I=2.81 | J=172 | K=225526061 | L=229 | M=1832 | N=5142 | O=316
+r24: A=Iowa | B=436645 | C=18775 | D=426636 | E=22.72 | F=977 | G=45234 | H=9.43 | I=2.41 | J=104 | K=78236129 | L=183 | M=1730 | N=4167 | O=179
+r25: A=Kansas | B=395969 | C=25767 | D=660842 | E=25.65 | F=1669 | G=76286 | H=8.66 | I=2.96 | J=193 | K=129642545 | L=196 | M=1699 | N=5031 | O=327
+r26: A=Kentucky | B=472390 | C=36574 | D=802022 | E=21.93 | F=1698 | G=107042 | H=7.49 | I=2.93 | J=227 | K=178244290 | L=222 | M=1665 | N=4874 | O=377
+r27: A=Louisiana | B=427858 | C=42563 | D=1248202 | E=29.33 | F=2917 | G=176159 | H=7.09 | I=4.14 | J=412 | K=259961675 | L=208 | M=1476 | N=6108 | O=608
+r28: A=Maine | B=166638 | C=11729 | D=218492 | E=18.63 | F=1311 | G=27774 | H=7.87 | I=2.37 | J=167 | K=51561502 | L=236 | M=1856 | N=4396 | O=309
+r29: A=Maryland | B=876946 | C=63073 | D=1220709 | E=19.35 | F=1392 | G=154459 | H=7.9 | I=2.45 | J=176 | K=299314969 | L=245 | M=1938 | N=4746 | O=341
+r30: A=Massachusetts | B=947643 | C=98276 | D=2024730 | E=20.6 | F=2137 | G=248095 | H=8.16 | I=2.52 | J=262 | K=521309330 | L=257 | M=2101 | N=5305 | O=550
+r31: A=Michigan | B=908653 | C=73715 | D=1474759 | E=20.01 | F=1623 | G=196033 | H=7.52 | I=2.66 | J=216 | K=347801670 | L=236 | M=1774 | N=4718 | O=383
+r32: A=Minnesota | B=474449 | C=28754 | D=612245 | E=21.29 | F=1290 | G=73996 | H=8.27 | I=2.57 | J=156 | K=148186759 | L=242 | M=2003 | N=5154 | O=312
+r33: A=Mississippi | B=382355 | C=43902 | D=1223109 | E=27.86 | F=3199 | G=176361 | H=6.94 | I=4.02 | J=461 | K=261296810 | L=214 | M=1482 | N=5952 | O=683
+r34: A=Missouri | B=640569 | C=41922 | D=803071 | E=19.16 | F=1254 | G=98657 | H=8.14 | I=2.35 | J=154 | K=179618463 | L=224 | M=1821 | N=4285 | O=280
+r35: A=Montana | B=185502 | C=5225 | D=103440 | E=19.8 | F=558 | G=13228 | H=7.82 | I=2.53 | J=71 | K=22795398 | L=220 | M=1723 | N=4363 | O=123
+r36: A=Nebraska | B=255499 | C=13610 | D=306487 | E=22.52 | F=1200 | G=36595 | H=8.38 | I=2.69 | J=143 | K=68621107 | L=224 | M=1875 | N=5042 | O=269
+r37: A=Nevada | B=299207 | C=27197 | D=814347 | E=29.94 | F=2722 | G=105513 | H=7.72 | I=3.88 | J=353 | K=211979339 | L=260 | M=2009 | N=7794 | O=708
+r38: A=New Hampshire | B=225191 | C=17175 | D=325811 | E=18.97 | F=1447 | G=39705 | H=8.21 | I=2.31 | J=176 | K=79113691 | L=243 | M=1993 | N=4606 | O=351
+r39: A=New Jersey | B=1055481 | C=73016 | D=1399885 | E=19.17 | F=1326 | G=165064 | H=8.48 | I=2.26 | J=156 | K=373916679 | L=267 | M=2265 | N=5121 | O=354
+r40: A=New Mexico | B=234663 | C=14040 | D=366354 | E=26.09 | F=1561 | G=46309 | H=7.91 | I=3.3 | J=197 | K=77828173 | L=212 | M=1681 | N=5543 | O=332
+r41: A=New York | B=1908935 | C=140680 | D=3149349 | E=22.39 | F=1650 | G=326843 | H=9.64 | I=2.32 | J=171 | K=794916074 | L=252 | M=2432 | N=5651 | O=416
+r42: A=North Carolina | B=1032625 | C=77310 | D=1573492 | E=20.35 | F=1524 | G=213029 | H=7.39 | I=2.76 | J=206 | K=373860898 | L=238 | M=1755 | N=4836 | O=362
+r43: A=North Dakota | B=99429 | C=4022 | D=74654 | E=18.56 | F=751 | G=9727 | H=7.67 | I=2.42 | J=98 | K=16299996 | L=218 | M=1676 | N=4053 | O=164
+r44: A=Ohio | B=1143769 | C=83394 | D=1879482 | E=22.54 | F=1643 | G=229198 | H=8.2 | I=2.75 | J=200 | K=398060755 | L=212 | M=1737 | N=4773 | O=348
+r45: A=Oklahoma | B=489813 | C=52582 | D=1830828 | E=34.82 | F=3738 | G=244284 | H=7.49 | I=4.65 | J=499 | K=367378687 | L=201 | M=1504 | N=6987 | O=750
+r46: A=Oregon | B=434831 | C=22288 | D=422096 | E=18.94 | F=971 | G=60533 | H=6.97 | I=2.72 | J=139 | K=127680331 | L=302 | M=2109 | N=5729 | O=294
+r47: A=Pennsylvania | B=1414949 | C=111024 | D=2347767 | E=21.15 | F=1659 | G=276197 | H=8.5 | I=2.49 | J=195 | K=532896994 | L=227 | M=1929 | N=4800 | O=377
+r48: A=Rhode Island | B=101857 | C=9434 | D=211584 | E=22.43 | F=2077 | G=24249 | H=8.73 | I=2.57 | J=238 | K=49630443 | L=235 | M=2047 | N=5261 | O=487
+r49: A=South Carolina | B=679322 | C=59749 | D=1196185 | E=20.02 | F=1761 | G=165731 | H=7.22 | I=2.77 | J=244 | K=284160539 | L=238 | M=1715 | N=4756 | O=418
+r50: A=South Dakota | B=129078 | C=5591 | D=105040 | E=18.79 | F=814 | G=12049 | H=8.72 | I=2.16 | J=93 | K=21169379 | L=202 | M=1757 | N=3786 | O=164
+r51: A=Tennessee | B=716709 | C=56912 | D=1515727 | E=26.63 | F=2115 | G=206393 | H=7.34 | I=3.63 | J=288 | K=317095200 | L=209 | M=1536 | N=5572 | O=442
+r52: A=Texas | B=2229266 | C=201040 | D=6701331 | E=33.33 | F=3006 | G=865204 | H=7.75 | I=4.3 | J=388 | K=1451018504 | L=217 | M=1677 | N=7218 | O=651
+r53: A=Utah | B=228523 | C=20579 | D=676354 | E=32.87 | F=2960 | G=59746 | H=11.32 | I=2.9 | J=261 | K=109592476 | L=162 | M=1834 | N=5325 | O=480
+r54: A=Vermont | B=112406 | C=8714 | D=178514 | E=20.49 | F=1588 | G=24513 | H=7.28 | I=2.81 | J=218 | K=45332362 | L=254 | M=1849 | N=5202 | O=403
+r55: A=Virginia | B=1053211 | C=81678 | D=1766990 | E=21.63 | F=1678 | G=212737 | H=8.31 | I=2.6 | J=202 | K=393966952 | L=223 | M=1852 | N=4823 | O=374
+r56: A=Washington | B=815011 | C=42011 | D=831605 | E=19.79 | F=1020 | G=117352 | H=7.09 | I=2.79 | J=144 | K=245782252 | L=296 | M=2094 | N=5850 | O=302
+r57: A=West Virginia | B=220635 | C=18089 | D=408603 | E=22.59 | F=1852 | G=52214 | H=7.83 | I=2.89 | J=237 | K=84260818 | L=206 | M=1614 | N=4658 | O=382
+r58: A=Wisconsin | B=579505 | C=31239 | D=641356 | E=20.53 | F=1107 | G=76200 | H=8.42 | I=2.44 | J=131 | K=147996117 | L=231 | M=1942 | N=4738 | O=255
+r59: A=Wyoming | B=107258 | C=4365 | D=111480 | E=25.54 | F=1039 | G=11818 | H=9.43 | I=2.71 | J=110 | K=21671894 | L=194 | M=1834 | N=4965 | O=202
+r60: A=BLANK
+r61: A=Territories, Possessions, and Other
+r62: A=Puerto Rico | B=118321 | C=3884 | D=95920 | E=24.7 | F=811 | G=10886 | H=8.81 | I=2.8 | J=92 | K=12245105 | L=128 | M=1125 | N=3153 | O=103
+r63: A=Virgin Islands | B=14513 | C=366 | D=7663 | E=20.94 | F=528 | G=805 | H=9.52 | I=2.2 | J=55 | K=1492206 | L=195 | M=1854 | N=4077 | O=103
+r64: A=American Samoa | B=4481 | C=30 | D=390 | E=13 | F=87 | G=64 | H=6.09 | I=2.13 | J=14 | K=122950 | L=315 | M=1921 | N=4098 | O=27
+r65: A=Guam | B=19077 | C=779 | D=19883 | E=25.52 | F=1042 | G=2732 | H=7.28 | I=3.51 | J=143 | K=4973220 | L=250 | M=1820 | N=6384 | O=261
+r66: A=Northern Mariana Islands | B=3083 | C=180 | D=7033 | E=39.07 | F=2282 | G=1061 | H=6.63 | I=5.89 | J=344 | K=2017453 | L=287 | M=1901 | N=11208 | O=654
+r67: A=Foreign Countries | B=513450 | C=251 | D=4053 | E=16.15 | F=8 | G=501 | H=8.09 | I=2 | J=1 | K=1123552 | L=277 | M=2243 | N=4476 | O=2
+r68: A=Unknown | B=† | C=* | D=† | E=† | F=† | G=† | H=† | I=† | J=† | K=† | L=† | M=† | N=† | O=†
+r69: (blank)
+r70: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r71: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r72: (blank)
+r73: A=¹Effective January 2020, under the Bipartisan Budget Act of 2018, the unit of Medicare pay...
+r74: A=BLANK
+r75: A=NOTES:  The utilization and expenditure data reported in this table are from home health P...
+r76: A=beneficiaries with Part A and/or Part B coverage.
+r77: (blank)
+r78: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR HHA 4_CPS_07UHH": 75 rows x 5 columns (Excel rows 1..75, columns A..E)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Home Health Agencies
+r2: A=Persons with Utilization and Total Service Visits for Original Medicare Beneficiaries, by ...
+r3: A=Type of Service Visit, Calendar Year 2023
+r4: A=Type of Agency and Type of Service Visit | B=Total Persons With Utilization | C=Total Service Visits | D=Service Visits Per Person With Utilization | E=Service Visits Per 1,000 Original Medicare Enrollees¹
+r5: A=BLANK
+r6: A=All Agencies
+r7: A=Total | B=2714794 | C=67020616 | D=24.69 | E=1950
+r8: A=Skilled Nursing Care | B=2200324 | C=32348069 | D=14.7 | E=941
+r9: A=Home Health Aide | B=250306 | C=3459518 | D=13.82 | E=101
+r10: A=Physical Therapy | B=2226941 | C=23327725 | D=10.48 | E=679
+r11: A=Speech Therapy | B=201455 | C=1139053 | D=5.65 | E=33
+r12: A=Occupational Therapy | B=1122510 | C=6348589 | D=5.66 | E=185
+r13: A=Medical Social Worker | B=257102 | C=397662 | D=1.55 | E=12
+r14: A=BLANK
+r15: A=Visiting Nurse Association
+r16: A=Total | B=325043 | C=6389311 | D=19.66 | E=186
+r17: A=Skilled Nursing Care | B=257450 | C=2808236 | D=10.91 | E=82
+r18: A=Home Health Aide | B=34306 | C=375801 | D=10.95 | E=11
+r19: A=Physical Therapy | B=266639 | C=2249721 | D=8.44 | E=65
+r20: A=Speech Therapy | B=24738 | C=116586 | D=4.71 | E=3
+r21: A=Occupational Therapy | B=147354 | C=769639 | D=5.22 | E=22
+r22: A=Medical Social Worker | B=43989 | C=69328 | D=1.58 | E=2
+r23: A=BLANK
+r24: A=Combination Government Voluntary
+r25: A=Total | B=3173 | C=86968 | D=27.41 | E=3
+r26: A=Skilled Nursing Care | B=2780 | C=41506 | D=14.93 | E=1
+r27: A=Home Health Aide | B=590 | C=12346 | D=20.93 | E=0
+r28: A=Physical Therapy | B=2498 | C=26188 | D=10.48 | E=1
+r29: A=Speech Therapy | B=192 | C=1147 | D=5.97 | E=0
+r30: A=Occupational Therapy | B=957 | C=5253 | D=5.49 | E=0
+r31: A=Medical Social Worker | B=277 | C=528 | D=1.91 | E=0
+r32: A=BLANK
+r33: A=Official Health Agency
+r34: A=Total | B=248105 | C=6122622 | D=24.68 | E=178
+r35: A=Skilled Nursing Care | B=200536 | C=2926249 | D=14.59 | E=85
+r36: A=Home Health Aide | B=28366 | C=449639 | D=15.85 | E=13
+r37: A=Physical Therapy | B=198804 | C=2098460 | D=10.56 | E=61
+r38: A=Speech Therapy | B=17363 | C=102842 | D=5.92 | E=3
+r39: A=Occupational Therapy | B=91633 | C=514692 | D=5.62 | E=15
+r40: A=Medical Social Worker | B=20490 | C=30740 | D=1.5 | E=1
+r41: A=BLANK
+r42: A=Hospital-Based
+r43: A=Total | B=223932 | C=4032280 | D=18.01 | E=117
+r44: A=Skilled Nursing Care | B=174798 | C=1745095 | D=9.98 | E=51
+r45: A=Home Health Aide | B=25577 | C=263896 | D=10.32 | E=8
+r46: A=Physical Therapy | B=185166 | C=1455104 | D=7.86 | E=42
+r47: A=Speech Therapy | B=16557 | C=75164 | D=4.54 | E=2
+r48: A=Occupational Therapy | B=96511 | C=453988 | D=4.7 | E=13
+r49: A=Medical Social Worker | B=27969 | C=39033 | D=1.4 | E=1
+r50: A=BLANK
+r51: A=Skilled Nursing Facility-Based Program
+r52: A=Total | B=8873 | C=171499 | D=19.33 | E=5
+r53: A=Skilled Nursing Care | B=6460 | C=65559 | D=10.15 | E=2
+r54: A=Home Health Aide | B=1233 | C=11237 | D=9.11 | E=0
+r55: A=Physical Therapy | B=7752 | C=67591 | D=8.72 | E=2
+r56: A=Speech Therapy | B=743 | C=3549 | D=4.78 | E=0
+r57: A=Occupational Therapy | B=4731 | C=22812 | D=4.82 | E=1
+r58: A=Medical Social Worker | B=521 | C=751 | D=1.44 | E=0
+r59: A=BLANK
+r60: A=Other
+r61: A=Total | B=1989701 | C=50217936 | D=25.24 | E=1461
+r62: A=Skilled Nursing Care | B=1619417 | C=24761424 | D=15.29 | E=720
+r63: A=Home Health Aide | B=163478 | C=2346599 | D=14.35 | E=68
+r64: A=Physical Therapy | B=1623361 | C=17430661 | D=10.74 | E=507
+r65: A=Speech Therapy | B=143860 | C=839765 | D=5.84 | E=24
+r66: A=Occupational Therapy | B=801449 | C=4582205 | D=5.72 | E=133
+r67: A=Medical Social Worker | B=166271 | C=257282 | D=1.55 | E=7
+r68: A=BLANK
+r69: A=¹Total Original Medicare enrollees (in person years) for 2023 was 34,367,703.  The 'servic...
+r70: A=are based on Original Medicare enrollees with Part A and/or Part B coverage.
+r71: (blank)
+r72: A=NOTES:  The data reported in this table are from home health Part A and Part B claims.  Th...
+r73: A=totals because beneficiaries may use more than one service during the reported year.
+r74: (blank)
+r75: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR HHA 6_CPS_07UHH": 33 rows x 9 columns (Excel rows 1..33, columns A..I)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Home Health Agencies
+r2: A=Persons with Utilization, Total Service Visits, and Program Payments for Original Medicare...
+r3: A=by Number of Service Visits and Number of Episodes
+r4: A=Calendar Year 2023
+r5: B=Total Persons With Utilization | C=Total Service Visits | D=Service Visits Per Person With Utilization | E=Service Visits Per 1,000 Original Medicare Enrollees¹ | F=Total Program Payments | G=Program Payments Per Person With Utilization | H=Program Payments Per Service Visit | I=Program Payments Per Original Medicare Enrollee¹
+r6: A=BLANK
+r7: A=Number of Service Visits
+r8: A=Total | B=2714794 | C=67020616 | D=24.68718289 | E=1950.104618 | F=1.586488275e+10 | G=5843.862463 | H=236.7164568 | I=461.6218555
+r9: A=1-9 | B=822596 | C=4743839 | D=5.766912312 | E=138.0318907 | F=1834120137 | G=2229.673056 | H=386.6320373 | I=53.3675511
+r10: A=10-19 | B=803924 | C=11204597 | D=13.93738338 | E=326.0211209 | F=3093822666 | G=3848.401921 | H=276.1208338 | I=90.02122374
+r11: A=20-29 | B=395903 | C=9487531 | D=23.96428165 | E=276.0595041 | F=2343265175 | G=5918.786103 | H=246.9836646 | I=68.18218797
+r12: A=30-39 | B=224447 | C=7654806 | D=34.10518296 | E=222.7325474 | F=1856099222 | G=8269.65485 | H=242.4750179 | I=54.00707842
+r13: A=40-49 | B=148039 | C=6542250 | D=44.19274651 | E=190.3604099 | F=1588230183 | G=10728.45793 | H=242.7651317 | I=46.21287
+r14: A=50-99 | B=253699 | C=16820710 | D=66.301838 | E=489.433643 | F=3653754621 | G=14401.92756 | H=217.2176217 | I=106.3136119
+r15: A=100 or More | B=66186 | C=10566883 | D=159.6543529 | E=307.4655019 | F=1495590747 | G=22596.78402 | H=141.5356588 | I=43.51733237
+r16: A=BLANK
+r17: A=Number of Episodes²
+r18: A=Total | B=2714794 | C=67020616 | D=24.68718289 | E=1950.104618 | F=1.586488275e+10 | G=5843.862463 | H=236.7164568 | I=461.6218555
+r19: A=1 | B=926677 | C=7075468 | D=7.63531198 | E=205.8754999 | F=2020559683 | G=2180.435776 | H=285.5725845 | I=58.79239858
+r20: A=2 | B=774858 | C=12326197 | D=15.90768502 | E=358.6564124 | F=3086096422 | G=3982.789649 | H=250.368903 | I=89.79641254
+r21: A=3 | B=237151 | C=5783637 | D=24.3879933 | E=168.2869823 | F=1381782949 | G=5826.5955 | H=238.9124611 | I=40.20585712
+r22: A=4 | B=246969 | C=7879165 | D=31.90345752 | E=229.2607405 | F=1859489666 | G=7529.243207 | H=236.0008536 | I=54.10573045
+r23: A=5 | B=106475 | C=4357380 | D=40.92397276 | E=126.78706 | F=1004361632 | G=9432.839934 | H=230.4966819 | I=29.22399663
+r24: A=6 or more | B=422664 | C=29598769 | D=70.0290751 | E=861.2379228 | F=6512592399 | G=15408.43885 | H=220.029164 | I=189.4974602
+r25: A=BLANK
+r26: A=¹The total Original Medicare enrollees (in person years) for 2023 was 34,367,703.  The 'se...
+r27: A=and 'program payments per Original Medicare enrollee' rates are based on Original Medicare...
+r28: A=²Effective January 2020, under the Bipartisan Budget Act of 2018, the unit of Medicare pay...
+r29: A=episode to a 30-day episode.
+r30: (blank)
+r31: A=NOTE:  The data reported in this table are from home health Part A and Part B claims.
+r32: (blank)
+r33: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...

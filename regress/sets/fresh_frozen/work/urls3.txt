@@ -1,0 +1,9 @@
+https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/NVSR/75-05/Table01.xlsx
+https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/NVSR/74-06/Table01.xlsx
+https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/NVSR/74-12/CA1.xlsx
+https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/Health_US/hus20-21tables/LExpMort.xlsx
+https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/Health_US/hus20-21tables/EDAd.xlsx
+https://www2.census.gov/programs-surveys/state/tables/2022/2022%20Lottery%20Table.xlsx
+https://www.fhwa.dot.gov/policyinformation/statistics/2022/xls/mf21.xlsx
+https://www.fhwa.dot.gov/policyinformation/statistics/2022/xls/vm2.xlsx
+https://www.fhwa.dot.gov/policyinformation/statistics/2022/xls/hm10.xlsx

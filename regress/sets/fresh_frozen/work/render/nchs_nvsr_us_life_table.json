@@ -1,0 +1,12 @@
+{
+ "file": "nchs_nvsr_us_life_table.xlsx",
+ "sheets": [
+  {
+   "name": "Table 1",
+   "rows": 105,
+   "cols": 7,
+   "shown_whole": true
+  }
+ ],
+ "chars": 11728
+}

@@ -1,0 +1,12 @@
+{
+ "file": "census_population_projections_2023.xlsx",
+ "sheets": [
+  {
+   "name": "Main series",
+   "rows": 94,
+   "cols": 8,
+   "shown_whole": true
+  }
+ ],
+ "chars": 7276
+}

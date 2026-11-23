@@ -1,0 +1,24 @@
+{
+ "file": "fhwa_drivers_licenses_2022.xlsx",
+ "sheets": [
+  {
+   "name": "MALES",
+   "rows": 72,
+   "cols": 29,
+   "shown_whole": true
+  },
+  {
+   "name": "FEMALES",
+   "rows": 72,
+   "cols": 29,
+   "shown_whole": true
+  },
+  {
+   "name": "TOTAL",
+   "rows": 72,
+   "cols": 29,
+   "shown_whole": true
+  }
+ ],
+ "chars": 53100
+}

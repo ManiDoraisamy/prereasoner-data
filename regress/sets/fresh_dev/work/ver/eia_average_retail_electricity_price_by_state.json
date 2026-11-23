@@ -1,0 +1,35 @@
+{
+ "id": "eia_average_retail_electricity_price_by_state",
+ "answers": [
+  {
+   "id": "eia_average_retail_electricity_price_by_state#1",
+   "answer": "30.28",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', skiprows=1)\nval = df[(df['Year'] == 2020) & (df['State'] == 'HI') & (df['Industry Sector Category'] == 'Total Electric Industry')]['Residential'].values[0]\nresult = float(val)"
+  },
+  {
+   "id": "eia_average_retail_electricity_price_by_state#2",
+   "answer": "HI",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', skiprows=1)\nsub = df[(df['Year'] == 2020) & (df['State'].isin(['AK', 'HI'])) & (df['Industry Sector Category'] == 'Total Electric Industry')]\nresult = str(sub.sort_values(by='Residential', ascending=False).iloc[0]['State'])"
+  },
+  {
+   "id": "eia_average_retail_electricity_price_by_state#3",
+   "answer": "474",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', skiprows=1)\nresult = int((df['Industry Sector Category'] == 'Energy-Only Providers').sum())"
+  },
+  {
+   "id": "eia_average_retail_electricity_price_by_state#4",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', skiprows=1)\nwa = df[(df['Year'] == 1990) & (df['State'] == 'WA') & (df['Industry Sector Category'] == 'Full-Service Providers')]['Total'].values[0]\nwy = df[(df['Year'] == 1990) & (df['State'] == 'WY') & (df['Industry Sector Category'] == 'Full-Service Providers')]['Total'].values[0]\nresult = 'yes' if float(wa) > float(wy) else 'no'"
+  },
+  {
+   "id": "eia_average_retail_electricity_price_by_state#5",
+   "answer": "1990",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', skiprows=1)\nresult = str(int(df['Year'].min()))"
+  },
+  {
+   "id": "eia_average_retail_electricity_price_by_state#6",
+   "answer": "[\"Full-Service Providers\", \"Total Electric Industry\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', skiprows=1)\ncounts = df['Industry Sector Category'].value_counts()\nresult = list(counts.index[:2])"
+  }
+ ]
+}

@@ -1,0 +1,60 @@
+{
+ "id": "faa_active_civil_airmen_2025",
+ "file": "faa_active_civil_airmen_2025.xlsx",
+ "questions": [
+  {
+   "question": "What percentage of non-student, non-sport, non-recreational pilots held an instrument rating as of December 31, 2025?",
+   "sheet": "T11",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "69.73764491",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T11', header=None)\nrow = df[df[1] == 2025].iloc[0]\nresult = float(row[4]) * 100 if row[4] < 1 else float(row[4])",
+   "qid": "faa_active_civil_airmen_2025#1"
+  },
+  {
+   "question": "Which three states in the Central Region had the highest count of active pilots as of the end of 2025?",
+   "sheet": "T5",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Tennessee\", \"Missouri\", \"Kentucky\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T5', header=None)\n# Central region states appear between Central Region--Total and Eastern Region--Total\ncentral_idx = df[df[0] == 'Central Region--Total'].index[0]\neastern_idx = df[df[0] == 'Eastern Region--Total'].index[0]\nstates_df = df.iloc[central_idx + 1:eastern_idx].copy()\nstates_df = states_df[states_df[0].notna()]\nstates_df[1] = pd.to_numeric(states_df[1])\ntop3 = states_df.sort_values(by=1, ascending=False).head(3)\nresult = top3[0].tolist()",
+   "qid": "faa_active_civil_airmen_2025#2"
+  },
+  {
+   "question": "Did commercial rotorcraft pilots outnumber private rotorcraft pilots at the end of 2025?",
+   "sheet": "T7",
+   "kind": "comparison",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T7', header=None)\npriv_row = df[df[0].astype(str).str.strip().str.startswith('Private--Total')].iloc[0]\ncomm_row = df[df[0].astype(str).str.strip().str.startswith('Commercial--Total')].iloc[0]\n# Col 1 is 2025\npriv_val = float(priv_row[1])\ncomm_val = float(comm_row[1])\nresult = 'yes' if comm_val > priv_val else 'no'",
+   "qid": "faa_active_civil_airmen_2025#3"
+  },
+  {
+   "question": "Among active female airmen in 2025, how many held flight attendant certificates?",
+   "sheet": "T2",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "251349",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T2', header=None)\nrow = df[df[0].astype(str).str.strip() == 'Flight Attendant'].iloc[0]\nresult = int(row[1])",
+   "qid": "faa_active_civil_airmen_2025#4"
+  },
+  {
+   "question": "Which FAA region had the greatest number of instrument ratings held at the end of 2025?",
+   "sheet": "T9",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Southern",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T9', header=None)\n# Row 6 has headers, Row 7 has totals\nheaders = [str(x).strip() for x in df.iloc[5].tolist()]\ntotals = df.iloc[6].tolist()\nregion_data = {}\n# Exclude Total 1/ and Outside U.S. 2/\nfor h, val in zip(headers[2:10], totals[2:10]):\n    region_data[h] = int(val)\nresult = max(region_data, key=region_data.get)",
+   "qid": "faa_active_civil_airmen_2025#5"
+  },
+  {
+   "question": "How many total active pilots were aged 60 and over as of December 31, 2025?",
+   "sheet": "T12",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "172227",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T12', header=None)\n# Age groups 60-64, 65-69, 70-74, 75-79, 80 and over\nage_groups = ['60-64', '65-69', '70-74', '75-79', '80 and over']\ntotal = 0\nfor grp in age_groups:\n    row = df[df[0].astype(str).str.strip() == grp]\n    if not row.empty:\n        total += int(row.iloc[0, 1])\nresult = total",
+   "qid": "faa_active_civil_airmen_2025#6"
+  }
+ ]
+}

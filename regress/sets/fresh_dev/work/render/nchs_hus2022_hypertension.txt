@@ -1,0 +1,31 @@
+FILE nchs_hus2022_hypertension.xlsx (Excel workbook) with 1 sheet(s): ["VI"]
+
+### Sheet "VI": 26 rows x 3 columns (Excel rows 1..26, columns A..C)
+merged cells: A25:C25, A1:C1, B3:C3, A26:C26, A24:C24
+(whole sheet shown; Excel row numbers)
+r1: A=Htn-Table. Hypertension among adults age 20 and older, based on two definitions: United St...
+r2: A=Age (years), sex, and  race and Hispanic origin | B=Hypertension based on the 2007 standards (systolic pressure of at least 140 mm Hg or diast... | C=Hypertension based on the 2017 standards (systolic pressure of at least 130 mm Hg or diast...
+r3: A=20 and older, age adjusted\3 | B=Percent (weighted)
+r4: A=Both sexes | B=31 | C=46.6
+r5: A=Male | B=33.3 | C=52.6
+r6: A=Female | B=28.6 | C=40.3
+r7: A=Not Hispanic or Latino:
+r8: A=White only | B=28.7 | C=44.4
+r9: A=Black only | B=44 | C=59
+r10: A=Asian only | B=33.1 | C=49.3
+r11: A=Hispanic or Latino | B=30.3 | C=45.4
+r12: A=20 and older, crude
+r13: A=Both sexes | B=34.9 | C=49.6
+r14: A=Male | B=35.8 | C=54.1
+r15: A=Female | B=33.9 | C=45.2
+r16: A=Not Hispanic or Latino:
+r17: A=White only | B=35.6 | C=49.9
+r18: A=Black only | B=44.1 | C=58.9
+r19: A=Asian only | B=33 | C=49.1
+r20: A=Hispanic or Latino | B=26.1 | C=41.6
+r21: A=20–44 | B=10.5 | C=27.5
+r22: A=45–64 | B=45 | C=60.3
+r23: A=65 and older | B=68.4 | C=77.3
+r24: A=\1Based on the National Heart, Lung, and Blood Institute. See: The seventh report of the J...
+r25: A=NOTES: Percentages are based on the average of three blood pressure measurements taken. Pr...
+r26: A=SOURCE: National Center for Health Statistics, National Health and Nutrition Examination S...

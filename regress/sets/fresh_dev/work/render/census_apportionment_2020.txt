@@ -1,0 +1,61 @@
+FILE census_apportionment_2020.xlsx (Excel workbook) with 1 sheet(s): ["Table 1"]
+
+### Sheet "Table 1": 56 rows x 4 columns (Excel rows 1..56, columns A..D)
+merged cells: A1:D1, A56:D56, A3:D3, A2:D2
+(whole sheet shown; Excel row numbers)
+r1: A=U.S. Department of Commerce
+r2: A=U.S. Census Bureau
+r3: A=Table 1. APPORTIONMENT POPULATION AND NUMBER OF REPRESENTATIVES BY STATE: 2020 CENSUS
+r4: A=STATE | B=APPORTIONMENT POPULATION \n(APRIL 1, 2020) | C=NUMBER OF APPORTIONED REPRESENTATIVES BASED ON \n2020 CENSUS2 | D=CHANGE FROM \n2010 CENSUS APPORTIONMENT
+r5: A=Alabama | B=5030053 | C=7 | D=0
+r6: A=Alaska | B=736081 | C=1 | D=0
+r7: A=Arizona | B=7158923 | C=9 | D=0
+r8: A=Arkansas | B=3013756 | C=4 | D=0
+r9: A=California | B=39576757 | C=52 | D=-1
+r10: A=Colorado | B=5782171 | C=8 | D=1
+r11: A=Connecticut | B=3608298 | C=5 | D=0
+r12: A=Delaware | B=990837 | C=1 | D=0
+r13: A=Florida | B=21570527 | C=28 | D=1
+r14: A=Georgia | B=10725274 | C=14 | D=0
+r15: A=Hawaii | B=1460137 | C=2 | D=0
+r16: A=Idaho | B=1841377 | C=2 | D=0
+r17: A=Illinois | B=12822739 | C=17 | D=-1
+r18: A=Indiana | B=6790280 | C=9 | D=0
+r19: A=Iowa | B=3192406 | C=4 | D=0
+r20: A=Kansas | B=2940865 | C=4 | D=0
+r21: A=Kentucky | B=4509342 | C=6 | D=0
+r22: A=Louisiana | B=4661468 | C=6 | D=0
+r23: A=Maine | B=1363582 | C=2 | D=0
+r24: A=Maryland | B=6185278 | C=8 | D=0
+r25: A=Massachusetts | B=7033469 | C=9 | D=0
+r26: A=Michigan | B=10084442 | C=13 | D=-1
+r27: A=Minnesota | B=5709752 | C=8 | D=0
+r28: A=Mississippi | B=2963914 | C=4 | D=0
+r29: A=Missouri | B=6160281 | C=8 | D=0
+r30: A=Montana | B=1085407 | C=2 | D=1
+r31: A=Nebraska | B=1963333 | C=3 | D=0
+r32: A=Nevada | B=3108462 | C=4 | D=0
+r33: A=New Hampshire | B=1379089 | C=2 | D=0
+r34: A=New Jersey | B=9294493 | C=12 | D=0
+r35: A=New Mexico | B=2120220 | C=3 | D=0
+r36: A=New York | B=20215751 | C=26 | D=-1
+r37: A=North Carolina | B=10453948 | C=14 | D=1
+r38: A=North Dakota | B=779702 | C=1 | D=0
+r39: A=Ohio | B=11808848 | C=15 | D=-1
+r40: A=Oklahoma | B=3963516 | C=5 | D=0
+r41: A=Oregon | B=4241500 | C=6 | D=1
+r42: A=Pennsylvania | B=13011844 | C=17 | D=-1
+r43: A=Rhode Island | B=1098163 | C=2 | D=0
+r44: A=South Carolina | B=5124712 | C=7 | D=0
+r45: A=South Dakota | B=887770 | C=1 | D=0
+r46: A=Tennessee | B=6916897 | C=9 | D=0
+r47: A=Texas | B=29183290 | C=38 | D=2
+r48: A=Utah | B=3275252 | C=4 | D=0
+r49: A=Vermont | B=643503 | C=1 | D=0
+r50: A=Virginia | B=8654542 | C=11 | D=0
+r51: A=Washington | B=7715946 | C=10 | D=0
+r52: A=West Virginia | B=1795045 | C=2 | D=-1
+r53: A=Wisconsin | B=5897473 | C=8 | D=0
+r54: A=Wyoming | B=577719 | C=1 | D=0
+r55: A=TOTAL APPORTIONMENT POPULATION1 | B=331108434 | C=435
+r56: A=Footnotes:\n     1 Includes the resident population for the 50 states, as ascertained by t...

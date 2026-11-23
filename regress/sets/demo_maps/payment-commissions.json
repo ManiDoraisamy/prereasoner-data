@@ -1,0 +1,101 @@
+{
+ "dataset": "payment-commissions",
+ "kind": "own",
+ "uploads": [
+  {
+   "name": "commission_rates",
+   "columns": [
+    "payment_instrument",
+    "commission_percent"
+   ],
+   "rows": 3
+  },
+  {
+   "name": "payments",
+   "columns": [
+    "transaction_id",
+    "payment_instrument",
+    "currency",
+    "amount"
+   ],
+   "rows": 6
+  }
+ ],
+ "normalized": [
+  {
+   "name": "commission_rates",
+   "upload": "commission_rates",
+   "columns": [
+    "payment_instrument",
+    "commission_percent"
+   ]
+  },
+  {
+   "name": "payments",
+   "upload": "payments",
+   "columns": [
+    "transaction_id",
+    "payment_instrument",
+    "currency",
+    "amount"
+   ]
+  }
+ ],
+ "links_between_uploads": [
+  {
+   "from_table": "payments",
+   "from_col": "payment_instrument",
+   "to_table": "commission_rates",
+   "to_col": "payment_instrument",
+   "conf": 0.9,
+   "inclusion": 1.0
+  }
+ ],
+ "routes": [],
+ "entity_columns": [],
+ "conversions": [
+  {
+   "upload": "payments",
+   "table": "payments",
+   "currency_column": "currency",
+   "currency_index": 2,
+   "date_column": null,
+   "date_index": null,
+   "measures": [
+    {
+     "column": "amount",
+     "column_index": 3
+    }
+   ],
+   "rate_columns": [
+    "rate_to_aud",
+    "rate_to_cad",
+    "rate_to_chf",
+    "rate_to_cny",
+    "rate_to_eur",
+    "rate_to_gbp",
+    "rate_to_inr",
+    "rate_to_jpy",
+    "rate_to_usd"
+   ],
+   "as_of": "2026-11-18",
+   "days": 1
+  }
+ ],
+ "knowledgebase_tables": {
+  "Cities": 0,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 0,
+  "country": 209,
+  "exchange_rate": 30,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 4.2
+}

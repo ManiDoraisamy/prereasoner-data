@@ -1,0 +1,60 @@
+{
+ "id": "cms_program_stats_inpatient_hospital_2023",
+ "file": "cms_program_stats_inpatient_hospital_2023.xlsx",
+ "questions": [
+  {
+   "question": "In 2023, how many Medicare Part A enrollees were discharged dead from all inpatient hospitals?",
+   "sheet": "MDCR INPT HOSP 1_CPS_05UIP",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "264306",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 1_CPS_05UIP', header=None)\n# Row 12 (0-indexed 11) is 2023 for All Beneficiaries, column AB (index 27) is 'Discharged Dead'\n# Let's find header and locate dynamically\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Type of Entitlement', na=False)].index[0]\ncol_dead = df.iloc[header_row].tolist().index('Discharged Dead')\n\n# find 2023 under All Beneficiaries\nall_beneficiaries_idx = df[df.iloc[:, 0] == 'All Beneficiaries'].index[0]\nyear_2023_idx = df[(df.index > all_beneficiaries_idx) & (df.iloc[:, 0].astype(str).str.startswith('2023'))].index[0]\n\nresult = int(df.iloc[year_2023_idx, col_dead])",
+   "qid": "cms_program_stats_inpatient_hospital_2023#1"
+  },
+  {
+   "question": "Among hospital types in 2023, did Long Term Care Hospitals have higher total program payments than Inpatient Psychiatric Facilities?",
+   "sheet": "MDCR INPT HOSP 4_CPS_05UIP",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 4_CPS_05UIP', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Type of Hospital', na=False)].index[0]\ncol_payments = df.iloc[header_row].tolist().index('Total Program Payments')\n\nltch_val = df[df.iloc[:, 0].astype(str).str.contains('Long Term Care Hospitals', na=False)].iloc[0, col_payments]\npsych_val = df[df.iloc[:, 0].astype(str).str.contains('Inpatient Psychiatric Facilities', na=False)].iloc[0, col_payments]\n\nresult = 'yes' if float(ltch_val) > float(psych_val) else 'no'",
+   "qid": "cms_program_stats_inpatient_hospital_2023#2"
+  },
+  {
+   "question": "Which calendar year between 2018 and 2023 had the highest total deductible payments for all Medicare inpatient beneficiaries?",
+   "sheet": "MDCR INPT HOSP 1_CPS_05UIP",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2018",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 1_CPS_05UIP', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Type of Entitlement', na=False)].index[0]\ncol_ded = df.iloc[header_row].tolist().index('Total Deductible Payments')\n\nstart_idx = df[df.iloc[:, 0] == 'All Beneficiaries'].index[0] + 1\nyears_df = df.iloc[start_idx:start_idx+6].copy()\nyears_df['year'] = years_df.iloc[:, 0].astype(int).astype(str)\nyears_df['ded'] = pd.to_numeric(years_df.iloc[:, col_ded])\nresult = str(years_df.loc[years_df['ded'].idxmax(), 'year'])",
+   "qid": "cms_program_stats_inpatient_hospital_2023#3"
+  },
+  {
+   "question": "In 2023, what were the three US states with the highest total Medicare IPPS short stay hospital discharges?",
+   "sheet": "MDCR INPT HOSP 7_CPS_05UIP",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Florida\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 7_CPS_05UIP', header=None)\n# States are from row 9 (index 8, Alabama) through row 59 (index 58, Wyoming)\nstart_idx = df[df.iloc[:, 0] == 'Alabama'].index[0]\nend_idx = df[df.iloc[:, 0] == 'Wyoming'].index[0]\n\nstates_df = df.iloc[start_idx:end_idx+1].copy()\nstates_df['state'] = states_df.iloc[:, 0].astype(str)\nstates_df['discharges'] = pd.to_numeric(states_df.iloc[:, 3])\ntop3 = states_df.sort_values(by='discharges', ascending=False).head(3)['state'].tolist()\nresult = top3",
+   "qid": "cms_program_stats_inpatient_hospital_2023#4"
+  },
+  {
+   "question": "What was the total number of Medicare dependent hospitals reported in the special-category hospital analysis for 2023?",
+   "sheet": "MDCR INPT HOSP 10_CPS_05UIP",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "160",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 10_CPS_05UIP', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Measures', na=False)].index[0]\n# Medicare Dependent Hospitals is column D (index 3)\nmed_dep_col = [i for i, val in enumerate(df.iloc[header_row]) if 'Medicare Dependent' in str(val)][0]\nnum_hosp_row = df[df.iloc[:, 0].astype(str).str.contains('Number of Hospitals', na=False)].index[0]\nresult = int(df.iloc[num_hosp_row, med_dep_col])",
+   "qid": "cms_program_stats_inpatient_hospital_2023#5"
+  },
+  {
+   "question": "How much greater were total program payments for urban short-stay hospitals than for rural short-stay hospitals in 2023?",
+   "sheet": "MDCR INPT HOSP 9_CPS_05UIP",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "95844646790",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_inpatient_hospital_2023.xlsx', sheet_name='MDCR INPT HOSP 9_CPS_05UIP', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Location and Bedsize', na=False)].index[0]\ncol_pay = [i for i, val in enumerate(df.iloc[header_row]) if 'Total Program Payments' in str(val)][0]\n\nurban_row = df[df.iloc[:, 0].astype(str).str.strip() == 'Total Urban Hospitals'].index[0]\nrural_row = df[df.iloc[:, 0].astype(str).str.strip() == 'Total Rural Hospitals'].index[0]\n\nurban_pay = float(df.iloc[urban_row, col_pay])\nrural_pay = float(df.iloc[rural_row, col_pay])\nresult = int(round(urban_pay - rural_pay))",
+   "qid": "cms_program_stats_inpatient_hospital_2023#6"
+  }
+ ]
+}

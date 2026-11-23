@@ -1,0 +1,84 @@
+{
+ "id": "nchs_hus_life_expectancy_mortality",
+ "file": "nchs_hus_life_expectancy_mortality.xlsx",
+ "questions": [
+  {
+   "question": "What was the life expectancy at birth for all races, both sexes combined, in 1970?",
+   "sheet": "A",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "70.8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\n# Look for row where col A starts with 1970\nrow = df[df[0].astype(str).str.startswith('1970')].iloc[0]\nresult = float(row[1])",
+   "qid": "nchs_hus_life_expectancy_mortality#1",
+   "pass1": true,
+   "result": 70.8,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 1900, how many more years was life expectancy at birth for White females than for Black or African American females?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "15.2",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\nrow_1900 = df[df[0].astype(str).str.startswith('1900')].iloc[0]\nwhite_female = float(row_1900[6])\nblack_female = float(row_1900[9])\nresult = round(white_female - black_female, 1)",
+   "qid": "nchs_hus_life_expectancy_mortality#2",
+   "pass1": true,
+   "result": 15.2,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between 1980 and 1989 inclusive, how many individual calendar years saw the life expectancy at birth for both sexes across all races stay strictly below 75 years?",
+   "sheet": "A",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\n# Years 1980 to 1989 are in rows 12 to 21 (indices 11 to 20)\nyears = [str(y) for y in range(1980, 1990)]\nsub_df = df[df[0].astype(str).isin(years)].iloc[0:10] # first section is at birth\ncount = (pd.to_numeric(sub_df[1]) < 75.0).sum()\nresult = int(count)",
+   "qid": "nchs_hus_life_expectancy_mortality#3",
+   "pass1": false,
+   "result": 9,
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  },
+  {
+   "question": "For non-Hispanic Asian people in 2019 (single race), did females have a higher remaining life expectancy at age 65 than males?",
+   "sheet": "A",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\n# Row 183 corresponds to 2019 (single race) at 65 years\n# Asian male is col F (index 5), female is col G (index 6)\nrow = df.iloc[182]\nmale_exp = float(row[5])\nfemale_exp = float(row[6])\nresult = 'yes' if female_exp > male_exp else 'no'",
+   "qid": "nchs_hus_life_expectancy_mortality#4",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the average remaining life expectancy at age 75 for Hispanic females across the years 2006 through 2010?",
+   "sheet": "A",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "14.02",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\n# Hispanic female at age 75 is in rows 187:191 (indices 186 to 190), col J (index 9)\nsub = df.iloc[186:191, 9].astype(float)\nresult = round(float(sub.mean()), 2)",
+   "qid": "nchs_hus_life_expectancy_mortality#5",
+   "pass1": true,
+   "result": 14.02,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "For non-Hispanic Black individuals, which year between 2006 and 2017 had the highest life expectancy at birth for both sexes combined?",
+   "sheet": "A",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2014",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_life_expectancy_mortality.xlsx', sheet_name='A', header=None)\n# Non-Hispanic Black at birth: rows 141 to 152 (years 2006-2017), col E (index 4)\nsub = df.iloc[140:152, [0, 4]].copy()\nsub.columns = ['year', 'le']\nsub['le'] = pd.to_numeric(sub['le'])\nbest_year = sub.loc[sub['le'].idxmax(), 'year']\nresult = str(best_year).strip()",
+   "qid": "nchs_hus_life_expectancy_mortality#6",
+   "pass1": true,
+   "result": "2014",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

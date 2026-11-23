@@ -1,0 +1,12 @@
+{
+ "file": "medicaid_chip_eligibility_levels.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 51,
+   "cols": 12,
+   "shown_whole": true
+  }
+ ],
+ "chars": 6379
+}

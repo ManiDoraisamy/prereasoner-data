@@ -1,0 +1,88 @@
+{
+ "id": "census_apportionment_2020",
+ "file": "census_apportionment_2020.xlsx",
+ "questions": [
+  {
+   "question": "What was the 2020 apportionment population of California?",
+   "sheet": "Table 1",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "39576757",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\ndf_data = df.iloc[4:54].copy()\ndf_data.columns = ['state', 'pop', 'reps', 'change']\nval = df_data.loc[df_data['state'].str.strip() == 'California', 'pop'].values[0]\nresult = int(val)",
+   "qid": "census_apportionment_2020#1",
+   "pass1": true,
+   "result": 39576757,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which states gained two or more congressional seats in the 2020 apportionment?",
+   "sheet": "Table 1",
+   "kind": "filtered_count",
+   "answer_type": "name",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\ndf_data = df.iloc[4:54].copy()\ndf_data.columns = ['state', 'pop', 'reps', 'change']\ndf_data['change'] = pd.to_numeric(df_data['change'])\nstates = df_data.loc[df_data['change'] >= 2, 'state'].str.strip().tolist()\nresult = states[0]",
+   "qid": "census_apportionment_2020#2",
+   "pass1": true,
+   "result": "Texas",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states lost at least one seat in the House of Representatives following the 2020 Census?",
+   "sheet": "Table 1",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "7",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\ndf_data = df.iloc[4:54].copy()\ndf_data.columns = ['state', 'pop', 'reps', 'change']\ndf_data['change'] = pd.to_numeric(df_data['change'])\nresult = int((df_data['change'] < 0).sum())",
+   "qid": "census_apportionment_2020#3",
+   "pass1": true,
+   "result": 7,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states have the largest apportionment population in the 2020 Census?",
+   "sheet": "Table 1",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\ndf_data = df.iloc[4:54].copy()\ndf_data.columns = ['state', 'pop', 'reps', 'change']\ndf_data['pop'] = pd.to_numeric(df_data['pop'])\ntop3 = df_data.sort_values(by='pop', ascending=False).head(3)['state'].str.strip().tolist()\nresult = top3",
+   "qid": "census_apportionment_2020#4",
+   "pass1": true,
+   "result": [
+    "California",
+    "Texas",
+    "Florida"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "By how much does the 2020 apportionment population of Texas exceed that of Florida?",
+   "sheet": "Table 1",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "7612763",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\ndf_data = df.iloc[4:54].copy()\ndf_data.columns = ['state', 'pop', 'reps', 'change']\ndf_data['pop'] = pd.to_numeric(df_data['pop'])\ntx_pop = df_data.loc[df_data['state'].str.strip() == 'Texas', 'pop'].values[0]\nfl_pop = df_data.loc[df_data['state'].str.strip() == 'Florida', 'pop'].values[0]\nresult = int(tx_pop - fl_pop)",
+   "qid": "census_apportionment_2020#5",
+   "pass1": true,
+   "result": 7612763,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did any state have fewer than 600,000 residents in its 2020 apportionment population?",
+   "sheet": "Table 1",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_apportionment_2020.xlsx', sheet_name='Table 1', header=None)\ndf_data = df.iloc[4:54].copy()\ndf_data.columns = ['state', 'pop', 'reps', 'change']\ndf_data['pop'] = pd.to_numeric(df_data['pop'])\nresult = 'yes' if (df_data['pop'] < 600000).any() else 'no'",
+   "qid": "census_apportionment_2020#6",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

@@ -1,0 +1,50 @@
+{
+ "dataset": "formesign-intake",
+ "kind": "own",
+ "uploads": [
+  {
+   "name": "intake",
+   "columns": [
+    "patient",
+    "clinic",
+    "document",
+    "sent",
+    "status"
+   ],
+   "rows": 12
+  }
+ ],
+ "normalized": [
+  {
+   "name": "intake",
+   "upload": "intake",
+   "columns": [
+    "patient",
+    "clinic",
+    "document",
+    "sent",
+    "status"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [],
+ "entity_columns": [],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 0,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 0,
+  "country": 209,
+  "exchange_rate": 0,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 3.6
+}

@@ -1,0 +1,60 @@
+{
+ "id": "nys_farmers_markets",
+ "file": "nys_farmers_markets.csv",
+ "questions": [
+  {
+   "question": "How many farmers' markets across New York State accept SNAP benefits?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "298",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nresult = int((df['SNAP'] == 'Y').sum())",
+   "qid": "nys_farmers_markets#1"
+  },
+  {
+   "question": "Which county has the highest total number of listed farmers' markets?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Monroe",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nresult = str(df['County'].value_counts().idxmax())",
+   "qid": "nys_farmers_markets#2"
+  },
+  {
+   "question": "Who is listed as the contact person for the Delaware Community Farmers' Market in Albany?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "name",
+   "answer": "Louise McNeilly",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nmatch = df[df['Market Name'] == \"Delaware Community Farmers' Market\"]\nresult = str(match['Contact'].iloc[0])",
+   "qid": "nys_farmers_markets#3"
+  },
+  {
+   "question": "Do all listed farmers' markets in the directory accept FreshConnect checks?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nresult = 'yes' if (df['FCC Accepted'] == 'Y').all() else 'no'",
+   "qid": "nys_farmers_markets#4"
+  },
+  {
+   "question": "Which three cities have the greatest number of farmers' markets listed in the state directory?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Rochester\", \"New York\", \"Brooklyn\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nresult = df['City'].value_counts().head(3).index.tolist()",
+   "qid": "nys_farmers_markets#5"
+  },
+  {
+   "question": "How many more farmers' markets participate in the Farmers' Market Nutrition Program than accept SNAP?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "350",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nfmnp = (df['FMNP'] == 'Y').sum()\nsnap = (df['SNAP'] == 'Y').sum()\nresult = int(fmnp - snap)",
+   "qid": "nys_farmers_markets#6"
+  }
+ ]
+}

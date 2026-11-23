@@ -1,0 +1,178 @@
+[
+ {
+  "candidate_id": "census_state_to_state_migration_2023#2",
+  "id": "FD-0114",
+  "answer_type": "name",
+  "gold": "California",
+  "recomputed": "California",
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "va_geographic_distribution_of_expenditures_fy2023#4",
+  "id": "FD-0143",
+  "answer_type": "name",
+  "gold": "HAWAII",
+  "recomputed": "HAWAII",
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "irs_data_book_gross_collections_by_state_fy2023#2",
+  "id": "FD-0162",
+  "answer_type": "name",
+  "gold": "Texas",
+  "recomputed": "Texas",
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "census_state_to_state_migration_2023#1",
+  "id": "FD-0113",
+  "answer_type": "number",
+  "gold": 93970,
+  "recomputed": 93970,
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "ers_food_availability_red_meat_poultry_fish#2",
+  "id": "FD-0170",
+  "answer_type": "number",
+  "gold": 203.935209,
+  "recomputed": 203.9352090166692,
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "or_weekly_reportable_diseases#6",
+  "id": "FD-0100",
+  "answer_type": "date",
+  "gold": "2025",
+  "recomputed": "2025",
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "cms_marketplace_oep_state_level_2024#8",
+  "id": "FD-0024",
+  "answer_type": "number",
+  "gold": 4682452,
+  "recomputed": 4682452,
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "nchs_hus2022_hypertension#4",
+  "id": "FD-0003",
+  "answer_type": "name",
+  "gold": "20–44",
+  "recomputed": "20–44",
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "census_apportionment_2020#2",
+  "id": "FD-0130",
+  "answer_type": "name",
+  "gold": "Texas",
+  "recomputed": "Texas",
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "seattle_fremont_bridge_bicycle_counter#5",
+  "id": "FD-0207",
+  "answer_type": "number",
+  "gold": 30,
+  "recomputed": 30,
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "cms_marketplace_oep_state_level_2024#6",
+  "id": "FD-0023",
+  "answer_type": "number",
+  "gold": 671527,
+  "recomputed": 671527,
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "fhwa_public_road_length_2023#4",
+  "id": "FD-0140",
+  "answer_type": "number",
+  "gold": 17,
+  "recomputed": 17,
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "eia_epm_average_price_by_sector_and_state#3",
+  "id": "FD-0151",
+  "answer_type": "list",
+  "gold": [
+   "Pacific Noncontiguous",
+   "New England",
+   "Pacific Contiguous"
+  ],
+  "recomputed": [
+   "Pacific Noncontiguous",
+   "New England",
+   "Pacific Contiguous"
+  ],
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "census_school_system_finances_2022#2",
+  "id": "FD-0110",
+  "answer_type": "number",
+  "gold": 13,
+  "recomputed": 13,
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "va_geographic_distribution_of_expenditures_fy2023#5",
+  "id": "FD-0144",
+  "answer_type": "yes_no",
+  "gold": "yes",
+  "recomputed": "yes",
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "hrsa_organ_donation_transplantation#2",
+  "id": "FD-0014",
+  "answer_type": "number",
+  "gold": 2188,
+  "recomputed": 2188,
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "macpac_medicaid_spending_by_state_fy2024#3",
+  "id": "FD-0035",
+  "answer_type": "name",
+  "gold": "Ohio",
+  "recomputed": "Ohio",
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "census_voting_registration_by_state_2020#4",
+  "id": "FD-0124",
+  "answer_type": "number",
+  "gold": 16,
+  "recomputed": 16,
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "hud_pit_veteran_counts_by_state#3",
+  "id": "FD-0179",
+  "answer_type": "list",
+  "gold": [
+   "CA",
+   "WA",
+   "FL"
+  ],
+  "recomputed": [
+   "CA",
+   "WA",
+   "FL"
+  ],
+  "gold_confirmed": true
+ },
+ {
+  "candidate_id": "fhwa_public_road_length_2023#3",
+  "id": "FD-0139",
+  "answer_type": "name",
+  "gold": "New York",
+  "recomputed": "New York",
+  "gold_confirmed": true
+ }
+]

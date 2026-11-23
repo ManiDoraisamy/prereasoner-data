@@ -1,0 +1,12 @@
+{
+ "file": "eia_average_retail_electricity_price_by_state.xlsx",
+ "sheets": [
+  {
+   "name": "Price",
+   "rows": 4607,
+   "cols": 9,
+   "shown_whole": false
+  }
+ ],
+ "chars": 9426
+}

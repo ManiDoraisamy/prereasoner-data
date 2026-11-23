@@ -1,0 +1,60 @@
+{
+ "id": "wadoh_school_immunization",
+ "file": "wadoh_school_immunization.csv",
+ "questions": [
+  {
+   "question": "What is the total number of students enrolled in grades K through 12 across all reporting schools in the state?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "1104370",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nresult = int(df['K_12_enrollment'].sum())",
+   "qid": "wadoh_school_immunization#1"
+  },
+  {
+   "question": "How many schools in the dataset failed to submit an immunization report?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "195",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nresult = int((df['Reported'] == 'N').sum())",
+   "qid": "wadoh_school_immunization#2"
+  },
+  {
+   "question": "Which educational service district serves the highest total number of schools listed in the record?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "PUGET SOUND EDUCATIONAL SERVICE DISTRICT 121",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nresult = df['ESD'].value_counts().idxmax()",
+   "qid": "wadoh_school_immunization#3"
+  },
+  {
+   "question": "What percentage of students were fully immunized at 10th Street School for the 2014-15 school year?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "91.1",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nschool = df[df['School_Name'] == '10TH STREET SCHOOL']\nresult = float(school['Percent_complete_for_all_immunizations'].iloc[0])",
+   "qid": "wadoh_school_immunization#4"
+  },
+  {
+   "question": "Across all reporting schools, were more students exempt from pertussis vaccination than from polio vaccination?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\npertussis = df['Number_exempt_for_pertussis'].sum()\npolio = df['Number_exempt_for_polio'].sum()\nresult = 'yes' if pertussis > polio else 'no'",
+   "qid": "wadoh_school_immunization#5"
+  },
+  {
+   "question": "Which three counties have the greatest number of schools appearing in the registry?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"KING\", \"PIERCE\", \"SNOHOMISH\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nresult = df['County'].value_counts().head(3).index.tolist()",
+   "qid": "wadoh_school_immunization#6"
+  }
+ ]
+}

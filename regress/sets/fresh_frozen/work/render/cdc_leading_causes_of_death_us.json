@@ -1,0 +1,12 @@
+{
+ "file": "cdc_leading_causes_of_death_us.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 10868,
+   "cols": 6,
+   "shown_whole": false
+  }
+ ],
+ "chars": 11122
+}

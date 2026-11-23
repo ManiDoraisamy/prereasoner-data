@@ -1,0 +1,35 @@
+{
+ "id": "nchs_hus_health_care_employment",
+ "answers": [
+  {
+   "id": "nchs_hus_health_care_employment#1",
+   "answer": "37.53",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nrow = df[df[0].astype(str).str.contains('Dental hygienists', case=False, na=False)]\nresult = float(row.iloc[0, 14])"
+  },
+  {
+   "id": "nchs_hus_health_care_employment#2",
+   "answer": "Occupational therapy assistants",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\npta_row = df[df[0].astype(str).str.startswith('Physical therapist assistants')].iloc[0]\nota_row = df[df[0].astype(str).str.startswith('Occupational therapy assistants')].iloc[0]\nresult = ota_row[0] if float(ota_row[14]) > float(pta_row[14]) else pta_row[0]"
+  },
+  {
+   "id": "nchs_hus_health_care_employment#3",
+   "answer": "[\"Occupational therapy assistants\", \"Physical therapist assistants\", \"Massage therapists\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nstart_idx = df[df[0].astype(str).str.contains('Health care support occupations', na=False)].index[0]\nsupport_df = df.iloc[start_idx + 1:50].dropna(subset=[0]).copy()\nsupport_df[14] = pd.to_numeric(support_df[14], errors='coerce')\ntop3 = support_df.sort_values(by=14, ascending=False).head(3)\nresult = top3[0].tolist()"
+  },
+  {
+   "id": "nchs_hus_health_care_employment#4",
+   "answer": "4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nstart_idx = df[df[0].astype(str).str.contains('Health care support occupations', na=False)].index[0]\nsupport_df = df.iloc[start_idx + 1:50].dropna(subset=[0]).copy()\nsupport_df[14] = pd.to_numeric(support_df[14], errors='coerce')\nresult = int((support_df[14] >= 20.0).sum())"
+  },
+  {
+   "id": "nchs_hus_health_care_employment#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nrow = df[df[0].astype(str).str.startswith('Registered nurses')].iloc[0]\nval = float(row[4])\nresult = 'yes' if val > 2500000 else 'no'"
+  },
+  {
+   "id": "nchs_hus_health_care_employment#6",
+   "answer": "7.52",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nrow = df[df[0].astype(str).str.contains('Emergency medical technicians and paramedics', na=False)].iloc[0]\nwage_2000 = float(row[8])\nwage_2020 = float(row[14])\nresult = round(wage_2020 - wage_2000, 2)"
+  }
+ ]
+}

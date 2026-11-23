@@ -1,0 +1,341 @@
+FILE cms_program_stats_deaths_2023.xlsx (Excel workbook) with 8 sheet(s): ["Table of Contents", "MDCR ENROLL AB 33_CPS_02ENR", "MDCR ENROLL AB 34_CPS_02ENR", "MDCR ENROLL AB 35_CPS_02ENR", "MDCR ENROLL AB 36_CPS_02ENR", "MDCR ENROLL AB 37_CPS_02ENR", "MDCR ENROLL AB 38_CPS_02ENR", "MDCR ENROLL AB 39_CPS_02ENR"]
+
+### Sheet "Table of Contents": 9 rows x 2 columns (Excel rows 1..9, columns A..B)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Deaths
+r2: A=Table Name | B=Description
+r3: A=MDCR ENROLL AB 33_CPS_02ENR | B=Medicare Deaths:  Total (Original Medicare and Medicare Advantage and Other Health Plan) B...
+r4: A=MDCR ENROLL AB 34_CPS_02ENR | B=Medicare Deaths:  Total, Original Medicare, and Medicare Advantage and Other Health Plan B...
+r5: A=MDCR ENROLL AB 35_CPS_02ENR | B=Medicare Deaths:  Total (Original Medicare and Medicare Advantage and Other Health Plan) B...
+r6: A=MDCR ENROLL AB 36_CPS_02ENR | B=Medicare Deaths:  Original Medicare Beneficiaries, by Month of Death, Calendar Years 2018-...
+r7: A=MDCR ENROLL AB 37_CPS_02ENR | B=Medicare Deaths:  Original Medicare Beneficiaries, by Area of Residence, Calendar Year 202...
+r8: A=MDCR ENROLL AB 38_CPS_02ENR | B=Medicare Deaths:  Medicare Advantage and Other Health Plan Beneficiaries, by Month of Deat...
+r9: A=MDCR ENROLL AB 39_CPS_02ENR | B=Medicare Deaths:  Medicare Advantage and Other Health Plan Beneficiaries, by Area of Resid...
+
+### Sheet "MDCR ENROLL AB 33_CPS_02ENR": 14 rows x 14 columns (Excel rows 1..14, columns A..N)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Deaths
+r2: A=Total (Original Medicare and Medicare Advantage and Other Health Plan) Beneficiaries, by M...
+r3: A=Year | B=Total | C=January | D=February | E=March | F=April | G=May | H=June | I=July | J=August | K=September | L=October | M=November | N=December
+r4: A=BLANK
+r5: A=2018 | B=2323160 | C=239498 | D=196331 | E=205047 | F=191537 | G=186155 | H=177694 | I=181381 | J=180984 | K=177048 | L=190874 | M=191375 | N=205236
+r6: A=2019 | B=2337988 | C=213519 | D=192531 | E=210319 | F=193424 | G=193648 | H=183296 | I=185481 | J=184271 | K=180947 | L=194467 | M=195834 | N=210251
+r7: A=2020 | B=2750553 | C=218061 | D=200966 | E=220966 | F=263258 | G=224985 | H=198268 | I=221054 | J=221802 | K=206558 | L=222112 | M=249038 | N=303485
+r8: A=2021 | B=2750141 | C=307319 | D=228941 | E=216513 | F=203532 | G=203719 | H=192791 | I=202717 | J=234755 | K=239791 | L=234941 | M=230140 | N=254982
+r9: A=2022 | B=2656380 | C=301238 | D=237442 | E=217231 | F=198600 | G=204652 | H=198794 | I=208579 | J=208814 | K=202008 | L=215100 | M=217979 | N=245943
+r10: A=2023 | B=2517604 | C=237981 | D=203845 | E=219553 | F=204018 | G=203454 | H=194443 | I=197503 | J=201433 | K=198588 | L=211072 | M=211689 | N=234025
+r11: (blank)
+r12: A=NOTE:  The 'Other Health Plans' include Medicare-Medicaid plans, Medicare cost plans, and ...
+r13: A=BLANK
+r14: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR ENROLL AB 34_CPS_02ENR": 40 rows x 4 columns (Excel rows 1..40, columns A..D)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Deaths
+r2: A=Total, Original Medicare, and Medicare Advantage and Other Health Plan Beneficiaries,
+r3: A=by Demographic Characteristics, Calendar Year 2023
+r4: A=Demographic Characteristic | B=Total | C=Original Medicare | D=Medicare Advantage and Other Health Plans
+r5: A=BLANK
+r6: A=Total | B=2517604 | C=1323493 | D=1194111
+r7: A=BLANK
+r8: A=Age
+r9: A=Under 65 Years | B=185602 | C=87236 | D=98366
+r10: A=65 Years and Over | B=2332002 | C=1236257 | D=1095745
+r11: A=BLANK
+r12: A=Under 18 Years | B=18 | C=18 | D=0
+r13: A=18-24 Years | B=501 | C=358 | D=143
+r14: A=25-34 Years | B=4313 | C=2687 | D=1626
+r15: A=35-44 Years | B=13518 | C=7437 | D=6081
+r16: A=45-54 Years | B=36411 | C=18083 | D=18328
+r17: A=55-64 Years | B=130841 | C=58653 | D=72188
+r18: A=65-74 Years | B=616572 | C=308239 | D=308333
+r19: A=75-84 Years | B=811601 | C=418518 | D=393083
+r20: A=85-94 Years | B=716974 | C=396921 | D=320053
+r21: A=95 Years and Over | B=186855 | C=112579 | D=74276
+r22: A=BLANK
+r23: A=Sex
+r24: A=Male | B=1242613 | C=655907 | D=586706
+r25: A=Female | B=1274991 | C=667586 | D=607405
+r26: A=BLANK
+r27: A=Race
+r28: A=Non-Hispanic White | B=1931778 | C=1067220 | D=864558
+r29: A=Black (or African-American) | B=263237 | C=107733 | D=155504
+r30: A=Asian/Pacific Islander | B=65613 | C=35727 | D=29886
+r31: A=Hispanic | B=202045 | C=79417 | D=122628
+r32: A=American Indian/Alaska Native | B=11954 | C=8205 | D=3749
+r33: A=Other | B=18443 | C=10185 | D=8258
+r34: A=Unknown | B=24534 | C=15006 | D=9528
+r35: (blank)
+r36: A=NOTE:  The 'Other Health Plans' include Medicare-Medicaid plans, Medicare cost plans, and ...
+r37: A=the Elderly (PACE) plans.
+r38: A=BLANK
+r39: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+r40: A=Data Warehouse.
+
+### Sheet "MDCR ENROLL AB 35_CPS_02ENR": 76 rows x 4 columns (Excel rows 1..76, columns A..D)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Deaths
+r2: A=Total (Original Medicare and Medicare Advantage and Other Health Plan) Beneficiaries, by A...
+r3: A=Calendar Year 2023
+r4: A=Area of Residence | B=Total | C=Aged | D=Disabled
+r5: A=BLANK
+r6: A=All Areas | B=2517604 | C=2332002 | D=185602
+r7: A=United States | B=2471612 | C=2288106 | D=183506
+r8: A=BLANK
+r9: A=Alabama | B=46845 | C=41845 | D=5000
+r10: A=Alaska | B=3832 | C=3546 | D=286
+r11: A=Arizona | B=54247 | C=50834 | D=3413
+r12: A=Arkansas | B=28711 | C=25624 | D=3087
+r13: A=California | B=234737 | C=221834 | D=12903
+r14: A=Colorado | B=34896 | C=32834 | D=2062
+r15: A=Connecticut | B=26387 | C=24827 | D=1560
+r16: A=Delaware | B=8555 | C=7941 | D=614
+r17: A=District of Columbia | B=3613 | C=3298 | D=315
+r18: A=Florida | B=185863 | C=174168 | D=11695
+r19: A=Georgia | B=74149 | C=67335 | D=6814
+r20: A=Hawaii | B=10482 | C=9923 | D=559
+r21: A=Idaho | B=13460 | C=12572 | D=888
+r22: A=Illinois | B=90633 | C=84513 | D=6120
+r23: A=Indiana | B=55579 | C=50692 | D=4887
+r24: A=Iowa | B=27209 | C=25523 | D=1686
+r25: A=Kansas | B=23434 | C=21752 | D=1682
+r26: A=Kentucky | B=41902 | C=37467 | D=4435
+r27: A=Louisiana | B=37541 | C=33675 | D=3866
+r28: A=Maine | B=14097 | C=13035 | D=1062
+r29: A=Maryland | B=41574 | C=38659 | D=2915
+r30: A=Massachusetts | B=51094 | C=47719 | D=3375
+r31: A=Michigan | B=84943 | C=78190 | D=6753
+r32: A=Minnesota | B=40637 | C=38174 | D=2463
+r33: A=Mississippi | B=27273 | C=24357 | D=2916
+r34: A=Missouri | B=53352 | C=48629 | D=4723
+r35: A=Montana | B=9185 | C=8585 | D=600
+r36: A=Nebraska | B=15169 | C=14177 | D=992
+r37: A=Nevada | B=22163 | C=20684 | D=1479
+r38: A=New Hampshire | B=12020 | C=11171 | D=849
+r39: A=New Jersey | B=61790 | C=58069 | D=3721
+r40: A=New Mexico | B=16805 | C=15419 | D=1386
+r41: A=New York | B=133707 | C=124915 | D=8792
+r42: A=North Carolina | B=85518 | C=78095 | D=7423
+r43: A=North Dakota | B=5462 | C=5087 | D=375
+r44: A=Ohio | B=101637 | C=93577 | D=8060
+r45: A=Oklahoma | B=34423 | C=31193 | D=3230
+r46: A=Oregon | B=34559 | C=32412 | D=2147
+r47: A=Pennsylvania | B=114683 | C=106821 | D=7862
+r48: A=Rhode Island | B=8759 | C=8153 | D=606
+r49: A=South Carolina | B=45943 | C=41825 | D=4118
+r50: A=South Dakota | B=7035 | C=6624 | D=411
+r51: A=Tennessee | B=62132 | C=56074 | D=6058
+r52: A=Texas | B=175657 | C=161730 | D=13927
+r53: A=Utah | B=16433 | C=15354 | D=1079
+r54: A=Vermont | B=5691 | C=5293 | D=398
+r55: A=Virginia | B=63135 | C=58366 | D=4769
+r56: A=Washington | B=52597 | C=49041 | D=3556
+r57: A=West Virginia | B=19803 | C=17838 | D=1965
+r58: A=Wisconsin | B=47750 | C=44431 | D=3319
+r59: A=Wyoming | B=4511 | C=4206 | D=305
+r60: A=BLANK
+r61: A=Territories, Possessions, and Other
+r62: A=Puerto Rico | B=27230 | C=25504 | D=1726
+r63: A=Virgin Islands | B=708 | C=670 | D=38
+r64: A=American Samoa | B=232 | C=199 | D=33
+r65: A=Guam | B=720 | C=639 | D=81
+r66: A=Northern Mariana Islands | B=125 | C=105 | D=20
+r67: A=Foreign Countries and Other Outlying Areas | B=16969 | C=16772 | D=197
+r68: A=Unknown | B=* | C=* | D=*
+r69: (blank)
+r70: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r71: (blank)
+r72: A=NOTE:  The 'Other Health Plans' include Medicare-Medicaid plans, Medicare cost plans, and ...
+r73: A=plans.
+r74: A=BLANK
+r75: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+r76: A=Data Warehouse.
+
+### Sheet "MDCR ENROLL AB 36_CPS_02ENR": 12 rows x 14 columns (Excel rows 1..12, columns A..N)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Deaths
+r2: A=Original Medicare Beneficiaries, by Month of Death, Calendar Years 2018-2023
+r3: A=Year | B=Total | C=January | D=February | E=March | F=April | G=May | H=June | I=July | J=August | K=September | L=October | M=November | N=December
+r4: A=BLANK
+r5: A=2018 | B=1538103 | C=160276 | D=130948 | E=136001 | F=127001 | G=123296 | H=117546 | I=119882 | J=119323 | K=116891 | L=126049 | M=126075 | N=134815
+r6: A=2019 | B=1505119 | C=138504 | D=124881 | E=136599 | F=125485 | G=124738 | H=117859 | I=119205 | J=118335 | K=115827 | L=124679 | M=124951 | N=134056
+r7: A=2020 | B=1695277 | C=136332 | D=125685 | E=137622 | F=163352 | G=140041 | H=122574 | I=134677 | J=135721 | K=126759 | L=136657 | M=152679 | N=183178
+r8: A=2021 | B=1585841 | C=180346 | D=133282 | E=126006 | F=117899 | G=117916 | H=111634 | I=117390 | J=133868 | K=136285 | L=134196 | M=132027 | N=144992
+r9: A=2022 | B=1463238 | C=166613 | D=131789 | E=120371 | F=110072 | G=113275 | H=110157 | I=114930 | J=114825 | K=110704 | L=117881 | M=118872 | N=133749
+r10: A=2023 | B=1323493 | C=126751 | D=108521 | E=116761 | F=107405 | G=107382 | H=101784 | I=103735 | J=105209 | K=104114 | L=110053 | M=110337 | N=121441
+r11: A=BLANK
+r12: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR ENROLL AB 37_CPS_02ENR": 74 rows x 4 columns (Excel rows 1..74, columns A..D)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Deaths
+r2: A=Original Medicare Beneficiaries, by Area of Residence
+r3: A=Calendar Year 2023
+r4: A=Area of Residence | B=Total | C=Aged | D=Disabled
+r5: A=BLANK
+r6: A=All Areas | B=1323493 | C=1236257 | D=87236
+r7: A=United States | B=1300828 | C=1214322 | D=86506
+r8: A=BLANK
+r9: A=Alabama | B=21650 | C=19917 | D=1733
+r10: A=Alaska | B=3708 | C=† | D=†
+r11: A=Arizona | B=25189 | C=24008 | D=1181
+r12: A=Arkansas | B=17008 | C=15734 | D=1274
+r13: A=California | B=120310 | C=112068 | D=8242
+r14: A=Colorado | B=16630 | C=15596 | D=1034
+r15: A=Connecticut | B=13656 | C=12850 | D=806
+r16: A=Delaware | B=6010 | C=5652 | D=358
+r17: A=District of Columbia | B=2426 | C=2228 | D=198
+r18: A=Florida | B=94181 | C=89365 | D=4816
+r19: A=Georgia | B=36468 | C=33806 | D=2662
+r20: A=Hawaii | B=4314 | C=4101 | D=213
+r21: A=Idaho | B=7343 | C=6879 | D=464
+r22: A=Illinois | B=54646 | C=51197 | D=3449
+r23: A=Indiana | B=29407 | C=27256 | D=2151
+r24: A=Iowa | B=17467 | C=16619 | D=848
+r25: A=Kansas | B=16052 | C=15089 | D=963
+r26: A=Kentucky | B=20957 | C=19247 | D=1710
+r27: A=Louisiana | B=18555 | C=16990 | D=1565
+r28: A=Maine | B=7435 | C=6914 | D=521
+r29: A=Maryland | B=32259 | C=30060 | D=2199
+r30: A=Massachusetts | B=34549 | C=32406 | D=2143
+r31: A=Michigan | B=36330 | C=33257 | D=3073
+r32: A=Minnesota | B=17714 | C=16042 | D=1672
+r33: A=Mississippi | B=17669 | C=16272 | D=1397
+r34: A=Missouri | B=26756 | C=24693 | D=2063
+r35: A=Montana | B=6543 | C=6142 | D=401
+r36: A=Nebraska | B=10185 | C=9670 | D=515
+r37: A=Nevada | B=11144 | C=10377 | D=767
+r38: A=New Hampshire | B=8355 | C=7806 | D=549
+r39: A=New Jersey | B=39335 | C=37139 | D=2196
+r40: A=New Mexico | B=8758 | C=8132 | D=626
+r41: A=New York | B=73822 | C=69140 | D=4682
+r42: A=North Carolina | B=40983 | C=38172 | D=2811
+r43: A=North Dakota | B=3850 | C=3590 | D=260
+r44: A=Ohio | B=43416 | C=40502 | D=2914
+r45: A=Oklahoma | B=21603 | C=19877 | D=1726
+r46: A=Oregon | B=15755 | C=14595 | D=1160
+r47: A=Pennsylvania | B=52192 | C=48779 | D=3413
+r48: A=Rhode Island | B=3629 | C=3399 | D=230
+r49: A=South Carolina | B=25686 | C=24057 | D=1629
+r50: A=South Dakota | B=4602 | C=4309 | D=293
+r51: A=Tennessee | B=29598 | C=27524 | D=2074
+r52: A=Texas | B=85812 | C=79990 | D=5822
+r53: A=Utah | B=8678 | C=8186 | D=492
+r54: A=Vermont | B=4251 | C=3945 | D=306
+r55: A=Virginia | B=39211 | C=37203 | D=2008
+r56: A=Washington | B=29760 | C=27927 | D=1833
+r57: A=West Virginia | B=9579 | C=8720 | D=859
+r58: A=Wisconsin | B=21470 | C=19792 | D=1678
+r59: A=Wyoming | B=3922 | C=† | D=†
+r60: A=BLANK
+r61: A=Territories, Possessions, and Other
+r62: A=Puerto Rico | B=4338 | C=3971 | D=367
+r63: A=U.S. Territories¹ | B=1542 | C=† | D=†
+r64: A=Foreign Countries and Other Outlying Areas | B=16781 | C=† | D=†
+r65: A=Unknown | B=* | C=* | D=†
+r66: (blank)
+r67: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r68: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r69: (blank)
+r70: A=¹Includes Virgin Islands, American Samoa, Guam, and Northern Mariana Islands.  The U.S. Te...
+r71: A=in this table to protect the privacy of beneficiaries.
+r72: A=BLANK
+r73: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+r74: A=Data Warehouse.
+
+### Sheet "MDCR ENROLL AB 38_CPS_02ENR": 14 rows x 14 columns (Excel rows 1..14, columns A..N)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Deaths
+r2: A=Medicare Advantage and Other Health Plan Beneficiaries, by Month of Death, Calendar Years ...
+r3: A=Year | B=Total | C=January | D=February | E=March | F=April | G=May | H=June | I=July | J=August | K=September | L=October | M=November | N=December
+r4: A=BLANK
+r5: A=2018 | B=785057 | C=79222 | D=65383 | E=69046 | F=64536 | G=62859 | H=60148 | I=61499 | J=61661 | K=60157 | L=64825 | M=65300 | N=70421
+r6: A=2019 | B=832869 | C=75015 | D=67650 | E=73720 | F=67939 | G=68910 | H=65437 | I=66276 | J=65936 | K=65120 | L=69788 | M=70883 | N=76195
+r7: A=2020 | B=1055276 | C=81729 | D=75281 | E=83344 | F=99906 | G=84944 | H=75694 | I=86377 | J=86081 | K=79799 | L=85455 | M=96359 | N=120307
+r8: A=2021 | B=1164300 | C=126973 | D=95659 | E=90507 | F=85633 | G=85803 | H=81157 | I=85327 | J=100887 | K=103506 | L=100745 | M=98113 | N=109990
+r9: A=2022 | B=1193142 | C=134625 | D=105653 | E=96860 | F=88528 | G=91377 | H=88637 | I=93649 | J=93989 | K=91304 | L=97219 | M=99107 | N=112194
+r10: A=2023 | B=1194111 | C=111230 | D=95324 | E=102792 | F=96613 | G=96072 | H=92659 | I=93768 | J=96224 | K=94474 | L=101019 | M=101352 | N=112584
+r11: (blank)
+r12: A=NOTE:  The 'Other Health Plans' include Medicare-Medicaid plans, Medicare cost plans, and ...
+r13: A=BLANK
+r14: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR ENROLL AB 39_CPS_02ENR": 77 rows x 4 columns (Excel rows 1..77, columns A..D)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Deaths
+r2: A=Medicare Advantage and Other Health Plan Beneficiaries, by Area of Residence
+r3: A=Calendar Year 2023
+r4: A=Area of Residence | B=Total | C=Aged | D=Disabled
+r5: A=BLANK
+r6: A=All Areas | B=1194111 | C=1095745 | D=98366
+r7: A=United States | B=1170784 | C=1073784 | D=97000
+r8: A=BLANK
+r9: A=Alabama | B=25195 | C=21928 | D=3267
+r10: A=Alaska | B=124 | C=† | D=*
+r11: A=Arizona | B=29058 | C=26826 | D=2232
+r12: A=Arkansas | B=11703 | C=9890 | D=1813
+r13: A=California | B=114427 | C=109766 | D=4661
+r14: A=Colorado | B=18266 | C=17238 | D=1028
+r15: A=Connecticut | B=12731 | C=11977 | D=754
+r16: A=Delaware | B=2545 | C=2289 | D=256
+r17: A=District of Columbia | B=1187 | C=1070 | D=117
+r18: A=Florida | B=91682 | C=84803 | D=6879
+r19: A=Georgia | B=37681 | C=33529 | D=4152
+r20: A=Hawaii | B=6168 | C=5822 | D=346
+r21: A=Idaho | B=6117 | C=5693 | D=424
+r22: A=Illinois | B=35987 | C=33316 | D=2671
+r23: A=Indiana | B=26172 | C=23436 | D=2736
+r24: A=Iowa | B=9742 | C=8904 | D=838
+r25: A=Kansas | B=7382 | C=6663 | D=719
+r26: A=Kentucky | B=20945 | C=18220 | D=2725
+r27: A=Louisiana | B=18986 | C=16685 | D=2301
+r28: A=Maine | B=6662 | C=6121 | D=541
+r29: A=Maryland | B=9315 | C=8599 | D=716
+r30: A=Massachusetts | B=16545 | C=15313 | D=1232
+r31: A=Michigan | B=48613 | C=44933 | D=3680
+r32: A=Minnesota | B=22923 | C=22132 | D=791
+r33: A=Mississippi | B=9604 | C=8085 | D=1519
+r34: A=Missouri | B=26596 | C=23936 | D=2660
+r35: A=Montana | B=2642 | C=2443 | D=199
+r36: A=Nebraska | B=4984 | C=4507 | D=477
+r37: A=Nevada | B=11019 | C=10307 | D=712
+r38: A=New Hampshire | B=3665 | C=3365 | D=300
+r39: A=New Jersey | B=22455 | C=20930 | D=1525
+r40: A=New Mexico | B=8047 | C=7287 | D=760
+r41: A=New York | B=59885 | C=55775 | D=4110
+r42: A=North Carolina | B=44535 | C=39923 | D=4612
+r43: A=North Dakota | B=1612 | C=1497 | D=115
+r44: A=Ohio | B=58221 | C=53075 | D=5146
+r45: A=Oklahoma | B=12820 | C=11316 | D=1504
+r46: A=Oregon | B=18804 | C=17817 | D=987
+r47: A=Pennsylvania | B=62491 | C=58042 | D=4449
+r48: A=Rhode Island | B=5130 | C=4754 | D=376
+r49: A=South Carolina | B=20257 | C=17768 | D=2489
+r50: A=South Dakota | B=2433 | C=2315 | D=118
+r51: A=Tennessee | B=32534 | C=28550 | D=3984
+r52: A=Texas | B=89845 | C=81740 | D=8105
+r53: A=Utah | B=7755 | C=7168 | D=587
+r54: A=Vermont | B=1440 | C=1348 | D=92
+r55: A=Virginia | B=23924 | C=21163 | D=2761
+r56: A=Washington | B=22837 | C=21114 | D=1723
+r57: A=West Virginia | B=10224 | C=9118 | D=1106
+r58: A=Wisconsin | B=26280 | C=24639 | D=1641
+r59: A=Wyoming | B=589 | C=† | D=†
+r60: A=BLANK
+r61: A=Territories, Possessions, and Other
+r62: A=Puerto Rico | B=22892 | C=21533 | D=1359
+r63: A=U.S. Territories¹ | B=243 | C=† | D=*
+r64: A=Foreign Countries and Other Outlying Areas | B=188 | C=† | D=*
+r65: A=Unknown | B=* | C=* | D=*
+r66: (blank)
+r67: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r68: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r69: (blank)
+r70: A=¹Includes Virgin Islands, American Samoa, Guam, and Northern Mariana Islands.  The U.S. Te...
+r71: A=in this table to protect the privacy of beneficiaries.
+r72: (blank)
+r73: A=NOTE:  The 'Other Health Plans' include Medicare-Medicaid plans, Medicare cost plans, and ...
+r74: A=for the Elderly (PACE) plans.
+r75: A=BLANK
+r76: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+r77: A=Data Warehouse.

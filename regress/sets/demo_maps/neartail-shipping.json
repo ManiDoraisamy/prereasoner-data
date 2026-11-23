@@ -1,0 +1,79 @@
+{
+ "dataset": "neartail-shipping",
+ "kind": "world",
+ "uploads": [
+  {
+   "name": "deliveries",
+   "columns": [
+    "delivery ID",
+    "customer",
+    "city",
+    "weight kg",
+    "fee"
+   ],
+   "rows": 10
+  }
+ ],
+ "normalized": [
+  {
+   "name": "deliveries",
+   "upload": "deliveries",
+   "columns": [
+    "delivery ID",
+    "customer",
+    "city",
+    "weight kg",
+    "fee"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [
+  {
+   "upload": "deliveries",
+   "table": "deliveries",
+   "column": "city",
+   "column_index": 2,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "deliveries connected to knowledgebase",
+   "bridged": true,
+   "cells": 10,
+   "cells_matched": 10
+  }
+ ],
+ "entity_columns": [
+  {
+   "upload": "deliveries",
+   "table": "deliveries",
+   "column": "city",
+   "column_index": 2,
+   "label": "musical group",
+   "type_qid": "Q215380",
+   "cells": 10,
+   "cells_matched_exactly": 6,
+   "routed_as_place": true,
+   "bridged": false,
+   "cells_matched": 0,
+   "has_country": false
+  }
+ ],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 43,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 43,
+  "country": 209,
+  "exchange_rate": 0,
+  "musical group": 6,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 4.8
+}

@@ -1,0 +1,35 @@
+{
+ "id": "fhwa_motor_fuel_use_2022",
+ "answers": [
+  {
+   "id": "fhwa_motor_fuel_use_2022#1",
+   "answer": "6096520",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\nstate_rows = df[df[0].astype(str).str.strip().str.startswith('Texas')]\n# Special fuel private and commercial highway use is in column M (index 12)\nresult = int(state_rows.iloc[0, 12])"
+  },
+  {
+   "id": "fhwa_motor_fuel_use_2022#2",
+   "answer": "[\"Texas\", \"California\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\n# State rows are rows 8 to 58 (Excel rows 9 to 59)\ndata = df.iloc[8:59].copy()\n# Total motor-fuel consumption across all categories is column R (index 17)\ndata[17] = pd.to_numeric(data[17])\ntop3 = data.sort_values(by=17, ascending=False).head(3)\nresult = top3[0].astype(str).str.replace(r'\\s*\\(\\d+\\)', '', regex=True).str.strip().tolist()"
+  },
+  {
+   "id": "fhwa_motor_fuel_use_2022#3",
+   "answer": "Florida",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\ndata = df.iloc[8:59].copy()\n# Highway use combined gasoline and gasohol total is column F (index 5)\nny_val = pd.to_numeric(data[data[0].astype(str).str.strip() == 'New York'].iloc[0, 5])\nfl_val = pd.to_numeric(data[data[0].astype(str).str.strip() == 'Florida'].iloc[0, 5])\nresult = 'Florida' if fl_val > ny_val else 'New York'"
+  },
+  {
+   "id": "fhwa_motor_fuel_use_2022#4",
+   "answer": "14",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\ndata = df.iloc[8:59].copy()\n# Percent change from prior year in total highway use is column O (index 14)\ngrowth = pd.to_numeric(data[14], errors='coerce')\nresult = int((growth > 0).sum())"
+  },
+  {
+   "id": "fhwa_motor_fuel_use_2022#5",
+   "answer": "1055421",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\ndata = df.iloc[8:59].copy()\n# Losses allowed for evaporation/handling is column K (index 10)\nlosses = pd.to_numeric(data[10], errors='coerce')\n# Total nonhighway use of gasoline and gasohol is column I (index 8)\nnonhighway = pd.to_numeric(data[8], errors='coerce')\nresult = int(nonhighway[losses < 0].sum())"
+  },
+  {
+   "id": "fhwa_motor_fuel_use_2022#6",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\ndata = df.iloc[8:59].copy()\n# Column R (index 17) is SUMMARY OF TOTAL USE - TOTAL\ntx_total = pd.to_numeric(data[data[0].astype(str).str.strip() == 'Texas'].iloc[0, 17])\nca_total = pd.to_numeric(data[data[0].astype(str).str.strip() == 'California'].iloc[0, 17])\nresult = 'yes' if tx_total > ca_total else 'no'"
+  }
+ ]
+}

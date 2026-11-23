@@ -1,0 +1,35 @@
+{
+ "id": "eia_epm_average_price_by_sector_and_state",
+ "answers": [
+  {
+   "id": "eia_epm_average_price_by_sector_and_state#1",
+   "answer": "47.18",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nhawaii_row = df[df[0].astype(str).str.strip().str.lower() == 'hawaii'].index[0]\nresult = float(df.iloc[hawaii_row, 1])"
+  },
+  {
+   "id": "eia_epm_average_price_by_sector_and_state#2",
+   "answer": "Maine",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nne_states = ['Connecticut', 'Maine', 'Massachusetts', 'New Hampshire', 'Rhode Island', 'Vermont']\nsub_df = df[df[0].astype(str).str.strip().isin(ne_states)].copy()\nsub_df[1] = pd.to_numeric(sub_df[1])\nresult = str(sub_df.loc[sub_df[1].idxmax(), 0]).strip()"
+  },
+  {
+   "id": "eia_epm_average_price_by_sector_and_state#3",
+   "answer": "[\"Pacific Noncontiguous\", \"New England\", \"Pacific Contiguous\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\ndivisions = [\n    'New England', 'Middle Atlantic', 'East North Central', 'West North Central',\n    'South Atlantic', 'East South Central', 'West South Central', 'Mountain',\n    'Pacific Contiguous', 'Pacific Noncontiguous'\n]\nsub_df = df[df[0].astype(str).str.strip().isin(divisions)].copy()\nsub_df[9] = pd.to_numeric(sub_df[9])\ntop3 = sub_df.sort_values(by=9, ascending=False).head(3)[0].tolist()\nresult = [str(x).strip() for x in top3]"
+  },
+  {
+   "id": "eia_epm_average_price_by_sector_and_state#4",
+   "answer": "3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nenc_states = ['Illinois', 'Indiana', 'Michigan', 'Ohio', 'Wisconsin']\nsub_df = df[df[0].astype(str).str.strip().isin(enc_states)].copy()\nsub_df[5] = pd.to_numeric(sub_df[5])\nresult = int((sub_df[5] < 10.0).sum())"
+  },
+  {
+   "id": "eia_epm_average_price_by_sector_and_state#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nrow = df[df[0].astype(str).str.strip().str.lower() == 'u.s. total'].index[0]\np_2026 = float(df.iloc[row, 9])\np_2025 = float(df.iloc[row, 10])\nresult = 'yes' if p_2026 > p_2025 else 'no'"
+  },
+  {
+   "id": "eia_epm_average_price_by_sector_and_state#6",
+   "answer": "7.33",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_epm_average_price_by_sector_and_state.xlsx', sheet_name='Table_5_06_A', header=None)\nwsc_states = ['Arkansas', 'Louisiana', 'Oklahoma', 'Texas']\nsub_df = df[df[0].astype(str).str.strip().isin(wsc_states)].copy()\nsub_df[5] = pd.to_numeric(sub_df[5])\nresult = round(float(sub_df[5].mean()), 2)"
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "file": "nchs_nvsr_california_life_table.xlsx",
+ "sheets": [
+  {
+   "name": "CA total population",
+   "rows": 105,
+   "cols": 7,
+   "shown_whole": true
+  }
+ ],
+ "chars": 11730
+}

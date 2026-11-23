@@ -1,0 +1,35 @@
+{
+ "id": "ca_hcai_case_mix_index",
+ "answers": [
+  {
+   "id": "ca_hcai_case_mix_index#1",
+   "answer": "1.540923562",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nhospital_row = df[df['Hospital'].astype(str).str.strip().str.upper() == 'HIGHLAND HOSPITAL']\nresult = float(hospital_row['FY2025'].values[0])"
+  },
+  {
+   "id": "ca_hcai_case_mix_index#2",
+   "answer": "WOODLAND MEMORIAL HOSPITAL",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\ntargets = ['WOODLAND MEMORIAL HOSPITAL', 'SUTTER DAVIS HOSPITAL']\nsubset = df[df['Hospital'].isin(targets)]\nresult = subset.loc[subset['FY2025'].idxmax()]['Hospital']"
+  },
+  {
+   "id": "ca_hcai_case_mix_index#3",
+   "answer": "28",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nresult = int((df['County'].astype(str).str.strip().str.upper() == 'ALAMEDA').sum())"
+  },
+  {
+   "id": "ca_hcai_case_mix_index#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nval = df[df['Hospital'].astype(str).str.strip().str.upper() == 'ADVENTIST HEALTH SIMI VALLEY']['FY2024'].values[0]\nresult = 'yes' if float(val) > 1.50 else 'no'"
+  },
+  {
+   "id": "ca_hcai_case_mix_index#5",
+   "answer": "450",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nresult = int(df['FY2025'].dropna().count())"
+  },
+  {
+   "id": "ca_hcai_case_mix_index#6",
+   "answer": "LOS ANGELES",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nresult = df['County'].value_counts().idxmax()"
+  }
+ ]
+}

@@ -1,0 +1,35 @@
+{
+ "id": "ca_hcai_ed_volume_capacity",
+ "answers": [
+  {
+   "id": "ca_hcai_ed_volume_capacity#1",
+   "answer": "1392",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nfiltered = df[(df['year'] == 2022) & (df['FacilityName2'].str.contains('Sutter Amador Hospital', case=False, na=False)) & (df['Category'] == 'Active COVID-19')]\nresult = int(filtered['EDDXCount'].iloc[0])"
+  },
+  {
+   "id": "ca_hcai_ed_volume_capacity#2",
+   "answer": "John Muir Medical Center \u2013 Concord Campus",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nfacilities = ['John Muir Medical Center \u2013 Walnut Creek Campus', 'John Muir Medical Center \u2013 Concord Campus']\nfiltered = df[(df['year'] == 2022) & (df['Category'] == 'Active COVID-19') & (df['FacilityName2'].isin(facilities))]\nresult = filtered.sort_values(by='EDDXCount', ascending=False)['FacilityName2'].iloc[0]"
+  },
+  {
+   "id": "ca_hcai_ed_volume_capacity#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nfiltered = df[(df['year'] == 2022) & (df['FacilityName2'].str.contains(\"Valley Children's Hospital\", case=False, na=False))]\nval = filtered['PrimaryCareShortageArea'].dropna().iloc[0]\nresult = 'yes' if str(val).strip().lower() == 'yes' else 'no'"
+  },
+  {
+   "id": "ca_hcai_ed_volume_capacity#4",
+   "answer": "2022",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nresult = str(int(df['year'].value_counts().idxmax()))"
+  },
+  {
+   "id": "ca_hcai_ed_volume_capacity#5",
+   "answer": "386",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nresult = int((df['UrbanRuralDesi'] == 'Frontier').sum())"
+  },
+  {
+   "id": "ca_hcai_ed_volume_capacity#6",
+   "answer": "[\"Nonprofit\", \"Investor Owned\", \"Government\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nresult = df['HospitalOwnership'].dropna().unique().tolist()"
+  }
+ ]
+}

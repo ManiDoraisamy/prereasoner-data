@@ -1,0 +1,12 @@
+{
+ "file": "cdc_drug_poisoning_mortality_state.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 2862,
+   "cols": 19,
+   "shown_whole": false
+  }
+ ],
+ "chars": 22778
+}

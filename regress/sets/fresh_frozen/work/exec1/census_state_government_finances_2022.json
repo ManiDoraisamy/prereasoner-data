@@ -1,0 +1,88 @@
+{
+ "id": "census_state_government_finances_2022",
+ "file": "census_state_government_finances_2022.xlsx",
+ "questions": [
+  {
+   "question": "How much did California collect in motor fuel sales taxes in fiscal year 2022, in thousands of dollars?",
+   "sheet": "2022 ASFIN",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "8638712",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\u00a0', ' ').str.strip()\nca_col = header_row[header_row == 'California'].index[0]\nitem_col = df[0].astype(str).str.replace('\\u00a0', ' ').str.strip()\nrow_idx = df[item_col.str.contains('Motor Fuels Sales Tax', case=False, na=False)].index[0]\nresult = int(df.iat[row_idx, ca_col])",
+   "qid": "census_state_government_finances_2022#1",
+   "pass1": true,
+   "result": 8638712,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did Texas collect more in total tax revenue than New York in fiscal year 2022?",
+   "sheet": "2022 ASFIN",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\u00a0', ' ').str.strip()\ntx_col = header_row[header_row == 'Texas'].index[0]\nny_col = header_row[header_row == 'New York'].index[0]\nitem_col = df[0].astype(str).str.replace('\\u00a0', ' ').str.strip()\nrow_idx = df[item_col == 'Total Taxes'].index[0]\ntx_val = float(df.iat[row_idx, tx_col])\nny_val = float(df.iat[row_idx, ny_col])\nresult = 'yes' if tx_val > ny_val else 'no'",
+   "qid": "census_state_government_finances_2022#2",
+   "pass1": true,
+   "result": "no",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states spent the most on hospitals in fiscal year 2022?",
+   "sheet": "2022 ASFIN",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Texas\", \"Pennsylvania\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\u00a0', ' ').str.strip()\nitem_col = df[0].astype(str).str.replace('\\u00a0', ' ').str.strip()\nrow_idx = df[item_col == 'Hospitals'].index[0]\nstate_names = header_row.iloc[2:]\nvalues = pd.to_numeric(df.iloc[row_idx, 2:].replace('X', None), errors='coerce')\ns = pd.Series(values.values, index=state_names.values).dropna()\nresult = list(s.nlargest(3).index)",
+   "qid": "census_state_government_finances_2022#3",
+   "pass1": true,
+   "result": [
+    "California",
+    "Texas",
+    "Pennsylvania"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Florida and Georgia, which state spent more on highways in 2022?",
+   "sheet": "2022 ASFIN",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Florida",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\u00a0', ' ').str.strip()\nfl_col = header_row[header_row == 'Florida'].index[0]\nga_col = header_row[header_row == 'Georgia'].index[0]\nitem_col = df[0].astype(str).str.replace('\\u00a0', ' ').str.strip()\nrow_idx = df[item_col == 'Highways'].index[0]\nfl_val = float(df.iat[row_idx, fl_col])\nga_val = float(df.iat[row_idx, ga_col])\nresult = 'Florida' if fl_val > ga_val else 'Georgia'",
+   "qid": "census_state_government_finances_2022#4",
+   "pass1": true,
+   "result": "Florida",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states had education expenditures exceeding 30,000,000 thousand dollars in fiscal year 2022?",
+   "sheet": "2022 ASFIN",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nitem_col = df[0].astype(str).str.replace('\\u00a0', ' ').str.strip()\nrow_idx = df[item_col == 'Education'].index[0]\nstate_values = pd.to_numeric(df.iloc[row_idx, 2:], errors='coerce')\nresult = int((state_values > 30000000).sum())",
+   "qid": "census_state_government_finances_2022#5",
+   "pass1": true,
+   "result": 8,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the combined severance tax revenue collected by Texas, New Mexico, and Alaska in fiscal year 2022, in thousands of dollars?",
+   "sheet": "2022 ASFIN",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "17682041",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_government_finances_2022.xlsx', sheet_name='2022 ASFIN', header=None)\nheader_row = df.iloc[4].astype(str).str.replace('\\u00a0', ' ').str.strip()\nitem_col = df[0].astype(str).str.replace('\\u00a0', ' ').str.strip()\nrow_idx = df[item_col == 'Severance Taxes'].index[0]\nstates = ['Texas', 'New Mexico', 'Alaska']\ncols = [header_row[header_row == s].index[0] for s in states]\nresult = int(sum(pd.to_numeric(df.iloc[row_idx, cols])))",
+   "qid": "census_state_government_finances_2022#6",
+   "pass1": true,
+   "result": 17682041,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

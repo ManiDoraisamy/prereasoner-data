@@ -1,0 +1,88 @@
+{
+ "id": "nchs_nvsr_california_life_table",
+ "file": "nchs_nvsr_california_life_table.xlsx",
+ "questions": [
+  {
+   "question": "What is the life expectancy at birth for California's total population in 2022?",
+   "sheet": "CA total population",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "79.33352661",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\nage_col = df.iloc[:, 0].astype(str)\nrow_idx = df[age_col.str.contains(r'^0[\u2013\\-]1', regex=True)].index[0]\nresult = float(df.iloc[row_idx, 6])",
+   "qid": "nchs_nvsr_california_life_table#1",
+   "pass1": true,
+   "result": 79.33352661132812,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What is the expected remaining life expectancy for Californians who reach age 65?",
+   "sheet": "CA total population",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "19.69128799",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\nage_col = df.iloc[:, 0].astype(str)\nrow_idx = df[age_col.str.contains(r'^65[\u2013\\-]66', regex=True)].index[0]\nresult = float(df.iloc[row_idx, 6])",
+   "qid": "nchs_nvsr_california_life_table#2",
+   "pass1": true,
+   "result": 19.691287994384766,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between the 20\u201321 and 30\u201331 age groups, which experienced a higher number of deaths out of the life table cohort?",
+   "sheet": "CA total population",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "30\u201331",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\nage_col = df.iloc[:, 0].astype(str)\nrow_20 = df[age_col.str.contains(r'^20[\u2013\\-]21', regex=True)].index[0]\nrow_30 = df[age_col.str.contains(r'^30[\u2013\\-]31', regex=True)].index[0]\ndx_20 = float(df.iloc[row_20, 3])\ndx_30 = float(df.iloc[row_30, 3])\nresult = df.iloc[row_30, 0] if dx_30 > dx_20 else df.iloc[row_20, 0]",
+   "qid": "nchs_nvsr_california_life_table#3",
+   "pass1": true,
+   "result": "30\u201331",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many age intervals have an annual mortality probability of at least 10%?",
+   "sheet": "CA total population",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "14",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\ndata = df.iloc[3:104].copy()\nqx = pd.to_numeric(data.iloc[:, 1], errors='coerce')\nresult = int((qx >= 0.10).sum())",
+   "qid": "nchs_nvsr_california_life_table#4",
+   "pass1": true,
+   "result": 14,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Does more than half of the initial 100,000 synthetic birth cohort survive to reach age 80?",
+   "sheet": "CA total population",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\nage_col = df.iloc[:, 0].astype(str)\nrow_80 = df[age_col.str.contains(r'^80[\u2013\\-]81', regex=True)].index[0]\nlx_80 = float(df.iloc[row_80, 2])\nresult = 'yes' if lx_80 > 50000 else 'no'",
+   "qid": "nchs_nvsr_california_life_table#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three age brackets record the highest number of deaths in the life table?",
+   "sheet": "CA total population",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"88\u201389\", \"87\u201388\", \"89\u201390\"]",
+   "program": "import pandas as pd\nimport json\n\ndf = pd.read_excel('nchs_nvsr_california_life_table.xlsx', sheet_name='CA total population', header=None)\ndata = df.iloc[3:104].copy()\ndata['age'] = data.iloc[:, 0]\ndata['dx'] = pd.to_numeric(data.iloc[:, 3], errors='coerce')\ntop3 = data.nlargest(3, 'dx')['age'].tolist()\nresult = top3",
+   "qid": "nchs_nvsr_california_life_table#6",
+   "pass1": true,
+   "result": [
+    "88\u201389",
+    "87\u201388",
+    "89\u201390"
+   ],
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

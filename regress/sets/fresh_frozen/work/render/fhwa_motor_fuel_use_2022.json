@@ -1,0 +1,12 @@
+{
+ "file": "fhwa_motor_fuel_use_2022.xlsx",
+ "sheets": [
+  {
+   "name": "MF-21",
+   "rows": 70,
+   "cols": 18,
+   "shown_whole": true
+  }
+ ],
+ "chars": 11939
+}

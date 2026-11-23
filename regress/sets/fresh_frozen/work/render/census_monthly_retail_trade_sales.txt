@@ -1,0 +1,1171 @@
+FILE census_monthly_retail_trade_sales.xlsx (Excel workbook) with 35 sheet(s): ["2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000", "1999", "1998", "1997", "1996", "1995", "1994", "1993", "1992"]
+
+### Sheet "2026": 124 rows x 12 columns (Excel rows 1..124, columns A..L)
+(whole sheet shown; Excel row numbers)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2026
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+r5: C=Jan. 2026 | D=Feb. 2026 | E=Mar. 2026 | F=Apr. 2026 | G=May 2026 | H=Jun. 2026 | I=Jul. 2026 | J=Aug. 2026(p) | K=CY CUM | L=PY CUM
+r6: B=NOT ADJUSTED
+r7: B=Retail and food services sales, total | C=640890 | D=625789 | E=727278 | F=722302 | G=760550 | H=741344 | I=749221 | J=750707 | K=5718081 | L=5472693
+r8: B=Retail sales and food services excl motor vehicle and parts | C=520424 | D=501406 | E=580243 | F=580304 | G=615628 | H=597242 | I=604062 | J=605485 | K=4604794 | L=4379363
+r9: B=Retail sales and food services excl gasoline stations | C=593569 | D=579805 | E=667221 | F=657691 | G=690585 | H=675950 | I=682238 | J=682217 | K=5229276 | L=5049684
+r10: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=473103 | D=455422 | E=520186 | F=515693 | G=545663 | H=531848 | I=537079 | J=536995 | K=4115989 | L=3956354
+r11: B=Retail sales, total | C=560686 | D=546173 | E=637027 | F=633425 | G=664214 | H=649437 | I=655940 | J=655885 | K=5002787 | L=4784502
+r12: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=440220 | D=421790 | E=489992 | F=491427 | G=519292 | H=505335 | I=510781 | J=510663 | K=3889500 | L=3691172
+r13: B=GAFO(1) | C=117164 | D=114082 | E=132436 | F=128056 | G=140768 | H=132883 | I=136884 | J=141759 | K=1044032 | L=1006173
+r14: A=441 | B=Motor vehicle and parts dealers | C=120466 | D=124383 | E=147035 | F=141998 | G=144922 | H=144102 | I=145159 | J=145222 | K=1113287 | L=1093330
+r15: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=110033 | D=114176 | E=135167 | F=130085 | G=133191 | H=131840 | I=132834 | J=132785 | K=1020111 | L=1003659
+r16: A=4411 | B=Automobile dealers | C=104637 | D=107931 | E=126342 | F=120544 | G=122645 | H=121044 | I=123049 | J=124472 | K=950664 | L=938595
+r17: A=44111 | B=New car dealers | C=92288 | D=93118 | E=109375 | F=106312 | G=107890 | H=106427 | I=108384 | J=109722 | K=833516 | L=826905
+r18: A=44112 | B=Used car dealers | C=12349 | D=14813 | E=16967 | F=14232 | G=14755 | H=14617 | I=14665 | J=14750 | K=117148 | L=111690
+r19: A=4413 | B=Automotive parts, acc., and tire stores | C=10433 | D=10207 | E=11868 | F=11913 | G=11731 | H=12262 | I=12325 | J=12437 | K=93176 | L=89671
+r20: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=16170 | D=15819 | E=17959 | F=17075 | G=18198 | H=17791 | I=18340 | J=18519 | K=139871 | L=138219
+r21: A=442 | B=Furniture and home furnishings stores | C=9320 | D=9312 | E=10782 | F=10133 | G=10826 | H=10518 | I=10770 | J=10760 | K=82421 | L=84397
+r22: A=4421 | B=Furniture stores | C=5167 | D=5329 | E=6025 | F=5446 | G=5986 | H=5700 | I=5798 | J=5602 | K=45053 | L=46695
+r23: A=4422 | B=Home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S)
+r24: A=44221 | B=Floor covering stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S)
+r25: A=442299 | B=All other home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S)
+r26: A=443 | B=Electronics and appliance stores | C=6850 | D=6507 | E=7177 | F=6942 | G=7372 | H=7273 | I=7570 | J=7759 | K=57450 | L=53822
+r27: A=443141 | B=Household appliance stores | C=1561 | D=1574 | E=1768 | F=1784 | G=1821 | H=1952 | I=2022 | J=1965 | K=14447 | L=13796
+r28: A=443142 | B=Electronics stores | C=5289 | D=4933 | E=5409 | F=5158 | G=5551 | H=5321 | I=5548 | J=5794 | K=43003 | L=40026
+r29: A=444 | B=Building mat. and garden equip. and supplies dealers | C=35407 | D=34164 | E=44054 | F=48855 | G=49861 | H=49977 | I=47548 | J=44570 | K=354436 | L=339118
+r30: A=4441 | B=Building mat. and supplies dealers | C=30929 | D=29764 | E=37829 | F=41668 | G=42418 | H=43424 | I=42111 | J=39663 | K=307806 | L=295133
+r31: A=44412 | B=Paint and wallpaper stores | C=1227 | D=1287 | E=1623 | F=1674 | G=1702 | H=1882 | I=1858 | J=1788 | K=13041 | L=12308
+r32: A=44413 | B=Hardware stores | C=3243 | D=2870 | E=3571 | F=3909 | G=3991 | H=4147 | I=3947 | J=3895 | K=29573 | L=27024
+r33: A=445 | B=Food and beverage stores | C=83818 | D=75317 | E=82831 | F=82500 | G=88011 | H=83613 | I=87070 | J=85442 | K=668602 | L=663660
+r34: A=4451 | B=Grocery stores | C=76992 | D=68687 | E=75493 | F=75045 | G=79793 | H=75534 | I=78734 | J=77628 | K=607906 | L=602659
+r35: A=44511 | B=Supermarkets and other grocery (except convenience) stores | C=74304 | D=66114 | E=72366 | F=71929 | G=76526 | H=72182 | I=75376 | J=74191 | K=582988 | L=578759
+r36: A=4453 | B=Beer, wine, and liquor stores | C=4979 | D=4778 | E=5253 | F=5344 | G=5967 | H=5835 | I=6096 | J=5637 | K=43889 | L=43724
+r37: A=446 | B=Health and personal care stores | C=36008 | D=34615 | E=38621 | F=37643 | G=37948 | H=38528 | I=38544 | J=38620 | K=300527 | L=306772
+r38: A=44611 | B=Pharmacies and drug stores | C=30922 | D=29408 | E=32717 | F=32140 | G=32194 | H=32725 | I=32948 | J=32699 | K=255753 | L=263122
+r39: A=447 | B=Gasoline stations | C=47321 | D=45984 | E=60057 | F=64611 | G=69965 | H=65394 | I=66983 | J=68490 | K=488805 | L=423009
+r40: A=448 | B=Clothing and clothing access. stores | C=19222 | D=20874 | E=24984 | F=24191 | G=27373 | H=24586 | I=26161 | J=27302 | K=194693 | L=184992
+r41: A=4481 | B=Clothing stores | C=14289 | D=15086 | E=18948 | F=18269 | G=20395 | H=18690 | I=19792 | J=20377 | K=145846 | L=137544
+r42: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S)
+r43: A=44812 | B=Women's clothing stores | C=1837 | D=2070 | E=2637 | F=2504 | G=2656 | H=2242 | I=2404 | J=2322 | K=18672 | L=19909
+r44: A=44814 | B=Family clothing stores | C=9338 | D=9808 | E=12732 | F=12030 | G=13720 | H=12798 | I=13685 | J=14179 | K=98290 | L=89668
+r45: A=44819 | B=Other clothing stores | C=1302 | D=1163 | E=1261 | F=1300 | G=1331 | H=1366 | I=1401 | J=1430 | K=10554 | L=11157
+r46: A=4482 | B=Shoe stores | C=2014 | D=2417 | E=2947 | F=2663 | G=2963 | H=2711 | I=3195 | J=3784 | K=22694 | L=22226
+r47: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S)
+r48: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=6921 | D=6624 | E=8050 | F=7758 | G=8539 | H=8611 | I=8623 | J=9495 | K=64621 | L=59195
+r49: A=45111 | B=Sporting goods stores | C=3981 | D=3970 | E=5116 | F=4921 | G=5465 | H=5706 | I=5545 | J=5803 | K=40507 | L=37637
+r50: A=45112 | B=Hobby, toy, and game stores | C=1588 | D=1578 | E=1749 | F=1640 | G=1823 | H=1743 | I=1842 | J=2027 | K=13990 | L=11367
+r51: A=451211 | B=Book stores | C=779 | D=541 | E=579 | F=579 | G=655 | H=572 | I=613 | J=965 | K=5283 | L=4784
+r52: A=452 | B=General merchandise stores | C=73042 | D=69034 | E=79392 | F=77024 | G=84242 | H=79132 | I=81243 | J=83627 | K=626736 | L=606325
+r53: A=4522 | B=Department stores | C=2393 | D=2827 | E=3536 | F=3648 | G=4094 | H=3551 | I=3602 | J=3650 | K=27301 | L=27246
+r54: A=45221 | B=Department stores | C=2393 | D=2827 | E=3536 | F=3648 | G=4094 | H=3551 | I=3602 | J=3650 | K=27301 | L=27246
+r55: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=70649 | D=66207 | E=75856 | F=73376 | G=80148 | H=75581 | I=77641 | J=79977 | K=599435 | L=579079
+r56: A=452311 | B=Warehouse clubs and supercenters | C=62642 | D=58553 | E=66915 | F=64632 | G=70577 | H=66667 | I=68895 | J=71159 | K=530040 | L=512589
+r57: A=452319 | B=All other gen. merchandise stores | C=8007 | D=7654 | E=8941 | F=8744 | G=9571 | H=8914 | I=8746 | J=8818 | K=69395 | L=66490
+r58: A=453 | B=Miscellaneous store retailers | C=13272 | D=13136 | E=14839 | F=14731 | G=16669 | H=17158 | I=16469 | J=16478 | K=122752 | L=110191
+r59: A=4532 | B=Office supplies, stationery, and gift stores | C=1809 | D=1731 | E=2051 | F=2008 | G=2416 | H=2763 | I=2517 | J=2816 | K=18111 | L=17442
+r60: A=45321 | B=Office supplies and stationery stores | C=653 | D=568 | E=615 | F=576 | G=553 | H=559 | I=600 | J=704 | K=4828 | L=5097
+r61: A=45322 | B=Gift, novelty, and souvenir stores | C=1156 | D=1163 | E=1436 | F=1432 | G=1863 | H=2204 | I=1917 | J=2112 | K=13283 | L=12345
+r62: A=45330 | B=Used merchandise stores | C=1977 | D=1900 | E=2248 | F=2109 | G=2135 | H=2158 | I=2201 | J=2296 | K=17024 | L=14896
+r63: A=454 | B=Nonstore retailers | C=109039 | D=106223 | E=119205 | F=117039 | G=118486 | H=120545 | I=119800 | J=118120 | K=928457 | L=859691
+r64: A=4541 | B=Electronic shopping and mail-order houses | C=99996 | D=97558 | E=111218 | F=110462 | G=112301 | H=114540 | I=113591 | J=112217 | K=871883 | L=806842
+r65: A=45431 | B=Fuel dealers | C=6022 | D=5688 | E=4671 | F=3346 | G=2943 | H=2459 | I=2599 | J=2617 | K=30345 | L=27875
+r66: A=722 | B=Food services and drinking places | C=80204 | D=79616 | E=90251 | F=88877 | G=96336 | H=91907 | I=93281 | J=94822 | K=715294 | L=688191
+r67: A=7224 | B=Drinking places | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S)
+r68: A=7225 | B=Restaurants and other eating places | C=70886 | D=69991 | E=79431 | F=77675 | G=85232 | H=81561 | I=83423 | J=84144 | K=632343 | L=607701
+r69: A=722511 | B=Full service restaurants | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S)
+r70: A=722513, 722514, 722515 | B=Limited service eating places | C=36906 | D=35927 | E=41393 | F=40694 | G=43733 | H=42761 | I=43760 | J=43441 | K=328615 | L=321804
+r71: B=ADJUSTED(2)
+r72: B=Retail and food services sales, total | C=701860 | D=707959 | E=719700 | F=723921 | G=731415 | H=732898 | I=729915 | J=739322
+r73: B=Retail sales and food services excl motor vehicle and parts | C=567038 | D=571370 | E=582401 | F=587764 | G=593513 | H=591943 | I=591337 | J=599797
+r74: B=Retail sales and food services excl gasoline stations | C=649105 | D=654551 | E=659341 | F=660327 | G=666210 | H=671264 | I=668406 | J=675372
+r75: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=514283 | D=517962 | E=522042 | F=524170 | G=528308 | H=530309 | I=529828 | J=535847
+r76: B=Retail sales, total | C=614871 | D=620373 | E=631907 | F=635221 | G=641883 | H=642793 | I=639263 | J=647440
+r77: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=480049 | D=483784 | E=494608 | F=499064 | G=503981 | H=501838 | I=500685 | J=507915
+r78: B=GAFO(1) | C=132940 | D=134286 | E=135557 | F=135332 | G=136206 | H=136247 | I=136755 | J=137941
+r79: A=441 | B=Motor vehicle and parts dealers | C=134822 | D=136589 | E=137299 | F=136157 | G=137902 | H=140955 | I=138578 | J=139525
+r80: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=123494 | D=125056 | E=125854 | F=124602 | G=126367 | H=129255 | I=126750 | J=127555
+r81: A=4413 | B=Automotive parts, acc., and tire stores | C=11328 | D=11533 | E=11445 | F=11555 | G=11535 | H=11700 | I=11828 | J=11970
+r82: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=17671 | D=17772 | E=18149 | F=18083 | G=18261 | H=18195 | I=18184 | J=18365
+r83: A=442 | B=Furniture and home furnishings stores | C=10321 | D=10335 | E=10602 | F=10446 | G=10645 | H=10571 | I=10538 | J=10559
+r84: A=443 | B=Electronics and appliance stores | C=7350 | D=7437 | E=7547 | F=7637 | G=7616 | H=7624 | I=7646 | J=7806
+r85: A=444 | B=Building mat. and garden equip. and supplies dealers | C=43235 | D=43342 | E=43842 | F=43909 | G=43841 | H=44366 | I=44233 | J=44323
+r86: A=4441 | B=Building mat. and supplies dealers | C=37581 | D=37628 | E=38057 | F=38368 | G=38111 | H=38668 | I=38599 | J=38696
+r87: A=445 | B=Food and beverage stores | C=84384 | D=83254 | E=84215 | F=84723 | G=84883 | H=84687 | I=84556 | J=84727
+r88: A=4451 | B=Grocery stores | C=76457 | D=75397 | E=76333 | F=76812 | G=76946 | H=76684 | I=76589 | J=76783
+r89: A=4453 | B=Beer, wine and liquor stores | C=5723 | D=5668 | E=5673 | F=5703 | G=5710 | H=5743 | I=5740 | J=5711
+r90: A=446 | B=Health and personal care stores | C=36931 | D=37584 | E=38088 | F=38100 | G=38448 | H=38451 | I=38777 | J=39248
+r91: A=44611 | B=Pharmacies and drug stores | C=31329 | D=31861 | E=32329 | F=32302 | G=32552 | H=32627 | I=32849 | J=33130
+r92: A=447 | B=Gasoline stations | C=52755 | D=53408 | E=60359 | F=63594 | G=65205 | H=61634 | I=61509 | J=63950
+r93: A=448 | B=Clothing and clothing access. stores | C=25344 | D=25999 | E=26049 | F=25864 | G=26136 | H=25987 | I=26327 | J=26486
+r94: A=4481 | B=Clothing stores | C=18740 | D=19335 | E=19439 | F=19248 | G=19478 | H=19511 | I=19738 | J=19918
+r95: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S)
+r96: A=44812 | B=Women's clothing stores | C=2436 | D=2473 | E=2467 | F=2455 | G=2428 | H=2385 | I=2426 | J=2360
+r97: A=4482 | B=Shoe stores | C=2910 | D=2958 | E=2929 | F=2910 | G=2905 | H=2928 | I=2942 | J=2931
+r98: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S)
+r99: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=8220 | D=8395 | E=8447 | F=8601 | G=8643 | H=8680 | I=8640 | J=8727
+r100: A=452 | B=General merchandise stores | C=79420 | D=79817 | E=80601 | F=80466 | G=80798 | H=80870 | I=81233 | J=81844
+r101: A=4522 | B=Department stores | C=3659 | D=3790 | E=3938 | F=3918 | G=3963 | H=3959 | I=3985 | J=3963
+r102: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=75761 | D=76027 | E=76663 | F=76548 | G=76835 | H=76911 | I=77248 | J=77881
+r103: A=452311 | B=Warehouse clubs and supercenters | C=66854 | D=67148 | E=67659 | F=67607 | G=67797 | H=67889 | I=68213 | J=68753
+r104: A=452319 | B=All other gen. merchandise stores | C=8907 | D=8879 | E=9004 | F=8941 | G=9038 | H=9022 | I=9035 | J=9128
+r105: A=453 | B=Miscellaneous stores retailers | C=14966 | D=15222 | E=15057 | F=14942 | G=15458 | H=15756 | I=15759 | J=16319
+r106: A=454 | B=Nonstore retailers | C=117123 | D=118991 | E=119801 | F=120782 | G=122308 | H=123212 | I=121467 | J=123926
+r107: A=4541 | B=Electronic shopping and mail order houses | C=110007 | D=111750 | E=112683 | F=113878 | G=114945 | H=116049 | I=114047 | J=116650
+r108: A=45431 | B=Fuel dealers | C=3807 | D=3955 | E=3835 | F=3657 | G=4105 | H=3760 | I=3992 | J=3983
+r109: A=722 | B=Food services and drinking places | C=86989 | D=87586 | E=87793 | F=88700 | G=89532 | H=90105 | I=90652 | J=91882
+r110: (blank)
+r111: A=(p) Preliminary estimate
+r112: A=(S) Suppressed - Estimate does not meet publication standards because of high sampling var...
+r113: A=is less than 50%), or other concerns about the estimate's quality.
+r114: (blank)
+r115: A=(1) GAFO represents stores classified in the following NAICS codes:  442, 443, 448, 451, 4...
+r116: A=(2) Estimates are adjusted for seasonal variations and holiday and trading-day differences...
+r117: (blank)
+r118: A=Note: Estimates are not adjusted for price changes. Retail and food services total and oth...
+r119: A=Estimates include data only for businesses with paid employees. Prior to the benchmark rep...
+r120: A=For surveyed Retail companies, approximately 38.3% provided data for this reporting period...
+r121: A=Information on sample design, estimation procedures, and measures of sampling variability ...
+r122: (blank)
+r123: A=Source: The Census Bureau has reviewed this data product to ensure appropriate access, use...
+r124: A=(Project No. P-7504206, Disclosure Review Board (DRB) approval number: CBDRB-FY26-003).
+
+### Sheet "2025": 119 rows x 15 columns (Excel rows 1..119, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2025
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+r5: C=Jan. 2025 | D=Feb. 2025 | E=Mar. 2025 | F=Apr. 2025 | G=May 2025 | H=Jun. 2025 | I=Jul. 2025 | J=Aug. 2025 | K=Sep. 2025 | L=Oct. 2025 | M=Nov. 2025 | N=Dec. 2025 | O=TOTAL
+r6: B=NOT ADJUSTED
+r7: B=Retail and food services sales, total | C=629000 | D=605151 | E=698449 | F=696120 | G=723761 | H=688978 | I=715687 | J=715547 | K=680630 | L=712145 | M=704758 | N=780707 | O=8350933
+r8: B=Retail sales and food services excl motor vehicle and parts | C=508664 | D=485245 | E=548933 | F=551294 | G=581579 | H=556490 | I=573993 | J=573165 | K=546894 | L=577544 | M=579001 | N=643523 | O=6726325
+r9: B=Retail sales and food services excl gasoline stations | C=580595 | D=558933 | E=646934 | F=643521 | G=668110 | H=634329 | I=658624 | J=658638 | K=626396 | L=656823 | M=653836 | N=730535 | O=7717274
+r10: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=460259 | D=439027 | E=497418 | F=498695 | G=525928 | H=501841 | I=516930 | J=516256 | K=492660 | L=522222 | M=528079 | N=593351 | O=6092666
+r11: B=Retail sales, total | C=552246 | D=529394 | E=609429 | F=609634 | G=630997 | H=601022 | I=627499 | J=624281 | K=595443 | L=623604 | M=620569 | N=694088 | O=7318206
+r12: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=431910 | D=409488 | E=459913 | F=464808 | G=488815 | H=468534 | I=485805 | J=481899 | K=461707 | L=489003 | M=494812 | N=556904 | O=5693598
+r13: B=GAFO(1) | C=113831 | D=110347 | E=127028 | F=124212 | G=134892 | H=127505 | I=131392 | J=136966 | K=122502 | L=132346 | M=142778 | N=170443 | O=1574242
+r14: A=441 | B=Motor vehicle and parts dealers | C=120336 | D=119906 | E=149516 | F=144826 | G=142182 | H=132488 | I=141694 | J=142382 | K=133736 | L=134601 | M=125757 | N=137184 | O=1624608
+r15: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=110093 | D=110064 | E=137991 | F=133259 | G=130322 | H=121107 | I=130121 | J=130702 | K=122420 | L=122966 | M=115019 | N=126208 | O=1490272
+r16: A=4411 | B=Automobile dealers | C=104568 | D=103763 | E=129514 | F=124536 | G=120793 | H=111782 | I=120918 | J=122721 | K=115531 | L=116108 | M=109272 | N=120436 | O=1399942
+r17: A=44111 | B=New car dealers | C=92189 | D=91223 | E=113628 | F=109441 | G=106281 | H=98117 | I=107245 | J=108781 | K=101640 | L=102762 | M=97120 | N=107835 | O=1236262
+r18: A=44112 | B=Used car dealers | C=12379 | D=12540 | E=15886 | F=15095 | G=14512 | H=13665 | I=13673 | J=13940 | K=13891 | L=13346 | M=12152 | N=12601 | O=163680
+r19: A=4413 | B=Automotive parts, acc., and tire stores | C=10243 | D=9842 | E=11525 | F=11567 | G=11860 | H=11381 | I=11573 | J=11680 | K=11316 | L=11635 | M=10738 | N=10976 | O=134336
+r20: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=16375 | D=15967 | E=17558 | F=16880 | G=17961 | H=17092 | I=18287 | J=18099 | K=17174 | L=17480 | M=19351 | N=21091 | O=213315
+r21: A=442 | B=Furniture and home furnishings stores | C=9826 | D=9821 | E=10860 | F=10509 | G=10997 | H=10368 | I=11075 | J=10941 | K=10232 | L=10475 | M=11068 | N=11175 | O=127347
+r22: A=4421 | B=Furniture stores | C=5433 | D=5567 | E=6093 | F=5808 | G=6099 | H=5646 | I=6097 | J=5952 | K=5483 | L=5534 | M=5869 | N=5603 | O=69184
+r23: A=4422 | B=Home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r24: A=44221 | B=Floor covering stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r25: A=442299 | B=All other home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r26: A=443 | B=Electronics and appliance stores | C=6549 | D=6146 | E=6698 | F=6371 | G=6964 | H=6724 | I=7212 | J=7158 | K=6942 | L=7005 | M=8283 | N=9916 | O=85968
+r27: A=443141 | B=Household appliance stores | C=1535 | D=1522 | E=1725 | F=1732 | G=1767 | H=1797 | I=1919 | J=1799 | K=1828 | L=1863 | M=1810 | N=1850 | O=21147
+r28: A=443142 | B=Electronics stores | C=5014 | D=4624 | E=4973 | F=4639 | G=5197 | H=4927 | I=5293 | J=5359 | K=5114 | L=5142 | M=6473 | N=8066 | O=64821
+r29: A=444 | B=Building mat. and garden equip. and supplies dealers | C=34429 | D=32944 | E=41665 | F=47273 | G=49214 | H=45963 | I=45372 | J=42258 | K=42128 | L=44245 | M=39779 | N=39985 | O=505255
+r30: A=4441 | B=Building mat. and supplies dealers | C=30238 | D=28901 | E=35999 | F=40478 | G=42063 | H=39941 | I=39979 | J=37534 | K=37090 | L=38856 | M=34962 | N=34610 | O=440651
+r31: A=44412 | B=Paint and wallpaper stores | C=1190 | D=1198 | E=1534 | F=1632 | G=1646 | H=1679 | I=1721 | J=1708 | K=1678 | L=1669 | M=1287 | N=1217 | O=18159
+r32: A=44413 | B=Hardware stores | C=2880 | D=2692 | E=3331 | F=3451 | G=3835 | H=3713 | I=3542 | J=3580 | K=3378 | L=3641 | M=3372 | N=3496 | O=40911
+r33: A=445 | B=Food and beverage stores | C=82414 | D=75713 | E=82337 | F=81929 | G=86507 | H=82615 | I=86091 | J=86054 | K=81532 | L=85352 | M=85194 | N=90541 | O=1006279
+r34: A=4451 | B=Grocery stores | C=75693 | D=68962 | E=74917 | F=74295 | G=78197 | H=74718 | I=77895 | J=77982 | K=74160 | L=77532 | M=77026 | N=79894 | O=911271
+r35: A=44511 | B=Supermarkets and other grocery (except convenience) stores | C=72970 | D=66376 | E=72062 | F=71393 | G=75082 | H=71519 | I=74630 | J=74727 | K=70995 | L=74327 | M=74014 | N=76895 | O=874990
+r36: A=4453 | B=Beer, wine, and liquor stores | C=4824 | D=4807 | E=5340 | F=5351 | G=6003 | H=5659 | I=5918 | J=5822 | K=5273 | L=5639 | M=5820 | N=7328 | O=67784
+r37: A=446 | B=Health and personal care stores | C=37642 | D=35460 | E=38700 | F=38573 | G=39135 | H=38735 | I=39397 | J=39130 | K=40289 | L=41871 | M=38125 | N=45214 | O=472271
+r38: A=44611 | B=Pharmacies and drug stores | C=32598 | D=30405 | E=32889 | F=33193 | G=33566 | H=33059 | I=33973 | J=33439 | K=34759 | L=36372 | M=32395 | N=37652 | O=404300
+r39: A=447 | B=Gasoline stations | C=48405 | D=46218 | E=51515 | F=52599 | G=55651 | H=54649 | I=57063 | J=56909 | K=54234 | L=55322 | M=50922 | N=50172 | O=633659
+r40: A=448 | B=Clothing and clothing access. stores | C=18203 | D=19221 | E=23360 | F=23179 | G=26171 | H=23399 | I=25024 | J=26435 | K=22369 | L=24528 | M=28902 | N=39105 | O=299896
+r41: A=4481 | B=Clothing stores | C=13533 | D=13858 | E=17576 | F=17424 | G=19463 | H=17635 | I=18697 | J=19358 | K=16827 | L=18560 | M=22218 | N=27542 | O=222691
+r42: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r43: A=44812 | B=Women's clothing stores | C=2076 | D=2154 | E=2851 | F=2637 | G=2792 | H=2407 | I=2441 | J=2551 | K=2301 | L=2323 | M=2777 | N=3192 | O=30502
+r44: A=44814 | B=Family clothing stores | C=8349 | D=8614 | E=11173 | F=11248 | G=12785 | H=11759 | I=12717 | J=13023 | K=11012 | L=12457 | M=15203 | N=19010 | O=147350
+r45: A=44819 | B=Other clothing stores | C=1436 | D=1265 | E=1365 | F=1310 | G=1395 | H=1442 | I=1430 | J=1514 | K=1316 | L=1412 | M=1576 | N=1803 | O=17264
+r46: A=4482 | B=Shoe stores | C=1901 | D=2187 | E=2851 | F=2623 | G=2975 | H=2665 | I=3169 | J=3855 | K=2407 | L=2627 | M=3037 | N=4081 | O=34378
+r47: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r48: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=6584 | D=6101 | E=7598 | F=7038 | G=7723 | H=7574 | I=7839 | J=8738 | K=7456 | L=7694 | M=8946 | N=11888 | O=95179
+r49: A=45111 | B=Sporting goods stores | C=3845 | D=3673 | E=4890 | F=4434 | G=4964 | H=5032 | I=5175 | J=5624 | K=4465 | L=4623 | M=5019 | N=7270 | O=59014
+r50: A=45112 | B=Hobby, toy, and game stores | C=1305 | D=1227 | E=1469 | F=1358 | G=1478 | H=1408 | I=1475 | J=1647 | K=1680 | L=1879 | M=2684 | N=2848 | O=20458
+r51: A=451211 | B=Book stores | C=751 | D=511 | E=539 | F=547 | G=606 | H=526 | I=569 | J=735 | K=632 | L=570 | M=578 | N=1041 | O=7605
+r52: A=452 | B=General merchandise stores | C=70814 | D=67323 | E=76447 | F=75229 | G=80504 | H=76961 | I=77771 | J=81276 | K=73234 | L=79499 | M=83496 | N=95564 | O=938118
+r53: A=4522 | B=Department stores | C=2653 | D=3007 | E=3493 | F=3577 | G=3970 | H=3466 | I=3452 | J=3628 | K=3241 | L=3919 | M=5321 | N=7102 | O=46829
+r54: A=45221 | B=Department stores | C=2653 | D=3007 | E=3493 | F=3577 | G=3970 | H=3466 | I=3452 | J=3628 | K=3241 | L=3919 | M=5321 | N=7102 | O=46829
+r55: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=68161 | D=64316 | E=72954 | F=71652 | G=76534 | H=73495 | I=74319 | J=77648 | K=69993 | L=75580 | M=78175 | N=88462 | O=891289
+r56: A=452311 | B=Warehouse clubs and supercenters | C=60548 | D=56907 | E=64647 | F=63171 | G=67327 | H=64968 | I=65877 | J=69144 | K=61822 | L=66628 | M=68692 | N=77619 | O=787350
+r57: A=452319 | B=All other gen. merchandise stores | C=7613 | D=7409 | E=8307 | F=8481 | G=9207 | H=8527 | I=8442 | J=8504 | K=8171 | L=8952 | M=9483 | N=10843 | O=103939
+r58: A=453 | B=Miscellaneous store retailers | C=11906 | D=11609 | E=13558 | F=13389 | G=15419 | H=15244 | I=14996 | J=14070 | K=14314 | L=15733 | M=13991 | N=15393 | O=169622
+r59: A=4532 | B=Office supplies, stationery, and gift stores | C=1855 | D=1735 | E=2065 | F=1886 | G=2533 | H=2479 | I=2471 | J=2418 | K=2269 | L=3145 | M=2083 | N=2795 | O=27734
+r60: A=45321 | B=Office supplies and stationery stores | C=693 | D=583 | E=625 | F=585 | G=596 | H=558 | I=670 | J=787 | K=621 | L=604 | M=529 | N=625 | O=7476
+r61: A=45322 | B=Gift, novelty, and souvenir stores | C=1162 | D=1152 | E=1440 | F=1301 | G=1937 | H=1921 | I=1801 | J=1631 | K=1648 | L=2541 | M=1554 | N=2170 | O=20258
+r62: A=45330 | B=Used merchandise stores | C=1591 | D=1643 | E=2013 | F=1808 | G=1973 | H=1882 | I=1941 | J=2045 | K=2036 | L=2207 | M=2037 | N=2173 | O=23349
+r63: A=454 | B=Nonstore retailers | C=105138 | D=98932 | E=107175 | F=108719 | G=110530 | H=106302 | I=113965 | J=108930 | K=108977 | L=117279 | M=126106 | N=147951 | O=1360004
+r64: A=4541 | B=Electronic shopping and mail-order houses | C=96073 | D=90909 | E=100074 | F=102295 | G=104877 | H=100942 | I=108382 | J=103290 | K=102970 | L=110171 | M=119186 | N=139317 | O=1278486
+r65: A=45431 | B=Fuel dealers | C=6200 | D=5181 | E=4007 | F=3318 | G=2400 | H=2170 | I=2248 | J=2351 | K=2720 | L=3423 | M=3745 | N=5315 | O=43078
+r66: A=722 | B=Food services and drinking places | C=76754 | D=75757 | E=89020 | F=86486 | G=92764 | H=87956 | I=88188 | J=91266 | K=85187 | L=88541 | M=84189 | N=86619 | O=1032727
+r67: A=7224 | B=Drinking places | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r68: A=7225 | B=Restaurants and other eating places | C=68104 | D=66540 | E=78503 | F=75379 | G=81523 | H=78205 | I=78899 | J=80548 | K=73764 | L=76423 | M=73497 | N=76423 | O=907808
+r69: A=722511 | B=Full service restaurants | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r70: A=722513, 722514, 722515 | B=Limited service eating places | C=36093 | D=34934 | E=41225 | F=40542 | G=42865 | H=41504 | I=42141 | J=42500 | K=39351 | L=41069 | M=38072 | N=38981 | O=479277
+r71: B=ADJUSTED(2)
+r72: B=Retail and food services sales, total | C=687058 | D=683772 | E=694750 | F=695464 | G=685488 | H=691883 | I=698280 | J=700407 | K=700948 | L=700790 | M=705453 | N=706264
+r73: B=Retail sales and food services excl motor vehicle and parts | C=552379 | D=552482 | E=555489 | F=556835 | G=553715 | H=559009 | I=562188 | J=564016 | K=564592 | L=566312 | M=569217 | N=570500
+r74: B=Retail sales and food services excl gasoline stations | C=632914 | D=630093 | E=642767 | F=643591 | G=634102 | H=639886 | I=645881 | J=647567 | K=647829 | L=647749 | M=651281 | N=651788
+r75: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=498235 | D=498803 | E=503506 | F=504962 | G=502329 | H=507012 | I=509789 | J=511176 | K=511473 | L=513271 | M=515045 | N=516024
+r76: B=Retail sales, total | C=602898 | D=600614 | E=608989 | F=609064 | G=599595 | H=605482 | I=612075 | J=613570 | K=614111 | L=613900 | M=618029 | N=619122
+r77: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=468219 | D=469324 | E=469728 | F=470435 | G=467822 | H=472608 | I=475983 | J=477179 | K=477755 | L=479422 | M=481793 | N=483358
+r78: B=GAFO(1) | C=130634 | D=129643 | E=130489 | F=130122 | G=129604 | H=131070 | I=132037 | J=131514 | K=131183 | L=132539 | M=132862 | N=132804
+r79: A=441 | B=Motor vehicle and parts dealers | C=134679 | D=131290 | E=139261 | F=138629 | G=131773 | H=132874 | I=136092 | J=136391 | K=136356 | L=134478 | M=136236 | N=135764
+r80: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=123700 | D=120157 | E=128006 | F=127399 | G=120445 | H=121716 | I=124996 | J=125193 | K=125174 | L=123460 | M=124885 | N=124343
+r81: A=4413 | B=Automotive parts, acc., and tire stores | C=10979 | D=11133 | E=11255 | F=11230 | G=11328 | H=11158 | I=11096 | J=11198 | K=11182 | L=11018 | M=11351 | N=11421
+r82: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=17861 | D=17896 | E=17813 | F=17910 | G=17722 | H=17802 | I=18171 | J=17810 | K=17380 | L=17692 | M=17717 | N=17731
+r83: A=442 | B=Furniture and home furnishings stores | C=10857 | D=10888 | E=10710 | F=10823 | G=10594 | H=10656 | I=10901 | J=10602 | K=10201 | L=10433 | M=10432 | N=10434
+r84: A=443 | B=Electronics and appliance stores | C=7004 | D=7008 | E=7103 | F=7087 | G=7128 | H=7146 | I=7270 | J=7208 | K=7179 | L=7259 | M=7285 | N=7297
+r85: A=444 | B=Building mat. and garden equip. and supplies dealers | C=41247 | D=41663 | E=42484 | F=42769 | G=41744 | H=42179 | I=41887 | J=42053 | K=42180 | L=41797 | M=42366 | N=42906
+r86: A=4441 | B=Building mat. and supplies dealers | C=35955 | D=36399 | E=37189 | F=37410 | G=36513 | H=36812 | I=36378 | J=36547 | K=36650 | L=36519 | M=36880 | N=37295
+r87: A=445 | B=Food and beverage stores | C=83273 | D=83679 | E=83747 | F=83642 | G=82981 | H=83845 | I=84025 | J=84503 | K=84301 | L=84300 | M=84103 | N=84316
+r88: A=4451 | B=Grocery stores | C=75391 | D=75699 | E=75750 | F=75657 | G=75045 | H=75933 | I=76069 | J=76528 | K=76454 | L=76462 | M=76263 | N=76380
+r89: A=4453 | B=Beer, wine and liquor stores | C=5629 | D=5682 | E=5711 | F=5693 | G=5663 | H=5642 | I=5669 | J=5686 | K=5616 | L=5628 | M=5629 | N=5620
+r90: A=446 | B=Health and personal care stores | C=38022 | D=38502 | E=38778 | F=38963 | G=38902 | H=39325 | I=39675 | J=39565 | K=40009 | L=40106 | M=40005 | N=40226
+r91: A=44611 | B=Pharmacies and drug stores | C=32436 | D=32977 | E=33054 | F=33293 | G=33300 | H=33597 | I=33939 | J=33914 | K=34381 | L=34346 | M=34280 | N=34575
+r92: A=447 | B=Gasoline stations | C=54144 | D=53679 | E=51983 | F=51873 | G=51386 | H=51997 | I=52399 | J=52840 | K=53119 | L=53041 | M=54172 | N=54476
+r93: A=448 | B=Clothing and clothing access. stores | C=24313 | D=23918 | E=24349 | F=24534 | G=24612 | H=24967 | I=25254 | J=25400 | K=25222 | L=25533 | M=25696 | N=25539
+r94: A=4481 | B=Clothing stores | C=18009 | D=17734 | E=18055 | F=18178 | G=18283 | H=18567 | I=18661 | J=18759 | K=18789 | L=18960 | M=19134 | N=19070
+r95: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r96: A=44812 | B=Women's clothing stores | C=2783 | D=2592 | E=2708 | F=2555 | G=2518 | H=2585 | I=2486 | J=2556 | K=2529 | L=2453 | M=2482 | N=2429
+r97: A=4482 | B=Shoe stores | C=2779 | D=2683 | E=2834 | F=2820 | G=2886 | H=2897 | I=2940 | J=2954 | K=2763 | L=2890 | M=2923 | N=2903
+r98: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r99: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=7773 | D=7723 | E=8066 | F=7700 | G=7777 | H=7752 | I=7926 | J=7973 | K=7923 | L=8057 | M=8162 | N=8182
+r100: A=452 | B=General merchandise stores | C=78367 | D=77807 | E=77885 | F=77819 | G=77053 | H=78195 | I=78389 | J=78235 | K=78476 | L=78905 | M=78899 | N=79019
+r101: A=4522 | B=Department stores | C=3966 | D=3972 | E=3898 | F=3850 | G=3843 | H=3821 | I=3866 | J=3876 | K=3786 | L=3995 | M=4004 | N=3877
+r102: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=74401 | D=73835 | E=73987 | F=73969 | G=73210 | H=74374 | I=74523 | J=74359 | K=74690 | L=74910 | M=74895 | N=75142
+r103: A=452311 | B=Warehouse clubs and supercenters | C=65885 | D=65260 | E=65432 | F=65394 | G=64613 | H=65691 | I=65811 | J=65664 | K=65979 | L=66099 | M=66114 | N=66341
+r104: A=452319 | B=All other gen. merchandise stores | C=8516 | D=8575 | E=8555 | F=8575 | G=8597 | H=8683 | I=8712 | J=8695 | K=8711 | L=8811 | M=8781 | N=8801
+r105: A=453 | B=Miscellaneous stores retailers | C=13453 | D=13550 | E=13962 | F=13504 | G=13992 | H=14367 | I=14317 | J=13817 | K=14266 | L=14583 | M=14789 | N=14737
+r106: A=454 | B=Nonstore retailers | C=109766 | D=110907 | E=110661 | F=111721 | G=111653 | H=112179 | I=113940 | J=114983 | K=114879 | L=115408 | M=115884 | N=116226
+r107: A=4541 | B=Electronic shopping and mail order houses | C=102862 | D=104134 | E=104135 | F=104918 | G=105298 | H=105698 | I=107309 | J=108157 | K=108048 | L=108543 | M=108945 | N=109097
+r108: A=45431 | B=Fuel dealers | C=3853 | D=3636 | E=3407 | F=3666 | G=3200 | H=3344 | I=3458 | J=3557 | K=3612 | L=3536 | M=3611 | N=3780
+r109: A=722 | B=Food services and drinking places | C=84160 | D=83158 | E=85761 | F=86400 | G=85893 | H=86401 | I=86205 | J=86837 | K=86837 | L=86890 | M=87424 | N=87142
+r110: (blank)
+r111: A=(S) Suppressed - Estimate does not meet publication standards because of high sampling var...
+r112: A=is less than 50%), or other concerns about the estimate's quality.
+r113: (blank)
+r114: A=(1) GAFO represents stores classified in the following NAICS codes:  442, 443, 448, 451, 4...
+r115: A=(2) Estimates are adjusted for seasonal variations and holiday and trading-day differences...
+r116: (blank)
+r117: A=Note: Estimates are not adjusted for price changes. Retail and food services total and oth...
+r118: A=Estimates include data only for businesses with paid employees. Prior to the benchmark rep...
+r119: A=Information on sample design, estimation procedures, and measures of sampling variability ...
+
+### Sheet "2024": 119 rows x 15 columns (Excel rows 1..119, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2024
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+r5: C=Jan. 2024 | D=Feb. 2024 | E=Mar. 2024 | F=Apr. 2024 | G=May 2024 | H=Jun. 2024 | I=Jul. 2024 | J=Aug. 2024 | K=Sep. 2024 | L=Oct. 2024 | M=Nov. 2024 | N=Dec. 2024 | O=TOTAL
+r6: B=NOT ADJUSTED
+r7: B=Retail and food services sales, total | C=603091 | D=611376 | E=671159 | F=664415 | G=705583 | H=664197 | I=688322 | J=694625 | K=646460 | L=691772 | M=694948 | N=754951 | O=8090899
+r8: B=Retail sales and food services excl motor vehicle and parts | C=486492 | D=486835 | E=532947 | F=528482 | G=564360 | H=537204 | I=551988 | J=555749 | K=522320 | L=558887 | M=565516 | N=620054 | O=6510834
+r9: B=Retail sales and food services excl gasoline stations | C=556231 | D=563527 | E=617498 | F=608754 | G=647120 | H=607989 | I=629916 | J=636794 | K=594284 | L=636981 | M=645001 | N=705774 | O=7449869
+r10: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=439632 | D=438986 | E=479286 | F=472821 | G=505897 | H=480996 | I=493582 | J=497918 | K=470144 | L=504096 | M=515569 | N=570877 | O=5869804
+r11: B=Retail sales, total | C=529976 | D=534513 | E=586713 | F=582673 | G=619145 | H=580837 | I=605196 | J=608862 | K=565772 | L=607700 | M=613721 | N=671589 | O=7106697
+r12: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=413377 | D=409972 | E=448501 | F=446740 | G=477922 | H=453844 | I=468862 | J=469986 | K=441632 | L=474815 | M=484289 | N=536692 | O=5526632
+r13: B=GAFO(1) | C=108234 | D=112147 | E=125109 | F=118019 | G=130508 | H=125439 | I=126149 | J=132906 | K=119812 | L=127532 | M=139714 | N=167257 | O=1532826
+r14: A=441 | B=Motor vehicle and parts dealers | C=116599 | D=124541 | E=138212 | F=135933 | G=141223 | H=126993 | I=136334 | J=138876 | K=124140 | L=132885 | M=129432 | N=134897 | O=1580065
+r15: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=106404 | D=114566 | E=127028 | F=124600 | G=129628 | H=115810 | I=124847 | J=127074 | K=113329 | L=121328 | M=118702 | N=124498 | O=1447814
+r16: A=4411 | B=Automobile dealers | C=101231 | D=107811 | E=117870 | F=115419 | G=119526 | H=106381 | I=115809 | J=118898 | K=106220 | L=114340 | M=112678 | N=118916 | O=1355099
+r17: A=44111 | B=New car dealers | C=89748 | D=94707 | E=103955 | F=101724 | G=105583 | H=93447 | I=102103 | J=104821 | K=93246 | L=101218 | M=100240 | N=106583 | O=1197375
+r18: A=44112 | B=Used car dealers | C=11483 | D=13104 | E=13915 | F=13695 | G=13943 | H=12934 | I=13706 | J=14077 | K=12974 | L=13122 | M=12438 | N=12333 | O=157724
+r19: A=4413 | B=Automotive parts, acc., and tire stores | C=10195 | D=9975 | E=11184 | F=11333 | G=11595 | H=11183 | I=11487 | J=11802 | K=10811 | L=11557 | M=10730 | N=10399 | O=132251
+r20: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=15982 | D=16206 | E=16771 | F=16117 | G=17458 | H=16575 | I=17405 | J=17909 | K=16748 | L=17131 | M=19691 | N=21316 | O=209309
+r21: A=442 | B=Furniture and home furnishings stores | C=9255 | D=9600 | E=10214 | F=9772 | G=10507 | H=9950 | I=10462 | J=10949 | K=10369 | L=10504 | M=11644 | N=11800 | O=125026
+r22: A=4421 | B=Furniture stores | C=5296 | D=5404 | E=5677 | F=5265 | G=5685 | H=5566 | I=5822 | J=5989 | K=5763 | L=5702 | M=6360 | N=6401 | O=68930
+r23: A=4422 | B=Home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r24: A=44221 | B=Floor covering stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r25: A=442299 | B=All other home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r26: A=443 | B=Electronics and appliance stores | C=6727 | D=6606 | E=6557 | F=6345 | G=6951 | H=6625 | I=6943 | J=6960 | K=6379 | L=6627 | M=8047 | N=9516 | O=84283
+r27: A=443141 | B=Household appliance stores | C=1531 | D=1620 | E=1680 | F=1652 | G=1780 | H=1767 | I=1850 | J=1813 | K=1680 | L=1717 | M=1726 | N=1698 | O=20514
+r28: A=443142 | B=Electronics stores | C=5196 | D=4986 | E=4877 | F=4693 | G=5171 | H=4858 | I=5093 | J=5147 | K=4699 | L=4910 | M=6321 | N=7818 | O=63769
+r29: A=444 | B=Building mat. and garden equip. and supplies dealers | C=34281 | D=35321 | E=40470 | F=46828 | G=50729 | H=45536 | I=46138 | J=44741 | K=42053 | L=46866 | M=41945 | N=38729 | O=513637
+r30: A=4441 | B=Building mat. and supplies dealers | C=30368 | D=31280 | E=35292 | F=40427 | G=43852 | H=39807 | I=41332 | J=40157 | K=37471 | L=41364 | M=37289 | N=33813 | O=452452
+r31: A=44412 | B=Paint and wallpaper stores | C=1129 | D=1243 | E=1385 | F=1529 | G=1614 | H=1564 | I=1600 | J=1634 | K=1495 | L=1588 | M=1248 | N=1129 | O=17158
+r32: A=44413 | B=Hardware stores | C=2860 | D=2722 | E=3085 | F=3471 | G=3798 | H=3638 | I=3454 | J=3601 | K=3147 | L=3471 | M=3314 | N=3214 | O=39775
+r33: A=445 | B=Food and beverage stores | C=78366 | D=75385 | E=81740 | F=77426 | G=84291 | H=81330 | I=83706 | J=83635 | K=79670 | L=83198 | M=84444 | N=88960 | O=982151
+r34: A=4451 | B=Grocery stores | C=71682 | D=68304 | E=73924 | F=70002 | G=75969 | H=73248 | I=75507 | J=75526 | K=72171 | L=75306 | M=75868 | N=78233 | O=885740
+r35: A=44511 | B=Supermarkets and other grocery (except convenience) stores | C=68677 | D=65256 | E=70623 | F=66595 | G=72328 | H=69748 | I=72097 | J=72139 | K=69091 | L=72130 | M=72919 | N=75175 | O=846778
+r36: A=4453 | B=Beer, wine, and liquor stores | C=4835 | D=5131 | E=5617 | F=5373 | G=6061 | H=5936 | I=6017 | J=5952 | K=5417 | L=5725 | M=6161 | N=7493 | O=69718
+r37: A=446 | B=Health and personal care stores | C=34501 | D=33333 | E=34786 | F=34744 | G=36006 | H=34695 | I=36920 | J=37634 | K=37452 | L=39488 | M=37161 | N=42166 | O=438886
+r38: A=44611 | B=Pharmacies and drug stores | C=29699 | D=28195 | E=29093 | F=29522 | G=30480 | H=29171 | I=31717 | J=31943 | K=32132 | L=34213 | M=31447 | N=34652 | O=372264
+r39: A=447 | B=Gasoline stations | C=46860 | D=47849 | E=53661 | F=55661 | G=58463 | H=56208 | I=58406 | J=57831 | K=52176 | L=54791 | M=49947 | N=49177 | O=641030
+r40: A=448 | B=Clothing and clothing access. stores | C=17405 | D=19902 | E=22718 | F=21804 | G=24934 | H=22850 | I=23110 | J=24671 | K=20888 | L=22871 | M=26942 | N=37096 | O=285191
+r41: A=4481 | B=Clothing stores | C=12471 | D=13914 | E=16646 | F=16001 | G=18104 | H=16782 | I=16906 | J=17866 | K=15315 | L=16954 | M=20355 | N=25477 | O=206791
+r42: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r43: A=44812 | B=Women's clothing stores | C=1958 | D=2327 | E=2869 | F=2662 | G=2929 | H=2485 | I=2551 | J=2631 | K=2299 | L=2472 | M=3010 | N=3479 | O=31672
+r44: A=44814 | B=Family clothing stores | C=7660 | D=8491 | E=10341 | F=9953 | G=11412 | H=10799 | I=10948 | J=11622 | K=9845 | L=11054 | M=13540 | N=16887 | O=132552
+r45: A=44819 | B=Other clothing stores | C=1153 | D=1159 | E=1251 | F=1213 | G=1303 | H=1406 | I=1356 | J=1473 | K=1176 | L=1240 | M=1393 | N=1724 | O=15847
+r46: A=4482 | B=Shoe stores | C=2032 | D=2514 | E=2877 | F=2619 | G=2907 | H=2670 | I=3105 | J=3646 | K=2431 | L=2529 | M=2924 | N=4051 | O=34305
+r47: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r48: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=6528 | D=6375 | E=7424 | F=6844 | G=7513 | H=7666 | I=7538 | J=8370 | K=7308 | L=7408 | M=8712 | N=11245 | O=92931
+r49: A=45111 | B=Sporting goods stores | C=3876 | D=3960 | E=4803 | F=4426 | G=4979 | H=5250 | I=5088 | J=5421 | K=4491 | L=4541 | M=4946 | N=6933 | O=58714
+r50: A=45112 | B=Hobby, toy, and game stores | C=1236 | D=1248 | E=1371 | F=1207 | G=1267 | H=1221 | I=1241 | J=1387 | K=1368 | L=1536 | M=2380 | N=2452 | O=17914
+r51: A=451211 | B=Book stores | C=728 | D=504 | E=536 | F=534 | G=565 | H=527 | I=522 | J=782 | K=684 | L=521 | M=534 | N=928 | O=7365
+r52: A=452 | B=General merchandise stores | C=66540 | D=67880 | E=76251 | F=71292 | G=78362 | H=75941 | I=75724 | J=79312 | K=72526 | L=77313 | M=82382 | N=94879 | O=918402
+r53: A=4522 | B=Department stores | C=2566 | D=3082 | E=3482 | F=3547 | G=3979 | H=3586 | I=3428 | J=3667 | K=3375 | L=3638 | M=5074 | N=7084 | O=46508
+r54: A=45221 | B=Department stores | C=2566 | D=3082 | E=3482 | F=3547 | G=3979 | H=3586 | I=3428 | J=3667 | K=3375 | L=3638 | M=5074 | N=7084 | O=46508
+r55: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=63974 | D=64798 | E=72769 | F=67745 | G=74383 | H=72355 | I=72296 | J=75645 | K=69151 | L=73675 | M=77308 | N=87795 | O=871894
+r56: A=452311 | B=Warehouse clubs and supercenters | C=56519 | D=57099 | E=64215 | F=59550 | G=65364 | H=63978 | I=64238 | J=67241 | K=61139 | L=65001 | M=67955 | N=77213 | O=769512
+r57: A=452319 | B=All other gen. merchandise stores | C=7455 | D=7699 | E=8554 | F=8195 | G=9019 | H=8377 | I=8058 | J=8404 | K=8012 | L=8674 | M=9353 | N=10582 | O=102382
+r58: A=453 | B=Miscellaneous store retailers | C=11325 | D=11516 | E=12789 | F=13182 | G=14160 | H=13512 | I=13316 | J=13561 | K=13085 | L=14179 | M=12289 | N=13856 | O=156770
+r59: A=4532 | B=Office supplies, stationery, and gift stores | C=1779 | D=1784 | E=1945 | F=1962 | G=2241 | H=2407 | I=2372 | J=2644 | K=2342 | L=2809 | M=1987 | N=2721 | O=26993
+r60: A=45321 | B=Office supplies and stationery stores | C=740 | D=664 | E=663 | F=649 | G=642 | H=593 | I=694 | J=869 | K=646 | L=623 | M=568 | N=629 | O=7980
+r61: A=45322 | B=Gift, novelty, and souvenir stores | C=1039 | D=1120 | E=1282 | F=1313 | G=1599 | H=1814 | I=1678 | J=1775 | K=1696 | L=2186 | M=1419 | N=2092 | O=19013
+r62: A=45330 | B=Used merchandise stores | C=1565 | D=1591 | E=1806 | F=1681 | G=1834 | H=1671 | I=1709 | J=1733 | K=1806 | L=1866 | M=1753 | N=1788 | O=20803
+r63: A=454 | B=Nonstore retailers | C=101589 | D=96205 | E=101891 | F=102842 | G=106006 | H=99531 | I=106599 | J=102322 | K=99726 | L=111570 | M=120776 | N=139268 | O=1288325
+r64: A=4541 | B=Electronic shopping and mail-order houses | C=93243 | D=88353 | E=94932 | F=96468 | G=100183 | H=94474 | I=101189 | J=96950 | K=94281 | L=104903 | M=114720 | N=131582 | O=1211278
+r65: A=45431 | B=Fuel dealers | C=5432 | D=4807 | E=3742 | F=3248 | G=2440 | H=1956 | I=2153 | J=2229 | K=2320 | L=3189 | M=3058 | N=4744 | O=39318
+r66: A=722 | B=Food services and drinking places | C=73115 | D=76863 | E=84446 | F=81742 | G=86438 | H=83360 | I=83126 | J=85763 | K=80688 | L=84072 | M=81227 | N=83362 | O=984202
+r67: A=7224 | B=Drinking places | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r68: A=7225 | B=Restaurants and other eating places | C=64845 | D=67785 | E=74446 | F=71545 | G=76125 | H=74083 | I=74339 | J=75481 | K=69694 | L=72616 | M=70608 | N=73289 | O=864856
+r69: A=722511 | B=Full service restaurants | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r70: A=722513, 722514, 722515 | B=Limited service eating places | C=35046 | D=35905 | E=39710 | F=39070 | G=41090 | H=40109 | I=40645 | J=40804 | K=37621 | L=39515 | M=37396 | N=37944 | O=464855
+r71: B=ADJUSTED(2)
+r72: B=Retail and food services sales, total | C=660602 | D=664621 | E=664328 | F=664858 | G=667659 | H=666040 | I=673662 | J=670668 | K=676005 | L=681808 | M=685709 | N=691794
+r73: B=Retail sales and food services excl motor vehicle and parts | C=530096 | D=533091 | E=534365 | F=535804 | G=536684 | H=539608 | I=542644 | J=540553 | K=545953 | L=548722 | M=549048 | N=554418
+r74: B=Retail sales and food services excl gasoline stations | C=608009 | D=611337 | E=610343 | F=609639 | G=613527 | H=612610 | I=619980 | J=617758 | K=624140 | L=629477 | M=633299 | N=638049
+r75: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=477503 | D=479807 | E=480380 | F=480585 | G=482552 | H=486178 | I=488962 | J=487643 | K=494088 | L=496391 | M=496638 | N=500673
+r76: B=Retail sales, total | C=579633 | D=583370 | E=583596 | F=583925 | G=586649 | H=585029 | I=592166 | J=589144 | K=593417 | L=598403 | M=602142 | N=608097
+r77: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=449127 | D=451840 | E=453633 | F=454871 | G=455674 | H=458597 | I=461148 | J=459029 | K=463365 | L=465317 | M=465481 | N=470721
+r78: B=GAFO(1) | C=125797 | D=126993 | E=125084 | F=126045 | G=126768 | H=127237 | I=127909 | J=127117 | K=128414 | L=128579 | M=129010 | N=130725
+r79: A=441 | B=Motor vehicle and parts dealers | C=130506 | D=131530 | E=129963 | F=129054 | G=130975 | H=126432 | I=131018 | J=130115 | K=130052 | L=133086 | M=136661 | N=137376
+r80: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=119555 | D=120723 | E=119052 | F=118104 | G=120026 | H=115349 | I=119930 | J=119095 | K=119043 | L=122183 | M=125611 | N=126266
+r81: A=4413 | B=Automotive parts, acc., and tire stores | C=10951 | D=10807 | E=10911 | F=10950 | G=10949 | H=11083 | I=11088 | J=11020 | K=11009 | L=10903 | M=11050 | N=11110
+r82: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=17516 | D=17447 | E=16911 | F=17161 | G=17305 | H=17304 | I=17445 | J=17264 | K=17282 | L=17357 | M=17626 | N=18234
+r83: A=442 | B=Furniture and home furnishings stores | C=10329 | D=10235 | E=9965 | F=10064 | G=10132 | H=10226 | I=10389 | J=10339 | K=10602 | L=10483 | M=10683 | N=11227
+r84: A=443 | B=Electronics and appliance stores | C=7187 | D=7212 | E=6946 | F=7097 | G=7173 | H=7078 | I=7056 | J=6925 | K=6680 | L=6874 | M=6943 | N=7007
+r85: A=444 | B=Building mat. and garden equip. and supplies dealers | C=41039 | D=42446 | E=41968 | F=41912 | G=42255 | H=42413 | I=43097 | J=43004 | K=43412 | L=43841 | M=43606 | N=42677
+r86: A=4441 | B=Building mat. and supplies dealers | C=36067 | D=37506 | E=36994 | F=36852 | G=37257 | H=37307 | I=38059 | J=37956 | K=38275 | L=38586 | M=38363 | N=37362
+r87: A=445 | B=Food and beverage stores | C=80210 | D=80352 | E=80787 | F=81392 | G=81153 | H=81548 | I=82236 | J=81682 | K=82507 | L=82715 | M=82588 | N=83375
+r88: A=4451 | B=Grocery stores | C=72260 | D=72279 | E=72760 | F=73377 | G=73117 | H=73542 | I=74245 | J=73756 | K=74480 | L=74708 | M=74527 | N=75296
+r89: A=4453 | B=Beer, wine and liquor stores | C=5749 | D=5844 | E=5815 | F=5790 | G=5806 | H=5825 | I=5802 | J=5745 | K=5812 | L=5800 | M=5812 | N=5800
+r90: A=446 | B=Health and personal care stores | C=34640 | D=34831 | E=34682 | F=35166 | G=35404 | H=35694 | I=37143 | J=37372 | K=38100 | L=38006 | M=38153 | N=38090
+r91: A=44611 | B=Pharmacies and drug stores | C=29405 | D=29400 | E=29122 | F=29790 | G=29853 | H=30073 | I=31654 | J=31816 | K=32522 | L=32460 | M=32520 | N=32385
+r92: A=447 | B=Gasoline stations | C=52593 | D=53284 | E=53985 | F=55219 | G=54132 | H=53430 | I=53682 | J=52910 | K=51865 | L=52331 | M=52410 | N=53745
+r93: A=448 | B=Clothing and clothing access. stores | C=23607 | D=23737 | E=22867 | F=23613 | G=23812 | H=23883 | I=23770 | J=23489 | K=23736 | L=23867 | M=23860 | N=24245
+r94: A=4481 | B=Clothing stores | C=16863 | D=17044 | E=16446 | F=17090 | G=17306 | H=17281 | I=17209 | J=17140 | K=17193 | L=17314 | M=17477 | N=17696
+r95: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r96: A=44812 | B=Women's clothing stores | C=2671 | D=2718 | E=2639 | F=2651 | G=2663 | H=2621 | I=2624 | J=2615 | K=2529 | L=2608 | M=2664 | N=2640
+r97: A=4482 | B=Shoe stores | C=3010 | D=2982 | E=2724 | F=2897 | G=2858 | H=2837 | I=2954 | J=2777 | K=2781 | L=2779 | M=2817 | N=2881
+r98: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r99: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=7680 | D=7832 | E=7662 | F=7596 | G=7651 | H=7751 | I=7591 | J=7630 | K=7850 | L=7765 | M=7730 | N=7913
+r100: A=452 | B=General merchandise stores | C=74770 | D=75739 | E=75466 | F=75439 | G=75814 | H=75938 | I=76890 | J=76419 | K=77255 | L=77437 | M=77575 | N=78030
+r101: A=4522 | B=Department stores | C=3847 | D=3901 | E=3801 | F=3945 | G=3863 | H=3906 | I=3856 | J=3848 | K=3911 | L=3825 | M=3864 | N=3880
+r102: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=70923 | D=71838 | E=71665 | F=71494 | G=71951 | H=72032 | I=73034 | J=72571 | K=73344 | L=73612 | M=73711 | N=74150
+r103: A=452311 | B=Warehouse clubs and supercenters | C=62383 | D=63303 | E=63204 | F=62949 | G=63522 | H=63596 | I=64561 | J=64039 | K=64766 | L=65066 | M=65091 | N=65602
+r104: A=452319 | B=All other gen. merchandise stores | C=8540 | D=8535 | E=8461 | F=8545 | G=8429 | H=8436 | I=8473 | J=8532 | K=8578 | L=8546 | M=8620 | N=8548
+r105: A=453 | B=Miscellaneous stores retailers | C=12844 | D=12953 | E=13204 | F=13144 | G=12825 | H=12861 | I=12826 | J=13078 | K=13310 | L=13176 | M=12756 | N=13416
+r106: A=454 | B=Nonstore retailers | C=104228 | D=103219 | E=106101 | F=104229 | G=105323 | H=107775 | I=106468 | J=106181 | K=108048 | L=108822 | M=109177 | N=110996
+r107: A=4541 | B=Electronic shopping and mail order houses | C=97637 | D=96772 | E=99718 | F=97541 | G=98995 | H=101585 | I=99989 | J=99948 | K=101706 | L=102344 | M=103258 | N=104513
+r108: A=45431 | B=Fuel dealers | C=3451 | D=3235 | E=3166 | F=3530 | G=3148 | H=3080 | I=3323 | J=3245 | K=3169 | L=3325 | M=2847 | N=3425
+r109: A=722 | B=Food services and drinking places | C=80969 | D=81251 | E=80732 | F=80933 | G=81010 | H=81011 | I=81496 | J=81524 | K=82588 | L=83405 | M=83567 | N=83697
+r110: (blank)
+r111: A=(S) Suppressed - Estimate does not meet publication standards because of high sampling var...
+r112: A=is less than 50%), or other concerns about the estimate's quality.
+r113: (blank)
+r114: A=(1) GAFO represents stores classified in the following NAICS codes:  442, 443, 448, 451, 4...
+r115: A=(2) Estimates are adjusted for seasonal variations and holiday and trading-day differences...
+r116: (blank)
+r117: A=Note: Estimates are not adjusted for price changes. Retail and food services total and oth...
+r118: A=Estimates include data only for businesses with paid employees. Prior to the benchmark rep...
+r119: A=Information on sample design, estimation procedures, and measures of sampling variability ...
+
+### Sheet "2023": 119 rows x 15 columns (Excel rows 1..119, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2023
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+r5: C=Jan. 2023 | D=Feb. 2023 | E=Mar. 2023 | F=Apr. 2023 | G=May 2023 | H=Jun. 2023 | I=Jul. 2023 | J=Aug. 2023 | K=Sep. 2023 | L=Oct. 2023 | M=Nov. 2023 | N=Dec. 2023 | O=TOTAL
+r6: B=NOT ADJUSTED
+r7: B=Retail and food services sales, total | C=609481 | D=587988 | E=670460 | F=652055 | G=696485 | H=675653 | I=668702 | J=689161 | K=652547 | L=666746 | M=674963 | N=728144 | O=7972385
+r8: B=Retail sales and food services excl motor vehicle and parts | C=488401 | D=466347 | E=525741 | F=515858 | G=551142 | H=533714 | I=531763 | J=546033 | K=518357 | L=537064 | M=551028 | N=598425 | O=6363873
+r9: B=Retail sales and food services excl gasoline stations | C=560014 | D=540937 | E=616465 | F=598896 | G=640152 | H=619751 | I=612086 | J=628532 | K=594539 | L=608690 | M=623168 | N=679022 | O=7322252
+r10: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=438934 | D=419296 | E=471746 | F=462699 | G=494809 | H=477812 | I=475147 | J=485404 | K=460349 | L=479008 | M=499233 | N=549303 | O=5713740
+r11: B=Retail sales, total | C=535871 | D=516236 | E=588747 | F=572941 | G=613691 | H=594147 | I=586678 | J=607777 | K=572898 | L=586400 | M=598630 | N=645247 | O=7019263
+r12: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=414791 | D=394595 | E=444028 | F=436744 | G=468348 | H=452208 | I=449739 | J=464649 | K=438708 | L=456718 | M=474695 | N=515528 | O=5410751
+r13: B=GAFO(1) | C=112883 | D=109932 | E=122016 | F=121692 | G=127487 | H=124361 | I=124587 | J=129591 | K=120039 | L=123160 | M=134059 | N=163963 | O=1513770
+r14: A=441 | B=Motor vehicle and parts dealers | C=121080 | D=121641 | E=144719 | F=136197 | G=145343 | H=141939 | I=136939 | J=143128 | K=134190 | L=129682 | M=123935 | N=129719 | O=1608512
+r15: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=111542 | D=112272 | E=133797 | F=125649 | G=134054 | H=130478 | I=126008 | J=131328 | K=123217 | L=118227 | M=113148 | N=119612 | O=1479332
+r16: A=4411 | B=Automobile dealers | C=105156 | D=104816 | E=123936 | F=115974 | G=122810 | H=119694 | I=116422 | J=122412 | K=114689 | L=111053 | M=107029 | N=113571 | O=1377562
+r17: A=44111 | B=New car dealers | C=93235 | D=91522 | E=107695 | F=101624 | G=108038 | H=105989 | I=103072 | J=107877 | K=101606 | L=98309 | M=95506 | N=102738 | O=1217211
+r18: A=44112 | B=Used car dealers | C=11921 | D=13294 | E=16241 | F=14350 | G=14772 | H=13705 | I=13350 | J=14535 | K=13083 | L=12744 | M=11523 | N=10833 | O=160351
+r19: A=4413 | B=Automotive parts, acc., and tire stores | C=9538 | D=9369 | E=10922 | F=10548 | G=11289 | H=11461 | I=10931 | J=11800 | K=10973 | L=11455 | M=10787 | N=10107 | O=129180
+r20: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=17720 | D=16616 | E=18556 | F=16608 | G=17767 | H=17596 | I=17097 | J=18198 | K=17415 | L=16929 | M=19369 | N=20052 | O=213923
+r21: A=442 | B=Furniture and home furnishings stores | C=10747 | D=10286 | E=11636 | F=10451 | G=11081 | H=10845 | I=10498 | J=11195 | K=10557 | L=10157 | M=11383 | N=10965 | O=129801
+r22: A=4421 | B=Furniture stores | C=5849 | D=5677 | E=6429 | F=5585 | G=5883 | H=6120 | I=5963 | J=6196 | K=6143 | L=5457 | M=6207 | N=5914 | O=71423
+r23: A=4422 | B=Home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r24: A=44221 | B=Floor covering stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r25: A=442299 | B=All other home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r26: A=443 | B=Electronics and appliance stores | C=6973 | D=6330 | E=6920 | F=6157 | G=6686 | H=6751 | I=6599 | J=7003 | K=6858 | L=6772 | M=7986 | N=9087 | O=84122
+r27: A=443141 | B=Household appliance stores | C=1639 | D=1558 | E=1766 | F=1585 | G=1720 | H=1764 | I=1668 | J=1824 | K=1673 | L=1705 | M=1752 | N=1631 | O=20285
+r28: A=443142 | B=Electronics stores | C=5334 | D=4772 | E=5154 | F=4572 | G=4966 | H=4987 | I=4931 | J=5179 | K=5185 | L=5067 | M=6234 | N=7456 | O=63837
+r29: A=444 | B=Building mat. and garden equip. and supplies dealers | C=36402 | D=35263 | E=43501 | F=45017 | G=52820 | H=48344 | I=43838 | J=45884 | K=41707 | L=43770 | M=41604 | N=38334 | O=516484
+r30: A=4441 | B=Building mat. and supplies dealers | C=32363 | D=31173 | E=38237 | F=38665 | G=45568 | H=42393 | I=39081 | J=41099 | K=37015 | L=38594 | M=36739 | N=33775 | O=454702
+r31: A=44412 | B=Paint and wallpaper stores | C=1143 | D=1170 | E=1458 | F=1382 | G=1646 | H=1625 | I=1481 | J=1640 | K=1474 | L=1497 | M=1264 | N=1106 | O=16886
+r32: A=44413 | B=Hardware stores | C=2706 | D=2593 | E=3223 | F=3334 | G=3805 | H=3686 | I=3328 | J=3426 | K=3111 | L=3271 | M=3143 | N=3161 | O=38787
+r33: A=445 | B=Food and beverage stores | C=77522 | D=72858 | E=79366 | F=78218 | G=81949 | H=79768 | I=81604 | J=81294 | K=79120 | L=79859 | M=81792 | N=87603 | O=960953
+r34: A=4451 | B=Grocery stores | C=70531 | D=65885 | E=71688 | F=70484 | G=73543 | H=71396 | I=73198 | J=73237 | K=71166 | L=71896 | M=73224 | N=76710 | O=862958
+r35: A=44511 | B=Supermarkets and other grocery (except convenience) stores | C=67687 | D=63068 | E=68618 | F=67294 | G=70212 | H=68081 | I=69795 | J=69796 | K=67769 | L=68640 | M=70082 | N=73498 | O=824540
+r36: A=4453 | B=Beer, wine, and liquor stores | C=5101 | D=5083 | E=5653 | F=5634 | G=6173 | H=6130 | I=6169 | J=5883 | K=5811 | L=5741 | M=6149 | N=7819 | O=71346
+r37: A=446 | B=Health and personal care stores | C=32406 | D=30504 | E=34108 | F=32159 | G=34328 | H=33843 | I=32270 | J=34661 | K=33486 | L=35940 | M=34855 | N=38082 | O=406642
+r38: A=44611 | B=Pharmacies and drug stores | C=27547 | D=25648 | E=28653 | F=27096 | G=29061 | H=28545 | I=27350 | J=29372 | K=28367 | L=31091 | M=29601 | N=31222 | O=343553
+r39: A=447 | B=Gasoline stations | C=49467 | D=47051 | E=53995 | F=53159 | G=56333 | H=55902 | I=56616 | J=60629 | K=58008 | L=58056 | M=51795 | N=49122 | O=650133
+r40: A=448 | B=Clothing and clothing access. stores | C=17604 | D=18965 | E=22550 | F=22340 | G=23966 | H=22397 | I=22924 | J=24500 | K=21445 | L=21990 | M=26116 | N=37253 | O=282050
+r41: A=4481 | B=Clothing stores | C=12506 | D=13118 | E=16190 | F=16153 | G=16844 | H=16007 | I=16556 | J=17290 | K=15537 | L=16100 | M=19213 | N=24904 | O=200418
+r42: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r43: A=44812 | B=Women's clothing stores | C=2039 | D=2215 | E=2763 | F=2760 | G=2944 | H=2562 | I=2655 | J=2680 | K=2591 | L=2595 | M=2963 | N=3724 | O=32491
+r44: A=44814 | B=Family clothing stores | C=7372 | D=7578 | E=9679 | F=9737 | G=10174 | H=9889 | I=10400 | J=10894 | K=9638 | L=10147 | M=12352 | N=16021 | O=123881
+r45: A=44819 | B=Other clothing stores | C=1222 | D=1310 | E=1439 | F=1267 | G=1226 | H=1332 | I=1359 | J=1354 | K=1133 | L=1147 | M=1397 | N=1674 | O=15860
+r46: A=4482 | B=Shoe stores | C=2184 | D=2496 | E=3113 | F=2941 | G=3072 | H=2898 | I=3196 | J=3966 | K=2833 | L=2754 | M=3097 | N=4271 | O=36821
+r47: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r48: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=6559 | D=6094 | E=7399 | F=7145 | G=7477 | H=7754 | I=7652 | J=8332 | K=7427 | L=7182 | M=8489 | N=10811 | O=92321
+r49: A=45111 | B=Sporting goods stores | C=3683 | D=3682 | E=4752 | F=4735 | G=4892 | H=5221 | I=5173 | J=5392 | K=4529 | L=4458 | M=4938 | N=6571 | O=58026
+r50: A=45112 | B=Hobby, toy, and game stores | C=1243 | D=1185 | E=1325 | F=1196 | G=1249 | H=1253 | I=1244 | J=1334 | K=1432 | L=1447 | M=2210 | N=2398 | O=17516
+r51: A=451211 | B=Book stores | C=911 | D=544 | E=574 | F=556 | G=620 | H=552 | I=553 | J=822 | K=674 | L=514 | M=546 | N=981 | O=7847
+r52: A=452 | B=General merchandise stores | C=69032 | D=66395 | E=71337 | F=73503 | G=75910 | H=74219 | I=74312 | J=75948 | K=71269 | L=74102 | M=78154 | N=93247 | O=897428
+r53: A=4522 | B=Department stores | C=2569 | D=2992 | E=3356 | F=3449 | G=3790 | H=3467 | I=3395 | J=3593 | K=3317 | L=3511 | M=4965 | N=7247 | O=45651
+r54: A=45221 | B=Department stores | C=2569 | D=2992 | E=3356 | F=3449 | G=3790 | H=3467 | I=3395 | J=3593 | K=3317 | L=3511 | M=4965 | N=7247 | O=45651
+r55: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=66463 | D=63403 | E=67981 | F=70054 | G=72120 | H=70752 | I=70917 | J=72355 | K=67952 | L=70591 | M=73189 | N=86000 | O=851777
+r56: A=452311 | B=Warehouse clubs and supercenters | C=59214 | D=56211 | E=59871 | F=61858 | G=63392 | H=62328 | I=62850 | J=64185 | K=60004 | L=62258 | M=64101 | N=75372 | O=751644
+r57: A=452319 | B=All other gen. merchandise stores | C=7249 | D=7192 | E=8110 | F=8196 | G=8728 | H=8424 | I=8067 | J=8170 | K=7948 | L=8333 | M=9088 | N=10628 | O=100133
+r58: A=453 | B=Miscellaneous store retailers | C=11452 | D=10982 | E=12618 | F=12798 | G=14295 | H=14198 | I=13146 | J=13026 | K=13012 | L=13811 | M=12990 | N=13459 | O=155787
+r59: A=4532 | B=Office supplies, stationery, and gift stores | C=1968 | D=1862 | E=2174 | F=2096 | G=2367 | H=2395 | I=2602 | J=2613 | K=2483 | L=2957 | M=1931 | N=2600 | O=28048
+r60: A=45321 | B=Office supplies and stationery stores | C=890 | D=736 | E=848 | F=749 | G=781 | H=744 | I=796 | J=1051 | K=822 | L=732 | M=647 | N=748 | O=9544
+r61: A=45322 | B=Gift, novelty, and souvenir stores | C=1078 | D=1126 | E=1326 | F=1347 | G=1586 | H=1651 | I=1806 | J=1562 | K=1661 | L=2225 | M=1284 | N=1852 | O=18504
+r62: A=45330 | B=Used merchandise stores | C=1615 | D=1528 | E=1770 | F=1847 | G=1623 | H=1558 | I=1589 | J=1630 | K=1665 | L=1801 | M=1608 | N=1739 | O=19973
+r63: A=454 | B=Nonstore retailers | C=96627 | D=89867 | E=100598 | F=95797 | G=103503 | H=98187 | I=100280 | J=102177 | K=95819 | L=105079 | M=119531 | N=127565 | O=1235030
+r64: A=4541 | B=Electronic shopping and mail-order houses | C=88806 | D=82567 | E=93027 | F=89968 | G=97607 | H=92326 | I=95146 | J=96160 | K=89962 | L=98470 | M=112415 | N=120194 | O=1156648
+r65: A=45431 | B=Fuel dealers | C=4984 | D=4504 | E=4404 | F=2898 | G=2631 | H=2526 | I=2124 | J=2567 | K=2753 | L=3425 | M=4016 | N=4447 | O=41279
+r66: A=722 | B=Food services and drinking places | C=73610 | D=71752 | E=81713 | F=79114 | G=82794 | H=81506 | I=82024 | J=81384 | K=79649 | L=80346 | M=76333 | N=82897 | O=953122
+r67: A=7224 | B=Drinking places | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r68: A=7225 | B=Restaurants and other eating places | C=65837 | D=63620 | E=72355 | F=69907 | G=73450 | H=72725 | I=73781 | J=71947 | K=69181 | L=69902 | M=66676 | N=73502 | O=842883
+r69: A=722511 | B=Full service restaurants | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r70: A=722513, 722514, 722515 | B=Limited service eating places | C=34477 | D=33462 | E=38572 | F=37860 | G=39394 | H=39050 | I=39606 | J=38822 | K=37303 | L=37727 | M=35668 | N=37935 | O=449876
+r71: B=ADJUSTED(2)
+r72: B=Retail and food services sales, total | C=674646 | D=664692 | E=655146 | F=658962 | G=662303 | H=664476 | I=663391 | J=667632 | K=671096 | L=667815 | M=666419 | N=666963
+r73: B=Retail sales and food services excl motor vehicle and parts | C=535683 | D=530854 | E=523242 | F=525745 | G=527112 | H=526893 | I=528658 | J=532705 | K=535272 | L=534442 | M=534280 | N=535945
+r74: B=Retail sales and food services excl gasoline stations | C=619065 | D=610298 | E=601043 | F=605428 | G=609803 | H=612182 | I=611258 | J=611907 | K=613719 | L=611938 | M=612297 | N=613336
+r75: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=480102 | D=476460 | E=469139 | F=472211 | G=474612 | H=474599 | I=476525 | J=476980 | K=477895 | L=478565 | M=480158 | N=482318
+r76: B=Retail sales, total | C=593578 | D=586275 | E=576877 | F=580940 | G=583751 | H=585497 | I=583987 | J=588310 | K=591207 | L=587869 | M=585643 | N=585850
+r77: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=454615 | D=452437 | E=444973 | F=447723 | G=448560 | H=447914 | I=449254 | J=453383 | K=455383 | L=454496 | M=453504 | N=454832
+r78: B=GAFO(1) | C=131305 | D=129225 | E=125217 | F=125798 | G=125321 | H=125651 | I=125703 | J=126058 | K=125533 | L=125153 | M=125322 | N=125627
+r79: A=441 | B=Motor vehicle and parts dealers | C=138963 | D=133838 | E=131904 | F=133217 | G=135191 | H=137583 | I=134733 | J=134927 | K=135824 | L=133373 | M=132139 | N=131018
+r80: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=128505 | D=123240 | E=121744 | F=122584 | G=124470 | H=126678 | I=123780 | J=124011 | K=124840 | L=122262 | M=121143 | N=120092
+r81: A=4413 | B=Automotive parts, acc., and tire stores | C=10458 | D=10598 | E=10160 | F=10633 | G=10721 | H=10905 | I=10953 | J=10916 | K=10984 | L=11111 | M=10996 | N=10926
+r82: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=19708 | D=18622 | E=18319 | F=17996 | G=17827 | H=17936 | I=17543 | J=17645 | K=17515 | L=17427 | M=17363 | N=16996
+r83: A=442 | B=Furniture and home furnishings stores | C=12226 | D=11429 | E=11103 | F=10943 | G=10811 | H=10845 | I=10690 | J=10642 | K=10452 | L=10343 | M=10520 | N=10344
+r84: A=443 | B=Electronics and appliance stores | C=7482 | D=7193 | E=7216 | F=7053 | G=7016 | H=7091 | I=6853 | J=7003 | K=7063 | L=7084 | M=6843 | N=6652
+r85: A=444 | B=Building mat. and garden equip. and supplies dealers | C=44453 | D=44384 | E=42267 | F=42779 | G=43973 | H=42900 | I=42933 | J=43083 | K=42827 | L=42548 | M=42556 | N=42843
+r86: A=4441 | B=Building mat. and supplies dealers | C=39228 | D=39113 | E=37451 | F=37685 | G=38683 | H=37716 | I=37796 | J=37949 | K=37579 | L=37325 | M=37336 | N=37822
+r87: A=445 | B=Food and beverage stores | C=79851 | D=80538 | E=80001 | F=79709 | G=79860 | H=79792 | I=79889 | J=80259 | K=80342 | L=80364 | M=80638 | N=80508
+r88: A=4451 | B=Grocery stores | C=71460 | D=72322 | E=71904 | F=71630 | G=71610 | H=71611 | I=71692 | J=72155 | K=72176 | L=72185 | M=72499 | N=72368
+r89: A=4453 | B=Beer, wine and liquor stores | C=6138 | D=5987 | E=5913 | F=5962 | G=6028 | H=5928 | I=5937 | J=5883 | K=5924 | L=5919 | M=5895 | N=5946
+r90: A=446 | B=Health and personal care stores | C=32966 | D=33121 | E=33211 | F=33429 | G=33754 | H=33708 | I=33440 | J=34182 | K=33927 | L=35235 | M=35458 | N=34715
+r91: A=44611 | B=Pharmacies and drug stores | C=27658 | D=27788 | E=27981 | F=28108 | G=28491 | H=28488 | I=28196 | J=28966 | K=28654 | L=30069 | M=30205 | N=29399
+r92: A=447 | B=Gasoline stations | C=55581 | D=54394 | E=54103 | F=53534 | G=52500 | H=52294 | I=52133 | J=55725 | K=57377 | L=55877 | M=54122 | N=53627
+r93: A=448 | B=Clothing and clothing access. stores | C=23967 | D=23602 | E=23240 | F=23294 | G=23223 | H=23267 | I=23453 | J=23734 | K=23546 | L=23350 | M=23521 | N=23864
+r94: A=4481 | B=Clothing stores | C=16901 | D=16827 | E=16489 | F=16515 | G=16360 | H=16376 | I=16688 | J=16942 | K=16909 | L=16684 | M=16737 | N=17029
+r95: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r96: A=44812 | B=Women's clothing stores | C=2793 | D=2721 | E=2621 | F=2664 | G=2703 | H=2658 | I=2729 | J=2721 | K=2762 | L=2749 | M=2679 | N=2761
+r97: A=4482 | B=Shoe stores | C=3226 | D=3093 | E=3031 | F=3070 | G=3072 | H=3083 | I=3029 | J=3098 | K=3096 | L=3067 | M=3004 | N=3014
+r98: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r99: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=7799 | D=7724 | E=7667 | F=7783 | G=7708 | H=7677 | I=7848 | J=7672 | K=7649 | L=7665 | M=7731 | N=7508
+r100: A=452 | B=General merchandise stores | C=77390 | D=76846 | E=73610 | F=74308 | G=74183 | H=74462 | I=74382 | J=74750 | K=74476 | L=74367 | M=74534 | N=75044
+r101: A=4522 | B=Department stores | C=3834 | D=3937 | E=3767 | F=3689 | G=3745 | H=3756 | I=3776 | J=3810 | K=3774 | L=3751 | M=3773 | N=3941
+r102: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=73556 | D=72909 | E=69843 | F=70619 | G=70438 | H=70706 | I=70606 | J=70940 | K=70702 | L=70616 | M=70761 | N=71103
+r103: A=452311 | B=Warehouse clubs and supercenters | C=65214 | D=64536 | E=61659 | F=62357 | G=62149 | H=62390 | I=62105 | J=62620 | K=62309 | L=62258 | M=62416 | N=62601
+r104: A=452319 | B=All other gen. merchandise stores | C=8342 | D=8373 | E=8184 | F=8262 | G=8289 | H=8316 | I=8501 | J=8320 | K=8393 | L=8358 | M=8345 | N=8502
+r105: A=453 | B=Miscellaneous stores retailers | C=13157 | D=12923 | E=12687 | F=13129 | G=13063 | H=13217 | I=12949 | J=12413 | K=12981 | L=13135 | M=13328 | N=13137
+r106: A=454 | B=Nonstore retailers | C=99743 | D=100283 | E=99868 | F=101762 | G=102469 | H=102661 | I=104684 | J=103920 | K=104743 | L=104528 | M=104253 | N=106590
+r107: A=4541 | B=Electronic shopping and mail order houses | C=93382 | D=93933 | E=93401 | F=95305 | G=95975 | H=95873 | I=98190 | J=97033 | K=97785 | L=97883 | M=97582 | N=100162
+r108: A=45431 | B=Fuel dealers | C=3226 | D=3236 | E=3490 | F=3401 | G=3408 | H=3609 | I=3426 | J=3672 | K=3813 | L=3636 | M=3605 | N=3324
+r109: A=722 | B=Food services and drinking places | C=81068 | D=78417 | E=78269 | F=78022 | G=78552 | H=78979 | I=79404 | J=79322 | K=79889 | L=79946 | M=80776 | N=81113
+r110: (blank)
+r111: A=(S) Suppressed - Estimate does not meet publication standards because of high sampling var...
+r112: A=is less than 50%), or other concerns about the estimate's quality.
+r113: (blank)
+r114: A=(1) GAFO represents stores classified in the following NAICS codes:  442, 443, 448, 451, 4...
+r115: A=(2) Estimates are adjusted for seasonal variations and holiday and trading-day differences...
+r116: (blank)
+r117: A=Note: Estimates are not adjusted for price changes. Retail and food services total and oth...
+r118: A=Estimates include data only for businesses with paid employees. Prior to the benchmark rep...
+r119: A=Information on sample design, estimation procedures, and measures of sampling variability ...
+
+### Sheet "2022": 119 rows x 15 columns (Excel rows 1..119, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2022
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+r5: C=Jan. 2022 | D=Feb. 2022 | E=Mar. 2022 | F=Apr. 2022 | G=May 2022 | H=Jun. 2022 | I=Jul. 2022 | J=Aug. 2022 | K=Sep. 2022 | L=Oct. 2022 | M=Nov. 2022 | N=Dec. 2022 | O=TOTAL
+r6: B=NOT ADJUSTED
+r7: B=Retail and food services sales, total | C=572890 | D=566039 | E=666105 | F=665943 | G=687716 | H=678285 | I=669553 | J=681612 | K=643382 | L=663619 | M=663414 | N=716752 | O=7875310
+r8: B=Retail sales and food services excl motor vehicle and parts | C=455783 | D=445309 | E=521505 | F=524282 | G=551559 | H=541699 | I=538138 | J=541615 | K=514306 | L=533104 | M=542222 | N=590007 | O=6299529
+r9: B=Retail sales and food services excl gasoline stations | C=525955 | D=518780 | E=604812 | F=604127 | G=618261 | H=606597 | I=599136 | J=617018 | K=584664 | L=602128 | M=607115 | N=665058 | O=7153651
+r10: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=408848 | D=398050 | E=460212 | F=462466 | G=482104 | H=470011 | I=467721 | J=477021 | K=455588 | L=471613 | M=485923 | N=538313 | O=5577870
+r11: B=Retail sales, total | C=510565 | D=501337 | E=590737 | F=588930 | G=607591 | H=600674 | I=590359 | J=602828 | K=567101 | L=584975 | M=590933 | N=638663 | O=6974693
+r12: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=393458 | D=380607 | E=446137 | F=447269 | G=471434 | H=464088 | I=458944 | J=462831 | K=438025 | L=454460 | M=469741 | N=511918 | O=5398912
+r13: B=GAFO(1) | C=107463 | D=107653 | E=125237 | F=127939 | G=132618 | H=129170 | I=129547 | J=133613 | K=124692 | L=130159 | M=138473 | N=167564 | O=1554128
+r14: A=441 | B=Motor vehicle and parts dealers | C=117107 | D=120730 | E=144600 | F=141661 | G=136157 | H=136586 | I=131415 | J=139997 | K=129076 | L=130515 | M=121192 | N=126745 | O=1575781
+r15: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=108287 | D=112106 | E=133989 | F=131552 | G=125785 | H=126109 | I=121330 | J=129098 | K=118553 | L=120043 | M=111136 | N=116877 | O=1454865
+r16: A=4411 | B=Automobile dealers | C=101027 | D=103684 | E=122778 | F=120241 | G=115105 | H=115010 | I=110995 | J=119398 | K=110063 | L=112101 | M=104885 | N=110638 | O=1345925
+r17: A=44111 | B=New car dealers | C=88980 | D=91030 | E=106986 | F=105677 | G=101021 | H=100801 | I=97383 | J=104807 | K=96903 | L=99482 | M=93387 | N=99939 | O=1186396
+r18: A=44112 | B=Used car dealers | C=12047 | D=12654 | E=15792 | F=14564 | G=14084 | H=14209 | I=13612 | J=14591 | K=13160 | L=12619 | M=11498 | N=10699 | O=159529
+r19: A=4413 | B=Automotive parts, acc., and tire stores | C=8820 | D=8624 | E=10611 | F=10109 | G=10372 | H=10477 | I=10085 | J=10899 | K=10523 | L=10472 | M=10056 | N=9868 | O=120916
+r20: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=16436 | D=16483 | E=19556 | F=18747 | G=18750 | H=18322 | I=18274 | J=19369 | K=18665 | L=18283 | M=19912 | N=21045 | O=223842
+r21: A=442 | B=Furniture and home furnishings stores | C=9881 | D=10174 | E=12069 | F=11674 | G=11672 | H=11351 | I=11186 | J=11992 | K=11522 | L=11396 | M=12013 | N=11877 | O=136807
+r22: A=4421 | B=Furniture stores | C=5370 | D=5793 | E=6746 | F=6469 | G=6491 | H=6409 | I=6382 | J=6484 | K=6435 | L=6340 | M=6522 | N=6327 | O=75768
+r23: A=4422 | B=Home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r24: A=44221 | B=Floor covering stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r25: A=442299 | B=All other home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r26: A=443 | B=Electronics and appliance stores | C=6555 | D=6309 | E=7487 | F=7073 | G=7078 | H=6971 | I=7088 | J=7377 | K=7143 | L=6887 | M=7899 | N=9168 | O=87035
+r27: A=443141 | B=Household appliance stores | C=1536 | D=1600 | E=1863 | F=1798 | G=1882 | H=1917 | I=1833 | J=1944 | K=1761 | L=1732 | M=1849 | N=1761 | O=21476
+r28: A=443142 | B=Electronics stores | C=5019 | D=4709 | E=5624 | F=5275 | G=5196 | H=5054 | I=5255 | J=5433 | K=5382 | L=5155 | M=6050 | N=7407 | O=65559
+r29: A=444 | B=Building mat. and garden equip. and supplies dealers | C=34840 | D=34531 | E=45819 | F=47603 | G=51815 | H=49759 | I=45021 | J=46716 | K=44162 | L=44576 | M=42162 | N=40374 | O=527378
+r30: A=4441 | B=Building mat. and supplies dealers | C=30994 | D=30635 | E=40368 | F=41317 | G=45025 | H=43739 | I=40159 | J=41763 | K=39355 | L=39355 | M=37431 | N=35414 | O=465555
+r31: A=44412 | B=Paint and wallpaper stores | C=1010 | D=1053 | E=1366 | F=1329 | G=1432 | H=1539 | I=1408 | J=1526 | K=1511 | L=1459 | M=1247 | N=1105 | O=15985
+r32: A=44413 | B=Hardware stores | C=2557 | D=2468 | E=3054 | F=3276 | G=3698 | H=3637 | I=3337 | J=3327 | K=3166 | L=3264 | M=3181 | N=3355 | O=38320
+r33: A=445 | B=Food and beverage stores | C=74777 | D=69153 | E=76107 | F=76405 | G=79667 | H=79062 | I=80930 | J=79482 | K=77665 | L=80230 | M=81285 | N=87548 | O=942311
+r34: A=4451 | B=Grocery stores | C=68008 | D=62291 | E=68502 | F=68536 | G=71621 | H=70930 | I=72593 | J=71351 | K=69744 | L=72107 | M=72692 | N=76649 | O=845024
+r35: A=44511 | B=Supermarkets and other grocery (except convenience) stores | C=65451 | D=59730 | E=65610 | F=65458 | G=68443 | H=67661 | I=69267 | J=68178 | K=66715 | L=68999 | M=69659 | N=73588 | O=808759
+r36: A=4453 | B=Beer, wine, and liquor stores | C=4935 | D=5049 | E=5586 | F=5695 | G=5884 | H=5994 | I=6161 | J=5914 | K=5774 | L=5899 | M=6176 | N=7848 | O=70915
+r37: A=446 | B=Health and personal care stores | C=31050 | D=29062 | E=32449 | F=31297 | G=31721 | H=32154 | I=31139 | J=32584 | K=32051 | L=32513 | M=31946 | N=35539 | O=383505
+r38: A=44611 | B=Pharmacies and drug stores | C=26758 | D=24629 | E=27175 | F=26388 | G=26758 | H=27059 | I=26407 | J=27365 | K=26987 | L=27683 | M=26826 | N=29013 | O=323048
+r39: A=447 | B=Gasoline stations | C=46935 | D=47259 | E=61293 | F=61816 | G=69455 | H=71688 | I=70417 | J=64594 | K=58718 | L=61491 | M=56299 | N=51694 | O=721659
+r40: A=448 | B=Clothing and clothing access. stores | C=16484 | D=18505 | E=23302 | F=23412 | G=24267 | H=22575 | I=22765 | J=23721 | K=21410 | L=22439 | M=25883 | N=36226 | O=280989
+r41: A=4481 | B=Clothing stores | C=11617 | D=12347 | E=16413 | F=16567 | G=17093 | H=16038 | I=16231 | J=16414 | K=15224 | L=16342 | M=18930 | N=24301 | O=197517
+r42: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r43: A=44812 | B=Women's clothing stores | C=2079 | D=2302 | E=3123 | F=3071 | G=3113 | H=2728 | I=2706 | J=2766 | K=2660 | L=2703 | M=3040 | N=3750 | O=34041
+r44: A=44814 | B=Family clothing stores | C=6662 | D=6967 | E=9446 | F=9537 | G=9964 | H=9680 | I=9968 | J=9956 | K=9111 | L=10041 | M=11917 | N=15586 | O=118835
+r45: A=44819 | B=Other clothing stores | C=1151 | D=1146 | E=1381 | F=1357 | G=1283 | H=1304 | I=1286 | J=1346 | K=1187 | L=1170 | M=1355 | N=1573 | O=15539
+r46: A=4482 | B=Shoe stores | C=2000 | D=2389 | E=3172 | F=3031 | G=3148 | H=2900 | I=3128 | J=3897 | K=2920 | L=2894 | M=3196 | N=4226 | O=36901
+r47: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r48: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=6335 | D=6186 | E=7613 | F=7465 | G=7496 | H=7896 | I=7772 | J=8661 | K=7568 | L=7391 | M=8603 | N=11346 | O=94332
+r49: A=45111 | B=Sporting goods stores | C=3721 | D=3834 | E=5026 | F=4837 | G=4860 | H=5476 | I=5202 | J=5405 | K=4540 | L=4539 | M=4972 | N=6888 | O=59300
+r50: A=45112 | B=Hobby, toy, and game stores | C=1154 | D=1181 | E=1318 | F=1323 | G=1297 | H=1173 | I=1284 | J=1379 | K=1424 | L=1484 | M=2188 | N=2366 | O=17571
+r51: A=451211 | B=Book stores | C=828 | D=530 | E=552 | F=604 | G=633 | H=576 | I=611 | J=1084 | K=814 | L=593 | M=621 | N=1087 | O=8533
+r52: A=452 | B=General merchandise stores | C=66590 | D=64798 | E=72728 | F=76299 | G=79851 | H=78176 | I=78317 | J=79145 | K=74555 | L=79031 | M=81988 | N=96014 | O=927492
+r53: A=4522 | B=Department stores | C=2393 | D=2951 | E=3487 | F=3739 | G=3992 | H=3639 | I=3525 | J=3708 | K=3438 | L=3701 | M=4950 | N=7080 | O=46603
+r54: A=45221 | B=Department stores | C=2393 | D=2951 | E=3487 | F=3739 | G=3992 | H=3639 | I=3525 | J=3708 | K=3438 | L=3701 | M=4950 | N=7080 | O=46603
+r55: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=64197 | D=61847 | E=69241 | F=72560 | G=75859 | H=74537 | I=74792 | J=75437 | K=71117 | L=75330 | M=77038 | N=88934 | O=880889
+r56: A=452311 | B=Warehouse clubs and supercenters | C=57675 | D=55133 | E=61345 | F=64482 | G=67180 | H=66291 | I=66850 | J=67494 | K=63157 | L=67111 | M=67952 | N=78428 | O=783098
+r57: A=452319 | B=All other gen. merchandise stores | C=6522 | D=6714 | E=7896 | F=8078 | G=8679 | H=8246 | I=7942 | J=7943 | K=7960 | L=8219 | M=9086 | N=10506 | O=97791
+r58: A=453 | B=Miscellaneous store retailers | C=10819 | D=10780 | E=12780 | F=13070 | G=14128 | H=14052 | I=13371 | J=13837 | K=13153 | L=13458 | M=12400 | N=13386 | O=155234
+r59: A=4532 | B=Office supplies, stationery, and gift stores | C=1618 | D=1681 | E=2038 | F=2016 | G=2254 | H=2201 | I=2419 | J=2717 | K=2494 | L=3015 | M=2087 | N=2933 | O=27473
+r60: A=45321 | B=Office supplies and stationery stores | C=741 | D=676 | E=790 | F=730 | G=708 | H=703 | I=794 | J=991 | K=795 | L=731 | M=676 | N=863 | O=9198
+r61: A=45322 | B=Gift, novelty, and souvenir stores | C=877 | D=1005 | E=1248 | F=1286 | G=1546 | H=1498 | I=1625 | J=1726 | K=1699 | L=2284 | M=1411 | N=2070 | O=18275
+r62: A=45330 | B=Used merchandise stores | C=1411 | D=1395 | E=1772 | F=1665 | G=1668 | H=1634 | I=1811 | J=1680 | K=1553 | L=1652 | M=1752 | N=1640 | O=19633
+r63: A=454 | B=Nonstore retailers | C=89192 | D=83850 | E=94490 | F=91155 | G=94284 | H=90404 | I=90938 | J=94722 | K=90078 | L=95048 | M=109263 | N=118746 | O=1142170
+r64: A=4541 | B=Electronic shopping and mail-order houses | C=81754 | D=76611 | E=86876 | F=85080 | G=88148 | H=84399 | I=85591 | J=88776 | K=84230 | L=88164 | M=102149 | N=110642 | O=1062420
+r65: A=45431 | B=Fuel dealers | C=4804 | D=4672 | E=4362 | F=3065 | G=3039 | H=2851 | I=2341 | J=2640 | K=2755 | L=3724 | M=4015 | N=5051 | O=43319
+r66: A=722 | B=Food services and drinking places | C=62325 | D=64702 | E=75368 | F=77013 | G=80125 | H=77611 | I=79194 | J=78784 | K=76281 | L=78644 | M=72481 | N=78089 | O=900617
+r67: A=7224 | B=Drinking places | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r68: A=7225 | B=Restaurants and other eating places | C=56380 | D=57846 | E=67220 | F=68286 | G=71193 | H=69379 | I=71318 | J=70350 | K=66724 | L=68810 | M=63613 | N=69001 | O=800120
+r69: A=722511 | B=Full service restaurants | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r70: A=722513, 722514, 722515 | B=Limited service eating places | C=30680 | D=30479 | E=35627 | F=36115 | G=37885 | H=37624 | I=38608 | J=37899 | K=35824 | L=36837 | M=34180 | N=35558 | O=427316
+r71: B=ADJUSTED(2)
+r72: B=Retail and food services sales, total | C=634120 | D=640815 | E=652673 | F=661508 | G=661325 | H=667984 | I=659750 | J=662999 | K=661072 | L=666924 | M=656410 | N=648305
+r73: B=Retail sales and food services excl motor vehicle and parts | C=500433 | D=507059 | E=520251 | F=526666 | G=531192 | H=536241 | I=531334 | J=531041 | K=529825 | L=533273 | M=526904 | N=523198
+r74: B=Retail sales and food services excl gasoline stations | C=581679 | D=586117 | E=591010 | F=599444 | G=596170 | H=600797 | I=595266 | J=603190 | K=603108 | L=607455 | M=597826 | N=592600
+r75: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=447992 | D=452361 | E=458588 | F=464602 | G=466037 | H=469054 | I=466850 | J=471232 | K=471861 | L=473804 | M=468320 | N=467493
+r76: B=Retail sales, total | C=566302 | D=570102 | E=579994 | F=586373 | G=585521 | H=591820 | I=584039 | J=585684 | K=583943 | L=589136 | M=579466 | N=572046
+r77: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=432615 | D=436346 | E=447572 | F=451531 | G=455388 | H=460077 | I=455623 | J=453726 | K=452696 | L=455485 | M=449960 | N=446939
+r78: B=GAFO(1) | C=124134 | D=126709 | E=129255 | F=130839 | G=130412 | H=131651 | I=129662 | J=130914 | K=131144 | L=131197 | M=129692 | N=128159
+r79: A=441 | B=Motor vehicle and parts dealers | C=133687 | D=133756 | E=132422 | F=134842 | G=130133 | H=131743 | I=128416 | J=131958 | K=131247 | L=133651 | M=129506 | N=125107
+r80: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=123898 | D=124011 | E=122588 | F=124931 | G=120024 | H=121727 | I=118371 | J=121791 | K=120849 | L=123374 | M=119245 | N=114698
+r81: A=4413 | B=Automotive parts, acc., and tire stores | C=9789 | D=9745 | E=9834 | F=9911 | G=10109 | H=10016 | I=10045 | J=10167 | K=10398 | L=10277 | M=10261 | N=10409
+r82: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=18323 | D=18544 | E=19409 | F=19877 | G=19191 | H=18870 | I=18690 | J=18857 | K=18686 | L=18870 | M=17817 | N=17480
+r83: A=442 | B=Furniture and home furnishings stores | C=11267 | D=11342 | E=11594 | F=11876 | G=11637 | H=11454 | I=11276 | J=11465 | K=11352 | L=11605 | M=11123 | N=10936
+r84: A=443 | B=Electronics and appliance stores | C=7056 | D=7202 | E=7815 | F=8001 | G=7554 | H=7416 | I=7414 | J=7392 | K=7334 | L=7265 | M=6694 | N=6544
+r85: A=444 | B=Building mat. and garden equip. and supplies dealers | C=43491 | D=43398 | E=44141 | F=44257 | G=44020 | H=43968 | I=44044 | J=44480 | K=44250 | L=44587 | M=43291 | N=43709
+r86: A=4441 | B=Building mat. and supplies dealers | C=38598 | D=38390 | E=39230 | F=39350 | G=38915 | H=38845 | I=38689 | J=39067 | K=38927 | L=39276 | M=38040 | N=38493
+r87: A=445 | B=Food and beverage stores | C=76289 | D=76384 | E=77170 | F=77246 | G=78137 | H=79132 | I=78493 | J=78918 | K=79417 | L=80147 | M=80472 | N=80109
+r88: A=4451 | B=Grocery stores | C=68281 | D=68302 | E=69054 | F=69228 | G=70148 | H=71072 | I=70479 | J=70715 | K=71240 | L=71891 | M=72258 | N=72039
+r89: A=4453 | B=Beer, wine and liquor stores | C=5840 | D=5947 | E=5924 | F=5859 | G=5820 | H=5894 | I=5834 | J=5938 | K=5934 | L=6007 | M=5961 | N=5892
+r90: A=446 | B=Health and personal care stores | C=31781 | D=31486 | E=31627 | F=31871 | G=31721 | H=32154 | I=32302 | J=32134 | K=32244 | L=32287 | M=32498 | N=31731
+r91: A=44611 | B=Pharmacies and drug stores | C=27056 | D=26626 | E=26616 | F=26790 | G=26731 | H=27113 | I=27252 | J=26934 | K=27095 | L=27167 | M=27373 | N=26691
+r92: A=447 | B=Gasoline stations | C=52441 | D=54698 | E=61663 | F=62064 | G=65155 | H=67187 | I=64484 | J=59809 | K=57964 | L=59469 | M=58584 | N=55705
+r93: A=448 | B=Clothing and clothing access. stores | C=22381 | D=22978 | E=24014 | F=24095 | G=23561 | H=23649 | I=23071 | J=23376 | K=23606 | L=23620 | M=23416 | N=23016
+r94: A=4481 | B=Clothing stores | C=15650 | D=15908 | E=16675 | F=16733 | G=16586 | H=16529 | I=16168 | J=16391 | K=16603 | L=16745 | M=16590 | N=16440
+r95: A=44811 | B=Men's clothing stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r96: A=44812 | B=Women's clothing stores | C=2844 | D=2860 | E=2991 | F=2908 | G=2859 | H=2848 | I=2744 | J=2852 | K=2842 | L=2822 | M=2751 | N=2753
+r97: A=4482 | B=Shoe stores | C=2920 | D=2946 | E=3065 | F=3109 | G=3151 | H=3115 | I=2945 | J=3108 | K=3195 | L=3177 | M=3130 | N=2970
+r98: A=44831 | B=Jewelry stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r99: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=7560 | D=7850 | E=7922 | F=7874 | G=7841 | H=7857 | I=7843 | J=7946 | K=7900 | L=7905 | M=7800 | N=7896
+r100: A=452 | B=General merchandise stores | C=73836 | D=75148 | E=75644 | F=76736 | G=77513 | H=79084 | I=77780 | J=78344 | K=78654 | L=78374 | M=78325 | N=77343
+r101: A=4522 | B=Department stores | C=3468 | D=3924 | E=3990 | F=3982 | G=3968 | H=3934 | I=3899 | J=3916 | K=3934 | L=3888 | M=3834 | N=3831
+r102: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=70368 | D=71224 | E=71654 | F=72754 | G=73545 | H=75150 | I=73881 | J=74428 | K=74720 | L=74486 | M=74491 | N=73512
+r103: A=452311 | B=Warehouse clubs and supercenters | C=62758 | D=63371 | E=63702 | F=64676 | G=65350 | H=66961 | I=65668 | J=66171 | K=66411 | L=66184 | M=66101 | N=65194
+r104: A=452319 | B=All other gen. merchandise stores | C=7610 | D=7853 | E=7952 | F=8078 | G=8195 | H=8189 | I=8213 | J=8257 | K=8309 | L=8302 | M=8390 | N=8318
+r105: A=453 | B=Miscellaneous stores retailers | C=12496 | D=12736 | E=12950 | F=13127 | G=13041 | H=13243 | I=13107 | J=13245 | K=13011 | L=12916 | M=12689 | N=12645
+r106: A=454 | B=Nonstore retailers | C=94017 | D=93124 | E=93032 | F=94384 | G=95208 | H=94933 | I=95809 | J=96617 | K=96964 | L=97310 | M=95068 | N=97305
+r107: A=4541 | B=Electronic shopping and mail order houses | C=87813 | D=86861 | E=86530 | F=87802 | G=88236 | H=87824 | I=88972 | J=89673 | K=90279 | L=90147 | M=88364 | N=90542
+r108: A=45431 | B=Fuel dealers | C=3231 | D=3395 | E=3443 | F=3535 | G=3988 | H=4108 | I=3776 | J=3804 | K=3635 | L=4101 | M=3617 | N=3629
+r109: A=722 | B=Food services and drinking places | C=67818 | D=70713 | E=72679 | F=75135 | G=75804 | H=76164 | I=75711 | J=77315 | K=77129 | L=77788 | M=76944 | N=76259
+r110: (blank)
+r111: A=(S) Suppressed - Estimate does not meet publication standards because of high sampling var...
+r112: A=is less than 50%), or other concerns about the estimate's quality.
+r113: (blank)
+r114: A=(1) GAFO represents stores classified in the following NAICS codes:  442, 443, 448, 451, 4...
+r115: A=(2) Estimates are adjusted for seasonal variations and holiday and trading-day differences...
+r116: (blank)
+r117: A=Note: Estimates are not adjusted for price changes. Retail and food services total and oth...
+r118: A=Estimates include data only for businesses with paid employees. Prior to the benchmark rep...
+r119: A=Information on sample design, estimation procedures, and measures of sampling variability ...
+
+### Sheet "2021": 119 rows x 15 columns (Excel rows 1..119, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2021
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+r5: C=Jan. 2021 | D=Feb. 2021 | E=Mar. 2021 | F=Apr. 2021 | G=May 2021 | H=Jun. 2021 | I=Jul. 2021 | J=Aug. 2021 | K=Sep. 2021 | L=Oct. 2021 | M=Nov. 2021 | N=Dec. 2021 | O=TOTAL
+r6: B=NOT ADJUSTED
+r7: B=Retail and food services sales, total | C=507696 | D=480955 | E=617065 | F=612791 | G=628676 | H=620677 | I=619294 | J=614617 | K=590383 | L=617603 | M=633037 | N=688202 | O=7230996
+r8: B=Retail sales and food services excl motor vehicle and parts | C=405065 | D=379747 | E=472440 | F=470888 | G=488164 | H=485471 | I=487353 | J=488393 | K=468861 | L=494514 | M=514105 | N=562172 | O=5717173
+r9: B=Retail sales and food services excl gasoline stations | C=471366 | D=445569 | E=572040 | F=568689 | G=580940 | H=571189 | I=567797 | J=563465 | K=540183 | L=564882 | M=582796 | N=638531 | O=6667447
+r10: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=368735 | D=344361 | E=427415 | F=426786 | G=440428 | H=435983 | I=435856 | J=437241 | K=418661 | L=441793 | M=463864 | N=512501 | O=5153624
+r11: B=Retail sales, total | C=456423 | D=431997 | E=554247 | F=548209 | G=559362 | H=551436 | I=546446 | J=543908 | K=522845 | L=546840 | M=566972 | N=618406 | O=6447091
+r12: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=353792 | D=330789 | E=409622 | F=406306 | G=418850 | H=416230 | I=414505 | J=417684 | K=401323 | L=423751 | M=448040 | N=492376 | O=4933268
+r13: B=GAFO(1) | C=101051 | D=93380 | E=119964 | F=117785 | G=125063 | H=120717 | I=123302 | J=124947 | K=116121 | L=125183 | M=134518 | N=162185 | O=1464216
+r14: A=441 | B=Motor vehicle and parts dealers | C=102631 | D=101208 | E=144625 | F=141903 | G=140512 | H=135206 | I=131941 | J=126224 | K=121522 | L=123089 | M=118932 | N=126030 | O=1513823
+r15: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=95047 | D=93901 | E=134473 | F=132159 | G=131285 | H=125670 | I=122380 | J=116548 | K=112223 | L=113396 | M=109651 | N=116612 | O=1403345
+r16: A=4411 | B=Automobile dealers | C=89236 | D=87344 | E=123631 | F=120789 | G=120225 | H=114539 | I=112492 | J=107634 | K=103866 | L=105183 | M=102323 | N=109392 | O=1296654
+r17: A=44111 | B=New car dealers | C=79889 | D=77332 | E=107912 | F=105912 | G=106471 | H=100765 | I=99470 | J=94086 | K=90296 | L=91367 | M=89621 | N=96991 | O=1140112
+r18: A=44112 | B=Used car dealers | C=9347 | D=10012 | E=15719 | F=14877 | G=13754 | H=13774 | I=13022 | J=13548 | K=13570 | L=13816 | M=12702 | N=12401 | O=156542
+r19: A=4413 | B=Automotive parts, acc., and tire stores | C=7584 | D=7307 | E=10152 | F=9744 | G=9227 | H=9536 | I=9561 | J=9676 | K=9299 | L=9693 | M=9281 | N=9418 | O=110478
+r20: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=16463 | D=15269 | E=19326 | F=18300 | G=18437 | H=18577 | I=18914 | J=18919 | K=18516 | L=18906 | M=20649 | N=21981 | O=224257
+r21: A=442 | B=Furniture and home furnishings stores | C=10020 | D=9498 | E=11896 | F=11363 | G=11337 | H=11102 | I=11410 | J=11477 | K=11360 | L=11446 | M=12191 | N=12108 | O=135208
+r22: A=4421 | B=Furniture stores | C=5856 | D=5523 | E=6939 | F=6562 | G=6549 | H=6203 | I=6397 | J=6364 | K=6410 | L=6431 | M=6468 | N=6263 | O=75965
+r23: A=4422 | B=Home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r24: A=44221 | B=Floor covering stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r25: A=442299 | B=All other home furnishings stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r26: A=443 | B=Electronics and appliance stores | C=6443 | D=5771 | E=7430 | F=6937 | G=7100 | H=7475 | I=7504 | J=7442 | K=7156 | L=7460 | M=8458 | N=9873 | O=89049
+r27: A=443141 | B=Household appliance stores | C=1573 | D=1426 | E=1865 | F=1760 | G=1690 | H=1825 | I=1767 | J=1738 | K=1734 | L=1715 | M=1788 | N=1712 | O=20593
+r28: A=443142 | B=Electronics stores | C=4870 | D=4345 | E=5565 | F=5177 | G=5410 | H=5650 | I=5737 | J=5704 | K=5422 | L=5745 | M=6670 | N=8161 | O=68456
+r29: A=444 | B=Building mat. and garden equip. and supplies dealers | C=31561 | D=29965 | E=44116 | F=47919 | G=47827 | H=46356 | I=42575 | J=40906 | K=40237 | L=40837 | M=41011 | N=39651 | O=492961
+r30: A=4441 | B=Building mat. and supplies dealers | C=27697 | D=26188 | E=38235 | F=41054 | G=41279 | H=40665 | I=37893 | J=36443 | K=35809 | L=36131 | M=36575 | N=34850 | O=432819
+r31: A=44412 | B=Paint and wallpaper stores | C=958 | D=929 | E=1324 | F=1321 | G=1313 | H=1381 | I=1281 | J=1320 | K=1287 | L=1257 | M=1138 | N=1039 | O=14548
+r32: A=44413 | B=Hardware stores | C=2424 | D=2252 | E=2968 | F=3205 | G=3388 | H=3343 | I=3057 | J=2946 | K=2880 | L=2921 | M=2948 | N=3059 | O=35391
+r33: A=445 | B=Food and beverage stores | C=69711 | D=64089 | E=70735 | F=69701 | G=74539 | H=73094 | I=75520 | J=74568 | K=72905 | L=75661 | M=75472 | N=82347 | O=878342
+r34: A=4451 | B=Grocery stores | C=63002 | D=57519 | E=63094 | F=62074 | G=66425 | H=65016 | I=67245 | J=66806 | K=65328 | L=67836 | M=67162 | N=71696 | O=783203
+r35: A=44511 | B=Supermarkets and other grocery (except convenience) stores | C=60782 | D=55410 | E=60626 | F=59631 | G=63774 | H=62326 | I=64426 | J=64039 | K=62660 | L=65111 | M=64486 | N=68911 | O=752182
+r36: A=4453 | B=Beer, wine, and liquor stores | C=5049 | D=4919 | E=5670 | F=5666 | G=6056 | H=5995 | I=6169 | J=5720 | K=5588 | L=5775 | M=6030 | N=7652 | O=70289
+r37: A=446 | B=Health and personal care stores | C=28485 | D=26678 | E=32264 | F=30802 | G=30211 | H=31366 | I=30735 | J=31299 | K=30865 | L=31342 | M=31130 | N=35762 | O=370939
+r38: A=44611 | B=Pharmacies and drug stores | C=24354 | D=22699 | E=27021 | F=26070 | G=25397 | H=26348 | I=25927 | J=26459 | K=26077 | L=26700 | M=26176 | N=29486 | O=312714
+r39: A=447 | B=Gasoline stations | C=36330 | D=35386 | E=45025 | F=44102 | G=47736 | H=49488 | I=51497 | J=51152 | K=50200 | L=52721 | M=50241 | N=49671 | O=563549
+r40: A=448 | B=Clothing and clothing access. stores | C=14348 | D=14911 | E=22128 | F=21639 | G=24109 | H=22897 | I=23504 | J=23290 | K=20939 | L=22545 | M=26508 | N=36038 | O=272856
+r41: A=4481 | B=Clothing stores | C=9967 | D=9997 | E=15447 | F=15266 | G=16714 | H=16319 | I=16884 | J=16260 | K=14863 | L=16164 | M=19099 | N=23267 | O=190247
+r42: A=44811 | B=Men's clothing stores | C=359 | D=360 | E=562 | F=659 | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r43: A=44812 | B=Women's clothing stores | C=1921 | D=1913 | E=2949 | F=2938 | G=3162 | H=3021 | I=3096 | J=2883 | K=2791 | L=2901 | M=3299 | N=3858 | O=34732
+r44: A=44814 | B=Family clothing stores | C=5704 | D=5727 | E=9128 | F=9035 | G=10007 | H=9877 | I=10231 | J=10009 | K=8818 | L=9811 | M=11949 | N=14612 | O=114908
+r45: A=44819 | B=Other clothing stores | C=988 | D=930 | E=1394 | F=1279 | G=1286 | H=1391 | I=1377 | J=1272 | K=1197 | L=1204 | M=1348 | N=1626 | O=15292
+r46: A=4482 | B=Shoe stores | C=2104 | D=2039 | E=3463 | F=3160 | G=3355 | H=3101 | I=3223 | J=3642 | K=2720 | L=2788 | M=3048 | N=4165 | O=36808
+r47: A=44831 | B=Jewelry stores | C=2046 | D=2634 | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r48: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=6649 | D=5561 | E=8247 | F=7746 | G=7678 | H=8169 | I=7799 | J=8453 | K=7408 | L=7368 | M=8696 | N=11137 | O=94911
+r49: A=45111 | B=Sporting goods stores | C=3917 | D=3459 | E=5505 | F=5245 | G=5123 | H=5545 | I=5155 | J=5331 | K=4459 | L=4485 | M=5185 | N=6880 | O=60289
+r50: A=45112 | B=Hobby, toy, and game stores | C=1295 | D=1120 | E=1526 | F=1352 | G=1330 | H=1290 | I=1336 | J=1346 | K=1403 | L=1488 | M=2079 | N=2272 | O=17837
+r51: A=451211 | B=Book stores | C=769 | D=422 | E=500 | F=466 | G=572 | H=634 | I=641 | J=1038 | K=794 | L=626 | M=636 | N=1079 | O=8177
+r52: A=452 | B=General merchandise stores | C=61934 | D=56072 | E=68265 | F=68106 | G=72778 | H=68853 | I=70727 | J=71771 | K=66806 | L=73557 | M=76579 | N=90301 | O=845749
+r53: A=4522 | B=Department stores | C=2000 | D=2257 | E=3381 | F=3385 | G=3982 | H=3772 | I=3686 | J=3781 | K=3500 | L=3895 | M=5365 | N=7320 | O=46324
+r54: A=45221 | B=Department stores | C=2000 | D=2257 | E=3381 | F=3385 | G=3982 | H=3772 | I=3686 | J=3781 | K=3500 | L=3895 | M=5365 | N=7320 | O=46324
+r55: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=59934 | D=53815 | E=64884 | F=64721 | G=68796 | H=65081 | I=67041 | J=67990 | K=63306 | L=69662 | M=71214 | N=82981 | O=799425
+r56: A=452311 | B=Warehouse clubs and supercenters | C=53370 | D=47642 | E=56915 | F=56797 | G=60681 | H=57490 | I=59608 | J=60627 | K=56068 | L=61894 | M=62786 | N=73065 | O=706943
+r57: A=452319 | B=All other gen. merchandise stores | C=6564 | D=6173 | E=7969 | F=7924 | G=8115 | H=7591 | I=7433 | J=7363 | K=7238 | L=7768 | M=8428 | N=9916 | O=92482
+r58: A=453 | B=Miscellaneous store retailers | C=9446 | D=9097 | E=11660 | F=11897 | G=12285 | H=12690 | I=12702 | J=12663 | K=12460 | L=13114 | M=12658 | N=13624 | O=144296
+r59: A=4532 | B=Office supplies, stationery, and gift stores | C=1657 | D=1567 | E=1998 | F=1994 | G=2061 | H=2221 | I=2358 | J=2514 | K=2452 | L=2807 | M=2086 | N=2728 | O=26443
+r60: A=45321 | B=Office supplies and stationery stores | C=842 | D=727 | E=849 | F=776 | G=734 | H=722 | I=756 | J=1047 | K=846 | L=707 | M=676 | N=765 | O=9447
+r61: A=45322 | B=Gift, novelty, and souvenir stores | C=815 | D=840 | E=1149 | F=1218 | G=1327 | H=1499 | I=1602 | J=1467 | K=1606 | L=2100 | M=1410 | N=1963 | O=16996
+r62: A=45330 | B=Used merchandise stores | C=1281 | D=1223 | E=1593 | F=1649 | G=1496 | H=1449 | I=1613 | J=1579 | K=1477 | L=1723 | M=1824 | N=1613 | O=18520
+r63: A=454 | B=Nonstore retailers | C=78865 | D=73761 | E=87856 | F=86094 | G=83250 | H=84740 | I=80532 | J=84663 | K=80987 | L=87700 | M=105096 | N=111864 | O=1045408
+r64: A=4541 | B=Electronic shopping and mail-order houses | C=72630 | D=67282 | E=81385 | F=80481 | G=78231 | H=79830 | I=75776 | J=79986 | K=76090 | L=81928 | M=98724 | N=105113 | O=977456
+r65: A=45431 | B=Fuel dealers | C=3713 | D=3987 | E=3381 | F=2333 | G=1958 | H=1894 | I=1776 | J=1803 | K=2035 | L=2685 | M=3416 | N=3893 | O=32874
+r66: A=722 | B=Food services and drinking places | C=51273 | D=48958 | E=62818 | F=64582 | G=69314 | H=69241 | I=72848 | J=70709 | K=67538 | L=70763 | M=66065 | N=69796 | O=783905
+r67: A=7224 | B=Drinking places | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r68: A=7225 | B=Restaurants and other eating places | C=47076 | D=44361 | E=57122 | F=58662 | G=63084 | H=62929 | I=66324 | J=63296 | K=59579 | L=62493 | M=58747 | N=62908 | O=706581
+r69: A=722511 | B=Full service restaurants | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r70: A=722513, 722514, 722515 | B=Limited service eating places | C=27872 | D=25251 | E=31884 | F=32250 | G=33263 | H=33168 | I=34659 | J=33598 | K=31761 | L=33072 | M=31553 | N=33073 | O=381404
+r71: B=ADJUSTED(2)
+r72: B=Retail and food services sales, total | C=559736 | D=545417 | E=603580 | F=609247 | G=605589 | H=611711 | I=602014 | J=605419 | K=610161 | L=619018 | M=625980 | N=621734
+r73: B=Retail sales and food services excl motor vehicle and parts | C=442731 | D=432496 | E=471088 | F=472869 | G=472030 | H=481740 | I=476556 | J=483335 | K=486665 | L=493495 | M=498332 | N=497312
+r74: B=Retail sales and food services excl gasoline stations | C=519548 | D=504318 | E=557916 | F=565012 | G=560766 | H=565417 | I=555284 | J=557613 | K=560310 | L=568031 | M=573971 | N=568382
+r75: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=402543 | D=391397 | E=425424 | F=428634 | G=427207 | H=435446 | I=429826 | J=435529 | K=436814 | L=442508 | M=446323 | N=443960
+r76: B=Retail sales, total | C=504722 | D=491911 | E=542769 | F=545869 | G=540505 | H=543694 | I=532569 | J=536164 | K=540891 | L=549643 | M=555922 | N=552629
+r77: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=387717 | D=378990 | E=410277 | F=409491 | G=406946 | H=413723 | I=407111 | J=414080 | K=417395 | L=424120 | M=428274 | N=428207
+r78: B=GAFO(1) | C=115587 | D=110012 | E=122816 | F=122823 | G=122307 | H=123689 | I=122824 | J=122743 | K=123441 | L=125366 | M=125677 | N=124232
+r79: A=441 | B=Motor vehicle and parts dealers | C=117005 | D=112921 | E=132492 | F=136378 | G=133559 | H=129971 | I=125458 | J=122084 | K=123496 | L=125523 | M=127648 | N=124422
+r80: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=108625 | D=104683 | E=123031 | F=126954 | G=124441 | H=120837 | I=116220 | J=112825 | K=114280 | L=116066 | M=118158 | N=114550
+r81: A=4413 | B=Automotive parts, acc., and tire stores | C=8380 | D=8238 | E=9461 | F=9424 | G=9118 | H=9134 | I=9238 | J=9259 | K=9216 | L=9457 | M=9490 | N=9872
+r82: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=18222 | D=17321 | E=19285 | F=19369 | G=18988 | H=19211 | I=19048 | J=18740 | K=18679 | L=19378 | M=18388 | N=18030
+r83: A=442 | B=Furniture and home furnishings stores | C=11309 | D=10672 | E=11505 | F=11548 | G=11337 | H=11225 | I=11264 | J=11208 | K=11248 | L=11492 | M=11351 | N=11058
+r84: A=443 | B=Electronics and appliance stores | C=6913 | D=6649 | E=7780 | F=7821 | G=7651 | H=7986 | I=7784 | J=7532 | K=7431 | L=7886 | M=7037 | N=6972
+r85: A=444 | B=Building mat. and garden equip. and supplies dealers | C=39446 | D=37766 | E=43023 | F=43183 | G=41478 | H=40872 | I=40120 | J=40028 | K=40335 | L=41064 | M=42240 | N=42401
+r86: A=4441 | B=Building mat. and supplies dealers | C=34492 | D=32899 | E=37633 | F=38048 | G=36562 | H=35923 | I=35217 | J=34974 | K=35490 | L=36095 | M=37245 | N=37353
+r87: A=445 | B=Food and beverage stores | C=70564 | D=70806 | E=71233 | F=71738 | G=72400 | H=73376 | I=72816 | J=74522 | K=74692 | L=75010 | M=75296 | N=75724
+r88: A=4451 | B=Grocery stores | C=62751 | D=63069 | E=63220 | F=63731 | G=64428 | H=65343 | I=64971 | J=66606 | K=66798 | L=67164 | M=67297 | N=67766
+r89: A=4453 | B=Beer, wine and liquor stores | C=5878 | D=5801 | E=5987 | F=5958 | G=5908 | H=5918 | I=5739 | J=5813 | K=5803 | L=5798 | M=5854 | N=5819
+r90: A=446 | B=Health and personal care stores | C=29096 | D=28841 | E=31233 | F=31113 | G=30485 | H=31429 | I=31298 | J=31488 | K=31272 | L=31186 | M=31604 | N=31536
+r91: A=44611 | B=Pharmacies and drug stores | C=24550 | D=24460 | E=26285 | F=26254 | G=25654 | H=26507 | I=26268 | J=26592 | K=26340 | L=26254 | M=26629 | N=26708
+r92: A=447 | B=Gasoline stations | C=40188 | D=41099 | E=45664 | F=44235 | G=44823 | H=46294 | I=46730 | J=47806 | K=49851 | L=50987 | M=52009 | N=53352
+r93: A=448 | B=Clothing and clothing access. stores | C=19432 | D=18526 | E=22747 | F=22676 | G=23259 | H=24125 | I=23496 | J=23038 | K=23344 | L=23486 | M=24096 | N=23050
+r94: A=4481 | B=Clothing stores | C=13358 | D=12927 | E=15701 | F=15749 | G=16109 | H=16939 | I=16573 | J=16222 | K=16380 | L=16342 | M=16742 | N=16047
+r95: A=44811 | B=Men's clothing stores | C=448 | D=451 | E=582 | F=589 | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r96: A=44812 | B=Women's clothing stores | C=2592 | D=2406 | E=2814 | F=2825 | G=2885 | H=3147 | I=3118 | J=3003 | K=3021 | L=2954 | M=2983 | N=2866
+r97: A=4482 | B=Shoe stores | C=3019 | D=2469 | E=3311 | F=3292 | G=3332 | H=3360 | I=3029 | J=2904 | K=3009 | L=3011 | M=3015 | N=2994
+r98: A=44831 | B=Jewelry stores | C=2784 | D=2860 | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r99: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=7795 | D=7030 | E=8528 | F=8347 | G=8074 | H=8025 | I=7815 | J=7812 | K=7765 | L=7772 | M=8044 | N=7761
+r100: A=452 | B=General merchandise stores | C=68122 | D=65132 | E=70035 | F=70222 | G=69834 | H=70078 | I=70292 | J=70936 | K=71352 | L=72475 | M=72874 | N=73187
+r101: A=4522 | B=Department stores | C=2845 | D=3025 | E=3807 | F=3704 | G=3885 | H=4145 | I=4046 | J=3984 | K=4023 | L=4066 | M=4188 | N=3963
+r102: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=65277 | D=62107 | E=66228 | F=66518 | G=65949 | H=65933 | I=66246 | J=66952 | K=67329 | L=68409 | M=68686 | N=69224
+r103: A=452311 | B=Warehouse clubs and supercenters | C=57697 | D=54887 | E=58195 | F=58554 | G=58235 | H=58365 | I=58669 | J=59322 | K=59710 | L=60680 | M=60839 | N=61348
+r104: A=452319 | B=All other gen. merchandise stores | C=7580 | D=7220 | E=8033 | F=7964 | G=7714 | H=7568 | I=7577 | J=7630 | K=7619 | L=7729 | M=7847 | N=7876
+r105: A=453 | B=Miscellaneous stores retailers | C=10846 | D=10739 | E=11939 | F=11931 | G=11383 | H=12081 | I=12217 | J=12283 | K=12455 | L=12613 | M=12800 | N=12785
+r106: A=454 | B=Nonstore retailers | C=84006 | D=81730 | E=86590 | F=86677 | G=86222 | H=88232 | I=83279 | J=87427 | K=87650 | L=90149 | M=90923 | N=90381
+r107: A=4541 | B=Electronic shopping and mail order houses | C=78689 | D=76025 | E=80980 | F=80885 | G=80567 | H=82554 | I=77560 | J=81953 | K=82082 | L=84201 | M=84960 | N=84837
+r108: A=45431 | B=Fuel dealers | C=2480 | D=2914 | E=2664 | F=2595 | G=2660 | H=2781 | I=2771 | J=2648 | K=2743 | L=2957 | M=3007 | N=2700
+r109: A=722 | B=Food services and drinking places | C=55014 | D=53506 | E=60811 | F=63378 | G=65084 | H=68017 | I=69445 | J=69255 | K=69270 | L=69375 | M=70058 | N=69105
+r110: (blank)
+r111: A=(S) Suppressed - Estimate does not meet publication standards because of high sampling var...
+r112: A=is less than 50%), or other concerns about the estimate's quality.
+r113: (blank)
+r114: A=(1) GAFO represents stores classified in the following NAICS codes:  442, 443, 448, 451, 4...
+r115: A=(2) Estimates are adjusted for seasonal variations and holiday and trading-day differences...
+r116: (blank)
+r117: A=Note: Estimates are not adjusted for price changes. Retail and food services total and oth...
+r118: A=Estimates include data only for businesses with paid employees. Prior to the benchmark rep...
+r119: A=Information on sample design, estimation procedures, and measures of sampling variability ...
+
+### Sheet "2020": 119 rows x 15 columns (Excel rows 1..119, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2020
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+r5: C=Jan. 2020 | D=Feb. 2020 | E=Mar. 2020 | F=Apr. 2020 | G=May 2020 | H=Jun. 2020 | I=Jul. 2020 | J=Aug. 2020 | K=Sep. 2020 | L=Oct. 2020 | M=Nov. 2020 | N=Dec. 2020 | O=TOTAL
+r6: B=NOT ADJUSTED
+r7: B=Retail and food services sales, total | C=472427 | D=470835 | E=468661 | F=402995 | G=499442 | H=524829 | I=540141 | J=536756 | K=522045 | L=543475 | M=533981 | N=599783 | O=6115370
+r8: B=Retail sales and food services excl motor vehicle and parts | C=379551 | D=373706 | E=387238 | F=334329 | G=393477 | H=412200 | I=425505 | J=422775 | K=410637 | L=430387 | M=432440 | N=485004 | O=4887249
+r9: B=Retail sales and food services excl gasoline stations | C=433232 | D=434334 | E=434848 | F=376549 | G=467777 | H=488983 | I=501791 | J=498601 | K=485433 | L=506007 | M=500282 | N=563945 | O=5691782
+r10: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=340356 | D=337205 | E=353425 | F=307883 | G=361812 | H=376354 | I=387155 | J=384620 | K=374025 | L=392919 | M=398741 | N=449166 | O=4463661
+r11: B=Retail sales, total | C=411938 | D=408577 | E=421156 | F=373011 | G=457486 | H=473877 | I=486176 | J=480870 | K=467699 | L=486677 | M=483762 | N=549456 | O=5500685
+r12: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=319062 | D=311448 | E=339733 | F=304345 | G=351521 | H=361248 | I=371540 | J=366889 | K=356291 | L=373589 | M=382221 | N=434677 | O=4272564
+r13: B=GAFO(1) | C=94777 | D=97284 | E=92835 | F=69750 | G=92147 | H=102142 | I=105607 | J=108091 | K=103040 | L=109545 | M=114704 | N=141032 | O=1230954
+r14: A=441 | B=Motor vehicle and parts dealers | C=92876 | D=97129 | E=81423 | F=68666 | G=105965 | H=112629 | I=114636 | J=113981 | K=111408 | L=113088 | M=101541 | N=114779 | O=1228121
+r15: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=85568 | D=90084 | E=74197 | F=61931 | G=97738 | H=103634 | I=105642 | J=105262 | K=103012 | L=104592 | M=93887 | N=107072 | O=1132619
+r16: A=4411 | B=Automobile dealers | C=81013 | D=84692 | E=68301 | F=56118 | G=87493 | H=92390 | I=95841 | J=96933 | K=95770 | L=97384 | M=88004 | N=100705 | O=1044644
+r17: A=44111 | B=New car dealers | C=72767 | D=74993 | E=59836 | F=50319 | G=77982 | H=81785 | I=84860 | J=86152 | K=85989 | L=87718 | M=79240 | N=92295 | O=933936
+r18: A=44112 | B=Used car dealers | C=8246 | D=9699 | E=8465 | F=5799 | G=9511 | H=10605 | I=10981 | J=10781 | K=9781 | L=9666 | M=8764 | N=8410 | O=110708
+r19: A=4413 | B=Automotive parts, acc., and tire stores | C=7308 | D=7045 | E=7226 | F=6735 | G=8227 | H=8995 | I=8994 | J=8719 | K=8396 | L=8496 | M=7654 | N=7707 | O=95502
+r20: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=15815 | D=15371 | E=13216 | F=6510 | G=10606 | H=14643 | I=16054 | J=16824 | K=16441 | L=16782 | M=18159 | N=20041 | O=180462
+r21: A=442 | B=Furniture and home furnishings stores | C=9107 | D=9065 | E=7767 | F=3693 | G=6938 | H=9416 | I=10000 | J=10508 | K=10479 | L=10451 | M=10513 | N=11303 | O=109240
+r22: A=4421 | B=Furniture stores | C=4930 | D=5073 | E=4303 | F=1885 | G=4073 | H=5426 | I=5638 | J=5685 | K=5884 | L=5783 | M=5645 | N=5854 | O=60179
+r23: A=4422 | B=Home furnishings stores | C=4177 | D=3992 | E=3464 | F=1808 | G=2865 | H=3990 | I=4362 | J=4823 | K=4595 | L=(S) | M=(S) | N=(S)
+r24: A=44221 | B=Floor covering stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r25: A=442299 | B=All other home furnishings stores | C=2370 | D=2163 | E=1480 | F=356 | G=1186 | H=1987 | I=2306 | J=2501 | K=2351 | L=(S) | M=(S) | N=(S)
+r26: A=443 | B=Electronics and appliance stores | C=6708 | D=6306 | E=5449 | F=2817 | G=3668 | H=5227 | I=6054 | J=6316 | K=5962 | L=6331 | M=7646 | N=8738 | O=71222
+r27: A=443141 | B=Household appliance stores | C=1214 | D=1214 | E=1255 | F=1098 | G=1408 | H=1638 | I=1680 | J=1690 | K=1602 | L=1646 | M=1622 | N=1669 | O=17736
+r28: A=443142 | B=Electronics stores | C=5494 | D=5092 | E=4194 | F=1719 | G=2260 | H=3589 | I=4374 | J=4626 | K=4360 | L=4685 | M=6024 | N=7069 | O=53486
+r29: A=444 | B=Building mat. and garden equip. and supplies dealers | C=27082 | D=26322 | E=32337 | F=36080 | G=42768 | H=42366 | I=39665 | J=36950 | K=37263 | L=37913 | M=35086 | N=34974 | O=428806
+r30: A=4441 | B=Building mat. and supplies dealers | C=23990 | D=23278 | E=28401 | F=30543 | G=36741 | H=37063 | I=35415 | J=33148 | K=33239 | L=33625 | M=31321 | N=30821 | O=377585
+r31: A=44412 | B=Paint and wallpaper stores | C=934 | D=931 | E=1103 | F=969 | G=1120 | H=1275 | I=1311 | J=1259 | K=1270 | L=1253 | M=1051 | N=982 | O=13458
+r32: A=44413 | B=Hardware stores | C=2070 | D=1975 | E=2412 | F=2913 | G=3603 | H=3452 | I=3116 | J=3009 | K=2898 | L=2939 | M=2698 | N=2942 | O=34027
+r33: A=445 | B=Food and beverage stores | C=63170 | D=60439 | E=79001 | F=69039 | G=74162 | H=69466 | I=72607 | J=69963 | K=67267 | L=69550 | M=69634 | N=75049 | O=839347
+r34: A=4451 | B=Grocery stores | C=57561 | D=54593 | E=72190 | F=62631 | G=66503 | H=61988 | I=64760 | J=62440 | K=59949 | L=61937 | M=61926 | N=65085 | O=751563
+r35: A=44511 | B=Supermarkets and other grocery (except convenience) stores | C=55405 | D=52458 | E=70046 | F=60790 | G=64299 | H=59765 | I=62408 | J=60068 | K=57731 | L=59705 | M=59820 | N=62803 | O=725298
+r36: A=4453 | B=Beer, wine, and liquor stores | C=4121 | D=4242 | E=5152 | F=4826 | G=5822 | H=5656 | I=5995 | J=5723 | K=5497 | L=5682 | M=5726 | N=7265 | O=65707
+r37: A=446 | B=Health and personal care stores | C=28662 | D=27383 | E=30477 | F=25369 | G=25861 | H=27827 | I=29154 | J=28338 | K=28870 | L=29969 | M=27957 | N=32858 | O=342725
+r38: A=44611 | B=Pharmacies and drug stores | C=24290 | D=22967 | E=26639 | F=23588 | G=23249 | H=24167 | I=25008 | J=24131 | K=24591 | L=25717 | M=23636 | N=27044 | O=295027
+r39: A=447 | B=Gasoline stations | C=39195 | D=36501 | E=33813 | F=26446 | G=31665 | H=35846 | I=38350 | J=38155 | K=36612 | L=37468 | M=33699 | N=35838 | O=423588
+r40: A=448 | B=Clothing and clothing access. stores | C=15950 | D=18143 | E=10345 | F=2532 | G=8113 | H=15251 | I=16496 | J=17457 | K=17257 | L=18436 | M=19539 | N=29326 | O=188845
+r41: A=4481 | B=Clothing stores | C=11766 | D=12845 | E=7277 | F=1642 | G=5165 | H=10465 | I=11471 | J=12164 | K=12159 | L=13303 | M=14123 | N=18832 | O=131212
+r42: A=44811 | B=Men's clothing stores | C=604 | D=621 | E=307 | F=88 | G=163 | H=314 | I=418 | J=390 | K=414 | L=(S) | M=(S) | N=626
+r43: A=44812 | B=Women's clothing stores | C=2262 | D=2497 | E=1422 | F=454 | G=998 | H=1891 | I=2273 | J=2301 | K=2364 | L=2494 | M=2544 | N=3231 | O=24731
+r44: A=44814 | B=Family clothing stores | C=6725 | D=7333 | E=4134 | F=641 | G=2932 | H=6615 | I=6737 | J=7375 | K=7209 | L=8117 | M=8576 | N=11615 | O=78009
+r45: A=44819 | B=Other clothing stores | C=1081 | D=1180 | E=690 | F=215 | G=496 | H=814 | I=1001 | J=991 | K=964 | L=944 | M=1114 | N=1409 | O=10899
+r46: A=4482 | B=Shoe stores | C=2082 | D=2651 | E=1641 | F=446 | G=1576 | H=2606 | I=2632 | J=2729 | K=2520 | L=2558 | M=2505 | N=3707 | O=27653
+r47: A=44831 | B=Jewelry stores | C=1868 | D=2378 | E=1279 | F=421 | G=1299 | H=2022 | I=2191 | J=2328 | K=2330 | L=2314 | M=2643 | N=6364 | O=27437
+r48: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=5402 | D=5146 | E=4839 | F=3196 | G=5763 | H=7596 | I=7265 | J=7380 | K=6982 | L=6807 | M=7479 | N=10109 | O=77964
+r49: A=45111 | B=Sporting goods stores | C=2776 | D=2877 | E=3195 | F=2398 | G=4032 | H=5402 | I=5010 | J=4689 | K=4369 | L=4253 | M=4299 | N=6258 | O=49558
+r50: A=45112 | B=Hobby, toy, and game stores | C=1003 | D=1025 | E=734 | F=303 | G=941 | H=1191 | I=1176 | J=1253 | K=1307 | L=1375 | M=1972 | N=2121 | O=14401
+r51: A=451211 | B=Book stores | C=967 | D=577 | E=395 | F=173 | G=267 | H=375 | I=422 | J=742 | K=593 | L=432 | M=469 | N=849 | O=6261
+r52: A=452 | B=General merchandise stores | C=55716 | D=56824 | E=62936 | F=56745 | G=66513 | H=63075 | I=63836 | J=64290 | K=60264 | L=64954 | M=67695 | N=79050 | O=761898
+r53: A=4522 | B=Department stores | C=2791 | D=3261 | E=1762 | F=216 | G=1488 | H=2353 | I=2411 | J=2673 | K=2682 | L=2883 | M=3964 | N=5539 | O=32023
+r54: A=45221 | B=Department stores | C=2791 | D=3261 | E=1762 | F=216 | G=1488 | H=2353 | I=2411 | J=2673 | K=2682 | L=2883 | M=3964 | N=5539 | O=32023
+r55: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=52925 | D=53563 | E=61174 | F=56529 | G=65025 | H=60722 | I=61425 | J=61617 | K=57582 | L=62071 | M=63731 | N=73511 | O=729875
+r56: A=452311 | B=Warehouse clubs and supercenters | C=47049 | D=47522 | E=53500 | F=49250 | G=56729 | H=53044 | I=53951 | J=54385 | K=50434 | L=54462 | M=55907 | N=64383 | O=640616
+r57: A=452319 | B=All other gen. merchandise stores | C=5876 | D=6041 | E=7674 | F=7279 | G=8296 | H=7678 | I=7474 | J=7232 | K=7148 | L=7609 | M=7824 | N=9128 | O=89259
+r58: A=453 | B=Miscellaneous store retailers | C=9159 | D=9015 | E=8329 | F=6395 | G=8590 | H=9976 | I=10446 | J=10454 | K=10220 | L=10976 | M=10245 | N=11901 | O=115706
+r59: A=4532 | B=Office supplies, stationery, and gift stores | C=1894 | D=1800 | E=1499 | F=767 | G=1152 | H=1577 | I=1956 | J=2140 | K=2096 | L=2566 | M=1832 | N=2506 | O=21785
+r60: A=45321 | B=Office supplies and stationery stores | C=912 | D=772 | E=822 | F=572 | G=668 | H=738 | I=824 | J=1046 | K=917 | L=758 | M=687 | N=866 | O=9582
+r61: A=45322 | B=Gift, novelty, and souvenir stores | C=982 | D=1028 | E=677 | F=195 | G=484 | H=839 | I=1132 | J=1094 | K=1179 | L=1808 | M=1145 | N=1640 | O=12203
+r62: A=45330 | B=Used merchandise stores | C=1339 | D=1391 | E=913 | F=362 | G=791 | H=1158 | I=1176 | J=1345 | K=1219 | L=1452 | M=1360 | N=1290 | O=13796
+r63: A=454 | B=Nonstore retailers | C=58911 | D=56304 | E=64440 | F=72033 | G=77480 | H=75202 | I=77667 | J=77078 | K=75115 | L=80734 | M=92728 | N=105531 | O=913223
+r64: A=4541 | B=Electronic shopping and mail-order houses | C=52328 | D=50340 | E=58939 | F=68109 | G=73769 | H=71289 | I=73265 | J=72827 | K=70521 | L=75349 | M=87603 | N=99366 | O=853705
+r65: A=45431 | B=Fuel dealers | C=3970 | D=3313 | E=2786 | F=1896 | G=1588 | H=1435 | I=1454 | J=1475 | K=1707 | L=2044 | M=2310 | N=3357 | O=27335
+r66: A=722 | B=Food services and drinking places | C=60489 | D=62258 | E=47505 | F=29984 | G=41956 | H=50952 | I=53965 | J=55886 | K=54346 | L=56798 | M=50219 | N=50327 | O=614685
+r67: A=7224 | B=Drinking places | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r68: A=7225 | B=Restaurants and other eating places | C=52210 | D=53033 | E=40907 | F=26964 | G=38777 | H=47051 | I=49780 | J=50954 | K=48891 | L=51095 | M=45419 | N=46223 | O=551304
+r69: A=722511 | B=Full service restaurants | C=25631 | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r70: A=722513, 722514, 722515 | B=Limited service eating places | C=26579 | D=26544 | E=23727 | F=19653 | G=26085 | H=28323 | I=29722 | J=29511 | K=28229 | L=29388 | M=26696 | N=28012 | O=322469
+r71: B=ADJUSTED(2)
+r72: B=Retail and food services sales, total | C=515417 | D=515800 | E=468632 | F=402157 | G=480256 | H=518998 | I=526938 | J=531019 | K=541241 | L=539469 | M=534539 | N=539422
+r73: B=Retail sales and food services excl motor vehicle and parts | C=411607 | D=411341 | E=391813 | F=335723 | G=380040 | H=410421 | I=418324 | J=421624 | K=428216 | L=426711 | M=422994 | N=425932
+r74: B=Retail sales and food services excl gasoline stations | C=472721 | D=474834 | E=434129 | F=375551 | G=450663 | H=485466 | I=491915 | J=495159 | K=504991 | L=503442 | M=499472 | N=501093
+r75: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=368911 | D=370375 | E=357310 | F=309117 | G=350447 | H=376889 | I=383301 | J=385764 | K=391966 | L=390684 | M=387927 | N=387603
+r76: B=Retail sales, total | C=450165 | D=450608 | E=422822 | F=372381 | G=441263 | H=468996 | I=474798 | J=476602 | K=485387 | L=483839 | M=481284 | N=489145
+r77: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=346355 | D=346149 | E=346003 | F=305947 | G=341047 | H=360419 | I=366184 | J=367207 | K=372362 | L=371081 | M=369739 | N=375655
+r78: B=GAFO(1) | C=109950 | D=110217 | E=95967 | F=72107 | G=89161 | H=104821 | I=106295 | J=105468 | K=109914 | L=109294 | M=107320 | N=108371
+r79: A=441 | B=Motor vehicle and parts dealers | C=103810 | D=104459 | E=76819 | F=66434 | G=100216 | H=108577 | I=108614 | J=109395 | K=113025 | L=112758 | M=111545 | N=113490
+r80: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=96036 | D=96760 | E=69931 | F=59895 | G=92119 | H=99936 | I=100040 | J=100922 | K=104687 | L=104697 | M=103514 | N=105386
+r81: A=4413 | B=Automotive parts, acc., and tire stores | C=7774 | D=7699 | E=6888 | F=6539 | G=8097 | H=8641 | I=8574 | J=8473 | K=8338 | L=8061 | M=8031 | N=8104
+r82: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=17188 | D=16931 | E=13456 | F=7011 | G=10836 | H=15120 | I=16156 | J=16737 | K=16611 | L=16902 | M=16375 | N=16364
+r83: A=442 | B=Furniture and home furnishings stores | C=10052 | D=9885 | E=7690 | F=3795 | G=6883 | H=9559 | I=9843 | J=10312 | K=10375 | L=10266 | M=10003 | N=10266
+r84: A=443 | B=Electronics and appliance stores | C=7136 | D=7046 | E=5766 | F=3216 | G=3953 | H=5561 | I=6313 | J=6425 | K=6236 | L=6636 | M=6372 | N=6098
+r85: A=444 | B=Building mat. and garden equip. and supplies dealers | C=32435 | D=32519 | E=32409 | F=32282 | G=36955 | H=37169 | I=36622 | J=37110 | K=37500 | L=36990 | M=37264 | N=37184
+r86: A=4441 | B=Building mat. and supplies dealers | C=28594 | D=28738 | E=28717 | F=28281 | G=32399 | H=32597 | I=32195 | J=32755 | K=32943 | L=32614 | M=32866 | N=32858
+r87: A=445 | B=Food and beverage stores | C=63794 | D=63943 | E=80872 | F=70167 | G=71371 | H=70264 | I=70314 | J=69286 | K=69238 | L=68752 | M=69596 | N=69434
+r88: A=4451 | B=Grocery stores | C=57275 | D=57346 | E=73513 | F=63456 | G=63945 | H=62804 | I=62813 | J=61700 | K=61613 | L=61203 | M=62050 | N=61927
+r89: A=4453 | B=Beer, wine and liquor stores | C=4803 | D=4793 | E=5564 | F=5123 | G=5598 | H=5606 | I=5645 | J=5734 | K=5708 | L=5626 | M=5653 | N=5571
+r90: A=446 | B=Health and personal care stores | C=28435 | D=28733 | E=30086 | F=25599 | G=26070 | H=27883 | I=29419 | J=28857 | K=29369 | L=29295 | M=28881 | N=29027
+r91: A=44611 | B=Pharmacies and drug stores | C=23674 | D=23999 | E=26533 | F=23635 | G=23436 | H=24337 | I=25058 | J=24548 | K=24991 | L=24823 | M=24468 | N=24541
+r92: A=447 | B=Gasoline stations | C=42696 | D=40966 | E=34503 | F=26606 | G=29593 | H=33532 | I=35023 | J=35860 | K=36250 | L=36027 | M=35067 | N=38329
+r93: A=448 | B=Clothing and clothing access. stores | C=21738 | D=21563 | E=10790 | F=2631 | G=7773 | H=16211 | I=16785 | J=17088 | K=19384 | L=18922 | M=17919 | N=18708
+r94: A=4481 | B=Clothing stores | C=15878 | D=15821 | E=7504 | F=1667 | G=4943 | H=10905 | I=11483 | J=12004 | K=13518 | L=13238 | M=12462 | N=12911
+r95: A=44811 | B=Men's clothing stores | C=753 | D=745 | E=324 | F=78 | G=144 | H=322 | I=461 | J=428 | K=431 | L=(S) | M=(S) | N=474
+r96: A=44812 | B=Women's clothing stores | C=3065 | D=3023 | E=1389 | F=434 | G=900 | H=1970 | I=2329 | J=2397 | K=2570 | L=2496 | M=2313 | N=2400
+r97: A=4482 | B=Shoe stores | C=2996 | D=2992 | E=1587 | F=456 | G=1553 | H=2857 | I=2536 | J=2144 | K=2835 | L=2742 | M=2500 | N=2684
+r98: A=44831 | B=Jewelry stores | C=2584 | D=2462 | E=1537 | F=483 | G=1212 | H=2280 | I=2557 | J=2688 | K=2751 | L=2666 | M=2691 | N=2846
+r99: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=6267 | D=6230 | E=5153 | F=3459 | G=5991 | H=7566 | I=7316 | J=6783 | K=7243 | L=7135 | M=7042 | N=7069
+r100: A=452 | B=General merchandise stores | C=62494 | D=63255 | E=64913 | F=58166 | G=63338 | H=64292 | I=64211 | J=62965 | K=64695 | L=64265 | M=63977 | N=64202
+r101: A=4522 | B=Department stores | C=3898 | D=4181 | E=2025 | F=233 | G=1455 | H=2614 | I=2641 | J=2725 | K=3141 | L=3013 | M=3073 | N=3047
+r102: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=58596 | D=59074 | E=62888 | F=57933 | G=61883 | H=61678 | I=61570 | J=60240 | K=61554 | L=61252 | M=60904 | N=61155
+r103: A=452311 | B=Warehouse clubs and supercenters | C=51873 | D=52279 | E=55041 | F=50669 | G=54079 | H=53961 | I=53951 | J=52699 | K=53998 | L=53763 | M=53551 | N=53922
+r104: A=452319 | B=All other gen. merchandise stores | C=6723 | D=6795 | E=7847 | F=7264 | G=7804 | H=7717 | I=7619 | J=7541 | K=7556 | L=7489 | M=7353 | N=7233
+r105: A=453 | B=Miscellaneous stores retailers | C=10332 | D=10311 | E=8688 | F=6410 | G=7883 | H=9531 | I=10031 | J=10211 | K=10282 | L=10344 | M=10454 | N=11080
+r106: A=454 | B=Nonstore retailers | C=60976 | D=61698 | E=65133 | F=73616 | G=81237 | H=78851 | I=80307 | J=82310 | K=81790 | L=82449 | M=83164 | N=84258
+r107: A=4541 | B=Electronic shopping and mail order houses | C=55727 | D=56372 | E=60265 | F=69499 | G=77003 | H=74337 | I=75221 | J=77229 | K=76570 | L=77123 | M=78217 | N=79176
+r108: A=45431 | B=Fuel dealers | C=2469 | D=2416 | E=2204 | F=2150 | G=2181 | H=2113 | I=2227 | J=2266 | K=2342 | L=2174 | M=2075 | N=2318
+r109: A=722 | B=Food services and drinking places | C=65252 | D=65192 | E=45810 | F=29776 | G=38993 | H=50002 | I=52140 | J=54417 | K=55854 | L=55630 | M=53255 | N=50277
+r110: (blank)
+r111: A=(S) Suppressed - Estimate does not meet publication standards because of high sampling var...
+r112: A=is less than 50%), or other concerns about the estimate's quality.
+r113: (blank)
+r114: A=(1) GAFO represents stores classified in the following NAICS codes:  442, 443, 448, 451, 4...
+r115: A=(2) Estimates are adjusted for seasonal variations and holiday and trading-day differences...
+r116: (blank)
+r117: A=Note: Estimates are not adjusted for price changes. Retail and food services total and oth...
+r118: A=Estimates include data only for businesses with paid employees. Prior to the benchmark rep...
+r119: A=Information on sample design, estimation procedures, and measures of sampling variability ...
+
+### Sheet "2019": 119 rows x 15 columns (Excel rows 1..119, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2019
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+r5: C=Jan. 2019 | D=Feb. 2019 | E=Mar. 2019 | F=Apr. 2019 | G=May 2019 | H=Jun. 2019 | I=Jul. 2019 | J=Aug. 2019 | K=Sep. 2019 | L=Oct. 2019 | M=Nov. 2019 | N=Dec. 2019 | O=TOTAL
+r6: B=NOT ADJUSTED
+r7: B=Retail and food services sales, total | C=447933 | D=433826 | E=504478 | F=497579 | G=534165 | H=505762 | I=519231 | J=532426 | K=483841 | L=512356 | M=522446 | N=575668 | O=6069711
+r8: B=Retail sales and food services excl motor vehicle and parts | C=359687 | D=343794 | E=393763 | F=393742 | G=421836 | H=400638 | I=409583 | J=417536 | K=383997 | L=408466 | M=421223 | N=472197 | O=4826462
+r9: B=Retail sales and food services excl gasoline stations | C=411600 | D=398460 | E=462589 | F=453508 | G=487031 | H=461152 | I=473084 | J=486756 | K=441365 | L=468328 | M=481329 | N=535025 | O=5560227
+r10: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=323354 | D=308428 | E=351874 | F=349671 | G=374702 | H=356028 | I=363436 | J=371866 | K=341521 | L=364438 | M=380106 | N=431554 | O=4316978
+r11: B=Retail sales, total | C=393428 | D=379245 | E=441034 | F=436721 | G=469300 | H=442393 | I=455664 | J=467033 | K=422975 | L=449125 | M=461247 | N=511419 | O=5329584
+r12: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=305182 | D=289213 | E=330319 | F=332884 | G=356971 | H=337269 | I=346016 | J=352143 | K=323131 | L=345235 | M=360024 | N=407948 | O=4086335
+r13: B=GAFO(1) | C=91363 | D=90498 | E=106012 | F=102501 | G=109926 | H=105596 | I=106803 | J=113952 | K=99863 | L=106645 | M=120641 | N=146203 | O=1300003
+r14: A=441 | B=Motor vehicle and parts dealers | C=88246 | D=90032 | E=110715 | F=103837 | G=112329 | H=105124 | I=109648 | J=114890 | K=99844 | L=103890 | M=101223 | N=103471 | O=1243249
+r15: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=81161 | D=83038 | E=102510 | F=95762 | G=104013 | H=97173 | I=101417 | J=106445 | K=92186 | L=95516 | M=93529 | N=96277 | O=1149027
+r16: A=4411 | B=Automobile dealers | C=76665 | D=78010 | E=95376 | F=88189 | G=95536 | H=89244 | I=93820 | J=99501 | K=86439 | L=90048 | M=88654 | N=91810 | O=1073292
+r17: A=44111 | B=New car dealers | C=68294 | D=68827 | E=84121 | F=78412 | G=85593 | H=79754 | I=84177 | J=89778 | K=77568 | L=80927 | M=79885 | N=83811 | O=961147
+r18: A=44112 | B=Used car dealers | C=8371 | D=9183 | E=11255 | F=9777 | G=9943 | H=9490 | I=9643 | J=9723 | K=8871 | L=9121 | M=8769 | N=7999 | O=112145
+r19: A=4413 | B=Automotive parts, acc., and tire stores | C=7085 | D=6994 | E=8205 | F=8075 | G=8316 | H=7951 | I=8231 | J=8445 | K=7658 | L=8374 | M=7694 | N=7194 | O=94222
+r20: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=15585 | D=14815 | E=16769 | F=15638 | G=16949 | H=16268 | I=16862 | J=17581 | K=16690 | L=16750 | M=19572 | N=21258 | O=204737
+r21: A=442 | B=Furniture and home furnishings stores | C=8570 | D=8387 | E=9733 | F=9301 | G=10003 | H=9460 | I=9879 | J=10284 | K=9795 | L=9906 | M=10667 | N=10817 | O=116802
+r22: A=4421 | B=Furniture stores | C=4512 | D=4501 | E=5366 | F=4935 | G=5428 | H=5192 | I=5343 | J=5539 | K=5468 | L=5243 | M=5598 | N=5231 | O=62356
+r23: A=4422 | B=Home furnishings stores | C=4058 | D=3886 | E=4367 | F=4366 | G=4575 | H=4268 | I=4536 | J=4745 | K=4327 | L=4663 | M=5069 | N=5586 | O=54446
+r24: A=44221 | B=Floor covering stores | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r25: A=442299 | B=All other home furnishings stores | C=2214 | D=2058 | E=2319 | F=2267 | G=2444 | H=2167 | I=2417 | J=2538 | K=2267 | L=2464 | M=3037 | N=3698 | O=29890
+r26: A=443 | B=Electronics and appliance stores | C=7015 | D=6428 | E=7036 | F=6337 | G=6946 | H=6808 | I=6983 | J=7297 | K=6895 | L=6844 | M=8905 | N=10441 | O=87935
+r27: A=443141 | B=Household appliance stores | C=1191 | D=1173 | E=1333 | F=1307 | G=1468 | H=1395 | I=1522 | J=1462 | K=1350 | L=1398 | M=1490 | N=1407 | O=16496
+r28: A=443142 | B=Electronics stores | C=5824 | D=5255 | E=5703 | F=5030 | G=5478 | H=5413 | I=5461 | J=5835 | K=5545 | L=5446 | M=7415 | N=9034 | O=71439
+r29: A=444 | B=Building mat. and garden equip. and supplies dealers | C=26848 | D=24230 | E=30232 | F=34422 | G=37709 | H=33916 | I=34091 | J=32719 | K=30277 | L=32942 | M=30043 | N=28812 | O=376241
+r30: A=4441 | B=Building mat. and supplies dealers | C=23747 | D=21336 | E=26305 | F=29776 | G=32845 | H=29828 | I=30478 | J=29391 | K=27086 | L=29145 | M=26632 | N=25361 | O=331930
+r31: A=44412 | B=Paint and wallpaper stores | C=883 | D=831 | E=995 | F=950 | G=1154 | H=1139 | I=1214 | J=1227 | K=1127 | L=1145 | M=933 | N=831 | O=12429
+r32: A=44413 | B=Hardware stores | C=2027 | D=1854 | E=2274 | F=2446 | G=2747 | H=2516 | I=2466 | J=2470 | K=2277 | L=2514 | M=2323 | N=2342 | O=28256
+r33: A=445 | B=Food and beverage stores | C=62395 | D=56470 | E=63051 | F=61856 | G=66000 | H=63922 | I=65750 | J=66225 | K=61623 | L=63836 | M=65272 | N=68658 | O=765058
+r34: A=4451 | B=Grocery stores | C=56984 | D=51095 | E=57034 | F=55787 | G=59431 | H=57508 | I=59053 | J=59517 | K=55554 | L=57441 | M=58422 | N=59956 | O=687782
+r35: A=44511 | B=Supermarkets and other grocery (except convenience) stores | C=54916 | D=49069 | E=54710 | F=53413 | G=56818 | H=54964 | I=56440 | J=56900 | K=53107 | L=54987 | M=56106 | N=57662 | O=659092
+r36: A=4453 | B=Beer, wine, and liquor stores | C=3871 | D=3853 | E=4373 | F=4295 | G=4790 | H=4697 | I=4930 | J=4958 | K=4401 | L=4625 | M=4995 | N=6241 | O=56029
+r37: A=446 | B=Health and personal care stores | C=28211 | D=26433 | E=28395 | F=28082 | G=29066 | H=27259 | I=27814 | J=28191 | K=26873 | L=29099 | M=27359 | N=30842 | O=337624
+r38: A=44611 | B=Pharmacies and drug stores | C=24115 | D=22392 | E=23641 | F=23840 | G=24623 | H=22735 | I=23493 | J=23616 | K=22468 | L=24742 | M=22685 | N=25002 | O=283352
+r39: A=447 | B=Gasoline stations | C=36333 | D=35366 | E=41889 | F=44071 | G=47134 | H=44610 | I=46147 | J=45670 | K=42476 | L=44028 | M=41117 | N=40643 | O=509484
+r40: A=448 | B=Clothing and clothing access. stores | C=15508 | D=17214 | E=21183 | F=20572 | G=22110 | H=20231 | I=20801 | J=22826 | K=18682 | L=20458 | M=24008 | N=33469 | O=257062
+r41: A=4481 | B=Clothing stores | C=11542 | D=12081 | E=15642 | F=15238 | G=16237 | H=15161 | I=15380 | J=16380 | K=13824 | L=15466 | M=18234 | N=23472 | O=188657
+r42: A=44811 | B=Men's clothing stores | C=609 | D=572 | E=709 | F=822 | G=829 | H=723 | I=656 | J=702 | K=714 | L=770 | M=828 | N=1006 | O=8940
+r43: A=44812 | B=Women's clothing stores | C=2209 | D=2357 | E=3149 | F=3139 | G=3344 | H=2852 | I=2836 | J=2895 | K=2686 | L=2974 | M=3358 | N=4030 | O=35829
+r44: A=44814 | B=Family clothing stores | C=6586 | D=6889 | E=9038 | F=8724 | G=9357 | H=8974 | I=9196 | J=9949 | K=8107 | L=9229 | M=11067 | N=14210 | O=111326
+r45: A=44819 | B=Other clothing stores | C=1073 | D=1103 | E=1324 | F=1165 | G=1252 | H=1340 | I=1315 | J=1333 | K=1101 | L=1152 | M=1406 | N=2035 | O=15599
+r46: A=4482 | B=Shoe stores | C=2150 | D=2675 | E=3327 | F=2966 | G=2975 | H=2758 | I=3027 | J=3939 | K=2539 | L=2676 | M=2984 | N=3977 | O=35993
+r47: A=44831 | B=Jewelry stores | C=1644 | D=2273 | E=2007 | F=2165 | G=2636 | H=2075 | I=2177 | J=2273 | K=2104 | L=2111 | M=2525 | N=5566 | O=29556
+r48: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=5246 | D=4855 | E=5875 | F=5781 | G=6030 | H=6169 | I=6136 | J=7055 | K=5834 | L=5907 | M=6743 | N=8866 | O=74497
+r49: A=45111 | B=Sporting goods stores | C=2605 | D=2695 | E=3467 | F=3446 | G=3585 | H=3902 | I=3878 | J=4096 | K=3184 | L=3294 | M=3574 | N=4976 | O=42702
+r50: A=45112 | B=Hobby, toy, and game stores | C=998 | D=956 | E=1108 | F=1010 | G=1073 | H=1012 | I=1016 | J=1092 | K=1076 | L=1205 | M=1766 | N=1972 | O=14284
+r51: A=451211 | B=Book stores | C=991 | D=565 | E=584 | F=629 | G=674 | H=596 | I=574 | J=1094 | K=848 | L=633 | M=625 | N=1047 | O=8860
+r52: A=452 | B=General merchandise stores | C=53106 | D=51790 | E=60159 | F=58469 | G=62485 | H=60702 | I=60551 | J=63854 | K=56462 | L=60837 | M=68173 | N=79826 | O=736414
+r53: A=4522 | B=Department stores | C=3072 | D=3601 | E=4313 | F=4304 | G=4820 | H=4235 | I=4431 | J=4762 | K=3870 | L=4145 | M=5945 | N=8502 | O=56000
+r54: A=45221 | B=Department stores | C=3072 | D=3601 | E=4313 | F=4304 | G=4820 | H=4235 | I=4431 | J=4762 | K=3870 | L=4145 | M=5945 | N=8502 | O=56000
+r55: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=50034 | D=48189 | E=55846 | F=54165 | G=57665 | H=56467 | I=56120 | J=59092 | K=52592 | L=56692 | M=62228 | N=71324 | O=680414
+r56: A=452311 | B=Warehouse clubs and supercenters | C=44276 | D=42549 | E=49357 | F=47602 | G=50698 | H=49900 | I=49717 | J=52563 | K=46474 | L=50017 | M=55130 | N=63029 | O=601312
+r57: A=452319 | B=All other gen. merchandise stores | C=5758 | D=5640 | E=6489 | F=6563 | G=6967 | H=6567 | I=6403 | J=6529 | K=6118 | L=6675 | M=7098 | N=8295 | O=79102
+r58: A=453 | B=Miscellaneous store retailers | C=8264 | D=8072 | E=9097 | F=9555 | G=11119 | H=10093 | I=10165 | J=10570 | K=9631 | L=10702 | M=10323 | N=10882 | O=118473
+r59: A=4532 | B=Office supplies, stationery, and gift stores | C=1918 | D=1824 | E=2026 | F=2041 | G=2352 | H=2226 | I=2453 | J=2636 | K=2195 | L=2693 | M=2145 | N=2784 | O=27293
+r60: A=45321 | B=Office supplies and stationery stores | C=966 | D=795 | E=847 | F=808 | G=788 | H=714 | I=846 | J=1198 | K=848 | L=789 | M=730 | N=862 | O=10191
+r61: A=45322 | B=Gift, novelty, and souvenir stores | C=952 | D=1029 | E=1179 | F=1233 | G=1564 | H=1512 | I=1607 | J=1438 | K=1347 | L=1904 | M=1415 | N=1922 | O=17102
+r62: A=45330 | B=Used merchandise stores | C=1164 | D=1157 | E=1332 | F=1398 | G=1220 | H=1221 | I=1264 | J=1424 | K=1358 | L=1597 | M=1431 | N=1342 | O=15908
+r63: A=454 | B=Nonstore retailers | C=53686 | D=49968 | E=53669 | F=54438 | G=58369 | H=54099 | I=57699 | J=57452 | K=54583 | L=60676 | M=67414 | N=84692 | O=706745
+r64: A=4541 | B=Electronic shopping and mail-order houses | C=46430 | D=43575 | E=47379 | F=49165 | G=53217 | H=49563 | I=53061 | J=52665 | K=49847 | L=55107 | M=61489 | N=77951 | O=639449
+r65: A=45431 | B=Fuel dealers | C=4525 | D=3873 | E=3626 | F=2524 | G=2112 | H=1711 | I=1776 | J=1861 | K=1939 | L=2526 | M=3184 | N=3867 | O=33524
+r66: A=722 | B=Food services and drinking places | C=54505 | D=54581 | E=63444 | F=60858 | G=64865 | H=63369 | I=63567 | J=65393 | K=60866 | L=63231 | M=61199 | N=64249 | O=740127
+r67: A=7224 | B=Drinking places | C=(S) | D=(S) | E=(S) | F=(S) | G=(S) | H=(S) | I=(S) | J=(S) | K=(S) | L=(S) | M=(S) | N=(S)
+r68: A=7225 | B=Restaurants and other eating places | C=48358 | D=48050 | E=55917 | F=53422 | G=57211 | H=56389 | I=56841 | J=57467 | K=52291 | L=54066 | M=52614 | N=55736 | O=648362
+r69: A=722511 | B=Full service restaurants | C=23512 | D=23534 | E=26865 | F=25414 | G=27769 | H=27267 | I=27264 | J=27770 | K=25033 | L=25904 | M=25685 | N=28195 | O=314212
+r70: A=722513, 722514, 722515 | B=Limited service eating places | C=24846 | D=24516 | E=29052 | F=28008 | G=29442 | H=29122 | I=29577 | J=29697 | K=27258 | L=28162 | M=26929 | N=27541 | O=334150
+r71: B=ADJUSTED(2)
+r72: B=Retail and food services sales, total | C=490789 | D=492328 | E=499614 | F=499609 | G=505356 | H=505681 | I=509389 | J=513222 | K=509503 | L=510902 | M=514649 | N=516273
+r73: B=Retail sales and food services excl motor vehicle and parts | C=391321 | D=391508 | E=396084 | F=398213 | G=401800 | H=402228 | I=405481 | J=406535 | K=405345 | L=406551 | M=407551 | N=411311
+r74: B=Retail sales and food services excl gasoline stations | C=451211 | D=451061 | E=456695 | F=455450 | G=461713 | H=463675 | I=466896 | J=470738 | K=467280 | L=468363 | M=472217 | N=472618
+r75: B=Retail sales and food services excl motor vehicle and parts and gasoline stations | C=351743 | D=350241 | E=353165 | F=354054 | G=358157 | H=360222 | I=362988 | J=364051 | K=363122 | L=364012 | M=365119 | N=367656
+r76: B=Retail sales, total | C=431609 | D=432807 | E=439648 | F=439234 | G=444393 | H=443918 | I=447007 | J=450705 | K=446495 | L=447608 | M=451362 | N=452024
+r77: B=Retail sales, total (excl. motor vehicle and parts dealers) | C=332141 | D=331987 | E=336118 | F=337838 | G=340837 | H=340465 | I=343099 | J=344018 | K=342337 | L=343257 | M=344264 | N=347062
+r78: B=GAFO(1) | C=106592 | D=106663 | E=107934 | F=107710 | G=107731 | H=108120 | I=109129 | J=108807 | K=108188 | L=108591 | M=109374 | N=111218
+r79: A=441 | B=Motor vehicle and parts dealers | C=99468 | D=100820 | E=103530 | F=101396 | G=103556 | H=103453 | I=103908 | J=106687 | K=104158 | L=104351 | M=107098 | N=104962
+r80: A=4411,4412 | B=Automobile and other motor vehicle dealers | C=91915 | D=92988 | E=95625 | F=93518 | G=95688 | H=95549 | I=96039 | J=98743 | K=96328 | L=96481 | M=99182 | N=97151
+r81: A=4413 | B=Automotive parts, acc., and tire stores | C=7553 | D=7832 | E=7905 | F=7878 | G=7868 | H=7904 | I=7869 | J=7944 | K=7830 | L=7870 | M=7916 | N=7811
+r82: A=442,443 | B=Furniture, home furn, electronics, and appliance stores | C=17004 | D=16923 | E=17046 | F=16927 | G=17137 | H=17127 | I=17152 | J=17088 | K=17228 | L=17024 | M=17112 | N=17200
+r83: A=442 | B=Furniture and home furnishings stores | C=9501 | D=9509 | E=9608 | F=9668 | G=9740 | H=9783 | I=9801 | J=9776 | K=9924 | L=9789 | M=9849 | N=9924
+r84: A=443 | B=Electronics and appliance stores | C=7503 | D=7414 | E=7438 | F=7259 | G=7397 | H=7344 | I=7351 | J=7312 | K=7304 | L=7235 | M=7263 | N=7276
+r85: A=444 | B=Building mat. and garden equip. and supplies dealers | C=32230 | D=30702 | E=31028 | F=31061 | G=30954 | H=30936 | I=31442 | J=31877 | K=31509 | L=31428 | M=31493 | N=31953
+r86: A=4441 | B=Building mat. and supplies dealers | C=28270 | D=26939 | E=27344 | F=27622 | G=27555 | H=27390 | I=27682 | J=28125 | K=27724 | L=27573 | M=27541 | N=28148
+r87: A=445 | B=Food and beverage stores | C=63414 | D=62183 | E=63276 | F=63529 | G=63511 | H=63910 | I=64514 | J=64632 | K=64047 | L=63833 | M=64084 | N=64426
+r88: A=4451 | B=Grocery stores | C=57041 | D=55842 | E=56920 | F=57159 | G=57145 | H=57508 | I=58009 | J=58122 | K=57569 | L=57326 | M=57559 | N=57873
+r89: A=4453 | B=Beer, wine and liquor stores | C=4586 | D=4581 | E=4598 | F=4589 | G=4610 | H=4641 | I=4718 | J=4726 | K=4707 | L=4719 | M=4748 | N=4804
+r90: A=446 | B=Health and personal care stores | C=28071 | D=28423 | E=28310 | F=28223 | G=28413 | H=28248 | I=28095 | J=28079 | K=27964 | L=28251 | M=28032 | N=27661
+r91: A=44611 | B=Pharmacies and drug stores | C=23573 | D=23949 | E=23832 | F=23816 | G=23976 | H=23732 | I=23564 | J=23616 | K=23331 | L=23654 | M=23314 | N=23065
+r92: A=447 | B=Gasoline stations | C=39578 | D=41267 | E=42919 | F=44159 | G=43643 | H=42006 | I=42493 | J=42484 | K=42223 | L=42539 | M=42432 | N=43655
+r93: A=448 | B=Clothing and clothing access. stores | C=21199 | D=21245 | E=21545 | F=21497 | G=21271 | H=21234 | I=21525 | J=21519 | K=21252 | L=21295 | M=21254 | N=22017
+r94: A=4481 | B=Clothing stores | C=15574 | D=15505 | E=15798 | F=15744 | G=15636 | H=15624 | I=15742 | J=15714 | K=15508 | L=15679 | M=15638 | N=16291
+r95: A=44811 | B=Men's clothing stores | C=767 | D=712 | E=733 | F=743 | G=733 | H=733 | I=740 | J=747 | K=748 | L=753 | M=767 | N=764
+r96: A=44812 | B=Women's clothing stores | C=3018 | D=2969 | E=3028 | F=3004 | G=3029 | H=2959 | I=2982 | J=2942 | K=2968 | L=3013 | M=2956 | N=3003
+r97: A=4482 | B=Shoe stores | C=3080 | D=3100 | E=3133 | F=3051 | G=2969 | H=2982 | I=3000 | J=3009 | K=2918 | L=2934 | M=2908 | N=2924
+r98: A=44831 | B=Jewelry stores | C=2335 | D=2431 | E=2395 | F=2480 | G=2434 | H=2377 | I=2552 | J=2551 | K=2578 | L=2455 | M=2451 | N=2523
+r99: A=451 | B=Sporting goods, hobby, musical instrument, and book stores | C=6065 | D=6130 | E=6152 | F=6277 | G=6288 | H=6321 | I=6223 | J=6271 | K=6246 | L=6284 | M=6069 | N=6248
+r100: A=452 | B=General merchandise stores | C=60053 | D=60063 | E=60881 | F=60711 | G=60664 | H=61083 | I=61892 | J=61678 | K=61292 | L=61787 | M=62696 | N=63532
+r101: A=4522 | B=Department stores | C=4291 | D=4763 | E=4787 | F=4740 | G=4763 | H=4633 | I=4929 | J=4743 | K=4500 | L=4419 | M=4612 | N=4715
+r102: A=4523 | B=Gen. merchandise stores incl. warehouse clubs & supercenters | C=55762 | D=55300 | E=56094 | F=55971 | G=55901 | H=56450 | I=56963 | J=56935 | K=56792 | L=57368 | M=58084 | N=58817
+r103: A=452311 | B=Warehouse clubs and supercenters | C=49196 | D=48795 | E=49506 | F=49328 | G=49365 | H=49850 | I=50321 | J=50300 | K=50242 | L=50779 | M=51475 | N=52176
+r104: A=452319 | B=All other gen. merchandise stores | C=6566 | D=6505 | E=6588 | F=6643 | G=6536 | H=6600 | I=6642 | J=6635 | K=6550 | L=6589 | M=6609 | N=6641
+r105: A=453 | B=Miscellaneous stores retailers | C=9379 | D=9496 | E=9613 | F=9801 | G=9956 | H=9934 | I=9843 | J=10030 | K=9931 | L=10083 | M=10268 | N=10112
+r106: A=454 | B=Nonstore retailers | C=55148 | D=55555 | E=55348 | F=55653 | G=59000 | H=59666 | I=59920 | J=60360 | K=60645 | L=60733 | M=60824 | N=60258
+r107: A=4541 | B=Electronic shopping and mail order houses | C=49446 | D=49914 | E=49716 | F=50117 | G=53484 | H=54049 | I=54310 | J=54688 | K=55080 | L=55273 | M=55147 | N=54664
+r108: A=45431 | B=Fuel dealers | C=2790 | D=2835 | E=2965 | F=2830 | G=2757 | H=2769 | I=2779 | J=2786 | K=2693 | L=2642 | M=2900 | N=2682
+r109: A=722 | B=Food services and drinking places | C=59180 | D=59521 | E=59966 | F=60375 | G=60963 | H=61763 | I=62382 | J=62517 | K=63008 | L=63294 | M=63287 | N=64249
+r110: (blank)
+r111: A=(S) Suppressed - Estimate does not meet publication standards because of high sampling var...
+r112: A=is less than 50%), or other concerns about the estimate's quality.
+r113: (blank)
+r114: A=(1) GAFO represents stores classified in the following NAICS codes:  442, 443, 448, 451, 4...
+r115: A=(2) Estimates are adjusted for seasonal variations and holiday and trading-day differences...
+r116: (blank)
+r117: A=Note: Estimates are not adjusted for price changes. Retail and food services total and oth...
+r118: A=Estimates include data only for businesses with paid employees. Prior to the benchmark rep...
+r119: A=Information on sample design, estimation procedures, and measures of sampling variability ...
+
+### Sheet "2018": 119 rows x 15 columns (Excel rows 1..119, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2018
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2017": 119 rows x 15 columns (Excel rows 1..119, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2017
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2016": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2016
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2015": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2015
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2014": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2014
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2013": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2013
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2012": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2012
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2011": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2011
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2010": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2010
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2009": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2009
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2008": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2008
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2007": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2007
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2006": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2006
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2005": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2005
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2004": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2004
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2003": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2003
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2002": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2002
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2001": 116 rows x 15 columns (Excel rows 1..116, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2001
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "2000": 118 rows x 15 columns (Excel rows 1..118, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 2000
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "1999": 118 rows x 15 columns (Excel rows 1..118, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 1999
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "1998": 118 rows x 15 columns (Excel rows 1..118, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 1998
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "1997": 118 rows x 15 columns (Excel rows 1..118, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 1997
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "1996": 118 rows x 15 columns (Excel rows 1..118, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 1996
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "1995": 118 rows x 15 columns (Excel rows 1..118, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 1995
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "1994": 118 rows x 15 columns (Excel rows 1..118, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 1994
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "1993": 118 rows x 15 columns (Excel rows 1..118, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 1993
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business
+
+### Sheet "1992": 118 rows x 15 columns (Excel rows 1..118, columns A..O)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=Estimates of Monthly Retail and Food Services Sales by Kind of Business: 1992
+r2: A=[Estimates are shown in millions of dollars and are based on data from the Monthly Retail ...
+r3: (blank)
+r4: A=NAICS  Code | B=Kind of Business

@@ -1,0 +1,88 @@
+{
+ "id": "fhwa_vehicle_miles_by_functional_system_2023",
+ "file": "fhwa_vehicle_miles_by_functional_system_2023.xlsx",
+ "questions": [
+  {
+   "question": "In 2023, how many million vehicle miles were traveled on rural interstate highways in Alabama?",
+   "sheet": "A",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "6903.3341",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\nrow = df[df[0].astype(str).str.strip() == 'Alabama'].iloc[0]\nresult = float(row[1])",
+   "qid": "fhwa_vehicle_miles_by_functional_system_2023#1",
+   "pass1": true,
+   "result": 6903.3341,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states had the highest total vehicle-miles of travel across all functional systems in 2023?",
+   "sheet": "A",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\nstart_idx = df[df[0].astype(str).str.strip() == 'Alabama'].index[0]\nend_idx = df[df[0].astype(str).str.strip() == 'Wyoming'].index[0]\nstates_df = df.loc[start_idx:end_idx].copy()\nstates_df[17] = pd.to_numeric(states_df[17])\ntop3 = states_df.sort_values(by=17, ascending=False).head(3)\nresult = top3[0].tolist()",
+   "qid": "fhwa_vehicle_miles_by_functional_system_2023#2",
+   "pass1": true,
+   "result": [
+    "California",
+    "Texas",
+    "Florida"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between California and Texas, which state reported more total rural vehicle miles traveled in 2023?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\nca = df[df[0].astype(str).str.strip() == 'California'].iloc[0]\ntx = df[df[0].astype(str).str.strip() == 'Texas'].iloc[0]\nresult = 'California' if float(ca[8]) > float(tx[8]) else 'Texas'",
+   "qid": "fhwa_vehicle_miles_by_functional_system_2023#3",
+   "pass1": true,
+   "result": "Texas",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states (including the District of Columbia) logged more than 100,000 million total vehicle miles in 2023?",
+   "sheet": "A",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "9",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\nstart_idx = df[df[0].astype(str).str.strip() == 'Alabama'].index[0]\nend_idx = df[df[0].astype(str).str.strip() == 'Wyoming'].index[0]\nstates_df = df.loc[start_idx:end_idx].copy()\nresult = int((pd.to_numeric(states_df[17]) > 100000).sum())",
+   "qid": "fhwa_vehicle_miles_by_functional_system_2023#4",
+   "pass1": true,
+   "result": 9,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did rural highway travel account for more than 50% of the total vehicle miles traveled in Montana in 2023?",
+   "sheet": "A",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\nmt = df[df[0].astype(str).str.strip() == 'Montana'].iloc[0]\nrural_total = float(mt[8])\ngrand_total = float(mt[17])\nresult = 'yes' if (rural_total / grand_total) > 0.5 else 'no'",
+   "qid": "fhwa_vehicle_miles_by_functional_system_2023#5",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the combined total vehicle miles traveled across Maine, New Hampshire, and Vermont in 2023, in millions?",
+   "sheet": "A",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "35575.3654",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_vehicle_miles_by_functional_system_2023.xlsx', sheet_name='A', header=None)\nstates = ['Maine', 'New Hampshire', 'Vermont']\nsub = df[df[0].astype(str).str.strip().isin(states)]\nresult = round(float(pd.to_numeric(sub[17]).sum()), 4)",
+   "qid": "fhwa_vehicle_miles_by_functional_system_2023#6",
+   "pass1": true,
+   "result": 35575.3654,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

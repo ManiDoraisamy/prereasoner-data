@@ -1,0 +1,87 @@
+{
+ "id": "eia_average_retail_electricity_price_by_state",
+ "file": "eia_average_retail_electricity_price_by_state.xlsx",
+ "questions": [
+  {
+   "question": "In 2020, what was the average residential electricity price in Hawaii across the total electric industry in cents per kilowatthour?",
+   "sheet": "Price",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "30.28",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Industry Sector Category', case=False).any(), axis=1)].index[0]\ndf.columns = df.iloc[header_idx].astype(str).str.strip()\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\ndf['Year'] = pd.to_numeric(df['Year'], errors='coerce')\nmatch = df[(df['Year'] == 2020) & (df['State'].str.strip() == 'HI') & (df['Industry Sector Category'].str.strip() == 'Total Electric Industry')]\nresult = float(match['Residential'].iloc[0])",
+   "qid": "eia_average_retail_electricity_price_by_state#1",
+   "pass1": true,
+   "result": 30.28,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Alaska and Hawaii, which state had a higher average residential electricity price for the total electric industry in 2020?",
+   "sheet": "Price",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "HI",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Industry Sector Category', case=False).any(), axis=1)].index[0]\ndf.columns = df.iloc[header_idx].astype(str).str.strip()\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\ndf['Year'] = pd.to_numeric(df['Year'], errors='coerce')\nsub = df[(df['Year'] == 2020) & (df['State'].str.strip().isin(['AK', 'HI'])) & (df['Industry Sector Category'].str.strip() == 'Total Electric Industry')].copy()\nsub['Residential'] = pd.to_numeric(sub['Residential'], errors='coerce')\nresult = sub.loc[sub['Residential'].idxmax(), 'State'].strip()",
+   "qid": "eia_average_retail_electricity_price_by_state#2",
+   "pass1": true,
+   "result": "HI",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many records in the dataset correspond to energy-only providers?",
+   "sheet": "Price",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "474",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Industry Sector Category', case=False).any(), axis=1)].index[0]\ndf.columns = df.iloc[header_idx].astype(str).str.strip()\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\nresult = int((df['Industry Sector Category'].str.strip() == 'Energy-Only Providers').sum())",
+   "qid": "eia_average_retail_electricity_price_by_state#3",
+   "pass1": true,
+   "result": 474,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 1990, was the total retail electricity price for full-service providers higher in Washington than in Wyoming?",
+   "sheet": "Price",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Industry Sector Category', case=False).any(), axis=1)].index[0]\ndf.columns = df.iloc[header_idx].astype(str).str.strip()\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\ndf['Year'] = pd.to_numeric(df['Year'], errors='coerce')\nsub = df[(df['Year'] == 1990) & (df['Industry Sector Category'].str.strip() == 'Full-Service Providers') & (df['State'].str.strip().isin(['WA', 'WY']))]\nwa_price = pd.to_numeric(sub[sub['State'].str.strip() == 'WA']['Total'].iloc[0])\nwy_price = pd.to_numeric(sub[sub['State'].str.strip() == 'WY']['Total'].iloc[0])\nresult = 'yes' if wa_price > wy_price else 'no'",
+   "qid": "eia_average_retail_electricity_price_by_state#4",
+   "pass1": true,
+   "result": "no",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What is the earliest year for which retail electricity prices are reported in the table?",
+   "sheet": "Price",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "1990",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Industry Sector Category', case=False).any(), axis=1)].index[0]\ndf.columns = df.iloc[header_idx].astype(str).str.strip()\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\ndf['Year'] = pd.to_numeric(df['Year'], errors='coerce')\nresult = str(int(df['Year'].min()))",
+   "qid": "eia_average_retail_electricity_price_by_state#5",
+   "pass1": true,
+   "result": "1990",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which two industry sector categories have the largest number of entries in the dataset?",
+   "sheet": "Price",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Full-Service Providers\", \"Total Electric Industry\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_average_retail_electricity_price_by_state.xlsx', sheet_name='Price', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Industry Sector Category', case=False).any(), axis=1)].index[0]\ndf.columns = df.iloc[header_idx].astype(str).str.strip()\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\ncounts = df['Industry Sector Category'].str.strip().value_counts()\nresult = counts.head(2).index.tolist()",
+   "qid": "eia_average_retail_electricity_price_by_state#6",
+   "pass1": true,
+   "result": [
+    "Total Electric Industry",
+    "Full-Service Providers"
+   ],
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

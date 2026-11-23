@@ -1,0 +1,30 @@
+{
+ "id": "acf_tanf_caseload_fy2023",
+ "answers": [
+  {
+   "id": "acf_tanf_caseload_fy2023#1",
+   "answer": "835847",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='TFam', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'state'].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\nus_row = df[df['State'].astype(str).str.strip().str.lower() == 'u.s. totals']\noct_col = [c for c in df.columns if 'oct' in str(c).lower()][0]\nresult = int(us_row[oct_col].values[0])"
+  },
+  {
+   "id": "acf_tanf_caseload_fy2023#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='FY2023-Recipients', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'state'].index[0]\ndf.columns = [str(c).replace('\\n', ' ').strip() for c in df.iloc[header_idx]]\ndf = df.iloc[header_idx + 1:].copy()\ncal_row = df[df['State'].astype(str).str.strip().str.lower() == 'california'].iloc[0]\nadults = float(cal_row['Adults'])\nchildren = float(cal_row['Children'])\nresult = 'yes' if children > adults else 'no'"
+  },
+  {
+   "id": "acf_tanf_caseload_fy2023#3",
+   "answer": "California",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='FY2023-Families', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'state'].index[0]\ndf.columns = [str(c).replace('\\n', ' ').strip() for c in df.iloc[header_idx]]\ndf = df.iloc[header_idx + 1:].copy()\ndf = df[~df['State'].astype(str).str.strip().str.lower().str.contains('total|notes|fiscal|nan')]\ndf = df.dropna(subset=['State'])\ntot_col = [c for c in df.columns if 'total' in c.lower()][0]\ndf[tot_col] = pd.to_numeric(df[tot_col], errors='coerce')\ndf = df.dropna(subset=[tot_col])\nresult = str(df.loc[df[tot_col].idxmax(), 'State']).strip()"
+  },
+  {
+   "id": "acf_tanf_caseload_fy2023#5",
+   "answer": "[\"California\", \"New York\", \"Massachusetts\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='FY2023-Recipients', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'state'].index[0]\ndf.columns = [str(c).replace('\\n', ' ').strip() for c in df.iloc[header_idx]]\ndf = df.iloc[header_idx + 1:].copy()\ndf = df[~df['State'].astype(str).str.strip().str.lower().str.contains('total|notes|fiscal|nan')]\ndf = df.dropna(subset=['State'])\ntot_col = [c for c in df.columns if 'total' in c.lower()][0]\ndf[tot_col] = pd.to_numeric(df[tot_col], errors='coerce')\ndf = df.dropna(subset=[tot_col])\ntop3 = df.sort_values(by=tot_col, ascending=False).head(3)['State'].tolist()\nresult = [s.strip() for s in top3]"
+  },
+  {
+   "id": "acf_tanf_caseload_fy2023#6",
+   "answer": "2023-09",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='Children', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'state'].index[0]\nheaders = df.iloc[header_idx].tolist()\nus_row = df[df.iloc[:, 0].astype(str).str.strip().str.lower() == 'u.s. totals'].iloc[0]\n\nmonth_cols = []\nfor idx, h in enumerate(headers):\n    h_str = str(h).strip().lower()\n    if any(m in h_str for m in ['oct', 'nov', 'dec', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep']):\n        month_cols.append((idx, str(h).strip()))\n\nmonth_data = {col_name: float(us_row[col_idx]) for col_idx, col_name in month_cols}\nmin_month = min(month_data, key=month_data.get)\ndt = pd.to_datetime(min_month, format='%b-%y')\nresult = dt.strftime('%Y-%m')"
+  }
+ ]
+}

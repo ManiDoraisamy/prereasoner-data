@@ -1,0 +1,35 @@
+{
+ "id": "nydoh_cardiac_surgery_pci_by_hospital",
+ "answers": [
+  {
+   "id": "nydoh_cardiac_surgery_pci_by_hospital#1",
+   "answer": "1.62",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_cardiac_surgery_pci_by_hospital.csv')\nsub = df[(df['Hospital Name'] == 'NYS - All Hospitals') & (df['Procedure'] == 'CABG') & (df['Year of Hospital Discharge'] == '2019')]\nresult = float(sub['Observed Mortality Rate'].iloc[0])"
+  },
+  {
+   "id": "nydoh_cardiac_surgery_pci_by_hospital#2",
+   "answer": "Mount Sinai Hospital",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_cardiac_surgery_pci_by_hospital.csv')\nsub = df[(df['Hospital Name'].isin(['Mount Sinai Hospital', 'NYP-Weill Cornell'])) & (df['Procedure'] == 'Valve or Valve/CABG') & (df['Year of Hospital Discharge'] == '2013-2015')]\nresult = str(sub.loc[sub['Number of Cases'].idxmax(), 'Hospital Name'])"
+  },
+  {
+   "id": "nydoh_cardiac_surgery_pci_by_hospital#3",
+   "answer": "93",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_cardiac_surgery_pci_by_hospital.csv')\nresult = int((df['Comparison Results'] == 'Rate significantly lower than Statewide Rate').sum())"
+  },
+  {
+   "id": "nydoh_cardiac_surgery_pci_by_hospital#4",
+   "answer": "NY Metro - NYC",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_cardiac_surgery_pci_by_hospital.csv')\nresult = str(df['Region'].value_counts().idxmax())"
+  },
+  {
+   "id": "nydoh_cardiac_surgery_pci_by_hospital#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_cardiac_surgery_pci_by_hospital.csv')\nsub = df[(df['Hospital Name'].str.contains('Staten Island', case=False, na=False)) & (df['Procedure'] == 'TAVR') & (df['Year of Hospital Discharge'] == '2017-2019')]\ndeaths = sub['Number of Deaths'].iloc[0]\nresult = 'yes' if deaths == 0 else 'no'"
+  },
+  {
+   "id": "nydoh_cardiac_surgery_pci_by_hospital#6",
+   "answer": "[\"NY Metro - NYC\", \"NY Metro - Long Island\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_cardiac_surgery_pci_by_hospital.csv')\nresult = df['Region'].value_counts().head(2).index.tolist()"
+  }
+ ]
+}

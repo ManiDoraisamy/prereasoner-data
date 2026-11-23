@@ -1,0 +1,84 @@
+{
+ "id": "cdc_monthly_deaths_select_causes_2020_2023",
+ "file": "cdc_monthly_deaths_select_causes_2020_2023.csv",
+ "questions": [
+  {
+   "question": "In which month did the United States record its peak monthly count of deaths with COVID-19 as the underlying cause?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2021-01",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\ntop_row = df.loc[df['COVID-19 (Underlying Cause of Death)'].idxmax()]\nresult = f\"{int(top_row['Year'])}-{int(top_row['Month']):02d}\"",
+   "qid": "cdc_monthly_deaths_select_causes_2020_2023#1",
+   "pass1": true,
+   "result": "2021-01",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many total deaths from heart disease were recorded in the United States during the full year of 2020?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "698359",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\nresult = int(df[df['Year'] == 2020]['Diseases of Heart'].sum())",
+   "qid": "cdc_monthly_deaths_select_causes_2020_2023#2",
+   "pass1": true,
+   "result": 698359,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did all-cause mortality in the United States top 300,000 in any single month during 2022?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\nresult = 'yes' if (df[df['Year'] == 2022]['All Cause'] > 300000).any() else 'no'",
+   "qid": "cdc_monthly_deaths_select_causes_2020_2023#3",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Across all of 2021, how many more deaths had COVID-19 listed as a multiple cause compared to those where it was the underlying cause?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "45398",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\ndf_2021 = df[df['Year'] == 2021]\nresult = int(df_2021['COVID-19 (Multiple Cause of Death)'].sum() - df_2021['COVID-19 (Underlying Cause of Death)'].sum())",
+   "qid": "cdc_monthly_deaths_select_causes_2020_2023#4",
+   "pass1": true,
+   "result": 45398,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In how many months of 2021 did unintentional injury deaths exceed 19,000?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "7",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\nresult = int(((df['Year'] == 2021) & (df['Accidents (Unintentional Injuries)'] > 19000)).sum())",
+   "qid": "cdc_monthly_deaths_select_causes_2020_2023#5",
+   "pass1": true,
+   "result": 7,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the monthly average number of Alzheimer's disease deaths in 2020, rounded to the nearest whole number?",
+   "sheet": "",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "11189",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_monthly_deaths_select_causes_2020_2023.csv')\nresult = round(float(df[df['Year'] == 2020]['Alzheimer Disease'].mean()))",
+   "qid": "cdc_monthly_deaths_select_causes_2020_2023#6",
+   "pass1": true,
+   "result": 11189,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

@@ -1,0 +1,89 @@
+FILE eia_average_retail_electricity_price_by_state.xlsx (Excel workbook) with 1 sheet(s): ["Price"]
+
+### Sheet "Price": 4607 rows x 9 columns (Excel rows 1..4607, columns A..I)
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Average Price (Cents/kilowatthour) by State by Provider, 1990-2020
+r2: A=Year | B=State | C=Industry Sector Category | D=Residential | E=Commercial | F=Industrial | G=Transportation | H=Other | I=Total
+r3: A=2020 | B=AK | C=Total Electric Industry | D=22.57 | E=19.58 | F=15.88 | G=0 | H=NA | I=19.82
+r4: A=2020 | B=AL | C=Total Electric Industry | D=12.58 | E=11.55 | F=5.87 | G=0 | H=NA | I=9.84
+r5: A=2020 | B=AR | C=Total Electric Industry | D=10.41 | E=8.61 | F=5.89 | G=13.32 | H=NA | I=8.32
+r6: A=2020 | B=AZ | C=Total Electric Industry | D=12.27 | E=10.11 | F=6.07 | G=9.38 | H=NA | I=10.44
+r7: A=2020 | B=CA | C=Total Electric Industry | D=20.45 | E=17.53 | F=14.27 | G=10.07 | H=NA | I=18
+r8: A=2020 | B=CO | C=Total Electric Industry | D=12.36 | E=10.29 | F=7.48 | G=8.64 | H=NA | I=10.27
+r9: A=2020 | B=CT | C=Total Electric Industry | D=22.71 | E=16.58 | F=13.07 | G=13.34 | H=NA | I=19.13
+r10: A=2020 | B=DC | C=Total Electric Industry | D=12.63 | E=11.85 | F=7.99 | G=9.6 | H=NA | I=11.9
+r11: A=2020 | B=DE | C=Total Electric Industry | D=12.56 | E=9.18 | F=6.7 | G=0 | H=NA | I=10.24
+r12: A=2020 | B=FL | C=Total Electric Industry | D=11.27 | E=8.85 | F=7.15 | G=7.69 | H=NA | I=10.06
+r13: A=2020 | B=GA | C=Total Electric Industry | D=12.02 | E=10.08 | F=5.77 | G=5.39 | H=NA | I=9.93
+r14: A=2020 | B=HI | C=Total Electric Industry | D=30.28 | E=28.41 | F=24.45 | G=0 | H=NA | I=27.55
+r15: A=2020 | B=IA | C=Total Electric Industry | D=12.46 | E=9.96 | F=6.43 | G=0 | H=NA | I=8.97
+r16: A=2020 | B=ID | C=Total Electric Industry | D=9.95 | E=7.75 | F=6.23 | G=0 | H=NA | I=7.99
+r17: A=2020 | B=IL | C=Total Electric Industry | D=13.04 | E=9.15 | F=6.7 | G=6.56 | H=NA | I=9.75
+r18: A=2020 | B=IN | C=Total Electric Industry | D=12.83 | E=11.21 | F=6.98 | G=10.21 | H=NA | I=9.92
+r19: A=2020 | B=KS | C=Total Electric Industry | D=12.85 | E=10.4 | F=7.3 | G=0 | H=NA | I=10.38
+r20: A=2020 | B=KY | C=Total Electric Industry | D=10.87 | E=10.34 | F=5.31 | G=0 | H=NA | I=8.58
+r21: A=2020 | B=LA | C=Total Electric Industry | D=9.67 | E=8.85 | F=4.88 | G=8.77 | H=NA | I=7.51
+r22: A=2020 | B=MA | C=Total Electric Industry | D=21.97 | E=16.03 | F=14.51 | G=6.24 | H=NA | I=18.19
+r23: A=2020 | B=MD | C=Total Electric Industry | D=13.01 | E=9.72 | F=7.81 | G=7.79 | H=NA | I=11.15
+r24: A=2020 | B=ME | C=Total Electric Industry | D=16.81 | E=12.56 | F=8.86 | G=0 | H=NA | I=13.54
+r25: A=2020 | B=MI | C=Total Electric Industry | D=16.26 | E=11.71 | F=7.24 | G=11.39 | H=NA | I=12.21
+r26: A=2020 | B=MN | C=Total Electric Industry | D=13.17 | E=10.43 | F=7.67 | G=9.4 | H=NA | I=10.57
+r27: A=2020 | B=MO | C=Total Electric Industry | D=11.22 | E=8.93 | F=6.84 | G=7.84 | H=NA | I=9.64
+r28: A=2020 | B=MS | C=Total Electric Industry | D=11.17 | E=10.38 | F=5.63 | G=0 | H=NA | I=9.13
+r29: A=2020 | B=MT | C=Total Electric Industry | D=11.24 | E=10.51 | F=5.18 | G=0 | H=NA | I=9.13
+r30: A=2020 | B=NC | C=Total Electric Industry | D=11.38 | E=8.69 | F=6.31 | G=7.67 | H=NA | I=9.43
+r31: A=2020 | B=ND | C=Total Electric Industry | D=10.44 | E=9.02 | F=7.26 | G=0 | H=NA | I=8.53
+r32: A=2020 | B=NE | C=Total Electric Industry | D=10.8 | E=8.89 | F=7.38 | G=0 | H=NA | I=8.97
+r33: A=2020 | B=NH | C=Total Electric Industry | D=19.04 | E=15.41 | F=13.11 | G=0 | H=NA | I=16.63
+r34: A=2020 | B=NJ | C=Total Electric Industry | D=16.03 | E=12.35 | F=10.01 | G=9.19 | H=NA | I=13.63
+r35: A=2020 | B=NM | C=Total Electric Industry | D=12.94 | E=10.28 | F=5.58 | G=0 | H=NA | I=9.33
+... sampled rows:
+r578: A=2017 | B=MI | C=Full-Service Providers | D=15.4 | E=11.37 | F=7.49 | G=11.99 | H=NA | I=11.74
+r628: A=2017 | B=US | C=Restructured Retail Service Providers | D=16.04 | E=11.55 | F=7.11 | G=9.5 | H=NA | I=10.79
+r1186: A=2013 | B=IL | C=Total Electric Industry | D=10.63 | E=8.14 | F=5.94 | G=5.34 | H=NA | I=8.26
+r1295: A=2013 | B=US | C=Restructured Retail Service Providers | D=13.46 | E=10.96 | F=7.26 | G=10.6 | H=NA | I=10.18
+r1365: A=2012 | B=NE | C=Total Electric Industry | D=10.04 | E=8.38 | F=7.01 | G=0 | H=NA | I=8.37
+r1462: A=2012 | B=DC | C=Energy-Only Providers | D=9.13 | E=8.27 | F=4.12 | G=5.97 | H=NA | I=8.1
+r1466: A=2012 | B=MD | C=Energy-Only Providers | D=9 | E=7.7 | F=6.57 | G=6.93 | H=NA | I=7.77
+r1510: A=2011 | B=GA | C=Total Electric Industry | D=11.05 | E=9.87 | F=6.6 | G=7.94 | H=NA | I=9.61
+r1721: A=2010 | B=CO | C=Full-Service Providers | D=11.04 | E=9.13 | F=6.9 | G=9.34 | H=NA | I=9.15
+r1726: A=2010 | B=GA | C=Full-Service Providers | D=10.07 | E=9.06 | F=6.22 | G=7.46 | H=NA | I=8.87
+r1861: A=2009 | B=NH | C=Total Electric Industry | D=16.39 | E=14.36 | F=13.73 | G=0 | H=NA | I=15.09
+r1909: A=2009 | B=MT | C=Full-Service Providers | D=8.94 | E=8.38 | F=6.01 | G=0 | H=NA | I=8.22
+r2203: A=2007 | B=NM | C=Total Electric Industry | D=9.12 | E=7.66 | F=5.6 | G=0 | H=NA | I=7.44
+r2486: A=2006 | B=DC | C=Delivery-Only Service | D=2.35 | E=2.89 | F=0.95 | G=2.45 | H=NA | I=2.67
+r2547: A=2005 | B=TN | C=Total Electric Industry | D=6.98 | E=7.17 | F=4.73 | G=11.46 | H=NA | I=6.31
+r2650: A=2005 | B=US | C=Energy-Only Providers | D=6.54 | E=7.15 | F=5.31 | G=7.4 | H=NA | I=6.41
+r2716: A=2004 | B=UT | C=Total Electric Industry | D=7.21 | E=5.9 | F=4.01 | G=6.57 | H=NA | I=5.69
+r2722: A=2004 | B=WY | C=Total Electric Industry | D=7.21 | E=5.98 | F=3.91 | G=0 | H=NA | I=4.98
+r2918: A=2003 | B=MT | C=Full-Service Providers | D=7.56 | E=6.99 | F=4.29 | G=0 | H=NA | I=6.65
+r3092: A=2002 | B=RI | C=Full-Service Providers | D=10.21 | E=8.69 | F=7.83 | G=NA | H=14.94 | I=9.22
+r3318: A=2001 | B=NY | C=Delivery-Only Service | D=7.97 | E=5.28 | F=4.24 | G=NA | H=6.48 | I=5.51
+r3333: A=2000 | B=DC | C=Total Electric Industry | D=8.03 | E=7.55 | F=4.74 | G=NA | H=6.67 | I=7.52
+r3704: A=1998 | B=NH | C=Full-Service Providers | D=13.92 | E=11.64 | F=9.42 | G=NA | H=13.76 | I=11.93
+r3896: A=1996 | B=LA | C=Total Electric Industry | D=7.55 | E=7.12 | F=4.32 | G=NA | H=7.78 | I=6.07
+r3985: A=1995 | B=AL | C=Total Electric Industry | D=6.71 | E=6.73 | F=4.05 | G=NA | H=7.35 | I=5.47
+r4106: A=1994 | B=LA | C=Total Electric Industry | D=7.61 | E=7.2 | F=4.22 | G=NA | H=6.81 | I=6.05
+r4390: A=1992 | B=TN | C=Full-Service Providers | D=5.7 | E=6.5 | F=4.6 | G=NA | H=7.42 | I=5.21
+r4404: A=1991 | B=CA | C=Total Electric Industry | D=10.79 | E=10.04 | F=7.58 | G=NA | H=5.05 | I=9.42
+r4472: A=1991 | B=MD | C=Full-Service Providers | D=7.9 | E=7.03 | F=5.5 | G=NA | H=8.75 | I=6.81
+r4503: A=1991 | B=US | C=Full-Service Providers | D=8.04 | E=7.53 | F=4.83 | G=NA | H=6.51 | I=6.75
+... last rows:
+r4600: A=1990 | B=UT | C=Full-Service Providers | D=7.13 | E=6.26 | F=3.8 | G=NA | H=4.16 | I=5.46
+r4601: A=1990 | B=VA | C=Full-Service Providers | D=7.25 | E=6.06 | F=4.27 | G=NA | H=5.31 | I=6.03
+r4602: A=1990 | B=VT | C=Full-Service Providers | D=9.27 | E=8.5 | F=6.62 | G=NA | H=12.13 | I=8.28
+r4603: A=1990 | B=WA | C=Full-Service Providers | D=4.39 | E=4.15 | F=2.39 | G=NA | H=3.13 | I=3.4
+r4604: A=1990 | B=WI | C=Full-Service Providers | D=6.63 | E=5.78 | F=3.99 | G=NA | H=6.47 | I=5.37
+r4605: A=1990 | B=WV | C=Full-Service Providers | D=5.9 | E=5.36 | F=3.56 | G=NA | H=8.19 | I=4.73
+r4606: A=1990 | B=WY | C=Full-Service Providers | D=5.97 | E=5.17 | F=3.47 | G=NA | H=7.9 | I=4.21
+r4607: A=1990 | B=US | C=Full-Service Providers | D=7.83 | E=7.34 | F=4.74 | G=NA | H=6.4 | I=6.57
+... column profiles (data rows below Excel row 2):
+  A [Year]: {"non_empty": 4605, "numeric": 4605, "min": "1990", "max": "2020", "sum": "9239100", "distinct": 31, "top_values": {"2008": 170, "2009": 170, "2004": 168, "2005": 167, "2006": 167, "2007": 167}}
+  B [State]: {"non_empty": 4605, "distinct": 52, "top_values": {"US": 133, "CA": 131, "IL": 131, "NH": 131, "NY": 131, "PA": 131}}
+  C [Industry Sector Category]: {"non_empty": 4605, "distinct": 5, "value_counts": {"Full-Service Providers": 1612, "Total Electric Industry": 1612, "Restructured Retail Service Providers": 476, "Energy-Only Providers": 474, "Delivery-Only Service": 431}}
+  D [Residential]: {"non_empty": 4605, "numeric": 4605, "min": "-0.48", "max": "37.34", "sum": "43546.43", "distinct": 1282, "top_values": {"0": 328, "8.26": 29, "8.43": 16, "7.03": 13, "7.08": 13, "7.75": 13}}
+  E [Commercial]: {"non_empty": 4605, "numeric": 4605, "min": "-1.35", "max": "1600", "sum": "40807.55", "distinct": 1267, "top_values": {"0": 64, "7.59": 26, "7.41": 21, "6.64": 19, "6.07": 17, "6.35": 17}}
+  F [Industrial]: {"non_empty": 4605, "numeric": 4605, "min": "-2.09", "max": "30.82", "sum": "27608.57", "distinct": 1121, "top_values": {"0": 69, "4.48": 36, "4.53": 27, "4.43": 25, "4.52": 19, "4.83": 19}}
+  G [Transportation]: {"non_empty": 4605, "distinct": 710, "top_values": {"NA": 1607, "0": 1460, "6.81": 9, "5.7": 8, "8.28": 8, "8.77": 8}}
+  H [Other]: {"non_empty": 4605, "distinct": 565, "top_values": {"NA": 2998, "0": 139, "8.71": 11, "6.44": 10, "6.47": 10, "6.68": 10}}
+  I [Total]: {"non_empty": 4605, "numeric": 4605, "min": "-1.67", "max": "151.19", "sum": "37150.42", "distinct": 1325, "top_values": {"5.3": 16, "6.62": 15, "10.44": 14, "5.67": 14, "6.22": 14, "6.46": 14}}

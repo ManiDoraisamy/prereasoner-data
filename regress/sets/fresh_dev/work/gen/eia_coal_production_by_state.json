@@ -1,0 +1,60 @@
+{
+ "id": "eia_coal_production_by_state",
+ "file": "eia_coal_production_by_state.xlsx",
+ "questions": [
+  {
+   "question": "What was the total volume of coal produced in Wyoming in 2024, in thousand short tons?",
+   "sheet": "table1",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "190731",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\nrow = df[df[0].astype(str).str.strip() == 'Wyoming']\nresult = int(row.iloc[0, 2])",
+   "qid": "eia_coal_production_by_state#1"
+  },
+  {
+   "question": "Between underground and surface mining, which extraction method accounted for the majority of coal produced in Pennsylvania in 2024?",
+   "sheet": "table1",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Underground",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\npa_idx = df[df[0].astype(str).str.strip() == 'Pennsylvania Total'].index[0]\nug_prod = float(df.iloc[pa_idx + 1, 2])\nsurf_prod = float(df.iloc[pa_idx + 2, 2])\nresult = 'Underground' if ug_prod > surf_prod else 'Surface'",
+   "qid": "eia_coal_production_by_state#2"
+  },
+  {
+   "question": "Did total coal production across the United States decline from 2023 to 2024?",
+   "sheet": "table1",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'U.S. Total'].iloc[0]\nresult = 'yes' if float(us_row[2]) < float(us_row[4]) else 'no'",
+   "qid": "eia_coal_production_by_state#3"
+  },
+  {
+   "question": "What was the combined coal production of Illinois and Indiana in 2024, in thousand short tons?",
+   "sheet": "table1",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "54377",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\nil_prod = float(df[df[0].astype(str).str.strip() == 'Illinois'].iloc[0, 2])\nin_prod = float(df[df[0].astype(str).str.strip() == 'Indiana'].iloc[0, 2])\nresult = int(il_prod + in_prod)",
+   "qid": "eia_coal_production_by_state#4"
+  },
+  {
+   "question": "Which two sub-regions of Appalachia produced the highest amounts of coal in 2024?",
+   "sheet": "table1",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Appalachia Northern\", \"Appalachia Central\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\nregions = ['Appalachia Central', 'Appalachia Northern', 'Appalachia Southern']\nsub_df = df[df[0].astype(str).str.strip().isin(regions)].copy()\nsub_df['prod'] = sub_df[2].astype(float)\nsub_df = sub_df.sort_values(by='prod', ascending=False)\nresult = sub_df[0].str.strip().iloc[:2].tolist()",
+   "qid": "eia_coal_production_by_state#5"
+  },
+  {
+   "question": "Between 2023 and 2024, which year saw the greater total coal production in the United States?",
+   "sheet": "table1",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2023",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('eia_coal_production_by_state.xlsx', sheet_name='table1', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'U.S. Total'].iloc[0]\nprod_2024 = float(us_row[2])\nprod_2023 = float(us_row[4])\nresult = '2023' if prod_2023 > prod_2024 else '2024'",
+   "qid": "eia_coal_production_by_state#6"
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "file": "nys_state_park_annual_attendance.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 5499,
+   "cols": 5,
+   "shown_whole": false
+  }
+ ],
+ "chars": 7204
+}

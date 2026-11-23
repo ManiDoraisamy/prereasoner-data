@@ -1,0 +1,35 @@
+{
+ "id": "cdc_leading_causes_of_death_us",
+ "answers": [
+  {
+   "id": "cdc_leading_causes_of_death_us#1",
+   "answer": "13840",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nfiltered = df[(df['Year'] == 2017) & (df['State'] == 'California') & (df['Cause Name'] == 'Unintentional injuries')]\nresult = int(filtered['Deaths'].iloc[0])"
+  },
+  {
+   "id": "cdc_leading_causes_of_death_us#2",
+   "answer": "Florida",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nfiltered = df[(df['Year'] == 2017) & (df['State'].isin(['California', 'Florida'])) & (df['Cause Name'] == 'Unintentional injuries')]\nresult = filtered.sort_values(by='Age-adjusted Death Rate', ascending=False)['State'].iloc[0]"
+  },
+  {
+   "id": "cdc_leading_causes_of_death_us#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nfiltered = df[(df['Year'] == 1999) & (df['State'] == 'United States') & (df['Cause Name'] == 'Kidney disease')]\ndeaths = filtered['Deaths'].iloc[0]\nresult = 'yes' if deaths > 35000 else 'no'"
+  },
+  {
+   "id": "cdc_leading_causes_of_death_us#4",
+   "answer": "1021",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nfiltered = df[(df['Year'] == 2017) & (df['State'].isin(['Alaska', 'Hawaii'])) & (df['Cause Name'] == 'Unintentional injuries')]\nresult = int(filtered['Deaths'].sum())"
+  },
+  {
+   "id": "cdc_leading_causes_of_death_us#5",
+   "answer": "[\"California\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nfiltered = df[(df['Year'] == 2017) & (df['State'].isin(['California', 'Florida', 'New York'])) & (df['Cause Name'] == 'Unintentional injuries')]\nresult = filtered.sort_values(by='Deaths', ascending=False)['State'].head(2).tolist()"
+  },
+  {
+   "id": "cdc_leading_causes_of_death_us#6",
+   "answer": "49.4",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nfiltered = df[(df['Year'] == 2017) & (df['State'].isin(['Delaware', 'Maryland'])) & (df['Cause Name'] == 'Unintentional injuries')]\nresult = float(filtered['Age-adjusted Death Rate'].mean())"
+  }
+ ]
+}

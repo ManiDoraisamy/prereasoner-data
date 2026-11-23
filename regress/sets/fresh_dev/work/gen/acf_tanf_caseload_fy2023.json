@@ -1,0 +1,60 @@
+{
+ "id": "acf_tanf_caseload_fy2023",
+ "file": "acf_tanf_caseload_fy2023.xlsx",
+ "questions": [
+  {
+   "question": "What was the total number of TANF recipient families nationwide in October 2022?",
+   "sheet": "TFam",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "835847",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='TFam', header=None)\nrow_idx = df[df[0].astype(str).str.strip() == 'U.S. Totals'].index[0]\n# October 2022 is column B (index 1)\nresult = int(df.loc[row_idx, 1])",
+   "qid": "acf_tanf_caseload_fy2023#1"
+  },
+  {
+   "question": "In fiscal year 2023, did California have a higher average monthly count of TANF child recipients than adult recipients?",
+   "sheet": "FY2023-Recipients",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='FY2023-Recipients', header=None)\ncal = df[df[0].astype(str).str.strip() == 'California'].iloc[0]\nadults = float(cal[2])\nchildren = float(cal[3])\nresult = 'yes' if children > adults else 'no'",
+   "qid": "acf_tanf_caseload_fy2023#2"
+  },
+  {
+   "question": "Which state had the highest monthly average number of total TANF recipient families during fiscal year 2023?",
+   "sheet": "FY2023-Families",
+   "kind": "lookup",
+   "answer_type": "name",
+   "answer": "California",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='FY2023-Families', header=None)\n# Header is at row index 4, data starts at row index 5 (which is US totals), states start at 6\ndata = df.iloc[6:59].copy()\ndata = data[pd.to_numeric(data[1], errors='coerce').notnull()]\ndata[1] = pd.to_numeric(data[1])\nmax_row = data.loc[data[1].idxmax()]\nresult = str(max_row[0]).strip()",
+   "qid": "acf_tanf_caseload_fy2023#3"
+  },
+  {
+   "question": "How many states or territories reported an average of zero two-parent TANF families per month across fiscal year 2023?",
+   "sheet": "FY2023-Families",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "26",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='FY2023-Families', header=None)\n# States and territories are from row index 6 down to row index 59\ndata = df.iloc[6:60].copy()\ndata[2] = pd.to_numeric(data[2], errors='coerce')\nzero_two_par = data[data[2] == 0]\nresult = int(len(zero_two_par))",
+   "qid": "acf_tanf_caseload_fy2023#4"
+  },
+  {
+   "question": "What were the three states with the largest average monthly number of TANF recipients during fiscal year 2023?",
+   "sheet": "FY2023-Recipients",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"New York\", \"Massachusetts\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='FY2023-Recipients', header=None)\n# States and territories rows 6 to 59 (Excel rows 7 to 60)\ndata = df.iloc[6:60].copy()\ndata[1] = pd.to_numeric(data[1], errors='coerce')\ntop3 = data.sort_values(by=1, ascending=False).head(3)\nresult = [str(x).strip() for x in top3[0].tolist()]",
+   "qid": "acf_tanf_caseload_fy2023#5"
+  },
+  {
+   "question": "In which month of fiscal year 2023 did the U.S. total number of child TANF recipients reach its lowest level?",
+   "sheet": "Children",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2023-09",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('acf_tanf_caseload_fy2023.xlsx', sheet_name='Children', header=None)\n# Header row has months in row index 3, columns 1 to 12\nmonths = df.iloc[3, 1:13].tolist()\nus_totals = df.iloc[4, 1:13].astype(float).tolist()\nmin_idx = us_totals.index(min(us_totals))\n# Convert 'Sep-23' format to '2023-09'\nmonth_str = months[min_idx]\ndt = pd.to_datetime(month_str, format='%b-%y')\nresult = dt.strftime('%Y-%m')",
+   "qid": "acf_tanf_caseload_fy2023#6"
+  }
+ ]
+}

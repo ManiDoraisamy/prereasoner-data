@@ -1,0 +1,35 @@
+{
+ "id": "nydoh_hospital_maternity_information",
+ "answers": [
+  {
+   "id": "nydoh_hospital_maternity_information#1",
+   "answer": "200975",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nresult = int(df[(df['Year'] == 2023) & (df['Hospital Name'] == 'Statewide - All Hospitals') & (df['Measure Name'] == 'Total Births')]['Count'].iloc[0])"
+  },
+  {
+   "id": "nydoh_hospital_maternity_information#2",
+   "answer": "Spinal Anesthesia",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nsub = df[(df['Year'] == 2023) & (df['Hospital Name'] == 'Statewide - All Hospitals') & (df['Denominator'] == 'Cesarean Deliveries') & (df['Measure Name'].isin(['Spinal Anesthesia', 'Epidural/Local Anesthesia']))]\nresult = str(sub.sort_values(by='Count', ascending=False)['Measure Name'].iloc[0])"
+  },
+  {
+   "id": "nydoh_hospital_maternity_information#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\npct = df[(df['Year'] == 2023) & (df['Hospital Name'] == 'Statewide - All Hospitals') & (df['Measure Name'] == 'Breast Fed Infants Supplemented w/Formula')]['Percent'].iloc[0]\nresult = 'yes' if pct > 50 else 'no'"
+  },
+  {
+   "id": "nydoh_hospital_maternity_information#4",
+   "answer": "2008",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nresult = str(df['Year'].value_counts().idxmax())"
+  },
+  {
+   "id": "nydoh_hospital_maternity_information#5",
+   "answer": "[\"NEW YORK\", \"KINGS\", \"SUFFOLK\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nresult = df['Hospital County'].value_counts().head(3).index.tolist()"
+  },
+  {
+   "id": "nydoh_hospital_maternity_information#6",
+   "answer": "69499",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_maternity_information.csv')\nsub = df[(df['Year'] == 2023) & (df['Hospital Name'] == 'Statewide - All Hospitals') & (df['Measure Name'].isin(['Primary Cesarean', 'Repeat Cesarean']))]\nresult = int(sub['Count'].sum())"
+  }
+ ]
+}

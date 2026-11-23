@@ -1,0 +1,536 @@
+FILE cms_program_stats_inpatient_hospital_2023.xlsx (Excel workbook) with 11 sheet(s): ["Table of Contents", "MDCR INPT HOSP 1_CPS_05UIP", "MDCR INPT HOSP 2_CPS_05UIP", "MDCR INPT HOSP 3_CPS_05UIP", "MDCR INPT HOSP 4_CPS_05UIP", "MDCR INPT HOSP 5_CPS_05UIP", "MDCR INPT HOSP 6_CPS_05UIP", "MDCR INPT HOSP 7_CPS_05UIP", "MDCR INPT HOSP 8_CPS_05UIP", "MDCR INPT HOSP 9_CPS_05UIP", "MDCR INPT HOSP 10_CPS_05UIP"]
+
+### Sheet "Table of Contents": 12 rows x 2 columns (Excel rows 1..12, columns A..B)
+(whole sheet shown; Excel row numbers)
+r1: A=Original Medicare - Inpatient Hospital Utilization
+r2: A=Table Name | B=Description
+r3: A=MDCR INPT HOSP 1_CPS_05UIP | B=All Medicare Inpatient Hospitals:  Utilization, Program Payments, and Cost Sharing for Ori...
+r4: A=MDCR INPT HOSP 2_CPS_05UIP | B=All Medicare Inpatient Hospitals:  Utilization, Program Payments, and Cost Sharing for Ori...
+r5: A=MDCR INPT HOSP 3_CPS_05UIP | B=All Medicare Inpatient Hospitals:  Utilization, Program Payments, and Cost Sharing for Ori...
+r6: A=MDCR INPT HOSP 4_CPS_05UIP | B=All Medicare Inpatient Hospitals:  Utilization, Program Payments, and Cost Sharing for Ori...
+r7: A=MDCR_INPT HOSP 5_CPS_05UIP | B=Medicare IPPS Short Stay Hospitals:  Utilization, Program Payments, and Cost Sharing for O...
+r8: A=MDCR INPT HOSP 6_CPS_05UIP | B=Medicare IPPS Short Stay Hospitals:  Utilization, Program Payments, and Cost Sharing for O...
+r9: A=MDCR INPT HOSP 7_CPS_05UIP | B=Medicare IPPS Short Stay Hospitals:  Utilization, Program Payments, and Cost Sharing for O...
+r10: A=MDCR INPT HOSP 8_CPS_05UIP | B=Medicare IPPS Short Stay Hospitals:  Utilization and Program Payments for Original Medicar...
+r11: A=MDCR INPT HOSP 9_CPS_05UIP | B=Medicare IPPS Short Stay Hospitals:  Utilization and Program Payments for Original Medicar...
+r12: A=MDCR INPT HOSP 10_CPS_07UIP | B=Special-Category Hospitals: Utilization, Program Payments, and Cost Sharing for Original M...
+
+### Sheet "MDCR INPT HOSP 1_CPS_05UIP": 36 rows x 28 columns (Excel rows 1..36, columns A..AB)
+(whole sheet shown; Excel row numbers)
+r1: B=All Medicare Inpatient Hospitals
+r2: B=Utilization, Program Payments, and Cost Sharing for Original Medicare Beneficiaries, by Ty...
+r3: B=Calendar Years 2018-2023
+r4: A=Type of Entitlement and Calendar Year | B=Total Original Medicare Part A Enrollees | C=Total Persons With Utilization | D=Total Discharges | E=Discharges Per 1,000 Original Medicare Part A Enrollees | F=Discharges Per 1,000 Persons With Utilization | G=Total Days of Care | H=Total Days of Care Per 1,000 Original Medicare Part A Enrollees | I=Total Days of Care Per Person With Utilization | J=Total Days of Care Per Discharge | K=Covered Days of Care | L=Covered Days of Care Per 1,000 Original Medicare Part A Enrollees | M=Covered Days of Care Per Person With Utilization | N=Covered Days of Care Per Discharge | O=Total Program Payments | P=Program Payments Per Original Medicare Part A Enrollee | Q=Program Payments Per Person With Utilization | R=Program Payments Per Discharge | S=Program Payments Per Covered Day | T=Persons With Coinsurance¹ | U=Total Coinsurance Days | V=Coinsurance Days Per Person With Coinsurance¹ | W=Total Coinsurance Payments | X=Coinsurance Payments Per Person With Coinsurance¹ | Y=Total Deductible Payments | Z=Total Lifetime Reserve Days | AA=Persons with Lifetime Reserve Days² | AB=Discharged Dead
+r5: A=BLANK
+r6: A=All Beneficiaries
+r7: A=2018 | B=38351611.58 | C=6459625 | D=10791977 | E=281.3956586 | F=1670.681657 | G=63038307 | H=1643.693821 | I=9.758818352 | J=5.841219547 | K=58885507 | L=1535.41154 | M=9.115932736 | N=5.456415168 | O=1.369960482e+11 | P=3572.106688 | Q=21208.04973 | R=12694.24946 | S=2326.481595 | T=94142 | U=1612438 | V=17.12772195 | W=1057438882 | X=11232.38175 | Y=9656904211 | Z=774647 | AA=28506 | AB=330416
+r8: A=2019 | B=38258362.67 | C=6264062 | D=10474904 | E=273.7938393 | F=1672.222274 | G=60970844 | H=1593.660569 | I=9.733435589 | J=5.820658977 | K=56897653 | L=1487.195192 | M=9.083188034 | N=5.43180663 | O=1.385252212e+11 | P=3620.782793 | Q=22114.28004 | R=13224.48599 | S=2434.638582 | T=91945 | U=1581077 | V=17.19589972 | W=1055554352 | X=11480.28009 | Y=9513970791 | Z=759409 | AA=28135 | AB=311529
+r9: A=2020 | B=37464936.5 | C=5390626 | D=8776484 | E=234.2586114 | F=1628.101078 | G=54273844 | H=1448.65704 | I=10.06818948 | J=6.184007628 | K=50700199 | L=1353.270651 | M=9.405252563 | N=5.776823498 | O=1.301574707e+11 | P=3474.114276 | Q=24145.14951 | R=14830.25215 | S=2567.198419 | T=83294 | U=1418351 | V=17.02824933 | W=976795506.3 | X=11727.08126 | Y=8251221263 | Z=681687 | AA=25211 | AB=375042
+r10: A=2021 | B=36051507.33 | C=5148864 | D=8349295 | E=231.5935066 | F=1621.580022 | G=53089632 | H=1472.605057 | I=10.31094082 | J=6.358576622 | K=49473995 | L=1372.314188 | M=9.608720487 | N=5.925529641 | O=1.313174825e+11 | P=3642.496313 | Q=25504.16607 | R=15727.97255 | S=2654.272867 | T=79221 | U=1363643 | V=17.21315055 | W=975789694.9 | X=12317.311 | Y=8296339184 | Z=637304 | AA=23538 | AB=373254
+r11: A=2022 | B=34960747.92 | C=4930876 | D=8040320 | E=229.9813499 | F=1630.606813 | G=51011980 | H=1459.12153 | I=10.34541935 | J=6.344521114 | K=47471538 | L=1357.852473 | M=9.627404542 | N=5.904185157 | O=1.27737301e+11 | P=3653.73479 | Q=25905.59993 | R=15887.09168 | S=2690.818674 | T=79094 | U=1378077 | V=17.42328116 | W=1051976146 | X=13300.32804 | Y=8336369117 | Z=667325 | AA=24111 | AB=316914
+r12: A=2023 | B=34059183.83 | C=4823647 | D=7959838 | E=233.70607 | F=1650.170089 | G=48488471 | H=1423.653345 | I=10.05224284 | J=6.091640433 | K=45078796 | L=1323.543048 | M=9.345376227 | N=5.663280584 | O=1.269470639e+11 | P=3727.249148 | Q=26317.65217 | R=15948.44819 | S=2816.114785 | T=72553 | U=1239870 | V=17.08916241 | W=963225032.2 | X=13276.15718 | Y=8401196507 | Z=586728 | AA=21629 | AB=264306
+r13: (blank)
+r14: A=Aged Beneficiaries
+r15: A=2018 | B=32432292.08 | C=5356582 | D=8636082 | E=266.2803473 | F=1612.237431 | G=47879924 | H=1476.304045 | I=8.938521617 | J=5.544171998 | K=45821352 | L=1412.831134 | M=8.554214609 | N=5.305803257 | O=1.098568294e+11 | P=3387.266899 | Q=20508.75529 | R=12720.67929 | S=2397.503012 | T=59082 | U=981265 | V=16.60852713 | W=624429594.2 | X=10568.86351 | Y=7930113031 | Z=442753 | AA=16501 | AB=289418
+r16: A=2019 | B=32727644.92 | C=5243431 | D=8467202 | E=258.7171189 | F=1614.820906 | G=46756553 | H=1428.656205 | I=8.917167595 | J=5.522078368 | K=44708552 | L=1366.079109 | M=8.526583453 | N=5.280203779 | O=1.121497042e+11 | P=3426.757547 | Q=21388.61066 | R=13245.19058 | S=2508.46201 | T=58520 | U=974861 | V=16.65859535 | W=631945314 | X=10798.79211 | Y=7890836847 | Z=440428 | AA=16507 | AB=273287
+r17: A=2020 | B=32441736 | C=4549931 | D=7151320 | E=220.4357991 | F=1571.742517 | G=42190300 | H=1300.494523 | I=9.272734026 | J=5.899652092 | K=40356047 | L=1243.954608 | M=8.869595385 | N=5.643160563 | O=1.06261761e+11 | P=3275.464696 | Q=23354.58734 | R=14859.04154 | S=2633.106284 | T=53873 | U=890475 | V=16.52915189 | W=594215002.8 | X=11029.92228 | Y=6901919036 | Z=400750 | AA=14979 | AB=331497
+r18: A=2021 | B=31589386 | C=4411598 | D=6951448 | E=220.0564455 | F=1575.721088 | G=42137380 | H=1333.909434 | I=9.551500386 | J=6.061669454 | K=40235673 | L=1273.708612 | M=9.120430511 | N=5.788099544 | O=1.091610069e+11 | P=3455.62294 | Q=24744.09657 | R=15703.34798 | S=2713.040414 | T=53123 | U=887695 | V=16.71018203 | W=617709449 | X=11627.90974 | Y=7058695620 | Z=391141 | AA=14570 | AB=331242
+r19: A=2022 | B=31002503 | C=4298931 | D=6839324 | E=220.6055427 | F=1590.935979 | G=41350669 | H=1333.784856 | I=9.618825936 | J=6.046016975 | K=39401479 | L=1270.912836 | M=9.165413216 | N=5.76101951 | O=1.083400043e+11 | P=3494.55669 | Q=25201.61507 | R=15840.74746 | S=2749.643085 | T=54570 | U=925875 | V=16.96673997 | W=685114462.3 | X=12554.78216 | Y=7227357344 | Z=420183 | AA=15382 | AB=285459
+r20: A=2023 | B=30526238.5 | C=4261800 | D=6885679 | E=225.5659177 | F=1615.673894 | G=40093726 | H=1313.418488 | I=9.407697686 | J=5.822770129 | K=38113812 | L=1248.559072 | M=8.94312544 | N=5.535229278 | O=1.095859454e+11 | P=3589.893506 | Q=25713.53545 | R=15915.05288 | S=2875.229205 | T=51623 | U=857797 | V=16.61656626 | W=652119247.9 | X=12632.33923 | Y=7389772290 | Z=388016 | AA=14330 | AB=240573
+r21: (blank)
+r22: A=Disabled Beneficiaries
+r23: A=2018 | B=5919319.5 | C=1103043 | D=2155895 | E=364.2133188 | F=1954.497694 | G=15158383 | H=2560.832035 | I=13.74233189 | J=7.031132314 | K=13064155 | L=2207.036637 | M=11.84374045 | N=6.059736212 | O=2.713921879e+10 | P=4584.854525 | Q=24603.9536 | R=12588.37689 | S=2077.380343 | T=35060 | U=631173 | V=18.0026526 | W=433009288.1 | X=12350.52162 | Y=1726791179 | Z=331894 | AA=12005 | AB=40998
+r24: A=2019 | B=5530717.75 | C=1020631 | D=2007702 | E=363.0093038 | F=1967.118381 | G=14214291 | H=2570.062629 | I=13.92696381 | J=7.079880879 | K=12189101 | L=2203.891348 | M=11.94271093 | N=6.071170423 | O=2.637551705e+10 | P=4768.913953 | Q=25842.36325 | R=13137.16729 | S=2163.860735 | T=33425 | U=606216 | V=18.13660434 | W=423609038.4 | X=12673.41925 | Y=1623133944 | Z=318981 | AA=11628 | AB=38242
+r25: A=2020 | B=5023200.5 | C=840695 | D=1625164 | E=323.5315811 | F=1933.119621 | G=12083544 | H=2405.546822 | I=14.37327925 | J=7.435276686 | K=10344152 | L=2059.275157 | M=12.30428633 | N=6.364989626 | O=2.389570979e+10 | P=4757.068683 | Q=28423.75628 | R=14703.56825 | S=2310.069476 | T=29421 | U=527876 | V=17.94215016 | W=382580503.5 | X=13003.65397 | Y=1349302227 | Z=280937 | AA=10232 | AB=43545
+r26: A=2021 | B=4462121.333 | C=737266 | D=1397847 | E=313.2696078 | F=1895.987337 | G=10952252 | H=2454.494439 | I=14.85522457 | J=7.835086386 | K=9238322 | L=2070.387896 | M=12.53051409 | N=6.608965073 | O=2.21564756e+10 | P=4965.457895 | Q=30052.214 | R=15850.4297 | S=2398.32251 | T=26098 | U=475948 | V=18.23695302 | W=358080245.8 | X=13720.60104 | Y=1237643564 | Z=246163 | AA=8968 | AB=42012
+r27: A=2022 | B=3958244.917 | C=631945 | D=1200996 | E=303.4162932 | F=1900.475516 | G=9661311 | H=2440.806773 | I=15.28821496 | J=8.044415635 | K=8070059 | L=2038.797288 | M=12.77019203 | N=6.719472005 | O=1.939729669e+10 | P=4900.479152 | Q=30694.59635 | R=16151.00857 | S=2403.612748 | T=24524 | U=452202 | V=18.43916164 | W=366861683.5 | X=14959.29227 | Y=1109011774 | Z=247142 | AA=8729 | AB=31455
+r28: A=2023 | B=3532945.333 | C=561847 | D=1074159 | E=304.0406513 | F=1911.835429 | G=8394745 | H=2376.132153 | I=14.94133634 | J=7.815179131 | K=6964984 | L=1971.438373 | M=12.39658484 | N=6.484127583 | O=1.736111856e+10 | P=4914.063739 | Q=30900.08233 | R=16162.52208 | S=2492.628634 | T=20930 | U=382073 | V=18.25480172 | W=311105784.2 | X=14864.10818 | Y=1011424217 | Z=198712 | AA=7299 | AB=23733
+r29: A=BLANK
+r30: B=¹Persons with coinsurance represent persons with both utilization and coinsurance.
+r31: B=²Person counts represent persons with both utilization and lifetime reserve days.
+r32: (blank)
+r33: B=NOTE:  This table includes utilization and expenditure data for the following hospital typ...
+r34: B=facilities, inpatient rehabilitation facilities, religious non-medical health care institu...
+r35: (blank)
+r36: B=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR INPT HOSP 2_CPS_05UIP": 46 rows x 24 columns (Excel rows 1..46, columns A..X)
+(whole sheet shown; Excel row numbers)
+r1: A=All Medicare Inpatient Hospitals
+r2: A=Utilization, Program Payments, and Cost Sharing for Original Medicare Beneficiaries, by De...
+r3: A=Calendar Year 2023
+r4: A=Demographic Characteristic and Medicare-Medicaid Enrollment Status | B=Total Original Medicare Part A Enrollees | C=Total Persons With Utilization | D=Total Discharges | E=% of Total Discharges | F=Discharges Per 1,000 Original Medicare Part A Enrollees | G=Discharges Per 1,000 Persons With Utilization | H=Total Days of Care | I=Total Days of Care Per 1,000 Original Medicare Part A Enrollees | J=Total Days of Care Per Person With Utilization | K=Total Days of Care Per Discharge | L=Covered Days of Care | M=Covered Days of Care Per 1,000 Original Medicare Part A Enrollees | N=Covered Days of Care Per Person With Utilization | O=Covered Days of Care Per Discharge | P=Total Program Payments | Q=% of Total Program Payments | R=Program Payments per Original Medicare Part A Enrollee | S=Program Payments Per Person With Utilization | T=Program Payments Per Discharge | U=Program Payments Per Covered Day | V=Total Deductible Payments | W=Total Coinsurance Payments | X=Discharged Dead
+r5: A=BLANK
+r6: A=Total | B=34059184 | C=4823647 | D=7959838 | E=100 | F=234 | G=1650 | H=48488471 | I=1424 | J=10.05 | K=6.09 | L=45078796 | M=1324 | N=9.35 | O=5.66 | P=126947063924 | Q=100 | R=3727 | S=26318 | T=15948 | U=2816 | V=8401196507 | W=963225032 | X=264306
+r7: A=BLANK
+r8: A=Age
+r9: A=Under 65 Years | B=3532945 | C=561847 | D=1074159 | E=13.5 | F=304 | G=1912 | H=8394745 | I=2376 | J=14.94 | K=7.82 | L=6964984 | M=1971 | N=12.4 | O=6.48 | P=17361118556 | Q=13.7 | R=4914 | S=30900 | T=16163 | U=2493 | V=1011424217 | W=311105784 | X=23733
+r10: A=65 Years and Over | B=30526239 | C=4261800 | D=6885679 | E=86.5 | F=226 | G=1616 | H=40093726 | I=1313 | J=9.41 | K=5.82 | L=38113812 | M=1249 | N=8.94 | O=5.54 | P=109585945368 | Q=86.3 | R=3590 | S=25714 | T=15915 | U=2875 | V=7389772290 | W=652119248 | X=240573
+r11: A=BLANK
+r12: A=Under 18 Years | B=1177 | C=641 | D=1638 | E=0 | F=1392 | G=2555 | H=12505 | I=10626 | J=19.51 | K=7.63 | L=9934 | M=8441 | N=15.5 | O=6.06 | P=39581256 | Q=0 | R=33634 | S=61749 | T=24164 | U=3984 | V=1379964 | W=452812 | X=*
+r13: A=18-24 Years | B=58740 | C=6454 | D=12973 | E=0.2 | F=221 | G=2010 | H=107996 | I=1839 | J=16.73 | K=8.32 | L=89012 | M=1515 | N=13.79 | O=6.86 | P=176293059 | Q=0.1 | R=3001 | S=27315 | T=13589 | U=1981 | V=11909227 | W=4837019 | X=†
+r14: A=25-34 Years | B=313794 | C=42745 | D=90016 | E=1.1 | F=287 | G=2106 | H=803388 | I=2560 | J=18.79 | K=8.92 | L=635317 | M=2025 | N=14.86 | O=7.06 | P=1264430063 | Q=1 | R=4029 | S=29581 | T=14047 | U=1990 | V=78371868 | W=37794693 | X=756
+r15: A=35-44 Years | B=568958 | C=80659 | D=163066 | E=2 | F=287 | G=2022 | H=1399286 | I=2459 | J=17.35 | K=8.58 | L=1109795 | M=1951 | N=13.76 | O=6.81 | P=2466395792 | Q=1.9 | R=4335 | S=30578 | T=15125 | U=2222 | V=147185204 | W=54091679 | X=2084
+r16: A=45-54 Years | B=852775 | C=132427 | D=254428 | E=3.2 | F=298 | G=1921 | H=1981924 | I=2324 | J=14.97 | K=7.79 | L=1629333 | M=1911 | N=12.3 | O=6.4 | P=4102382232 | Q=3.2 | R=4811 | S=30978 | T=16124 | U=2518 | V=239007003 | W=73585077 | X=5087
+r17: A=55-64 Years | B=1737502 | C=298921 | D=552038 | E=6.9 | F=318 | G=1847 | H=4089646 | I=2354 | J=13.68 | K=7.41 | L=3491593 | M=2010 | N=11.68 | O=6.32 | P=9312036153 | Q=7.3 | R=5359 | S=31152 | T=16868 | U=2667 | V=533570949 | W=140344505 | X=15715
+r18: A=65-74 Years | B=17223233 | C=1597656 | D=2539369 | E=31.9 | F=147 | G=1589 | H=15358124 | I=892 | J=9.61 | K=6.05 | L=14053578 | M=816 | N=8.8 | O=5.53 | P=43281196154 | Q=34.1 | R=2513 | S=27090 | T=17044 | U=3080 | V=2726539209 | W=353990362 | X=74569
+r19: A=75-84 Years | B=9666928 | C=1619019 | D=2657792 | E=33.4 | F=275 | G=1642 | H=15470651 | I=1600 | J=9.56 | K=5.82 | L=14955764 | M=1547 | N=9.24 | O=5.63 | P=42922968459 | Q=33.8 | R=4440 | S=26512 | T=16150 | U=2870 | V=2821582045 | W=233243044 | X=91712
+r20: A=85-94 Years | B=3188185 | C=901809 | D=1470759 | E=18.5 | F=461 | G=1631 | H=8141805 | I=2554 | J=9.03 | K=5.54 | L=7998797 | M=2509 | N=8.87 | O=5.44 | P=20651899535 | Q=16.3 | R=6478 | S=22901 | T=14042 | U=2582 | V=1591331505 | W=59647711 | X=62723
+r21: A=95 Years and Over | B=447894 | C=143316 | D=217759 | E=2.7 | F=486 | G=1519 | H=1123146 | I=2508 | J=7.84 | K=5.16 | L=1105673 | M=2469 | N=7.71 | O=5.08 | P=2729881221 | Q=2.2 | R=6095 | S=19048 | T=12536 | U=2469 | V=250319531 | W=5238131 | X=11569
+r22: A=BLANK
+r23: A=Sex
+r24: A=Male | B=16111709 | C=2260418 | D=3776573 | E=47.4 | F=234 | G=1671 | H=24013007 | I=1490 | J=10.62 | K=6.36 | L=21975695 | M=1364 | N=9.72 | O=5.82 | P=63809660969 | Q=50.3 | R=3960 | S=28229 | T=16896 | U=2904 | V=3925668848 | W=527066127 | X=136826
+r25: A=Female | B=17947475 | C=2563229 | D=4183265 | E=52.6 | F=233 | G=1632 | H=24475464 | I=1364 | J=9.55 | K=5.85 | L=23103101 | M=1287 | N=9.01 | O=5.52 | P=63137402955 | Q=49.7 | R=3518 | S=24632 | T=15093 | U=2733 | V=4475527659 | W=436158905 | X=127480
+r26: A=BLANK
+r27: A=Race
+r28: A=Non-Hispanic White | B=26374470 | C=3839079 | D=6243760 | E=78.4 | F=237 | G=1626 | H=36479250 | I=1383 | J=9.5 | K=5.84 | L=34240415 | M=1298 | N=8.92 | O=5.48 | P=96230728714 | Q=75.8 | R=3649 | S=25066 | T=15412 | U=2810 | V=6682836824 | W=602972802 | X=202166
+r29: A=Black (or African-American) | B=2661802 | C=425206 | D=782720 | E=9.8 | F=294 | G=1841 | H=5924352 | I=2226 | J=13.93 | K=7.57 | L=5273713 | M=1981 | N=12.4 | O=6.74 | P=13754529438 | Q=10.8 | R=5167 | S=32348 | T=17573 | U=2608 | V=749721765 | W=205169693 | X=27736
+r30: A=Asian/Pacific Islander | B=1175300 | C=111569 | D=178091 | E=2.2 | F=152 | G=1596 | H=1163287 | I=990 | J=10.43 | K=6.53 | L=1074175 | M=914 | N=9.63 | O=6.03 | P=3523932992 | Q=2.8 | R=2998 | S=31585 | T=19787 | U=3281 | V=190607848 | W=27679255 | X=8365
+r31: A=Hispanic | B=2384611 | C=288208 | D=493751 | E=6.2 | F=207 | G=1713 | H=3249845 | I=1363 | J=11.28 | K=6.58 | L=2969865 | M=1245 | N=10.3 | O=6.01 | P=8903443063 | Q=7 | R=3734 | S=30892 | T=18032 | U=2998 | V=501672633 | W=85293013 | X=17995
+r32: A=American Indian/Alaska Native | B=155951 | C=30028 | D=51854 | E=0.7 | F=333 | G=1727 | H=327490 | I=2100 | J=10.91 | K=6.32 | L=303045 | M=1943 | N=10.09 | O=5.84 | P=855379774 | Q=0.7 | R=5485 | S=28486 | T=16496 | U=2823 | V=53965131 | W=6797556 | X=2214
+r33: A=Other | B=333118 | C=36694 | D=59698 | E=0.7 | F=179 | G=1627 | H=382807 | I=1149 | J=10.43 | K=6.41 | L=353962 | M=1063 | N=9.65 | O=5.93 | P=1092877542 | Q=0.9 | R=3281 | S=29784 | T=18307 | U=3088 | V=63659532 | W=8735471 | X=2381
+r34: A=Unknown | B=973932 | C=92863 | D=149964 | E=1.9 | F=154 | G=1615 | H=961440 | I=987 | J=10.35 | K=6.41 | L=863621 | M=887 | N=9.3 | O=5.76 | P=2586172400 | Q=2 | R=2655 | S=27849 | T=17245 | U=2995 | V=158732775 | W=26577243 | X=3449
+r35: A=BLANK
+r36: A=Medicare-Medicaid Enrollment (MME) Status
+r37: A=MME | B=4596140 | C=1156721 | D=2143986 | E=26.9 | F=466 | G=1854 | H=15926217 | I=3465 | J=13.77 | K=7.43 | L=14417634 | M=3137 | N=12.46 | O=6.72 | P=36199763927 | Q=28.5 | R=7876 | S=31295 | T=16884 | U=2511 | V=2060417490 | W=538526783 | X=72472
+r38: A=Non-MME | B=29463044 | C=3666926 | D=5815852 | E=73.1 | F=197 | G=1586 | H=32562254 | I=1105 | J=8.88 | K=5.6 | L=30661162 | M=1041 | N=8.36 | O=5.27 | P=90747299996 | Q=71.5 | R=3080 | S=24748 | T=15603 | U=2960 | V=6340779017 | W=424698250 | X=191834
+r39: (blank)
+r40: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r41: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r42: A=BLANK
+r43: A=NOTES:  This table includes utilization and expenditure data for the following hospital ty...
+r44: A=and amounts may not sum to totals because of rounding.
+r45: (blank)
+r46: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR INPT HOSP 3_CPS_05UIP": 76 rows x 22 columns (Excel rows 1..76, columns A..V)
+(whole sheet shown; Excel row numbers)
+r1: A=All Medicare Inpatient Hospitals
+r2: A=Utilization, Program Payments, and Cost Sharing for Original Medicare Beneficiaries, by Ar...
+r3: A=Calendar Year 2023
+r4: A=Area of Residence | B=Total Original Medicare Part A Enrollees | C=Total Persons With Utilization | D=Total Discharges | E=Discharges Per 1,000 Original Medicare Part A Enrollees | F=Discharges Per 1,000 Persons With Utilization | G=Total Days of Care | H=Total Days of Care Per 1,000 Original Medicare Part A Enrollees | I=Total Days of Care Per Person With Utilization | J=Total Days of Care Per Discharge | K=Covered Days of Care | L=Covered Days of Care Per 1,000 Original Medicare Part A Enrollees | M=Covered Days of Care Per Person With Utilization | N=Covered Days of Care Per Discharge | O=Total Program Payments | P=Program Payments Per Original Medicare Part A Enrollee | Q=Program Payments Per Person With Utilization | R=Program Payments Per Discharge | S=Program Payments Per Covered Day | T=Total Deductible Payments | U=Total Coinsurance Payments | V=Discharged Dead
+r5: A=BLANK
+r6: A=All Areas | B=34059184 | C=4823647 | D=7959838 | E=234 | F=1650 | G=48488471 | H=1424 | I=10.05 | J=6.09 | K=45078796 | L=1324 | M=9.35 | N=5.66 | O=126947063924 | P=3727 | Q=26318 | R=15948 | S=2816 | T=8401196507 | U=963225032 | V=264306
+r7: A=United States | B=33386787 | C=4806727 | D=7934049 | E=238 | F=1651 | G=48287168 | H=1446 | I=10.05 | J=6.09 | K=44883401 | L=1344 | M=9.34 | N=5.66 | O=126544477166 | P=3790 | Q=26327 | R=15950 | S=2819 | T=8371520704 | U=958678254 | V=262383
+r8: A=BLANK
+r9: A=Alabama | B=465089 | C=75478 | D=124409 | E=267 | F=1648 | G=794199 | H=1708 | I=10.52 | J=6.38 | K=742092 | L=1596 | M=9.83 | N=5.96 | O=1592102740 | P=3423 | Q=21094 | R=12797 | S=2145 | T=131645832 | U=14664900 | V=4511
+r10: A=Alaska | B=111363 | C=12956 | D=19642 | E=176 | F=1516 | G=138312 | H=1242 | I=10.68 | J=7.04 | K=125084 | L=1123 | M=9.65 | N=6.37 | O=424255035 | P=3810 | Q=32746 | R=21599 | S=3392 | T=22658620 | U=3232018 | V=976
+r11: A=Arizona | B=735576 | C=93482 | D=149414 | E=203 | F=1598 | G=828234 | H=1126 | I=8.86 | J=5.54 | K=791825 | L=1076 | M=8.47 | N=5.3 | O=2381943894 | P=3238 | Q=25480 | R=15942 | S=3008 | T=161995379 | U=10747229 | V=4240
+r12: A=Arkansas | B=381828 | C=58426 | D=101583 | E=266 | F=1739 | G=622102 | H=1629 | I=10.65 | J=6.12 | K=579980 | L=1519 | M=9.93 | N=5.71 | O=1352524106 | P=3542 | Q=23149 | R=13314 | S=2332 | T=102081529 | U=8483892 | V=3106
+r13: A=California | B=3268728 | C=426217 | D=702589 | E=215 | F=1648 | G=4294147 | H=1314 | I=10.08 | J=6.11 | K=4034803 | L=1234 | M=9.47 | N=5.74 | O=14850475166 | P=4543 | Q=34843 | R=21137 | S=3681 | T=734813319 | U=106081249 | V=27490
+r14: A=Colorado | B=489975 | C=56952 | D=87296 | E=178 | F=1533 | G=476008 | H=971 | I=8.36 | J=5.45 | K=449349 | L=917 | M=7.89 | N=5.15 | O=1409234717 | P=2876 | Q=24744 | R=16143 | S=3136 | T=97926622 | U=7498683 | V=2599
+r15: A=Connecticut | B=329673 | C=48355 | D=78525 | E=238 | F=1624 | G=545606 | H=1655 | I=11.28 | J=6.95 | K=465000 | L=1410 | M=9.62 | N=5.92 | O=1396568798 | P=4236 | Q=28882 | R=17785 | S=3003 | T=84702896 | U=15108555 | V=2755
+r16: A=Delaware | B=166145 | C=23308 | D=38506 | E=232 | F=1652 | G=258232 | H=1554 | I=11.08 | J=6.71 | K=240317 | L=1446 | M=10.31 | N=6.24 | O=642936649 | P=3870 | Q=27584 | R=16697 | S=2675 | T=40598992 | U=6066701 | V=1006
+r17: A=District of Columbia | B=64375 | C=8864 | D=14900 | E=231 | F=1681 | G=114600 | H=1780 | I=12.93 | J=7.69 | K=106673 | L=1657 | M=12.03 | N=7.16 | O=307096993 | P=4770 | Q=34645 | R=20611 | S=2879 | T=15284588 | U=3396091 | V=681
+r18: A=Florida | B=2275461 | C=377097 | D=646599 | E=284 | F=1715 | G=3657644 | H=1607 | I=9.7 | J=5.66 | K=3488414 | L=1533 | M=9.25 | N=5.4 | O=8848380922 | P=3889 | Q=23464 | R=13684 | S=2537 | T=656612782 | U=73587433 | V=14750
+r19: A=Georgia | B=873073 | C=126177 | D=207270 | E=237 | F=1643 | G=1292763 | H=1481 | I=10.25 | J=6.24 | K=1222377 | L=1400 | M=9.69 | N=5.9 | O=3105117798 | P=3557 | Q=24609 | R=14981 | S=2540 | T=219962303 | U=24154512 | V=6693
+r20: A=Hawaii | B=141529 | C=13203 | D=19112 | E=135 | F=1448 | G=132732 | H=938 | I=10.05 | J=6.94 | K=112189 | L=793 | M=8.5 | N=5.87 | O=376544748 | P=2661 | Q=28520 | R=19702 | S=3356 | T=22396076 | U=2255400 | V=923
+r21: A=Idaho | B=204559 | C=22596 | D=32772 | E=160 | F=1450 | G=170296 | H=833 | I=7.54 | J=5.2 | K=158944 | L=777 | M=7.03 | N=4.85 | O=509598561 | P=2491 | Q=22553 | R=15550 | S=3206 | T=38750765 | U=1940733 | V=1078
+r22: A=Illinois | B=1386599 | C=215359 | D=365934 | E=264 | F=1699 | G=2061603 | H=1487 | I=9.57 | J=5.63 | K=1956501 | L=1411 | M=9.08 | N=5.35 | O=5379947904 | P=3880 | Q=24981 | R=14702 | S=2750 | T=381618415 | U=36279952 | V=10840
+r23: A=Indiana | B=712183 | C=107333 | D=178141 | E=250 | F=1660 | G=964319 | H=1354 | I=8.98 | J=5.41 | K=925377 | L=1299 | M=8.62 | N=5.19 | O=2414282406 | P=3390 | Q=22493 | R=13553 | S=2609 | T=188576287 | U=11382263 | V=5309
+r24: A=Iowa | B=436454 | C=58631 | D=89958 | E=206 | F=1534 | G=492605 | H=1129 | I=8.4 | J=5.48 | K=467605 | L=1071 | M=7.98 | N=5.2 | O=1234624355 | P=2829 | Q=21058 | R=13724 | S=2640 | T=103005748 | U=6410695 | V=3082
+r25: A=Kansas | B=395283 | C=57884 | D=91083 | E=230 | F=1574 | G=475534 | H=1203 | I=8.22 | J=5.22 | K=455116 | L=1151 | M=7.86 | N=5 | O=1233020222 | P=3119 | Q=21302 | R=13537 | S=2709 | T=101774977 | U=5532059 | V=2804
+r26: A=Kentucky | B=461526 | C=71705 | D=120153 | E=260 | F=1676 | G=720391 | H=1561 | I=10.05 | J=6 | K=667807 | L=1447 | M=9.31 | N=5.56 | O=1597079860 | P=3460 | Q=22273 | R=13292 | S=2392 | T=125275966 | U=11666412 | V=4226
+r27: A=Louisiana | B=426298 | C=67100 | D=119557 | E=280 | F=1782 | G=805344 | H=1889 | I=12 | J=6.74 | K=762196 | L=1788 | M=11.36 | N=6.38 | O=1683859670 | P=3950 | Q=25095 | R=14084 | S=2209 | T=116517135 | U=19632837 | V=3735
+r28: A=Maine | B=164929 | C=19390 | D=29761 | E=180 | F=1535 | G=200317 | H=1215 | I=10.33 | J=6.73 | K=178798 | L=1084 | M=9.22 | N=6.01 | O=467632158 | P=2835 | Q=24117 | R=15713 | S=2615 | T=33952888 | U=3951773 | V=1207
+r29: A=Maryland | B=875287 | C=114344 | D=186198 | E=213 | F=1628 | G=1224667 | H=1399 | I=10.71 | J=6.58 | K=1151354 | L=1315 | M=10.07 | N=6.18 | O=4015702680 | P=4588 | Q=35119 | R=21567 | S=3488 | T=201539321 | U=29655069 | V=6437
+r30: A=Massachusetts | B=945374 | C=145616 | D=247925 | E=262 | F=1703 | G=1650969 | H=1746 | I=11.34 | J=6.66 | K=1472429 | L=1558 | M=10.11 | N=5.94 | O=4206088251 | P=4449 | Q=28885 | R=16965 | S=2857 | T=258347254 | U=44215705 | V=7850
+r31: A=Michigan | B=907660 | C=140915 | D=235248 | E=259 | F=1669 | G=1364262 | H=1503 | I=9.68 | J=5.8 | K=1279011 | L=1409 | M=9.08 | N=5.44 | O=3331095657 | P=3670 | Q=23639 | R=14160 | S=2604 | T=245332523 | U=27224331 | V=7281
+r32: A=Minnesota | B=473133 | C=73885 | D=113956 | E=241 | F=1542 | G=657776 | H=1390 | I=8.9 | J=5.77 | K=612190 | L=1294 | M=8.29 | N=5.37 | O=1834881676 | P=3878 | Q=24834 | R=16102 | S=2997 | T=129223267 | U=13797991 | V=4064
+r33: A=Mississippi | B=382026 | C=59940 | D=98698 | E=258 | F=1647 | G=613955 | H=1607 | I=10.24 | J=6.22 | K=590252 | L=1545 | M=9.85 | N=5.98 | O=1291779874 | P=3381 | Q=21551 | R=13088 | S=2189 | T=104775922 | U=11033565 | V=3868
+r34: A=Missouri | B=639548 | C=99357 | D=167581 | E=262 | F=1687 | G=995885 | H=1557 | I=10.02 | J=5.94 | K=920278 | L=1439 | M=9.26 | N=5.49 | O=2271762951 | P=3552 | Q=22865 | R=13556 | S=2469 | T=173803471 | U=15475232 | V=5427
+r35: A=Montana | B=184633 | C=20834 | D=30682 | E=166 | F=1473 | G=159912 | H=866 | I=7.68 | J=5.21 | K=152730 | L=827 | M=7.33 | N=4.98 | O=449129899 | P=2433 | Q=21558 | R=14638 | S=2941 | T=35969765 | U=1382030 | V=1404
+r36: A=Nebraska | B=255173 | C=37202 | D=58104 | E=228 | F=1562 | G=311517 | H=1221 | I=8.37 | J=5.36 | K=296205 | L=1161 | M=7.96 | N=5.1 | O=860921959 | P=3374 | Q=23142 | R=14817 | S=2907 | T=64735319 | U=5225696 | V=2101
+r37: A=Nevada | B=296383 | C=41567 | D=74577 | E=252 | F=1794 | G=474112 | H=1600 | I=11.41 | J=6.36 | K=439538 | L=1483 | M=10.57 | N=5.89 | O=1239745285 | P=4183 | Q=29825 | R=16624 | S=2821 | T=71646156 | U=14219833 | V=2341
+r38: A=New Hampshire | B=225076 | C=27932 | D=45322 | E=201 | F=1623 | G=299165 | H=1329 | I=10.71 | J=6.6 | K=258092 | L=1147 | M=9.24 | N=5.69 | O=721569471 | P=3206 | Q=25833 | R=15921 | S=2796 | T=49124652 | U=6305822 | V=1533
+r39: A=New Jersey | B=1041118 | C=153381 | D=260447 | E=250 | F=1698 | G=1781454 | H=1711 | I=11.61 | J=6.84 | K=1572699 | L=1511 | M=10.25 | N=6.04 | O=4430413603 | P=4255 | Q=28885 | R=17011 | S=2817 | T=265198546 | U=38987840 | V=9028
+r40: A=New Mexico | B=229797 | C=26833 | D=42044 | E=183 | F=1567 | G=252275 | H=1098 | I=9.4 | J=6 | K=239196 | L=1041 | M=8.91 | N=5.69 | O=677111770 | P=2947 | Q=25234 | R=16105 | S=2831 | T=46423820 | U=4002915 | V=1696
+r41: A=New York | B=1897879 | C=290363 | D=474601 | E=250 | F=1635 | G=3429997 | H=1807 | I=11.81 | J=7.23 | K=3041086 | L=1602 | M=10.47 | N=6.41 | O=9543634852 | P=5029 | Q=32868 | R=20109 | S=3138 | T=500197376 | U=92121960 | V=22543
+r42: A=North Carolina | B=1026784 | C=141813 | D=222851 | E=217 | F=1571 | G=1365498 | H=1330 | I=9.63 | J=6.13 | K=1262750 | L=1230 | M=8.9 | N=5.67 | O=3235515837 | P=3151 | Q=22815 | R=14519 | S=2562 | T=247728596 | U=21579079 | V=7915
+r43: A=North Dakota | B=99008 | C=16598 | D=26390 | E=267 | F=1590 | G=147905 | H=1494 | I=8.91 | J=5.6 | K=137502 | L=1389 | M=8.28 | N=5.21 | O=366479075 | P=3702 | Q=22080 | R=13887 | S=2665 | T=28923919 | U=2160487 | V=905
+r44: A=Ohio | B=1142060 | C=172777 | D=289851 | E=254 | F=1678 | G=1662454 | H=1456 | I=9.62 | J=5.74 | K=1518093 | L=1329 | M=8.79 | N=5.24 | O=4098663467 | P=3589 | Q=23722 | R=14141 | S=2700 | T=302873999 | U=27877605 | V=7595
+r45: A=Oklahoma | B=489544 | C=75979 | D=128756 | E=263 | F=1695 | G=766467 | H=1566 | I=10.09 | J=5.95 | K=725770 | L=1483 | M=9.55 | N=5.64 | O=1827053186 | P=3732 | Q=24047 | R=14190 | S=2517 | T=133423144 | U=14169634 | V=4298
+r46: A=Oregon | B=434283 | C=47653 | D=69432 | E=160 | F=1457 | G=398906 | H=919 | I=8.37 | J=5.75 | K=371677 | L=856 | M=7.8 | N=5.35 | O=1257845537 | P=2896 | Q=26396 | R=18116 | S=3384 | T=82472928 | U=6584017 | V=3171
+r47: A=Pennsylvania | B=1404132 | C=210690 | D=355224 | E=253 | F=1686 | G=2151387 | H=1532 | I=10.21 | J=6.06 | K=2002597 | L=1426 | M=9.5 | N=5.64 | O=5404433645 | P=3849 | Q=25651 | R=15214 | S=2699 | T=367594159 | U=45613185 | V=10555
+r48: A=Rhode Island | B=101468 | C=13651 | D=21926 | E=216 | F=1606 | G=178510 | H=1759 | I=13.08 | J=8.14 | K=117494 | L=1158 | M=8.61 | N=5.36 | O=339272355 | P=3344 | Q=24853 | R=15474 | S=2888 | T=23879292 | U=2725605 | V=467
+r49: A=South Carolina | B=674084 | C=95237 | D=156779 | E=233 | F=1646 | G=932350 | H=1383 | I=9.79 | J=5.95 | K=868971 | L=1289 | M=9.12 | N=5.54 | O=2273561075 | P=3373 | Q=23873 | R=14502 | S=2616 | T=163516324 | U=13162622 | V=4487
+r50: A=South Dakota | B=129005 | C=21758 | D=33695 | E=261 | F=1549 | G=176669 | H=1369 | I=8.12 | J=5.24 | K=170127 | L=1319 | M=7.82 | N=5.05 | O=488329697 | P=3785 | Q=22444 | R=14493 | S=2870 | T=38456320 | U=3248314 | V=1174
+r51: A=Tennessee | B=712322 | C=102953 | D=168316 | E=236 | F=1635 | G=994303 | H=1396 | I=9.66 | J=5.91 | K=941195 | L=1321 | M=9.14 | N=5.59 | O=2267161967 | P=3183 | Q=22021 | R=13470 | S=2409 | T=178644339 | U=14838000 | V=5871
+r52: A=Texas | B=2224219 | C=326673 | D=570252 | E=256 | F=1746 | G=3577711 | H=1609 | I=10.95 | J=6.27 | K=3379909 | L=1520 | M=10.35 | N=5.93 | O=9205793067 | P=4139 | Q=28180 | R=16143 | S=2724 | T=569167073 | U=72342592 | V=15127
+r53: A=Utah | B=225537 | C=26791 | D=39444 | E=175 | F=1472 | G=189478 | H=840 | I=7.07 | J=4.8 | K=179303 | L=795 | M=6.69 | N=4.55 | O=604887691 | P=2682 | Q=22578 | R=15335 | S=3374 | T=44970555 | U=2141915 | V=793
+r54: A=Vermont | B=112281 | C=13337 | D=20489 | E=182 | F=1536 | G=138665 | H=1235 | I=10.4 | J=6.77 | K=120736 | L=1075 | M=9.05 | N=5.89 | O=384585065 | P=3425 | Q=28836 | R=18770 | S=3185 | T=23463002 | U=2575456 | V=873
+r55: A=Virginia | B=1048275 | C=141516 | D=226066 | E=216 | F=1597 | G=1284401 | H=1225 | I=9.08 | J=5.68 | K=1204766 | L=1149 | M=8.51 | N=5.33 | O=3294115947 | P=3142 | Q=23277 | R=14571 | S=2734 | T=247148161 | U=16146840 | V=7864
+r56: A=Washington | B=813155 | C=92712 | D=136759 | E=168 | F=1475 | G=850481 | H=1046 | I=9.17 | J=6.22 | K=775574 | L=954 | M=8.37 | N=5.67 | O=2267873506 | P=2789 | Q=24461 | R=16583 | S=2924 | T=158686052 | U=17759494 | V=6869
+r57: A=West Virginia | B=220495 | C=38761 | D=66700 | E=303 | F=1721 | G=398119 | H=1806 | I=10.27 | J=5.97 | K=377029 | L=1710 | M=9.73 | N=5.65 | O=891934005 | P=4045 | Q=23011 | R=13372 | S=2366 | T=67298138 | U=7220317 | V=2124
+r58: A=Wisconsin | B=579226 | C=82240 | D=128998 | E=223 | F=1569 | G=708541 | H=1223 | I=8.62 | J=5.49 | K=674974 | L=1165 | M=8.21 | N=5.23 | O=1908853383 | P=3296 | Q=23211 | R=14798 | S=2828 | T=144424742 | U=11362295 | V=3994
+r59: A=Wyoming | B=107177 | C=12906 | D=19534 | E=182 | F=1514 | G=104389 | H=974 | I=8.09 | J=5.34 | K=99427 | L=928 | M=7.7 | N=5.09 | O=347054026 | P=3238 | Q=26891 | R=17767 | S=3491 | T=22381454 | U=1449421 | V=717
+r60: A=BLANK
+r61: A=Territories, Possessions, and Other
+r62: A=Puerto Rico | B=118038 | C=11914 | D=17948 | E=152 | F=1506 | G=135459 | H=1148 | I=11.37 | J=7.55 | K=131892 | L=1117 | M=11.07 | N=7.35 | O=221760482 | P=1879 | Q=18613 | R=12356 | S=1681 | T=20970844 | U=1747271 | V=1421
+r63: A=Virgin Islands | B=14338 | C=1276 | D=2017 | E=141 | F=1581 | G=18908 | H=1319 | I=14.82 | J=9.37 | K=18060 | L=1260 | M=14.15 | N=8.95 | O=41334480 | P=2883 | Q=32394 | R=20493 | S=2289 | T=2162144 | U=1008247 | V=135
+r64: A=American Samoa | B=4481 | C=289 | D=417 | E=93 | F=1443 | G=3739 | H=834 | I=12.94 | J=8.97 | K=3654 | L=816 | M=12.64 | N=8.76 | O=8579428 | P=1915 | Q=29687 | R=20574 | S=2348 | T=486048 | U=17589 | V=22
+r65: A=Guam | B=18941 | C=1969 | D=3248 | E=171 | F=1650 | G=28999 | H=1531 | I=14.73 | J=8.93 | K=28210 | L=1489 | M=14.33 | N=8.69 | O=87672607 | P=4629 | Q=44526 | R=26993 | S=3108 | T=3654754 | U=1477668 | V=218
+r66: A=Northern Mariana Islands | B=3057 | C=395 | D=643 | E=210 | F=1628 | G=3920 | H=1282 | I=9.92 | J=6.1 | K=3840 | L=1256 | M=9.72 | N=5.97 | O=10683084 | P=3495 | Q=27046 | R=16614 | S=2782 | T=719648 | U=42400 | V=60
+r67: A=Foreign Countries | B=513265 | C=1076 | D=1515 | E=3 | F=1408 | G=10266 | H=20 | I=9.54 | J=6.78 | K=9727 | L=19 | M=9.04 | N=6.42 | O=32543073 | P=63 | Q=30244 | R=21481 | S=3346 | T=1680808 | U=253604 | V=67
+r68: A=Unknown | B=† | C=* | D=* | E=† | F=† | G=† | H=† | I=† | J=† | K=† | L=† | M=† | N=† | O=† | P=† | Q=† | R=† | S=† | T=† | U=† | V=†
+r69: (blank)
+r70: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r71: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r72: A=BLANK
+r73: A=NOTES:  This table includes utilization and expenditure data for the following hospital ty...
+r74: A=hospitals, and other hospitals.  Counts and amounts may not sum to totals because of round...
+r75: (blank)
+r76: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR INPT HOSP 4_CPS_05UIP": 28 rows x 27 columns (Excel rows 1..28, columns A..AA)
+(whole sheet shown; Excel row numbers)
+r1: A=All Medicare Inpatient Hospitals
+r2: A=Utilization, Program Payments, and Cost Sharing for Original Medicare Beneficiaries,
+r3: A=by Type of Hospital, Calendar Year 2023
+r4: A=Type of Hospital | B=Total Persons With Utilization | C=Total Discharges | D=Discharges Per 1,000 Original Medicare Part A Enrollees¹ | E=Discharges Per 1,000 Persons With Utilization | F=Total Days of Care | G=Total Days of Care Per 1,000 Original Medicare Part A Enrollees¹ | H=Total Days of Care Per Person With Utilization | I=Total Days of Care Per Discharge | J=Covered Days of Care | K=Covered Days of Care Per 1,000 Original Medicare Part A Enrollees¹ | L=Covered Days of Care Per Person With Utilization | M=Covered Days of Care Per Discharge | N=Total Program Payments | O=Program Payments Per Original Medicare Part A Enrollee¹ | P=Program Payments Per Person With Utilization | Q=Program Payments Per Discharge | R=Program Payments Per Covered Day | S=Persons With Coinsurance² | T=Total Coinsurance Days | U=Coinsurance Days Per Person With Coinsurance² | V=Total Coinsurance Payments | W=Coinsurance Payments Per Person With Coinsurance² | X=Total Deductible Payments | Y=Total Lifetime Reserve Days | Z=Persons With Lifetime Reserve Days³ | AA=Discharged Dead
+r5: A=BLANK
+r6: A=Total All Hospitals | B=4823647 | C=7959838 | D=234 | E=1650 | F=48488471 | G=1424 | H=10.05 | I=6.09 | J=45078796 | K=1324 | L=9.35 | M=5.66 | N=126947063924 | O=3727 | P=26318 | Q=15948 | R=2816 | S=72553 | T=1239870 | U=17.09 | V=963225032 | W=13276 | X=8401196507 | Y=586728 | Z=21629 | AA=264306
+r7: (blank)
+r8: A=Short-Stay Hospitals | B=4582064 | C=7040631 | D=207 | E=1537 | F=37115253 | G=1090 | H=8.1 | I=5.27 | J=35153272 | K=1032 | L=7.67 | M=4.99 | N=108958215852 | O=3199 | P=23779 | Q=15476 | R=3100 | S=53656 | T=708572 | U=13.21 | V=539642192 | W=10057 | X=7839387479 | Y=321826 | Z=15303 | AA=245295
+r9: A=Critical Access Hospitals | B=161340 | C=200522 | D=6 | E=1243 | F=702528 | G=21 | H=4.35 | I=3.5 | J=685596 | K=20 | L=4.25 | M=3.42 | N=2116009476 | O=62 | P=13115 | Q=10553 | R=3086 | S=496 | T=2669 | U=5.38 | V=2008306 | W=4049 | X=236721400 | Y=1178 | Z=156 | AA=6534
+r10: A=Long Term Care Hospitals | B=54543 | C=62843 | D=2 | E=1152 | F=1763832 | G=52 | H=32.34 | I=28.07 | J=1456994 | K=43 | L=26.71 | M=23.18 | N=2604867932 | O=76 | P=47758 | Q=41450 | R=1788 | S=15433 | T=238597 | U=15.46 | V=213680136 | W=13846 | X=8200976 | Y=148252 | Z=5538 | AA=9940
+r11: A=Inpatient Psychiatric Facilities | B=128055 | C=194959 | D=6 | E=1522 | F=3372158 | G=99 | H=26.33 | I=17.3 | J=2425696 | K=71 | L=18.94 | M=12.44 | N=2207309312 | O=65 | P=17237 | Q=11322 | R=910 | S=8711 | T=157436 | U=18.07 | V=127742385 | W=14664 | X=168234445 | Y=81447 | Z=3046 | AA=246
+r12: A=Inpatient Rehabilitation Facilities | B=368064 | C=422543 | D=12 | E=1148 | F=5253949 | G=154 | H=14.27 | I=12.43 | J=5089414 | K=149 | L=13.83 | M=12.04 | N=9958471153 | O=292 | P=27056 | Q=23568 | R=1957 | S=12330 | T=122301 | U=9.92 | V=71727464 | W=5817 | X=115546158 | Y=28588 | Z=1811 | AA=844
+r13: A=Religious Nonmedical Health Care Institutions | B=82 | C=210 | D=0 | E=2561 | F=4910 | G=0 | H=59.88 | I=23.38 | J=2472 | K=0 | L=30.15 | M=11.77 | N=1042248 | O=0 | P=12710 | Q=4963 | R=422 | S=17 | T=302 | U=17.76 | V=271535 | W=15973 | X=105353 | Y=235 | Z=* | AA=33
+r14: A=Childrens' Hospitals | B=1019 | C=1987 | D=0 | E=1950 | F=14103 | G=0 | H=13.84 | I=7.1 | J=12809 | K=0 | L=12.57 | M=6.45 | N=55083543 | O=2 | P=54056 | Q=27722 | R=4300 | S=45 | T=863 | U=19.18 | V=713736 | W=15861 | X=1842144 | Y=461 | Z=† | AA=21
+r15: A=Other Hospitals⁴ | B=23368 | C=36143 | D=1 | E=1547 | F=261738 | G=8 | H=11.2 | I=7.24 | J=252543 | K=7 | L=10.81 | M=6.99 | N=1046064407 | O=31 | P=44765 | Q=28942 | R=4142 | S=659 | T=9130 | U=13.85 | V=7439278 | W=11289 | X=31158552 | Y=4741 | Z=215 | AA=1416
+r16: (blank)
+r17: B=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r18: B=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r19: A=BLANK
+r20: B=¹The Original Medicare Part A enrollee count in 2023 was 34,059,184.
+r21: B=²Persons with coinsurance represent persons with both utilization and coinsurance.
+r22: B=³Person counts represent persons with both utilization and lifetime reserve days.
+r23: B=⁴Includes Federal Emergency, Veterans Affairs, and foreign hospitals.
+r24: (blank)
+r25: B=NOTES:  Counts and amounts may not sum to totals because of rounding.  The 'persons with u...
+r26: B=received services in more than one type of hospital during the calendar year.
+r27: (blank)
+r28: B=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR INPT HOSP 5_CPS_05UIP": 35 rows x 29 columns (Excel rows 1..35, columns A..AC)
+(whole sheet shown; Excel row numbers)
+r1: B=Medicare IPPS Short Stay Hospitals
+r2: B=Utilization, Program Payments, and Cost Sharing for Original Medicare Beneficiaries, by Ty...
+r3: B=Calendar Years 2018-2023
+r4: A=Type of Entitlement and Calendar Year | B=Total Original Medicare Part A Enrollees | C=Total Persons With Utilization | D=Total Discharges | E=Discharges Per 1,000 Original Medicare Part A Enrollees | F=Discharges Per 1,000 Persons With Utilization | G=Total Discharges Beginning with Emergency Room Visit | H=Total Days of Care | I=Total Days of Care Per 1,000 Original Medicare Part A Enrollees | J=Total Days of Care Per Person With Utilization | K=Total Days of Care Per Discharge | L=Covered Days of Care | M=Covered Days of Care Per 1,000 Original Medicare Part A Enrollees | N=Covered Days of Care Per Person With Utilization | O=Covered Days of Care Per Discharge | P=Total Program Payments | Q=Program Payments Per Original Medicare Part A Enrollee | R=Program Payments Per Person With Utilization | S=Program Payments Per Discharge | T=Program Payments Per Covered Day | U=Persons With Coinsurance¹ | V=Total Coinsurance Days | W=Coinsurance Days Per Person With Coinsurance¹ | X=Total Coinsurance Payments | Y=Coinsurance Payments Per Person With Coinsurance¹ | Z=Total Deductible Payments | AA=Total Lifetime Reserve Days | AB=Persons with Lifetime Reserve Days² | AC=Discharged Dead
+r5: A=BLANK
+r6: A=All Beneficiaries
+r7: A=2018 | B=38351611.58 | C=6101200 | D=9540088 | E=248.7532494 | F=1563.641251 | G=7142430 | H=47414132 | I=1236.300902 | J=7.771279748 | K=4.969988956 | L=45320825 | M=1181.718919 | N=7.428182161 | O=4.750566766 | P=1.177599435e+11 | Q=3070.534423 | R=19301.11184 | S=12343.69573 | T=2598.362751 | U=65932 | V=814973 | W=12.36081114 | X=518655946 | Y=7866.528332 | Z=8943461017 | AA=367652 | AB=18805 | AC=305469
+r8: A=2019 | B=38258362.67 | C=5925805 | D=9280388 | E=242.571489 | F=1566.097433 | G=6975364 | H=46088243 | I=1204.658009 | J=7.777549717 | K=4.966197857 | L=43958289 | M=1148.985109 | N=7.418112645 | O=4.736686548 | P=1.196199888e+11 | Q=3126.636387 | R=20186.28504 | S=12889.54609 | T=2721.21576 | U=64915 | V=816601 | W=12.57954248 | X=534298570.8 | Y=8230.741289 | Z=8830302451 | AA=376071 | AB=18945 | AC=288270
+r9: A=2020 | B=37464936.5 | C=5106629 | D=7763016 | E=207.2075045 | F=1520.184059 | G=6026606 | H=41185389 | I=1099.304919 | J=8.065083444 | K=5.30533352 | L=39332930 | M=1049.85978 | N=7.7023277 | O=5.066707321 | P=1.122332802e+11 | Q=2995.68852 | R=21977.95848 | S=14457.43254 | T=2853.417738 | U=57222 | V=700142 | W=12.23553878 | X=467547909.9 | Y=8170.771905 | Z=7680012014 | AA=315523 | AB=16234 | AC=350440
+r10: A=2021 | B=36051507.33 | C=4875784 | D=7384800 | E=204.8402562 | F=1514.587193 | G=5858714 | H=40728467 | I=1129.729934 | J=8.353213965 | K=5.51517536 | L=38830865 | M=1077.094077 | N=7.964024862 | O=5.258214847 | P=1.131530952e+11 | Q=3138.65088 | R=23207.15914 | S=15322.43191 | T=2913.998831 | U=55305 | V=716274 | W=12.95134255 | X=502000197 | Y=9076.940549 | Z=7718432023 | AA=320375 | AB=15665 | AC=348974
+r11: A=2022 | B=34960747.92 | C=4676282 | D=7113962 | E=203.4842623 | F=1521.285928 | G=5682289 | H=39217168 | I=1121.748542 | J=8.38639928 | K=5.512704172 | L=37277788 | M=1066.275472 | N=7.971672367 | O=5.240088153 | P=1.100369325e+11 | Q=3147.442177 | R=23530.85903 | S=15467.74252 | T=2951.809601 | U=57322 | V=768533 | W=13.40729563 | X=572482151.1 | Y=9987.127998 | Z=7766256467 | AA=353882 | AB=16544 | AC=295311
+r12: A=2023 | B=34059183.83 | C=4582064 | D=7040631 | E=206.7175489 | F=1536.563217 | G=5607288 | H=37115253 | I=1089.728197 | J=8.100116672 | K=5.271580488 | L=35153272 | M=1032.123147 | N=7.671929506 | O=4.992914982 | P=1.089582159e+11 | Q=3199.084757 | R=23779.28721 | S=15475.63221 | T=3099.51847 | U=53656 | V=708572 | W=13.20582973 | X=539642192.1 | Y=10057.44357 | Z=7839387479 | AA=321826 | AB=15303 | AC=245295
+r13: (blank)
+r14: A=Aged Beneficiaries
+r15: A=2018 | B=32432292.08 | C=5114422 | D=7757584 | E=239.1932084 | F=1516.805614 | G=5791635 | H=37778874 | I=1164.853656 | J=7.386733828 | K=4.869927802 | L=36418991 | M=1122.923749 | N=7.120842003 | O=4.694630571 | P=9.51251622e+10 | Q=2933.038527 | R=18599.39641 | S=12262.21491 | T=2611.965889 | U=42605 | V=510805 | W=11.9893205 | X=311490295 | Y=7311.120643 | Z=7448849624 | AA=210012 | AB=11139 | AC=267288
+r16: A=2019 | B=32727644.92 | C=5012143 | D=7616555 | E=232.7254228 | F=1519.62045 | G=5704036 | H=36993014 | I=1130.32924 | J=7.380678085 | K=4.85692206 | L=35589810 | M=1087.45405 | N=7.100717198 | O=4.672691263 | P=9.74750754e+10 | Q=2978.37121 | R=19447.78419 | S=12797.79052 | T=2738.847872 | U=42399 | V=515172 | W=12.15056959 | X=325462845 | Y=7676.191538 | Z=7423038090 | AA=220205 | AB=11376 | AC=252619
+r17: A=2020 | B=32441736 | C=4351398 | D=6415278 | E=197.7476791 | F=1474.302741 | G=4972347 | H=33372464 | I=1028.689217 | J=7.669366029 | K=5.202029281 | L=32137671 | M=990.6273511 | N=7.385596767 | O=5.009552353 | P=9.210257455e+10 | Q=2839.014982 | R=21166.20326 | S=14356.75501 | T=2865.87583 | U=37720 | V=444561 | W=11.78581654 | X=283109795.8 | Y=7505.561925 | Z=6503553339 | AA=180699 | AB=9689 | AC=309465
+r18: A=2021 | B=31589386 | C=4214013 | D=6223097 | E=196.9996188 | F=1476.762649 | G=4936749 | H=33568107 | I=1062.638793 | J=7.965829009 | K=5.394115984 | L=32260522 | M=1021.245617 | N=7.655534523 | O=5.183997935 | P=9.443169495e+10 | Q=2989.348858 | R=22408.97096 | S=15174.38905 | T=2927.159547 | U=37643 | V=468971 | W=12.45838536 | X=316334058 | Y=8403.529422 | Z=6639766075 | AA=193063 | AB=9755 | AC=309301
+r19: A=2022 | B=31002503 | C=4109765 | D=6117291 | E=197.3160361 | F=1488.477078 | G=4887194 | H=32904532 | I=1061.350821 | J=8.006426645 | K=5.378938488 | L=31552662 | M=1017.745632 | N=7.677485696 | O=5.157946876 | P=9.367159674e+10 | Q=3021.420455 | R=22792.44598 | S=15312.59454 | T=2968.738319 | U=40321 | V=525332 | W=13.02874433 | X=375403444.1 | Y=9310.370381 | Z=6800323177 | AA=221313 | AB=10731 | AC=265727
+r20: A=2023 | B=30526238.5 | C=4078432 | D=6148549 | E=201.4184945 | F=1507.576686 | G=4898212 | H=31647113 | I=1036.718396 | J=7.759627474 | K=5.14708641 | L=30234663 | M=990.4483646 | N=7.413305653 | O=4.917365544 | P=9.430837125e+10 | Q=3089.419984 | R=23123.68362 | S=15338.31336 | T=3119.213574 | U=38958 | V=498526 | W=12.79649879 | X=367941448.1 | Y=9444.567178 | Z=6957479099 | AA=211721 | AB=10324 | AC=223060
+r21: (blank)
+r22: A=Disabled Beneficiaries
+r23: A=2018 | B=5919319.5 | C=986778 | D=1782504 | E=301.1332637 | F=1806.388063 | G=1350795 | H=9635258 | I=1627.764475 | J=9.7643624 | K=5.405462204 | L=8901834 | M=1503.861043 | N=9.021111131 | O=4.994005063 | P=2.263478133e+10 | Q=3823.882346 | R=22938.06847 | S=12698.30605 | T=2542.709888 | U=23327 | V=304168 | W=13.03931067 | X=207165651 | Y=8880.93844 | Z=1494611393 | AA=157640 | AB=7666 | AC=38181
+r24: A=2019 | B=5530717.75 | C=913662 | D=1663833 | E=300.8349142 | F=1821.059648 | G=1271328 | H=9095229 | I=1644.493429 | J=9.954697689 | K=5.466431427 | L=8368479 | M=1513.090955 | N=9.159272247 | O=5.029638792 | P=2.214491342e+10 | Q=4003.985454 | R=24237.5336 | S=13309.577 | T=2646.229192 | U=22516 | V=301429 | W=13.38732457 | X=208835725.8 | Y=9274.992262 | Z=1407264362 | AA=155866 | AB=7569 | AC=35651
+r25: A=2020 | B=5023200.5 | C=755231 | D=1347738 | E=268.3026489 | F=1784.537446 | G=1054259 | H=7812925 | I=1555.367937 | J=10.34507985 | K=5.797065157 | L=7195259 | M=1432.405296 | N=9.527229417 | O=5.338766882 | P=2.01307056e+10 | Q=4007.545708 | R=26655.03085 | S=14936.66099 | T=2797.77359 | U=19502 | V=255581 | W=13.10537381 | X=184438114.1 | Y=9457.394837 | Z=1176458674 | AA=134824 | AB=6545 | AC=40975
+r26: A=2021 | B=4462121.333 | C=661771 | D=1161703 | E=260.3476941 | F=1755.445615 | G=921965 | H=7160360 | I=1604.698632 | J=10.81999665 | K=6.163675225 | L=6570343 | M=1472.470717 | N=9.928423881 | O=5.655785515 | P=1.872140025e+10 | Q=4195.627786 | R=28289.84687 | S=16115.47896 | T=2849.379439 | U=17662 | V=247303 | W=14.00198166 | X=185666139 | Y=10512.1809 | Z=1078665948 | AA=127312 | AB=5910 | AC=39673
+r27: A=2022 | B=3958244.917 | C=566517 | D=996671 | E=251.7961928 | F=1759.295838 | G=795095 | H=6312636 | I=1594.806823 | J=11.14288892 | K=6.333720957 | L=5725126 | M=1446.379929 | N=10.10583266 | O=5.744248604 | P=1.636533579e+10 | Q=4134.492973 | R=28887.63407 | S=16419.99797 | T=2858.511025 | U=17001 | V=243201 | W=14.3050997 | X=197078707 | Y=11592.18322 | Z=965933290.2 | AA=132569 | AB=5813 | AC=29584
+r28: A=2023 | B=3532945.333 | C=503632 | D=892082 | E=252.5037655 | F=1771.297296 | G=709076 | H=5468140 | I=1547.756754 | J=10.85741176 | K=6.129638307 | L=4918609 | M=1392.212032 | N=9.766275773 | O=5.513628792 | P=1.46498446e+10 | Q=4146.637783 | R=29088.39113 | S=16422.08295 | T=2978.45277 | U=14698 | V=210046 | W=14.29078786 | X=171700744 | Y=11681.9121 | Z=881908380.5 | AA=110105 | AB=4979 | AC=22235
+r29: A=BLANK
+r30: B=¹Persons with coinsurance represent persons with both utilization and coinsurance.
+r31: B=²Person counts represent persons with both utilization and lifetime reserve days.
+r32: (blank)
+r33: B=NOTES:  IPPS is Inpatient Prospective Payment System; excludes data for short-stay hospita...
+r34: (blank)
+r35: B=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR INPT HOSP 6_CPS_05UIP": 45 rows x 25 columns (Excel rows 1..45, columns A..Y)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare IPPS Short Stay Hospitals
+r2: A=Utilization, Program Payments, and Cost Sharing for Original Medicare Beneficiaries, by De...
+r3: A=Calendar Year 2023
+r4: A=Demographic Characteristic and Medicare-Medicaid Enrollment Status | B=Total Original Medicare Part A Enrollees | C=Total Persons With Utilization | D=Total Discharges | E=% of Total Discharges | F=Discharges Per 1,000 Original Medicare Part A Enrollees | G=Discharges Per 1,000 Persons With Utilization | H=Total Discharges Beginning with Emergency Room Visit | I=Total Days of Care | J=Total Days of Care Per 1,000 Original Medicare Part A Enrollees | K=Total Days of Care Per Person With Utilization | L=Total Days of Care Per Discharge | M=Covered Days of Care | N=Covered Days of Care Per 1,000 Original Medicare Part A Enrollees | O=Covered Days of Care Per Person With Utilization | P=Covered Days of Care Per Discharge | Q=Total Program Payments | R=% of Total Program Payments | S=Program Payments Per Original Medicare Part A Enrollee | T=Program Payments Per Person With Utilization | U=Program Payments Per Discharge | V=Program Payments Per Covered Day | W=Total Deductible Payments | X=Total Coinsurance Payments | Y=Discharged Dead
+r5: A=BLANK
+r6: A=Total | B=34059183.83 | C=4582064 | D=7040631 | E=100 | F=207 | G=1537 | H=5607288 | I=37115253 | J=1090 | K=8.1 | L=5.27 | M=35153272 | N=1032.12 | O=7.67 | P=4.99 | Q=108958215852 | R=100 | S=3199 | T=23779 | U=15476 | V=3100 | W=7839387479 | X=539642192.1 | Y=245295
+r7: A=BLANK
+r8: A=Age
+r9: A=Under 65 Years | B=3532945.333 | C=503632 | D=892082 | E=12.7 | F=253 | G=1771 | H=709076 | I=5468140 | J=1548 | K=10.86 | L=6.13 | M=4918609 | N=1392.21 | O=9.77 | P=5.51 | Q=14649844603 | R=13.4 | S=4147 | T=29088 | U=16422 | V=2978 | W=881908381 | X=171700744 | Y=22235
+r10: A=65 Years and Over | B=30526238.5 | C=4078432 | D=6148549 | E=87.3 | F=201 | G=1508 | H=4898212 | I=31647113 | J=1037 | K=7.76 | L=5.15 | M=30234663 | N=990.45 | O=7.41 | P=4.92 | Q=94308371249 | R=86.6 | S=3089 | T=23124 | U=15338 | V=3119 | W=6957479099 | X=367941448.1 | Y=223060
+r11: A=BLANK
+r12: A=Under 18 Years | B=1176.833333 | C=338 | D=754 | E=0 | F=641 | G=2231 | H=369 | I=6449 | J=5480 | K=19.08 | L=8.55 | M=4472 | N=3800.03 | O=13.23 | P=5.93 | Q=15702653 | R=0 | S=13343 | T=46458 | U=20826 | V=3511 | W=661960 | X=111766 | Y=*
+r13: A=18-24 Years | B=58739.58333 | C=4733 | D=8847 | E=0.1 | F=151 | G=1869 | H=6540 | I=53671 | J=914 | K=11.34 | L=6.07 | M=45840 | N=780.39 | O=9.69 | P=5.18 | Q=125632001 | R=0.1 | S=2139 | T=26544 | U=14201 | V=2741 | W=8213524 | X=2161361 | Y=†
+r14: A=25-34 Years | B=313794.1667 | C=33189 | D=64239 | E=0.9 | F=205 | G=1936 | H=49209 | I=389857 | J=1242 | K=11.75 | L=6.07 | M=341866 | N=1089.46 | O=10.3 | P=5.32 | Q=972443706 | R=0.9 | S=3099 | T=29300 | U=15138 | V=2845 | W=57602681 | X=16586052 | Y=708
+r15: A=35-44 Years | B=568957.5 | C=67057 | D=124627 | E=1.8 | F=219 | G=1859 | H=98146 | I=766367 | J=1347 | K=11.43 | L=6.15 | M=686269 | N=1206.19 | O=10.23 | P=5.51 | Q=2007954185 | R=1.8 | S=3529 | T=29944 | U=16112 | V=2926 | W=118094561 | X=27467423 | Y=1973
+r16: A=45-54 Years | B=852775.1667 | C=119083 | D=212485 | E=3 | F=249 | G=1784 | H=169470 | I=1304109 | J=1529 | K=10.95 | L=6.14 | M=1165641 | N=1366.88 | O=9.79 | P=5.49 | Q=3491977308 | R=3.2 | S=4095 | T=29324 | U=16434 | V=2996 | W=209455607 | X=42491063 | Y=4787
+r17: A=55-64 Years | B=1737502.083 | C=279232 | D=481130 | E=6.8 | F=277 | G=1723 | H=385342 | I=2947687 | J=1697 | K=10.56 | L=6.13 | M=2674521 | N=1539.29 | O=9.58 | P=5.56 | Q=8036134749 | R=7.4 | S=4625 | T=28779 | U=16703 | V=3005 | W=487880048 | X=82883079 | Y=14689
+r18: A=65-74 Years | B=17223232.83 | C=1529957 | D=2273286 | E=32.3 | F=132 | G=1486 | H=1674279 | I=12062804 | J=700 | K=7.88 | L=5.31 | M=11131976 | N=646.33 | O=7.28 | P=4.9 | Q=37709620674 | R=34.6 | S=2189 | T=24648 | U=16588 | V=3388 | W=2567404960 | X=202817822.8 | Y=69326
+r19: A=75-84 Years | B=9666927.5 | C=1552395 | D=2365708 | E=33.6 | F=245 | G=1524 | H=1875065 | I=12138852 | J=1256 | K=7.82 | L=5.13 | M=11777361 | N=1218.31 | O=7.59 | P=4.98 | Q=36712161314 | R=33.7 | S=3798 | T=23649 | U=15518 | V=3117 | W=2660277483 | X=128298921.3 | Y=85030
+r20: A=85-94 Years | B=3188184.667 | C=859962 | D=1311949 | E=18.6 | F=412 | G=1526 | H=1162040 | I=6508607 | J=2041 | K=7.57 | L=4.96 | M=6402214 | N=2008.11 | O=7.44 | P=4.88 | Q=17526304309 | R=16.1 | S=5497 | T=20380 | U=13359 | V=2738 | W=1494534529 | X=34096233 | Y=58104
+r21: A=95 Years or Over | B=447893.5 | C=136118 | D=197606 | E=2.8 | F=441 | G=1452 | H=186828 | I=936850 | J=2092 | K=6.88 | L=4.74 | M=923112 | N=2061.01 | O=6.78 | P=4.67 | Q=2360284953 | R=2.2 | S=5270 | T=17340 | U=11944 | V=2557 | W=235262126 | X=2728471 | Y=10600
+r22: A=BLANK
+r23: A=Sex
+r24: A=Male | B=16111709.17 | C=2148415 | D=3333533 | E=47.3 | F=207 | G=1552 | H=2610463 | I=18224500 | J=1131 | K=8.48 | L=5.47 | M=17111528 | N=1062.06 | O=7.96 | P=5.13 | Q=55053974897 | R=50.5 | S=3417 | T=25625 | U=16515 | V=3217 | W=3663645386 | X=292837157.1 | Y=126851
+r25: A=Female | B=17947474.67 | C=2433649 | D=3707098 | E=52.7 | F=207 | G=1523 | H=2996825 | I=18890753 | J=1053 | K=7.76 | L=5.1 | M=18041744 | N=1005.25 | O=7.41 | P=4.87 | Q=53904240955 | R=49.5 | S=3003 | T=22150 | U=14541 | V=2988 | W=4175742093 | X=246805035.1 | Y=118444
+r26: A=BLANK
+r27: A=Race
+r28: A=Non-Hispanic White | B=26374470.33 | C=3643650 | D=5511521 | E=78.3 | F=209 | G=1513 | H=4337844 | I=27988593 | J=1061 | K=7.68 | L=5.08 | M=26645015 | N=1010.26 | O=7.31 | P=4.83 | Q=82277063131 | R=75.5 | S=3120 | T=22581 | U=14928 | V=3088 | W=6227156044 | X=329892116.8 | Y=187556
+r29: A=Black (or African-American) | B=2661801.667 | C=405723 | D=696702 | E=9.9 | F=262 | G=1717 | H=597019 | I=4438427 | J=1667 | K=10.94 | L=6.37 | M=4126023 | N=1550.09 | O=10.17 | P=5.92 | Q=11924961844 | R=10.9 | S=4480 | T=29392 | U=17116 | V=2890 | W=704197370 | X=122058057.5 | Y=25792
+r30: A=Asian/Pacific Islander | B=1175299.833 | C=108266 | D=163370 | E=2.3 | F=139 | G=1509 | H=138310 | I=939893 | J=800 | K=8.68 | L=5.75 | M=880630 | N=749.28 | O=8.13 | P=5.39 | Q=3125697379 | R=2.9 | S=2659 | T=28871 | U=19133 | V=3549 | W=183308014 | X=16175366 | Y=7864
+r31: A=Hispanic | B=2384611.333 | C=275100 | D=441369 | E=6.3 | F=185 | G=1604 | H=368493 | I=2504319 | J=1050 | K=9.1 | L=5.67 | M=2344811 | N=983.31 | O=8.52 | P=5.31 | Q=7742002234 | R=7.1 | S=3247 | T=28143 | U=17541 | V=3302 | W=471753429 | X=48576349.84 | Y=16633
+r32: A=American Indian/Alaska Native | B=155950.9167 | C=27339 | D=43780 | E=0.6 | F=281 | G=1601 | H=27099 | I=250375 | J=1605 | K=9.16 | L=5.72 | M=234288 | N=1502.32 | O=8.57 | P=5.35 | Q=708201631 | R=0.6 | S=4541 | T=25904 | U=16176 | V=3023 | W=47566914 | X=4018433 | Y=2014
+r33: A=Other | B=333117.75 | C=35311 | D=54026 | E=0.8 | F=162 | G=1530 | H=43946 | I=306394 | J=920 | K=8.68 | L=5.67 | M=286970 | N=861.47 | O=8.13 | P=5.31 | Q=959439393 | R=0.9 | S=2880 | T=27171 | U=17759 | V=3343 | W=60431891 | X=5236480 | Y=2238
+r34: A=Unknown | B=973932 | C=86675 | D=129863 | E=1.8 | F=133 | G=1498 | H=94577 | I=687252 | J=706 | K=7.93 | L=5.29 | M=635535 | N=652.55 | O=7.33 | P=4.89 | Q=2220850240 | R=2 | S=2280 | T=25623 | U=17101 | V=3494 | W=144973816 | X=13685389 | Y=3198
+r35: A=BLANK
+r36: A=Medicare-Medicaid Enrollment (MME) Status
+r37: A=MME | B=4596139.833 | C=1069871 | D=1853447 | E=26.3 | F=403 | G=1732 | H=1583506 | I=11553870 | J=2514 | K=10.8 | L=6.23 | M=10984606 | N=2389.96 | O=10.27 | P=5.93 | Q=30891955753 | R=28.4 | S=6721 | T=28874 | U=16667 | V=2812 | W=1861369150 | X=303689564.1 | Y=66493
+r38: A=Non-MME | B=29463044 | C=3512193 | D=5187184 | E=73.7 | F=176 | G=1477 | H=4023782 | I=25561383 | J=868 | K=7.28 | L=4.93 | M=24168666 | N=820.3 | O=6.88 | P=4.66 | Q=78066260099 | R=71.6 | S=2650 | T=22227 | U=15050 | V=3230 | W=5978018330 | X=235952628.1 | Y=178802
+r39: (blank)
+r40: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r41: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r42: A=BLANK
+r43: A=NOTES:  IPPS is Inpatient Prospective Payment System; excludes data for short-stay hospita...
+r44: (blank)
+r45: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR INPT HOSP 7_CPS_05UIP": 74 rows x 23 columns (Excel rows 1..74, columns A..W)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare IPPS Short Stay Hospitals
+r2: A=Utilization, Program Payments, and Cost Sharing for Original Medicare Beneficiaries, by Ar...
+r3: A=Calendar Year 2023
+r4: A=Area of Residence | B=Total Original Medicare Part A Enrollees | C=Total Persons With Utilization | D=Total Discharges | E=Discharges Per 1,000 Original Medicare Part A Enrollees | F=Discharges Per 1,000 Persons With Utilization | G=Total Discharges Beginning with Emergency Room Visit | H=Total Days of Care | I=Total Days of Care Per 1,000 Original Medicare Part A Enrollees | J=Total Days of Care Per Person With Utilization | K=Total Days of Care Per Discharge | L=Covered Days of Care | M=Covered Days Per 1,000 Original Medicare Part A Enrollees | N=Covered Days Per Person With Utilization | O=Covered Days Per Discharge | P=Total Program Payments | Q=Program Payments Per Original Medicare Part A Enrollee | R=Program Payments Per Person With Utilization | S=Program Payments Per Discharge | T=Program Payments Per Covered Day | U=Total Deductible Payments | V=Total Coinsurance Payments | W=Discharged Dead
+r5: A=BLANK
+r6: A=All Areas | B=34059183.8 | C=4582064 | D=7040631 | E=207 | F=1537 | G=5607288 | H=37115253 | I=1090 | J=8.1 | K=5.27 | L=35153272 | M=1032 | N=7.67 | O=4.99 | P=108958215852 | Q=3199 | R=23779 | S=15476 | T=3100 | U=7839387479 | V=539642192 | W=245295
+r7: A=United States | B=33386786.6 | C=4565725 | D=7016576 | E=210 | F=1537 | G=5587445 | H=36931724 | I=1106 | J=8.09 | K=5.26 | L=34974458 | M=1048 | N=7.66 | O=4.98 | P=108575719078 | Q=3252 | R=23781 | S=15474 | T=3104 | U=7811033287 | V=535607112 | W=243389
+r8: A=BLANK
+r9: A=Alabama | B=465088.6 | C=73052 | D=109939 | E=236 | F=1505 | G=84849 | H=594481 | I=1278 | J=8.14 | K=5.41 | L=557317 | M=1198 | N=7.63 | O=5.07 | P=1334828499 | Q=2870 | R=18272 | S=12142 | T=2395 | U=125427850 | V=7240667 | W=4305
+r10: A=Alaska | B=111362.6 | C=11886 | D=17083 | E=153 | F=1437 | G=11820 | H=118097 | I=1060 | J=9.94 | K=6.91 | L=105948 | M=951 | N=8.91 | O=6.2 | P=363852456 | Q=3267 | R=30612 | S=21299 | T=3434 | U=20353513 | V=2561115 | W=894
+r11: A=Arizona | B=735576.4 | C=89483 | D=131841 | E=179 | F=1473 | G=99296 | H=622007 | I=846 | J=6.95 | K=4.72 | L=597364 | M=812 | N=6.68 | O=4.53 | P=2032250935 | Q=2763 | R=22711 | S=15414 | T=3402 | U=152419556 | V=5499795 | W=4061
+r12: A=Arkansas | B=381827.7 | C=53763 | D=81389 | E=213 | F=1514 | G=61667 | H=382874 | I=1003 | J=7.12 | K=4.7 | L=365770 | M=958 | N=6.8 | O=4.49 | P=1002424131 | Q=2625 | R=18645 | S=12316 | T=2741 | U=89972513 | V=4163556 | W=2745
+r13: A=California | B=3268727.6 | C=411330 | D=643085 | E=197 | F=1563 | G=525777 | H=3477626 | I=1064 | J=8.45 | K=5.41 | L=3299816 | M=1010 | N=8.02 | O=5.13 | P=13180538331 | Q=4032 | R=32044 | S=20496 | T=3994 | U=700364383 | V=61045239 | W=25711
+r14: A=Colorado | B=489974.7 | C=52846 | D=75425 | E=154 | F=1427 | G=56646 | H=358057 | I=731 | J=6.78 | K=4.75 | L=339097 | M=692 | N=6.42 | O=4.5 | P=1189266739 | Q=2427 | R=22504 | S=15768 | T=3507 | U=88999709 | V=3735313 | W=2410
+r15: A=Connecticut | B=329672.7 | C=46938 | D=73630 | E=223 | F=1569 | G=61854 | H=419786 | I=1273 | J=8.94 | K=5.7 | L=390837 | M=1186 | N=8.33 | O=5.31 | P=1295157304 | Q=3929 | R=27593 | S=17590 | T=3314 | U=81624358 | V=9446993 | W=2701
+r16: A=Delaware | B=166145.3 | C=22361 | D=33793 | E=203 | F=1511 | G=28143 | H=204069 | I=1228 | J=9.13 | K=6.04 | L=190945 | M=1149 | N=8.54 | O=5.65 | P=548315973 | Q=3300 | R=24521 | S=16226 | T=2872 | U=38205552 | V=4660548 | W=988
+r17: A=District of Columbia | B=64375.3 | C=8563 | D=13631 | E=212 | F=1592 | G=11718 | H=94894 | I=1474 | J=11.08 | K=6.96 | L=90333 | M=1403 | N=10.55 | O=6.63 | P=281574616 | Q=4374 | R=32883 | S=20657 | T=3117 | U=14590760 | V=2044174 | W=661
+r18: A=Florida | B=2275460.8 | C=366135 | D=579270 | E=255 | F=1582 | G=493042 | H=2826035 | I=1242 | J=7.72 | K=4.88 | L=2694935 | M=1184 | N=7.36 | O=4.65 | P=7409673472 | Q=3256 | R=20238 | S=12791 | T=2749 | U=628479732 | V=39637430 | W=13391
+r19: A=Georgia | B=873072.6 | C=121768 | D=186624 | E=214 | F=1533 | G=153720 | H=1033890 | I=1184 | J=8.49 | K=5.54 | L=979643 | M=1122 | N=8.05 | O=5.25 | P=2707066920 | Q=3101 | R=22231 | S=14505 | T=2763 | U=209321147 | V=14434474 | W=6411
+r20: A=Hawaii | B=141528.9 | C=12961 | D=18351 | E=130 | F=1416 | G=15720 | H=124555 | I=880 | J=9.61 | K=6.79 | L=104656 | M=739 | N=8.07 | O=5.7 | P=359007511 | Q=2537 | R=27699 | S=19563 | T=3430 | U=21905096 | V=2017462 | W=910
+r21: A=Idaho | B=204559 | C=19394 | D=26163 | E=128 | F=1349 | G=18613 | H=120211 | I=588 | J=6.2 | K=4.59 | L=113951 | M=557 | N=5.88 | O=4.36 | P=412396863 | Q=2016 | R=21264 | S=15763 | T=3619 | U=32168992 | V=1009014 | W=904
+r22: A=Illinois | B=1386599.3 | C=206567 | D=331812 | E=239 | F=1606 | G=265970 | H=1697952 | I=1225 | J=8.22 | K=5.12 | L=1617601 | M=1167 | N=7.83 | O=4.88 | P=4762456075 | Q=3435 | R=23055 | S=14353 | T=2944 | U=360169353 | V=20912280 | W=10292
+r23: A=Indiana | B=712182.9 | C=101222 | D=155681 | E=219 | F=1538 | G=120969 | H=739730 | I=1039 | J=7.31 | K=4.75 | L=709757 | M=997 | N=7.01 | O=4.56 | P=2033336165 | Q=2855 | R=20088 | S=13061 | T=2865 | U=173769915 | V=6118805 | W=4991
+r24: A=Iowa | B=436453.5 | C=50610 | D=71846 | E=165 | F=1420 | G=49542 | H=372579 | I=854 | J=7.36 | K=5.19 | L=355729 | M=815 | N=7.03 | O=4.95 | P=998629223 | Q=2288 | R=19732 | S=13900 | T=2807 | U=85547447 | V=3354940 | W=2606
+r25: A=Kansas | B=395283.4 | C=51167 | D=73678 | E=186 | F=1440 | G=48824 | H=347368 | I=879 | J=6.79 | K=4.71 | L=331932 | M=840 | N=6.49 | O=4.51 | P=995400521 | Q=2518 | R=19454 | S=13510 | T=2999 | U=86864813 | V=2267567 | W=2370
+r26: A=Kentucky | B=461526.2 | C=68428 | D=105890 | E=229 | F=1547 | G=80139 | H=539388 | I=1169 | J=7.88 | K=5.09 | L=513264 | M=1112 | N=7.5 | O=4.85 | P=1348050135 | Q=2921 | R=19700 | S=12731 | T=2626 | U=117165989 | V=5734689 | W=3978
+r27: A=Louisiana | B=426297.5 | C=61029 | D=93927 | E=220 | F=1539 | G=75558 | H=457194 | I=1072 | J=7.49 | K=4.87 | L=436292 | M=1023 | N=7.15 | O=4.65 | P=1198135694 | Q=2811 | R=19632 | S=12756 | T=2746 | U=101566898 | V=7569773 | W=3240
+r28: A=Maine | B=164929.2 | C=17118 | D=24484 | E=148 | F=1430 | G=18914 | H=151368 | I=918 | J=8.84 | K=6.18 | L=138522 | M=840 | N=8.09 | O=5.66 | P=382092444 | Q=2317 | R=22321 | S=15606 | T=2758 | U=29124855 | V=2402611 | W=1021
+r29: A=Maryland | B=875287.2 | C=112940 | D=178650 | E=204 | F=1582 | G=146517 | H=1114569 | I=1273 | J=9.87 | K=6.24 | L=1053876 | M=1204 | N=9.33 | O=5.9 | P=3853460564 | Q=4403 | R=34120 | S=21570 | T=3656 | U=198025097 | V=24862221 | W=6348
+r30: A=Massachusetts | B=945374.4 | C=140337 | D=224965 | E=238 | F=1603 | G=182184 | H=1227040 | I=1298 | J=8.74 | K=5.45 | L=1169802 | M=1237 | N=8.34 | O=5.2 | P=3741301404 | Q=3957 | R=26659 | S=16631 | T=3198 | U=245999583 | V=22475998 | W=7648
+r31: A=Michigan | B=907659.7 | C=135070 | D=212930 | E=235 | F=1576 | G=174409 | H=1080979 | I=1191 | J=8 | K=5.08 | L=1013051 | M=1116 | N=7.5 | O=4.76 | P=2927505917 | Q=3225 | R=21674 | S=13749 | T=2890 | U=231837996 | V=13117845 | W=6835
+r32: A=Minnesota | B=473133.2 | C=66952 | D=99468 | E=210 | F=1486 | G=70406 | H=543227 | I=1148 | J=8.11 | K=5.46 | L=507801 | M=1073 | N=7.58 | O=5.11 | P=1611100404 | Q=3405 | R=24064 | S=16197 | T=3173 | U=114265484 | V=9162691 | W=3723
+r33: A=Mississippi | B=382026.3 | C=56006 | D=85019 | E=223 | F=1518 | G=67301 | H=447284 | I=1171 | J=7.99 | K=5.26 | L=430684 | M=1127 | N=7.69 | O=5.07 | P=1071433737 | Q=2805 | R=19131 | S=12602 | T=2488 | U=95231264 | V=5108822 | W=3529
+r34: A=Missouri | B=639547.9 | C=94535 | D=146719 | E=229 | F=1552 | G=112935 | H=748091 | I=1170 | J=7.91 | K=5.1 | L=715195 | M=1118 | N=7.57 | O=4.87 | P=1909005435 | Q=2985 | R=20194 | S=13011 | T=2669 | U=161892053 | V=8948808 | W=5139
+r35: A=Montana | B=184633 | C=17743 | D=24567 | E=133 | F=1385 | G=17418 | H=125775 | I=681 | J=7.09 | K=5.12 | L=119667 | M=648 | N=6.74 | O=4.87 | P=362943981 | Q=1966 | R=20456 | S=14774 | T=3033 | U=29617464 | V=843666 | W=1083
+r36: A=Nebraska | B=255172.8 | C=32400 | D=47462 | E=186 | F=1465 | G=31819 | H=242361 | I=950 | J=7.48 | K=5.11 | L=230602 | M=904 | N=7.12 | O=4.86 | P=699693974 | Q=2742 | R=21595 | S=14742 | T=3034 | U=54351601 | V=2560141 | W=1774
+r37: A=Nevada | B=296383.1 | C=38694 | D=60659 | E=205 | F=1568 | G=50270 | H=311056 | I=1050 | J=8.04 | K=5.13 | L=285036 | M=962 | N=7.37 | O=4.7 | P=927086437 | Q=3128 | R=23959 | S=15284 | T=3253 | U=64257151 | V=7128142 | W=2070
+r38: A=New Hampshire | B=225076 | C=25081 | D=37445 | E=166 | F=1493 | G=28862 | H=206720 | I=918 | J=8.24 | K=5.52 | L=191172 | M=849 | N=7.62 | O=5.11 | P=594504252 | Q=2641 | R=23703 | S=15877 | T=3110 | U=42947871 | V=3677372 | W=1380
+r39: A=New Jersey | B=1041118.1 | C=149374 | D=239180 | E=230 | F=1601 | G=206615 | H=1380759 | I=1326 | J=9.24 | K=5.77 | L=1300044 | M=1249 | N=8.7 | O=5.44 | P=3926242428 | Q=3771 | R=26285 | S=16415 | T=3020 | U=255873247 | V=24411782 | W=8724
+r40: A=New Mexico | B=229797.1 | C=24852 | D=35722 | E=155 | F=1437 | G=27163 | H=183515 | I=799 | J=7.38 | K=5.14 | L=175004 | M=762 | N=7.04 | O=4.9 | P=554434106 | Q=2413 | R=22309 | S=15521 | T=3168 | U=41879661 | V=1995547 | W=1570
+r41: A=New York | B=1897879.1 | C=280420 | D=438949 | E=231 | F=1565 | G=364912 | H=2754816 | I=1452 | J=9.82 | K=6.28 | L=2602563 | M=1371 | N=9.28 | O=5.93 | P=8708253859 | Q=4588 | R=31054 | S=19839 | T=3346 | U=479689292 | V=57092127 | W=20457
+r42: A=North Carolina | B=1026784.3 | C=136728 | D=204360 | E=199 | F=1495 | G=161061 | H=1118019 | I=1089 | J=8.18 | K=5.47 | L=1065273 | M=1037 | N=7.79 | O=5.21 | P=2925539660 | Q=2849 | R=21397 | S=14316 | T=2746 | U=236299213 | V=12385940 | W=7631
+r43: A=North Dakota | B=99007.8 | C=13925 | D=20152 | E=204 | F=1447 | G=14375 | H=105800 | I=1069 | J=7.6 | K=5.25 | L=100294 | M=1013 | N=7.2 | O=4.98 | P=288333896 | Q=2912 | R=20706 | S=14308 | T=2875 | U=23013729 | V=1473936 | W=744
+r44: A=Ohio | B=1142060.3 | C=163628 | D=254618 | E=223 | F=1556 | G=198740 | H=1213950 | I=1063 | J=7.42 | K=4.77 | L=1149844 | M=1007 | N=7.03 | O=4.52 | P=3437487551 | Q=3010 | R=21008 | S=13501 | T=2990 | U=281478306 | V=12524285 | W=6930
+r45: A=Oklahoma | B=489543.5 | C=71695 | D=108690 | E=222 | F=1516 | G=79235 | H=512188 | I=1046 | J=7.14 | K=4.71 | L=489847 | M=1001 | N=6.83 | O=4.51 | P=1428433553 | Q=2918 | R=19924 | S=13142 | T=2916 | U=122913588 | V=5797149 | W=3839
+r46: A=Oregon | B=434282.8 | C=42985 | D=60222 | E=139 | F=1401 | G=44116 | H=329317 | I=758 | J=7.66 | K=5.47 | L=311899 | M=718 | N=7.26 | O=5.18 | P=1103576829 | Q=2541 | R=25674 | S=18325 | T=3538 | U=73049602 | V=4128440 | W=2806
+r47: A=Pennsylvania | B=1404131.8 | C=203958 | D=319180 | E=227 | F=1565 | G=260990 | H=1632967 | I=1163 | J=8.01 | K=5.12 | L=1546767 | M=1102 | N=7.58 | O=4.85 | P=4638458724 | Q=3303 | R=22742 | S=14532 | T=2999 | U=350600693 | V=23606879 | W=10092
+r48: A=Rhode Island | B=101467.8 | C=13180 | D=20091 | E=198 | F=1524 | G=16593 | H=101925 | I=1005 | J=7.73 | K=5.07 | L=95143 | M=938 | N=7.22 | O=4.74 | P=310004135 | Q=3055 | R=23521 | S=15430 | T=3258 | U=22824348 | V=1311228 | W=459
+r49: A=South Carolina | B=674083.6 | C=92658 | D=138498 | E=205 | F=1495 | G=107450 | H=679858 | I=1009 | J=7.34 | K=4.91 | L=647992 | M=961 | N=6.99 | O=4.68 | P=1907330742 | Q=2830 | R=20585 | S=13772 | T=2943 | U=156538505 | V=7559127 | W=4290
+r50: A=South Dakota | B=129005.4 | C=18377 | D=26386 | E=205 | F=1436 | G=16930 | H=131288 | I=1018 | J=7.14 | K=4.98 | L=126284 | M=979 | N=6.87 | O=4.79 | P=401255662 | Q=3110 | R=21835 | S=15207 | T=3177 | U=31017404 | V=1744878 | W=956
+r51: A=Tennessee | B=712322.3 | C=99296 | D=149500 | E=210 | F=1506 | G=118717 | H=752957 | I=1057 | J=7.58 | K=5.04 | L=715623 | M=1005 | N=7.21 | O=4.79 | P=1946462086 | Q=2733 | R=19603 | S=13020 | T=2720 | U=169350604 | V=7094925 | W=5613
+r52: A=Texas | B=2224219 | C=305893 | D=470630 | E=212 | F=1539 | G=370511 | H=2338956 | I=1052 | J=7.65 | K=4.97 | L=2206386 | M=992 | N=7.21 | O=4.69 | P=7003347184 | Q=3149 | R=22895 | S=14881 | T=3174 | U=518026113 | V=33697165 | W=13453
+r53: A=Utah | B=225537.3 | C=25320 | D=35094 | E=156 | F=1386 | G=25268 | H=139739 | I=620 | J=5.52 | K=3.98 | L=132130 | M=586 | N=5.22 | O=3.77 | P=526372364 | Q=2334 | R=20789 | S=14999 | T=3984 | U=41813824 | V=659840 | W=749
+r54: A=Vermont | B=112281.3 | C=11449 | D=16722 | E=149 | F=1461 | G=12769 | H=111407 | I=992 | J=9.73 | K=6.66 | L=97930 | M=872 | N=8.55 | O=5.86 | P=331259671 | Q=2950 | R=28934 | S=19810 | T=3383 | U=19490168 | V=1782140 | W=784
+r55: A=Virginia | B=1048275.4 | C=137741 | D=206980 | E=197 | F=1503 | G=167925 | H=1043310 | I=995 | J=7.57 | K=5.04 | L=988961 | M=943 | N=7.18 | O=4.78 | P=2929298369 | Q=2794 | R=21267 | S=14153 | T=2962 | U=238191918 | V=9106586 | W=7680
+r56: A=Washington | B=813155.2 | C=86733 | D=123592 | E=152 | F=1425 | G=95777 | H=724216 | I=891 | J=8.35 | K=5.86 | L=668393 | M=822 | N=7.71 | O=5.41 | P=2010784675 | Q=2473 | R=23184 | S=16270 | T=3008 | U=146447283 | V=13030658 | W=6422
+r57: A=West Virginia | B=220494.7 | C=35865 | D=56488 | E=256 | F=1575 | G=43623 | H=294183 | I=1334 | J=8.2 | K=5.21 | L=279315 | M=1267 | N=7.79 | O=4.94 | P=733024691 | Q=3324 | R=20438 | S=12977 | T=2624 | U=60287952 | V=3733139 | W=1909
+r58: A=Wisconsin | B=579225.5 | C=74339 | D=110815 | E=191 | F=1491 | G=78858 | H=578680 | I=999 | J=7.78 | K=5.22 | L=552185 | M=953 | N=7.43 | O=4.98 | P=1651669837 | Q=2852 | R=22218 | S=14905 | T=2991 | U=127480754 | V=8004536 | W=3567
+r59: A=Wyoming | B=107176.7 | C=10930 | D=15281 | E=143 | F=1398 | G=10915 | H=74611 | I=696 | J=6.83 | K=4.88 | L=71986 | M=672 | N=6.59 | O=4.71 | P=281658941 | Q=2628 | R=25769 | S=18432 | T=3913 | U=18299088 | V=724654 | W=595
+r60: A=BLANK
+r61: A=Territories, Possessions, and Other
+r62: A=Puerto Rico | B=118037.7 | C=11403 | D=16557 | E=140 | F=1452 | G=13474 | H=122791 | I=1040 | J=10.77 | K=7.42 | L=119933 | M=1016 | N=10.52 | O=7.24 | P=211477815 | Q=1792 | R=18546 | S=12773 | T=1763 | U=19793101 | V=1609312 | W=1418
+r63: A=Virgin Islands | B=14337.5 | C=1251 | D=1865 | E=130 | F=1491 | G=1547 | H=16304 | I=1137 | J=13.03 | K=8.74 | L=15722 | M=1097 | N=12.57 | O=8.43 | P=36591372 | Q=2552 | R=29250 | S=19620 | T=2327 | U=2118944 | V=754507 | W=128
+r64: A=American Samoa | B=4480.7 | C=287 | D=409 | E=91 | F=1425 | G=347 | H=3620 | I=808 | J=12.61 | K=8.85 | L=3550 | M=792 | N=12.37 | O=8.68 | P=8400069 | Q=1875 | R=29269 | S=20538 | T=2366 | U=482848 | V=17189 | W=22
+r65: A=Guam | B=18940.9 | C=1964 | D=3218 | E=170 | F=1638 | G=2910 | H=28638 | I=1512 | J=14.58 | K=8.9 | L=27855 | M=1471 | N=14.18 | O=8.66 | P=86837402 | Q=4585 | R=44215 | S=26985 | T=3117 | U=3637242 | V=1447268 | W=217
+r66: A=Northern Mariana Islands | B=3056.6 | C=395 | D=639 | E=209 | F=1618 | G=466 | H=3888 | I=1272 | J=9.84 | K=6.08 | L=3810 | M=1246 | N=9.65 | O=5.96 | P=10619786 | Q=3474 | R=26886 | S=16619 | T=2787 | U=718048 | V=42400 | W=60
+r67: A=Foreign Countries | B=513265 | C=1039 | D=1367 | E=3 | F=1316 | G=1099 | H=8288 | I=16 | J=7.98 | K=6.06 | L=7944 | M=15 | N=7.65 | O=5.81 | P=28570330 | Q=56 | R=27498 | S=20900 | T=3596 | U=1604008 | V=164404 | W=61
+r68: A=Unknown | B=† | C=† | D=† | E=† | F=† | G=† | H=† | I=† | J=† | K=† | L=† | M=† | N=† | O=† | P=† | Q=† | R=† | S=† | T=† | U=† | V=† | W=†
+r69: (blank)
+r70: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r71: A=BLANK
+r72: A=NOTES:  IPPS is Inpatient Prospective Payment System; excludes data for short-stay hospita...
+r73: (blank)
+r74: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR INPT HOSP 8_CPS_05UIP": 63 rows x 10 columns (Excel rows 1..63, columns A..J)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare IPPS Short Stay Hospitals
+r2: A=Utilization and Program Payments for Original Medicare Beneficiaries, by Type of Entitleme...
+r3: A=Calendar Year 2023
+r4: A=Type of Entitlement and Total Days of Care | B=Total Persons With Utilization | C=Total Discharges | D=Discharges Per 1,000 Persons With Utilization | E=Discharges Per 1,000 Original Medicare Part A Enrollees¹ | F=Total Discharges Beginning with Emergency Room Visit | G=Total Program Payments | H=Program Payments Per Person With Utilization | I=Program Payments Per Discharge | J=Program Payments Per Original Medicare Part A Enrollee¹
+r5: A=BLANK
+r6: A=All Beneficiaries
+r7: A=Total Days | B=4582064 | C=7040631 | D=1536.563217 | E=206.7175489 | F=5607288 | G=1.089582159e+11 | H=23779.28721 | I=15475.63221 | J=3199.084757
+r8: A=1 day | B=669109 | C=669109 | D=1000 | E=19.64547957 | F=392367 | G=7024132058 | H=10497.73962 | I=10497.73962 | J=206.2331292
+r9: A=2 days | B=618960 | C=650698 | D=1051.276334 | E=19.10492052 | F=482617 | G=6920977039 | H=11181.62246 | I=10636.2353 | J=203.2044301
+r10: A=3 days | B=571111 | C=626397 | D=1096.804299 | E=18.3914272 | F=486862 | G=7189391774 | H=12588.43163 | I=11477.37262 | J=211.0852629
+r11: A=4 days | B=433129 | C=512814 | D=1183.975213 | E=15.05655574 | F=405679 | G=6429698890 | H=14844.76655 | I=12538.07207 | J=188.780181
+r12: A=5 days | B=336210 | C=430343 | D=1279.982749 | E=12.63515304 | F=345295 | G=5732013390 | H=17048.90809 | I=13319.63896 | J=168.2956767
+r13: A=6 days | B=269627 | C=373523 | D=1385.332329 | E=10.96688053 | F=301467 | G=5191339377 | H=19253.78162 | I=13898.31249 | J=152.4211326
+r14: A=7 days | B=220579 | C=327734 | D=1485.789672 | E=9.622485424 | F=266532 | G=4744683843 | H=21510.13398 | I=14477.24021 | J=139.3070329
+r15: A=8-14 days | B=804873 | C=1469608 | D=1825.888059 | E=43.1486558 | F=1229162 | G=2.312274695e+10 | H=28728.44157 | I=15733.95555 | J=678.8990324
+r16: A=15-30 days | B=481776 | C=1263437 | D=2622.457325 | E=37.09533987 | F=1080878 | G=2.365007899e+10 | H=49089.36725 | I=18718.84312 | J=694.3818475
+r17: A=31-40 days | B=84229 | C=299577 | D=3556.696625 | E=8.795777417 | F=257831 | G=6714829174 | H=79721.10763 | I=22414.36817 | J=197.1517934
+r18: A=41-50 Days | B=39451 | C=160520 | D=4068.844896 | E=4.712972595 | F=138070 | G=3997833676 | H=101336.6879 | I=24905.51754 | J=117.3790216
+r19: A=51-60 Days | B=20678 | C=93101 | D=4502.418029 | E=2.733506488 | F=80391 | G=2557006947 | H=123658.3299 | I=27464.87091 | J=75.07540284
+r20: A=61-90 Days | B=22695 | C=114049 | D=5025.291915 | E=3.348553523 | F=97931 | G=3561104343 | H=156911.4053 | I=31224.33641 | J=104.5563617
+r21: A=91 Days or More | B=9637 | C=49721 | D=5159.385701 | E=1.459841206 | F=42206 | G=2122379399 | H=220232.3751 | I=42685.77459 | J=62.31445266
+r22: A=BLANK
+r23: A=Aged Beneficiaries
+r24: A=Total Days | B=4078432 | C=6148549 | D=1507.576686 | E=201.4184945 | F=4898212 | G=9.430837125e+10 | H=23123.68362 | I=15338.31336 | J=3089.419984
+r25: A=1 day | B=606833 | C=606833 | D=1000 | E=19.8790624 | F=351955 | G=6480192869 | H=10678.70875 | I=10678.70875 | J=212.2827177
+r26: A=2 days | B=555557 | C=583989 | D=1051.177467 | E=19.13072257 | F=433742 | G=6247879324 | H=11246.15354 | I=10698.62502 | J=204.6724271
+r27: A=3 days | B=515580 | C=564697 | D=1095.265526 | E=18.49874166 | F=440827 | G=6496479331 | H=12600.33231 | I=11504.3631 | J=212.816241
+r28: A=4 days | B=389260 | C=460061 | D=1181.886143 | E=15.07100195 | F=365824 | G=5794781777 | H=14886.6613 | I=12595.68139 | J=189.8295388
+r29: A=5 days | B=302084 | C=385644 | D=1276.611803 | E=12.6331975 | F=310820 | G=5166642964 | H=17103.33207 | I=13397.44159 | J=169.2525256
+r30: A=6 days | B=241758 | C=334068 | D=1381.828109 | E=10.9436346 | F=270795 | G=4661723206 | H=19282.60163 | I=13954.41409 | J=152.7120089
+r31: A=7 days | B=197417 | C=292594 | D=1482.11147 | E=9.58500013 | F=238984 | G=4249962569 | H=21527.84496 | I=14525.11866 | J=139.2232642
+r32: A=8-14 days | B=715460 | C=1301001 | D=1818.411931 | E=42.61910618 | F=1092795 | G=2.051622194e+10 | H=28675.56808 | I=15769.56662 | J=672.084834
+r33: A=15-30 days | B=416285 | C=1081766 | D=2598.618735 | E=35.43725179 | F=929446 | G=2.025093643e+10 | H=48646.80791 | I=18720.25598 | J=663.3944248
+r34: A=31-40 days | B=69146 | C=242017 | D=3500.086773 | E=7.928163177 | F=209058 | G=5468605361 | H=79087.80495 | I=22595.95549 | J=179.1444223
+r35: A=41-50 Days | B=31152 | C=123934 | D=3978.36415 | E=4.059917176 | F=106711 | G=3144038351 | H=100925.7303 | I=25368.65066 | J=102.9946205
+r36: A=51-60 Days | B=15715 | C=68086 | D=4332.548521 | E=2.230409095 | F=58813 | G=1939918580 | H=123443.7531 | I=28492.18018 | J=63.54921783
+r37: A=61-90 Days | B=16157 | C=76689 | D=4746.487591 | E=2.512232223 | F=65722 | G=2537851275 | H=157074.412 | I=33092.76786 | J=83.13671777
+r38: A=91 Days or More | B=6028 | C=27170 | D=4507.29927 | E=0.8900539777 | F=22720 | G=1353137277 | H=224475.3279 | I=49802.62336 | J=44.32702302
+r39: A=BLANK
+r40: A=Disabled Beneficiaries
+r41: A=Total Days | B=503632 | C=892082 | D=1771.297296 | E=252.5037655 | F=709076 | G=1.46498446e+10 | H=29088.39113 | I=16422.08295 | J=4146.637783
+r42: A=1 day | B=62276 | C=62276 | D=1000 | E=17.62721869 | F=40412 | G=543939189.1 | H=8734.330868 | I=8734.330868 | J=153.9619603
+r43: A=2 days | B=63403 | C=66709 | D=1052.142643 | E=18.88197912 | F=48875 | G=673097714.8 | H=10616.18086 | I=10090.05854 | J=190.5202745
+r44: A=3 days | B=55531 | C=61700 | D=1111.091102 | E=17.46418192 | F=46035 | G=692912443.6 | H=12477.93923 | I=11230.34755 | J=196.1288325
+r45: A=4 days | B=43869 | C=52753 | D=1202.512024 | E=14.93173401 | F=39855 | G=634917113.6 | H=14473.02454 | I=12035.65889 | J=179.7132573
+r46: A=5 days | B=34126 | C=44699 | D=1309.822423 | E=12.65204972 | F=34475 | G=565370425.7 | H=16567.14604 | I=12648.39092 | J=160.0280707
+r47: A=6 days | B=27869 | C=39455 | D=1415.73074 | E=11.16773578 | F=30672 | G=529616171.1 | H=19003.77377 | I=13423.29669 | J=149.9078308
+r48: A=7 days | B=23162 | C=35140 | D=1517.140143 | E=9.946375243 | F=27548 | G=494721274 | H=21359.1777 | I=14078.57923 | J=140.0308319
+r49: A=8-14 days | B=89413 | C=168607 | D=1885.710132 | E=47.72420292 | F=136367 | G=2606525012 | H=29151.52172 | I=15459.17436 | J=737.7767743
+r50: A=15-30 days | B=65491 | C=181671 | D=2773.984212 | E=51.42196747 | F=151432 | G=3399142564 | H=51902.43796 | I=18710.4302 | J=962.1271329
+r51: A=31-40 days | B=15083 | C=57560 | D=3816.216933 | E=16.29235512 | F=48773 | G=1246223814 | H=82624.39923 | I=21650.86542 | J=352.7435882
+r52: A=41-50 Days | B=8299 | C=36586 | D=4408.48295 | E=10.35566547 | F=31359 | G=853795324.6 | H=102879.3017 | I=23336.6677 | J=241.666724
+r53: A=51-60 Days | B=4963 | C=25015 | D=5040.298207 | E=7.0804945 | F=21578 | G=617088366.5 | H=124337.7728 | I=24668.73342 | J=174.6668313
+r54: A=61-90 Days | B=6538 | C=37360 | D=5714.285714 | E=10.57474613 | F=32209 | G=1023253069 | H=156508.5758 | I=27389.00077 | J=289.6317299
+r55: A=91 Days or More | B=3609 | C=22551 | D=6248.545303 | E=6.383059423 | F=19486 | G=769242121.8 | H=213145.5034 | I=34111.21998 | J=217.7339441
+r56: A=BLANK
+r57: A=¹The Original Medicare Part A enrollee count in 2023 was 34,059,184.
+r58: (blank)
+r59: A=NOTES:  IPPS is Inpatient Prospective Payment System; excludes data for short-stay hospita...
+r60: A=accumulating counts from all claims for the calendar year.  Counts and amounts may not sum...
+r61: (blank)
+r62: (blank)
+r63: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR INPT HOSP 9_CPS_05UIP": 44 rows x 16 columns (Excel rows 1..44, columns A..P)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare IPPS Short Stay Hospitals
+r2: A=Utilization and Program Payments for Original Medicare Beneficiaries, by Location and Beds...
+r3: A=by Medical School Affiliation, and Type of Control,
+r4: A=Calendar Year 2023
+r5: A=Location and Bedsize of Hospital, Medical School Affiliation and Type of Control | B=Total Persons With Utilization | C=Total Discharges | D=Total Days of Care | E=Total Days Per Person With Utilization | F=Total Days of Care Per Discharge | G=Total Days of Care per 1,000 Original Medicare Part A Enrollees¹ | H=Covered Days | I=Covered Days Per Person With Utilization | J=Covered Days Per Discharge | K=Covered Days Per 1,000 Original Medicare Part A Enrollees¹ | L=Total Program Payments | M=Program Payments Per Person With Utilization | N=Program Payments Per Discharge | O=Program Payments per Original Medicare Part A Enrollee¹ | P=Program Payments Per Covered Day
+r6: A=BLANK
+r7: A=Total All Hospitals | B=4582064 | C=7040631 | D=37115253 | E=8.100116672 | F=5.271580488 | G=1089.728197 | H=35153272 | I=7.671929506 | J=4.992914982 | K=1032.123147 | L=1.089582159e+11 | M=23779.28721 | N=15475.63221 | O=3199.084757 | P=3099.51847
+r8: A=1-99 Beds | B=369043 | C=469306 | D=1899082 | E=5.14596402 | F=4.046575156 | G=55.75829442 | H=1814892 | I=4.917833423 | J=3.867182606 | K=53.28642075 | L=5491107863 | M=14879.31722 | N=11700.48511 | O=161.2225322 | P=3025.583816
+r9: A=100-299 Beds | B=1653699 | C=2319849 | D=11169585 | E=6.754303534 | F=4.81478967 | G=327.9463494 | H=10643336 | I=6.43607815 | J=4.587943439 | K=312.4953332 | L=2.960969154e+10 | M=17905.12756 | N=12763.62882 | O=869.3599849 | P=2781.993497
+r10: A=300-499 Beds | B=1365100 | C=1919221 | D=10117979 | E=7.411895832 | F=5.271919701 | G=297.0705067 | H=9612494 | I=7.041604278 | J=5.008539402 | K=282.2291352 | L=2.845500081e+10 | M=20844.62736 | N=14826.32839 | O=835.4575067 | P=2960.209994
+r11: A=500 Beds or More | B=1644165 | C=2332255 | D=13928607 | E=8.47153844 | F=5.972162992 | G=408.9530468 | H=13082550 | I=7.956956875 | J=5.609399487 | K=384.1122578 | L=4.540241564e+10 | M=27614.26964 | N=19467.17475 | O=1333.044734 | P=3470.456115
+r12: A=BLANK
+r13: A=Total Urban Hospitals | B=4239260 | C=6480453 | D=34587329 | E=8.158812859 | F=5.337177663 | G=1015.506689 | H=32723331 | I=7.719113949 | J=5.049543759 | K=960.7784837 | L=1.024014313e+11 | M=24155.49679 | N=15801.58537 | O=3006.573259 | P=3129.309524
+r14: A=1-99 Beds | B=241181 | C=303136 | D=1226993 | E=5.087436407 | F=4.047665074 | G=36.0253201 | H=1167293 | I=4.83990447 | J=3.850723768 | K=34.2724889 | L=3650346463 | M=15135.29865 | N=12041.9431 | O=107.1765689 | P=3127.189543
+r15: A=100-299 Beds | B=1432826 | C=2008063 | D=9741142 | E=6.798551953 | F=4.851014137 | G=286.006325 | H=9265394 | I=6.466517218 | J=4.614095275 | K=272.0380513 | L=2.602362959e+10 | M=18162.4493 | N=12959.56829 | O=764.0708513 | P=2808.691091
+r16: A=300-499 Beds | B=1315868 | C=1850061 | D=9755892 | E=7.41403545 | F=5.273281259 | G=286.4393947 | H=9272022 | I=7.046316196 | J=5.011738532 | K=272.2326538 | L=2.750278071e+10 | M=20900.86598 | N=14865.87778 | O=807.4996996 | P=2966.211762
+r17: A=500 Beds or More | B=1635033 | C=2319193 | D=13863302 | E=8.478912658 | F=5.977640498 | G=407.0356491 | H=13018622 | I=7.962299232 | J=5.613427602 | K=382.2352897 | L=4.522467458e+10 | M=27659.79315 | N=19500.17725 | O=1327.826139 | P=3473.844972
+r18: A=BLANK
+r19: A=Total Rural Hospitals | B=411061 | C=560178 | D=2527924 | E=6.149753929 | F=4.512715601 | G=74.22150843 | H=2429941 | I=5.911387848 | J=4.337801556 | K=71.34466322 | L=6556784510 | M=15950.87958 | N=11704.82331 | O=192.5114983 | P=2698.330745
+r20: A=1-99 Beds | B=129518 | C=166170 | D=672089 | E=5.189155175 | F=4.044586869 | G=19.73297432 | H=647599 | I=5.000069488 | J=3.897207679 | K=19.01393184 | L=1840761400 | M=14212.39827 | N=11077.57959 | O=54.04596331 | P=2842.440152
+r21: A=100-299 Beds | B=228471 | C=311786 | D=1428443 | E=6.252185179 | F=4.581485378 | G=41.94002437 | H=1377942 | I=6.031146185 | J=4.419512101 | K=40.45728185 | L=3586061958 | M=15695.91746 | N=11501.6773 | O=105.2891336 | P=2602.476706
+r22: A=300-499 Beds | B=50090 | C=69160 | D=362087 | E=7.228728289 | F=5.235497397 | G=10.63111206 | H=340472 | I=6.797205031 | J=4.922961249 | K=9.996481468 | L=952220091.2 | M=19010.18349 | N=13768.36453 | O=27.95780709 | P=2796.764759
+r23: A=500 Beds or More | B=9506 | C=13062 | D=65305 | E=6.86987166 | F=4.99961721 | G=1.917397678 | H=63928 | I=6.72501578 | J=4.894196907 | K=1.876968054 | L=177741060.8 | M=18697.77623 | N=13607.49202 | O=5.218594248 | P=2780.331949
+r24: A=BLANK
+r25: A=Total All Hospitals | B=4582064 | C=7040631 | D=37115253 | E=8.100116672 | F=5.271580488 | G=1089.728197 | H=35153272 | I=7.671929506 | J=4.992914982 | K=1032.123147 | L=1.089582159e+11 | M=23779.28721 | N=15475.63221 | O=3199.084757 | P=3099.51847
+r26: A=Voluntary | B=3476823 | C=5206187 | D=27625794 | E=7.945700428 | F=5.306339169 | G=811.1114504 | H=26158501 | I=7.523679232 | J=5.024502769 | K=768.0307646 | L=8.098230419e+10 | M=23292.04109 | N=15555.01256 | O=2377.693622 | P=3095.831225
+r27: A=Proprietary | B=704146 | C=974883 | D=4745154 | E=6.738878017 | F=4.867408704 | G=139.320837 | H=4513189 | I=6.409450597 | J=4.629467331 | K=132.5101923 | L=1.290925337e+10 | M=18333.20557 | N=13241.84889 | O=379.024155 | P=2860.339634
+r28: A=Government | B=625811 | C=859561 | D=4744305 | E=7.581050828 | F=5.519451208 | G=139.2959098 | H=4481582 | I=7.161238777 | J=5.213803325 | K=131.58219 | L=1.50666583e+10 | M=24075.41302 | N=17528.31771 | O=442.3669801 | P=3361.906197
+r29: A=BLANK
+r30: A=Total Teaching Hospitals | B=2628045 | C=3843912 | D=21749817 | E=8.27604436 | F=5.658250501 | G=638.5889077 | H=20481717 | I=7.793518376 | J=5.32835221 | K=601.356659 | L=6.855235031e+10 | M=26084.92256 | N=17834.00617 | O=2012.742015 | P=3347.002124
+r31: A=Voluntary | B=2090784 | C=3030624 | D=17119529 | E=8.188090688 | F=5.648846244 | G=502.6406118 | H=16127295 | I=7.7135156 | J=5.321443703 | K=473.5079701 | L=5.337658137e+10 | M=25529.45755 | N=17612.40635 | O=1567.171475 | P=3309.704533
+r32: A=Proprietary | B=250893 | C=340954 | D=1755293 | E=6.996181639 | F=5.14818128 | G=51.53655497 | H=1659972 | I=6.616254738 | J=4.868609842 | K=48.73786783 | L=4986535857 | M=19875.14939 | N=14625.24521 | O=146.4079668 | P=3003.987933
+r33: A=Government | B=347910 | C=472334 | D=2874995 | E=8.263617027 | F=6.086783928 | G=84.41174087 | H=2694450 | I=7.744675347 | J=5.704543819 | K=79.11082113 | L=1.018923308e+10 | M=29286.97962 | N=21572.09322 | O=299.1625733 | P=3781.563243
+r34: A=BLANK
+r35: A=Total Non-Teaching Hospitals | B=2234149 | C=3196719 | D=15365436 | E=6.87753413 | F=4.806627045 | G=451.1392896 | H=14671555 | I=6.566954576 | J=4.589566678 | K=430.7664879 | L=4.040586554e+10 | M=18085.57332 | N=12639.79272 | O=1186.342742 | P=2754.027473
+r36: A=Voluntary | B=1546964 | C=2175563 | D=10506265 | E=6.791538135 | F=4.829216621 | G=308.4708386 | H=10031206 | I=6.484446955 | J=4.610855213 | K=294.5227945 | L=2.760572281e+10 | M=17845.09711 | N=12689.00179 | O=810.5221472 | P=2751.984438
+r37: A=Proprietary | B=466105 | C=633929 | D=2989861 | E=6.414565388 | F=4.716397262 | G=87.78428205 | H=2853217 | I=6.121403975 | J=4.500846309 | K=83.77232449 | L=7922717514 | M=16997.70977 | N=12497.79946 | O=232.6161881 | P=2776.766546
+r38: A=Government | B=287266 | C=387227 | D=1869310 | E=6.507244157 | F=4.827426806 | G=54.88416896 | H=1787132 | I=6.2211748 | J=4.615205035 | K=52.47136892 | L=4877425217 | M=16978.77653 | N=12595.77772 | O=143.2044068 | P=2729.191362
+r39: A=BLANK
+r40: A=¹The Original Medicare Part A enrollee count in 2023 was 34,059,184.
+r41: (blank)
+r42: A=NOTES:  IPPS is Inpatient Prospective Payment System; excludes data for short-stay hospita...
+r43: (blank)
+r44: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR INPT HOSP 10_CPS_05UIP": 43 rows x 5 columns (Excel rows 1..43, columns A..E)
+(whole sheet shown; Excel row numbers)
+r1: A=Special-Category Hospitals
+r2: A=Utilization, Program Payments, and Cost Sharing for Original Medicare Beneficiaries, by Ty...
+r3: A=Calendar Year 2023
+r4: A=Measures | B=Cancer Hospitals⁵ | C=Disproportionate Share Hospitals⁶ | D=Medicare Dependent Hospitals⁷ | E=Sole Community Hospitals⁸
+r5: A=Number of Hospitals¹ | B=11 | C=2514 | D=160 | E=441
+r6: A=Total Persons with Utilization | B=23366 | C=3936917 | D=80608 | E=436953
+r7: A=Total Discharges | B=36141 | C=5961637 | D=107363 | E=600843
+r8: A=Discharges per 1,000 Original Medicare Part A Enrollees² | B=1 | C=175 | D=3 | E=18
+r9: A=Total Days of Care | B=261726 | C=31764676 | D=454084 | E=2872690
+r10: A=Total Days of Care per 1,000 Original Medicare Part A Enrollees² | B=8 | C=933 | D=13 | E=84
+r11: A=Total Days of Care per Person with Utilization | B=11.2 | C=8.07 | D=5.63 | E=6.57
+r12: A=Total Days of Care per Discharge | B=7.24 | C=5.33 | D=4.23 | E=4.78
+r13: A=Covered Days of Care | B=252531 | C=30069316 | D=435159 | E=2738788
+r14: A=Covered Days of Care per 1,000 Original Medicare Part A Enrollees² | B=7 | C=883 | D=13 | E=80
+r15: A=Covered Days of Care per Person with Utilization | B=10.81 | C=7.64 | D=5.4 | E=6.27
+r16: A=Covered Days of Care per Discharge | B=6.99 | C=5.04 | D=4.05 | E=4.56
+r17: A=Total Program Payments | B=1046031182 | C=9.239757899e+10 | D=1208951379 | E=8440838342
+r18: A=Program Payments per Original Medicare Part A Enrollee² | B=31 | C=2713 | D=35 | E=248
+r19: A=Program Payments per Person with Utilization | B=44767 | C=23470 | D=14998 | E=19317
+r20: A=Program Payments per Discharge | B=28943 | C=15499 | D=11260 | E=14048
+r21: A=Program Payments per Covered Day | B=4142 | C=3073 | D=2778 | E=3082
+r22: A=Persons with Coinsurance³ | B=659 | C=47759 | D=543 | E=3144
+r23: A=Total Coinsurance Days | B=9130 | C=614614 | D=4228 | E=34661
+r24: A=Coinsurance Days per Person with Coinsurance | B=13.85 | C=12.87 | D=7.79 | E=11.02
+r25: A=Total Coinsurance Payments | B=7439278 | C=466588710.3 | D=3135025 | E=25067015
+r26: A=Coinsurance Payments per Person with Coinsurance | B=11289 | C=9770 | D=5774 | E=7973
+r27: A=Total Deductible Payments | B=31156952 | C=6626579462 | D=122218768.5 | E=693600339
+r28: A=Total Lifetime Reserve Days⁴ | B=4741 | C=277256 | D=1812 | E=14105
+r29: A=Persons with Lifetime Reserve Days | B=215 | C=13506 | D=130 | E=800
+r30: A=Discharged Dead | B=1416 | C=214320 | D=2990 | E=22920
+r31: (blank)
+r32: A=¹A count of hospitals with Medicare Part A fee-for-service beneficiary utilization.
+r33: A=²The Original Medicare Part A enrollee count in 2023 was 34,059,184.
+r34: A=³Persons with coinsurance represent persons with both utilization and coinsurance.
+r35: A=⁴Person counts represent persons with both utilization and lifetime reserve days.
+r36: A=⁵PPS-exempt dedicated cancer hospitals.
+r37: A=⁶Hospitals that treat a disproportionate share of certain low-income patients and receive ...
+r38: A=of these patients.
+r39: A=⁷The Medicare Dependent Hospital program is for small rural hospitals in which Medicare pa...
+r40: A=⁸The Sole-Community Hospital program is for hospitals located at least 35 miles from the n...
+r41: A=hospitals).
+r42: (blank)
+r43: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...

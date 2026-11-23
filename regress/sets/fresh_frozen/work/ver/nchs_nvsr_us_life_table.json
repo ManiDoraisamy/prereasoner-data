@@ -1,0 +1,35 @@
+{
+ "id": "nchs_nvsr_us_life_table",
+ "answers": [
+  {
+   "id": "nchs_nvsr_us_life_table#1",
+   "answer": "78.97103119",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\nrow = df[df[0].astype(str).str.strip() == '0-1']\nresult = float(row[6].values[0])"
+  },
+  {
+   "id": "nchs_nvsr_us_life_table#2",
+   "answer": "88-89",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\ndata = df.iloc[3:104].copy()\ndata[3] = pd.to_numeric(data[3], errors='coerce')\nmax_row = data.loc[data[3].idxmax()]\nresult = str(max_row[0]).strip()"
+  },
+  {
+   "id": "nchs_nvsr_us_life_table#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\nlx_80 = float(df[df[0].astype(str).str.strip() == '80-81'][2].values[0])\nresult = 'yes' if lx_80 > 50000 else 'no'"
+  },
+  {
+   "id": "nchs_nvsr_us_life_table#4",
+   "answer": "26",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\ndata = df.iloc[3:104].copy()\ndata[1] = pd.to_numeric(data[1], errors='coerce')\nresult = int((data[1] < 0.001).sum())"
+  },
+  {
+   "id": "nchs_nvsr_us_life_table#5",
+   "answer": "[\"10-11\", \"9-10\", \"11-12\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\ndata = df.iloc[3:104].copy()\ndata[1] = pd.to_numeric(data[1], errors='coerce')\nresult = data.nsmallest(3, 1)[0].astype(str).str.strip().tolist()"
+  },
+  {
+   "id": "nchs_nvsr_us_life_table#6",
+   "answer": "12.949572568",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_nvsr_us_life_table.xlsx', sheet_name='Table 1', header=None)\ne65 = float(df[df[0].astype(str).str.strip() == '65-66'][6].values[0])\ne85 = float(df[df[0].astype(str).str.strip() == '85-86'][6].values[0])\nresult = e65 - e85"
+  }
+ ]
+}

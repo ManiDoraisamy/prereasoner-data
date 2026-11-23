@@ -1,0 +1,48 @@
+{
+ "file": "cms_program_stats_hospice_2023.xlsx",
+ "sheets": [
+  {
+   "name": "Table of Contents",
+   "rows": 8,
+   "cols": 2,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HOSPICE 1_CPS_08UHS",
+   "rows": 37,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HOSPICE 2_CPS_08UHS",
+   "rows": 49,
+   "cols": 13,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HOSPICE 3_CPS_08UHS",
+   "rows": 80,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HOSPICE 4_CPS_08UHS",
+   "rows": 114,
+   "cols": 5,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HOSPICE 5_CPS_08UHS",
+   "rows": 77,
+   "cols": 5,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR HOSPICE 6_CPS_08UHS",
+   "rows": 25,
+   "cols": 9,
+   "shown_whole": true
+  }
+ ],
+ "chars": 33406
+}

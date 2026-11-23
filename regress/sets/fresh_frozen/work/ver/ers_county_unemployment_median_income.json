@@ -1,0 +1,35 @@
+{
+ "id": "ers_county_unemployment_median_income",
+ "answers": [
+  {
+   "id": "ers_county_unemployment_median_income#1",
+   "answer": "Washington",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_row = None\nfor i in range(10):\n    if 'FIPS_Code' in df.iloc[i].values:\n        header_row = i\n        break\ndf.columns = df.iloc[header_row]\ndf = df.iloc[header_row+1:].copy()\n\nal_income = float(df[df['Area_Name'] == 'Alabama']['Median_Household_Income_2022'].values[0])\nwa_income = float(df[df['Area_Name'] == 'Washington']['Median_Household_Income_2022'].values[0])\nresult = 'Washington' if wa_income > al_income else 'Alabama'"
+  },
+  {
+   "id": "ers_county_unemployment_median_income#2",
+   "answer": "2020",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_row = None\nfor i in range(10):\n    if 'FIPS_Code' in df.iloc[i].values:\n        header_row = i\n        break\ndf.columns = df.iloc[header_row]\ndf = df.iloc[header_row+1:].copy()\n\nus_row = df[df['FIPS_Code'] == '00000'].iloc[0]\nyears = [2019, 2020, 2021, 2022, 2023]\nrates = {str(y): float(us_row[f'Unemployment_rate_{y}']) for y in years}\nresult = max(rates, key=rates.get)"
+  },
+  {
+   "id": "ers_county_unemployment_median_income#3",
+   "answer": "1251",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_row = None\nfor i in range(10):\n    if 'FIPS_Code' in df.iloc[i].values:\n        header_row = i\n        break\ndf.columns = df.iloc[header_row]\ndf = df.iloc[header_row+1:].copy()\n\nresult = int((pd.to_numeric(df['Metro_2023'], errors='coerce') == 1).sum())"
+  },
+  {
+   "id": "ers_county_unemployment_median_income#4",
+   "answer": "71704",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_row = None\nfor i in range(10):\n    if 'FIPS_Code' in df.iloc[i].values:\n        header_row = i\n        break\ndf.columns = df.iloc[header_row]\ndf = df.iloc[header_row+1:].copy()\n\nrow = df[(df['State'] == 'AL') & (df['Area_Name'].str.startswith('Baldwin County'))].iloc[0]\nresult = int(row['Median_Household_Income_2022'])"
+  },
+  {
+   "id": "ers_county_unemployment_median_income#5",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_row = None\nfor i in range(10):\n    if 'FIPS_Code' in df.iloc[i].values:\n        header_row = i\n        break\ndf.columns = df.iloc[header_row]\ndf = df.iloc[header_row+1:].copy()\n\nus_row = df[df['FIPS_Code'] == '00000'].iloc[0]\nrate = float(us_row['Unemployment_rate_2023'])\nresult = 'yes' if rate > 4.0 else 'no'"
+  },
+  {
+   "id": "ers_county_unemployment_median_income#6",
+   "answer": "74755",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_row = None\nfor i in range(10):\n    if 'FIPS_Code' in df.iloc[i].values:\n        header_row = i\n        break\ndf.columns = df.iloc[header_row]\ndf = df.iloc[header_row+1:].copy()\n\nus_row = df[df['FIPS_Code'] == '00000'].iloc[0]\nresult = int(us_row['Median_Household_Income_2022'])"
+  }
+ ]
+}

@@ -1,0 +1,60 @@
+{
+ "id": "hhs_unaccompanied_children_program",
+ "file": "hhs_unaccompanied_children_program.csv",
+ "questions": [
+  {
+   "question": "How many children were reported in CBP custody on January 31, 2024?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "477",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_unaccompanied_children_program.csv')\nresult = int(df.loc[df['Date'] == 'January 31 2024', 'Children in CBP custody'].values[0])",
+   "qid": "hhs_unaccompanied_children_program#1"
+  },
+  {
+   "question": "On February 15, 2024, how many more children were apprehended and placed in CBP custody than were transferred out of CBP custody?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "61",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_unaccompanied_children_program.csv')\nrow = df[df['Date'] == 'February 15 2024'].iloc[0]\nresult = int(row['Children apprehended and placed in CBP custody*'] - row['Children transferred out of CBP custody'])",
+   "qid": "hhs_unaccompanied_children_program#2"
+  },
+  {
+   "question": "How many total children were discharged from HHS care across all recorded dates in March 2021?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "1693",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_unaccompanied_children_program.csv')\nmarch_2021 = df[df['Date'].str.contains('March') & df['Date'].str.contains('2021')]\nresult = int(march_2021['Children discharged from HHS Care'].sum())",
+   "qid": "hhs_unaccompanied_children_program#3"
+  },
+  {
+   "question": "On January 1, 2025, were there more children transferred out of CBP custody than children apprehended and placed in CBP custody?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_unaccompanied_children_program.csv')\nrow = df[df['Date'] == 'January 01 2025'].iloc[0]\ntransferred = row['Children transferred out of CBP custody']\napprehended = row['Children apprehended and placed in CBP custody*']\nresult = 'yes' if transferred > apprehended else 'no'",
+   "qid": "hhs_unaccompanied_children_program#4"
+  },
+  {
+   "question": "On what date in August 2021 was the highest number of children discharged from HHS care?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2021-08-19",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_unaccompanied_children_program.csv')\naug_2021 = df[df['Date'].str.contains('August') & df['Date'].str.contains('2021')].copy()\nmax_row = aug_2021.loc[aug_2021['Children discharged from HHS Care'].idxmax()]\nresult = pd.to_datetime(max_row['Date']).strftime('%Y-%m-%d')",
+   "qid": "hhs_unaccompanied_children_program#5"
+  },
+  {
+   "question": "In December 2024, on how many reporting dates did the number of children apprehended and placed in CBP custody exceed 200?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "6",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_unaccompanied_children_program.csv')\ndec_2024 = df[df['Date'].str.contains('December') & df['Date'].str.contains('2024')]\nresult = int((dec_2024['Children apprehended and placed in CBP custody*'] > 200).sum())",
+   "qid": "hhs_unaccompanied_children_program#6"
+  }
+ ]
+}

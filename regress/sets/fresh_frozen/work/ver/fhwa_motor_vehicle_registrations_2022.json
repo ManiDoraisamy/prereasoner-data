@@ -1,0 +1,35 @@
+{
+ "id": "fhwa_motor_vehicle_registrations_2022",
+ "answers": [
+  {
+   "id": "fhwa_motor_vehicle_registrations_2022#1",
+   "answer": "56923",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\n# Column A is state (index 0), Column F is Publicly Owned Buses (index 5)\nrow = df[df[0].astype(str).str.strip().str.startswith('Texas')].iloc[0]\nresult = int(row[5])"
+  },
+  {
+   "id": "fhwa_motor_vehicle_registrations_2022#2",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\n# States are rows 9 to 59 (0-indexed)\ndata = df.iloc[9:60].copy()\n# Clean state name (column 0) and total motor vehicles (column 15 / P)\ndata['clean_state'] = data[0].astype(str).str.replace(r'\\s*\\(\\d+\\)', '', regex=True).str.strip()\ndata['total_mv'] = pd.to_numeric(data[15])\ntop3 = data.sort_values(by='total_mv', ascending=False).head(3)\nresult = top3[0].tolist()"
+  },
+  {
+   "id": "fhwa_motor_vehicle_registrations_2022#3",
+   "answer": "Pennsylvania",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\n# Column J is Total Trucks (index 9)\nmi = df[df[0].astype(str).str.startswith('Michigan')].iloc[0]\npa = df[df[0].astype(str).str.startswith('Pennsylvania')].iloc[0]\nresult = pa[0] if float(pa[9]) > float(mi[9]) else mi[0]"
+  },
+  {
+   "id": "fhwa_motor_vehicle_registrations_2022#4",
+   "answer": "3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\n# Column M is Total Motorcycles (index 12)\ndata = df.iloc[9:60].copy()\ndata['total_motorcycles'] = pd.to_numeric(data[12])\nresult = int((data['total_motorcycles'] > 500000).sum())"
+  },
+  {
+   "id": "fhwa_motor_vehicle_registrations_2022#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\n# Column B is Private and Commercial Automobiles (index 1)\nfl = float(df[df[0].astype(str).str.startswith('Florida')].iloc[0][1])\ntx = float(df[df[0].astype(str).str.startswith('Texas')].iloc[0][1])\nresult = 'yes' if fl > tx else 'no'"
+  },
+  {
+   "id": "fhwa_motor_vehicle_registrations_2022#6",
+   "answer": "426855",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_vehicle_registrations_2022.xlsx', sheet_name='CY MV-1 Publish', header=None)\nne_states = ['Connecticut', 'Maine', 'Massachusetts', 'New Hampshire', 'Rhode Island', 'Vermont']\ndata = df.iloc[9:60].copy()\ndata['clean_state'] = data[0].astype(str).str.replace(r'\\s*\\(\\d+\\)', '', regex=True).str.strip()\nne_df = data[data['clean_state'].isin(ne_states)]\n# Column M is Total Motorcycles (index 12)\nresult = int(pd.to_numeric(ne_df[12]).sum())"
+  }
+ ]
+}

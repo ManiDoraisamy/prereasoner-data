@@ -1,0 +1,87 @@
+FILE census_county_population_estimates_2023.xlsx (Excel workbook) with 1 sheet(s): ["CO-EST2023-POP"]
+
+### Sheet "CO-EST2023-POP": 3155 rows x 6 columns (Excel rows 1..3155, columns A..F)
+merged cells: A2:F2, C3:F3, A3152:F3152, A1:F1, A3:A4, B3:B4, A3151:F3151, A3155:F3155, A3154:F3154, A3150:F3150, A3153:F3153
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=table with row headers in column A and column headers in rows 3 through 4 (leading dots in...
+r2: A=Annual Estimates of the Resident Population for Counties in the United States: April 1, 20...
+r3: A=Geographic Area | B=April 1, 2020 Estimates Base | C=Population Estimate (as of July 1)
+r4: C=2020 | D=2021 | E=2022 | F=2023
+r5: A=United States | B=331464948 | C=331526933 | D=332048977 | E=333271411 | F=334914895
+r6: A=.Autauga County, Alabama | B=58809 | C=58915 | D=59203 | E=59726 | F=60342
+r7: A=.Baldwin County, Alabama | B=231768 | C=233227 | D=239439 | E=246531 | F=253507
+r8: A=.Barbour County, Alabama | B=25229 | C=24969 | D=24533 | E=24700 | F=24585
+r9: A=.Bibb County, Alabama | B=22301 | C=22188 | D=22359 | E=21986 | F=21868
+r10: A=.Blount County, Alabama | B=59130 | C=59107 | D=59079 | E=59516 | F=59816
+r11: A=.Bullock County, Alabama | B=10360 | C=10229 | D=10143 | E=10143 | F=9897
+r12: A=.Butler County, Alabama | B=19046 | C=19025 | D=18890 | E=18668 | F=18382
+r13: A=.Calhoun County, Alabama | B=116441 | C=116243 | D=115678 | E=115780 | F=116429
+r14: A=.Chambers County, Alabama | B=34772 | C=34651 | D=34488 | E=34164 | F=34079
+r15: A=.Cherokee County, Alabama | B=24973 | C=24969 | D=25074 | E=25353 | F=25666
+r16: A=.Chilton County, Alabama | B=45011 | C=45057 | D=45259 | E=45848 | F=46431
+r17: A=.Choctaw County, Alabama | B=12669 | C=12626 | D=12548 | E=12431 | F=12252
+r18: A=.Clarke County, Alabama | B=23091 | C=22987 | D=22740 | E=22574 | F=22337
+r19: A=.Clay County, Alabama | B=14237 | C=14212 | D=14170 | E=14183 | F=14111
+r20: A=.Cleburne County, Alabama | B=15057 | C=15064 | D=15156 | E=15372 | F=15639
+r21: A=.Coffee County, Alabama | B=53459 | C=53549 | D=54199 | E=54840 | F=55643
+r22: A=.Colbert County, Alabama | B=57232 | C=57304 | D=57644 | E=57993 | F=58361
+r23: A=.Conecuh County, Alabama | B=11597 | C=11554 | D=11320 | E=11224 | F=11174
+r24: A=.Coosa County, Alabama | B=10378 | C=10335 | D=10314 | E=10307 | F=10268
+r25: A=.Covington County, Alabama | B=37563 | C=37506 | D=37570 | E=37603 | F=37952
+r26: A=.Crenshaw County, Alabama | B=13193 | C=13163 | D=13069 | E=13048 | F=13101
+r27: A=.Cullman County, Alabama | B=87857 | C=88136 | D=89639 | E=90663 | F=92016
+r28: A=.Dale County, Alabama | B=49322 | C=49257 | D=49395 | E=49495 | F=49871
+r29: A=.Dallas County, Alabama | B=38458 | C=38171 | D=37515 | E=36729 | F=36165
+r30: A=.DeKalb County, Alabama | B=71617 | C=71659 | D=71912 | E=72082 | F=72569
+r31: A=.Elmore County, Alabama | B=87980 | C=87861 | D=88789 | E=89600 | F=90441
+r32: A=.Escambia County, Alabama | B=36768 | C=36685 | D=36660 | E=36636 | F=36558
+r33: A=.Etowah County, Alabama | B=103434 | C=103453 | D=103010 | E=102903 | F=103241
+r34: A=.Fayette County, Alabama | B=16326 | C=16331 | D=16127 | E=16082 | F=15967
+r35: A=.Franklin County, Alabama | B=32112 | C=32078 | D=31998 | E=31910 | F=31802
+... sampled rows:
+r611: A=.Cass County, Illinois | B=13049 | C=12991 | D=12790 | E=12638 | F=12596
+r749: A=.Lake County, Indiana | B=498705 | C=498957 | D=499257 | E=499657 | F=500598
+r751: A=.Lawrence County, Indiana | B=45015 | C=45016 | D=45066 | E=45231 | F=45084
+r773: A=.Ripley County, Indiana | B=28985 | C=28980 | D=29015 | E=29030 | F=29227
+r948: A=.Lincoln County, Kansas | B=2940 | C=2949 | D=2910 | E=2911 | F=2920
+r972: A=.Rawlins County, Kansas | B=2566 | C=2572 | D=2558 | E=2523 | F=2463
+r1261: A=.Eaton County, Michigan | B=109165 | C=109175 | D=108908 | E=108854 | F=108820
+r1343: A=.Faribault County, Minnesota | B=13919 | C=13898 | D=13906 | E=13930 | F=13873
+r1376: A=.Olmsted County, Minnesota | B=162850 | C=163037 | D=163742 | E=164036 | F=164784
+r1379: A=.Pine County, Minnesota | B=28889 | C=28899 | D=29414 | E=29533 | F=30197
+r1477: A=.Tate County, Mississippi | B=28067 | C=28121 | D=28103 | E=28259 | F=28261
+r1564: A=.Nodaway County, Missouri | B=21235 | C=20997 | D=20983 | E=20715 | F=20695
+r1677: A=.Cherry County, Nebraska | B=5453 | C=5452 | D=5447 | E=5485 | F=5492
+r1684: A=.Dawes County, Nebraska | B=8200 | C=8156 | D=8149 | E=8252 | F=8133
+r1870: A=.Ontario County, New York | B=112485 | C=112363 | D=112661 | E=112481 | F=112494
+r1966: A=.Pamlico County, North Carolina | B=12270 | C=12300 | D=12342 | E=12234 | F=12423
+r2213: A=.Washita County, Oklahoma | B=10921 | C=10903 | D=10899 | E=10736 | F=10736
+r2220: A=.Columbia County, Oregon | B=52593 | C=52724 | D=53202 | E=53607 | F=53880
+r2269: A=.Clinton County, Pennsylvania | B=37444 | C=37370 | D=38015 | E=37776 | F=37607
+r2328: A=.Bamberg County, South Carolina | B=13313 | C=13260 | D=13117 | E=12950 | F=12974
+r2355: A=.Lexington County, South Carolina | B=293977 | C=295047 | D=300650 | E=305105 | F=309528
+r2466: A=.Grundy County, Tennessee | B=13528 | C=13543 | D=13587 | E=13779 | F=13955
+r2676: A=.Liberty County, Texas | B=91631 | C=92479 | D=97488 | E=102462 | F=108272
+r2744: A=.Starr County, Texas | B=65921 | C=65867 | D=65858 | E=65653 | F=65934
+r2903: A=.Richmond County, Virginia | B=8919 | C=8919 | D=9077 | E=9126 | F=9184
+r2976: A=.Jefferson County, Washington | B=32971 | C=33061 | D=33553 | E=33570 | F=33714
+r3002: A=.Boone County, West Virginia | B=21809 | C=21744 | D=21353 | E=20907 | F=20576
+r3015: A=.Hardy County, West Virginia | B=14295 | C=14239 | D=14143 | E=14168 | F=14251
+r3020: A=.Lewis County, West Virginia | B=17031 | C=17020 | D=16874 | E=16674 | F=16500
+r3025: A=.Marshall County, West Virginia | B=30583 | C=30494 | D=30164 | E=29667 | F=29405
+... last rows:
+r3148: A=.Washakie County, Wyoming | B=7679 | C=7657 | D=7719 | E=7724 | F=7710
+r3149: A=.Weston County, Wyoming | B=6838 | C=6816 | D=6746 | E=6858 | F=6808
+r3150: A=Vintage 2023 data products are associated with Data Management System projects P-6000042, ...
+r3151: A=Note: The estimates are developed from a base that integrates the 2020 Census, Vintage 202...
+r3152: A=Suggested Citation:
+r3153: A=Annual Estimates of the Resident Population for Counties in the United States: April 1, 20...
+r3154: A=Source: U.S. Census Bureau, Population Division
+r3155: A=Release Date: March 2024
+... column profiles (data rows below Excel row 1):
+  A [table with row headers in column A and column headers in rows 3 through 4 (leading dots in...]: {"non_empty": 3153, "distinct": 3152, "top_values": {"Annual Estimates of the Resident Population for Counties in the United States: April 1, 20...": 2, ".Abbeville County, South Carolina": 1, ".Acadia Parish, Louisiana": 1, ".Accomack County, Virginia": 1, ".Ada County, Idaho": 1, ".Adair County, Iowa": 1}}
+  B []: {"non_empty": 3146, "numeric": 3145, "min": "63", "max": "331464948", "sum": "662929896", "distinct": 3089, "top_values": {"10169": 2, "10798": 2, "10830": 2, "11638": 2, "11936": 2, "12011": 2}}
+  C []: {"non_empty": 3147, "numeric": 3146, "min": "65", "max": "331526933", "sum": "663055886", "distinct": 3081, "top_values": {"9009": 3, "10229": 2, "105912": 2, "10792": 2, "10903": 2, "11735": 2}}
+  D []: {"non_empty": 3146, "numeric": 3146, "min": "54", "max": "332048977", "sum": "664099975", "distinct": 3094, "top_values": {"10052": 2, "10815": 2, "11054": 2, "12703": 2, "12852": 2, "13117": 2}}
+  E []: {"non_empty": 3146, "numeric": 3146, "min": "44", "max": "333271411", "sum": "666544844", "distinct": 3084, "top_values": {"28804": 3, "10139": 2, "10962": 2, "1218": 2, "12355": 2, "13343": 2}}
+  F []: {"non_empty": 3146, "numeric": 3146, "min": "43", "max": "334914895", "sum": "669831813", "distinct": 3086, "top_values": {"25619": 3, "8810": 3, "10489": 2, "1141": 2, "11751": 2, "13000": 2}}

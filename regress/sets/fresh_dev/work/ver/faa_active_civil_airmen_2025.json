@@ -1,0 +1,35 @@
+{
+ "id": "faa_active_civil_airmen_2025",
+ "answers": [
+  {
+   "id": "faa_active_civil_airmen_2025#1",
+   "answer": "69.73764491",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T11', header=None)\nrow_2025 = df[df[1] == 2025]\n# Percent of Total in column E (index 4)\nval = float(row_2025[4].values[0])\n# Typically percentage can be expressed as 69.73764491% or 0.6973764491, let's check format: 'What percentage of non-student... held...'\nresult = val * 100"
+  },
+  {
+   "id": "faa_active_civil_airmen_2025#2",
+   "answer": "[\"Tennessee\", \"Missouri\", \"Kentucky\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T5', header=None)\n# Central region states are between row 11 and 16 (index 10 to 15)\ncentral_states = ['Iowa', 'Kansas', 'Kentucky', 'Missouri', 'Nebraska', 'Tennessee']\nsub_df = df[df[0].isin(central_states)][[0, 1]].copy()\nsub_df[1] = pd.to_numeric(sub_df[1])\ntop3 = sub_df.sort_values(by=1, ascending=False).head(3)\nresult = top3[0].tolist()"
+  },
+  {
+   "id": "faa_active_civil_airmen_2025#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T7', header=None)\n# Column B (index 1) is 2025\nprivate_total = df[df[0].str.strip().str.startswith('Private--Total', na=False)][1].values[0]\ncomm_total = df[df[0].str.strip().str.startswith('Commercial--Total', na=False)][1].values[0]\nresult = 'yes' if float(comm_total) > float(private_total) else 'no'"
+  },
+  {
+   "id": "faa_active_civil_airmen_2025#4",
+   "answer": "251349",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T2', header=None)\nrow = df[df[0].str.strip() == 'Flight Attendant']\nresult = int(row[1].values[0])"
+  },
+  {
+   "id": "faa_active_civil_airmen_2025#5",
+   "answer": "Southern",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T9', header=None)\n# Row 7 (index 6) has Total--All Pilots instrument ratings by region\nheaders = df.iloc[5].tolist()\ntotals = df.iloc[6].tolist()\n# Columns C to J are FAA regions (Alaskan, Central, Eastern, Great Lakes, Northwest Mountain, Southern, Southwest, Western-Pacific)\nregion_data = list(zip(headers[2:10], totals[2:10]))\nregion_data.sort(key=lambda x: float(x[1]), reverse=True)\nresult = region_data[0][0]"
+  },
+  {
+   "id": "faa_active_civil_airmen_2025#6",
+   "answer": "172231",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('faa_active_civil_airmen_2025.xlsx', sheet_name='T12', header=None)\n# Age groups for 2025 are in column A (index 0) and Total in column B (index 1)\nage_groups = ['60-64', '65-69', '70-74', '75-79', '80 and over']\nsub_df = df[df[0].astype(str).str.strip().isin(age_groups)]\nresult = int(sub_df[1].astype(int).sum())"
+  }
+ ]
+}

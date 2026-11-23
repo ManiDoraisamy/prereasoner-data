@@ -1,0 +1,60 @@
+{
+ "id": "nces_digest_graduation_rates_by_state",
+ "file": "nces_digest_graduation_rates_by_state.xlsx",
+ "questions": [
+  {
+   "question": "What was the overall 4-year public high school graduation rate for California in the 2021-22 school year?",
+   "sheet": "Digest 2023 Table 219.46",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "87",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\nca_row = df[df[0].astype(str).str.strip().str.startswith('California')].iloc[0]\nresult = float(ca_row[15])",
+   "qid": "nces_digest_graduation_rates_by_state#1"
+  },
+  {
+   "question": "In the 2021-22 school year, which state achieved a higher graduation rate for English learners: Texas or California?",
+   "sheet": "Digest 2023 Table 219.46",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\ntx_val = float(df[df[0].astype(str).str.strip() == 'Texas'].iloc[0, 42])\nca_val = float(df[df[0].astype(str).str.strip() == 'California'].iloc[0, 42])\nresult = 'Texas' if tx_val > ca_val else 'California'",
+   "qid": "nces_digest_graduation_rates_by_state#2"
+  },
+  {
+   "question": "Which three states had the highest overall public high school graduation rates in the 2021-22 school year?",
+   "sheet": "Digest 2023 Table 219.46",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"West Virginia\", \"Tennessee\", \"Wisconsin\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\nstate_df = df.iloc[7:58, [0, 15]].copy()\nstate_df[0] = state_df[0].astype(str).str.replace(r'\\\\\\d+', '', regex=True).str.strip()\nstate_df[15] = pd.to_numeric(state_df[15], errors='coerce')\ntop3 = state_df.dropna().sort_values(by=15, ascending=False).head(3)\nresult = list(top3[0])",
+   "qid": "nces_digest_graduation_rates_by_state#3"
+  },
+  {
+   "question": "How many states (excluding the District of Columbia and other jurisdictions) had an overall public high school graduation rate of 90 percent or higher in the 2021-22 school year?",
+   "sheet": "Digest 2023 Table 219.46",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "5",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\nstate_df = df.iloc[7:58, [0, 15]].copy()\nstate_df = state_df[~state_df[0].astype(str).str.contains('District of Columbia')]\nvals = pd.to_numeric(state_df[15], errors='coerce')\nresult = int((vals >= 90).sum())",
+   "qid": "nces_digest_graduation_rates_by_state#4"
+  },
+  {
+   "question": "Did the national overall public high school graduation rate increase from the 2020-21 school year to the 2021-22 school year?",
+   "sheet": "Digest 2023 Table 219.46",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'United States'].iloc[0]\nrate_20_21 = float(us_row[13])\nrate_21_22 = float(us_row[15])\nresult = 'yes' if rate_21_22 > rate_20_21 else 'no'",
+   "qid": "nces_digest_graduation_rates_by_state#5"
+  },
+  {
+   "question": "What was the graduation rate for economically disadvantaged public high school students in Florida during the 2021-22 school year?",
+   "sheet": "Digest 2023 Table 219.46",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "83.2",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_graduation_rates_by_state.xlsx', sheet_name='Digest 2023 Table 219.46', header=None)\nfl_row = df[df[0].astype(str).str.strip() == 'Florida'].iloc[0]\nresult = float(fl_row[44])",
+   "qid": "nces_digest_graduation_rates_by_state#6"
+  }
+ ]
+}

@@ -1,0 +1,56 @@
+{
+ "dataset": "eval-formesign-assets-xls",
+ "kind": "own",
+ "uploads": [
+  {
+   "name": "assets",
+   "columns": [
+    "Ref No.",
+    "Description",
+    "Identification",
+    "Date Acquired",
+    "Purchase Cost",
+    "Value",
+    "Custodian",
+    "Disposal/Discharge"
+   ],
+   "rows": 3
+  }
+ ],
+ "normalized": [
+  {
+   "name": "assets",
+   "upload": "assets",
+   "columns": [
+    "Ref No.",
+    "Description",
+    "Identification",
+    "Date Acquired",
+    "Purchase Cost",
+    "Value",
+    "Custodian",
+    "Disposal/Discharge"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [],
+ "entity_columns": [],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 0,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 0,
+  "country": 209,
+  "exchange_rate": 0,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 3.1
+}

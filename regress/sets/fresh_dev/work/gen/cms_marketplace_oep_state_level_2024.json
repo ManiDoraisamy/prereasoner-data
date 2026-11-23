@@ -1,0 +1,115 @@
+{
+ "id": "cms_marketplace_oep_state_level_2024",
+ "file": "cms_marketplace_oep_state_level_2024.xlsx",
+ "questions": [
+  {
+   "question": "In the 2024 open enrollment period, how many individuals were determined eligible to enroll in a Qualified Health Plan in North Carolina?",
+   "sheet": "(1) Apps for QHP Coverage",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1098264",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(1) Apps for QHP Coverage')\nnc_row = df[df['State Name'] == 'North Carolina']\nresult = int(nc_row['Individuals Determined Eligible to Enroll in a Qualified Healthcare Plan (QHP)'].values[0])",
+   "qid": "cms_marketplace_oep_state_level_2024#1"
+  },
+  {
+   "question": "Across all states using the HealthCare.gov platform, how many total new consumers selected a Marketplace plan for 2024?",
+   "sheet": "(2) by Enrollment Status",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "4226461",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(2) by Enrollment Status')\ntotal_hc = df[(df['State Name'] == 'Total') & (df['Platform'] == 'HC.gov')]\nresult = int(total_hc['New Consumers'].values[0])",
+   "qid": "cms_marketplace_oep_state_level_2024#2"
+  },
+  {
+   "question": "Which three state-based marketplace states had the highest number of consumers selecting a standalone dental plan during the 2024 open enrollment period?",
+   "sheet": "(9) Dental",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Massachusetts\", \"New Jersey\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(9) Dental')\nsbm_df = df[(df['Platform'] == 'SBM') & (df['State Name'] != 'Total')]\ntop3 = sbm_df.sort_values(by='Number of Consumers with a Marketplace Standalone Dental Plan (SADP) Selection', ascending=False).head(3)\nresult = top3['State Name'].tolist()",
+   "qid": "cms_marketplace_oep_state_level_2024#3"
+  },
+  {
+   "question": "Did Texas have more consumers enrolled in Silver tier plans than Florida during the 2024 open enrollment period?",
+   "sheet": "(7) by Metal Level",
+   "kind": "comparison",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(7) by Metal Level')\nfl_silver = int(df[df['State Name'] == 'Florida']['Silver'].values[0])\ntx_silver = int(df[df['State Name'] == 'Texas']['Silver'].values[0])\nresult = 'yes' if tx_silver > fl_silver else 'no'",
+   "qid": "cms_marketplace_oep_state_level_2024#4"
+  },
+  {
+   "question": "How many state-based marketplace states had at least 100,000 consumers with household incomes at or below 150% of the federal poverty level in 2024?",
+   "sheet": "(8) by FPL",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(8) by FPL')\nsbm_states = df[(df['Platform'] == 'SBM') & (df['State Name'] != 'Total')]\nresult = int((sbm_states['\u2265100% to \u2264150% of FPL'] >= 100000).sum())",
+   "qid": "cms_marketplace_oep_state_level_2024#5"
+  },
+  {
+   "question": "What was the total number of female enrollees in the Basic Health Program across both participating states in 2024?",
+   "sheet": "(10) BHP",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "671527",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(10) BHP')\nstate_rows = df[df['State Name'].isin(['Minnesota', 'New York'])]\nresult = int(state_rows['Female'].sum())",
+   "qid": "cms_marketplace_oep_state_level_2024#6"
+  },
+  {
+   "question": "What was the average monthly premium before tax credits among Marketplace plan selections in Alaska for 2024?",
+   "sheet": "(5) by Premium and FA",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "967",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(5) by Premium and FA')\nak_row = df[df['State Name'] == 'Alaska']\nresult = int(ak_row['Average Premium'].values[0])",
+   "qid": "cms_marketplace_oep_state_level_2024#7"
+  },
+  {
+   "question": "Across the states using the HealthCare.gov platform, how many active re-enrollees chose to switch plans during the 2024 open enrollment period?",
+   "sheet": "(3) by Switching Status",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "4682452",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(3) by Switching Status')\ntotal_row = df[df['State Name'] == 'Total']\nresult = int(total_row['Active Re-enrollees who Switched Plans'].values[0])",
+   "qid": "cms_marketplace_oep_state_level_2024#8"
+  },
+  {
+   "question": "In the 2024 open enrollment period, did Georgia have more rural plan selections than North Carolina?",
+   "sheet": "(6) by Demographics",
+   "kind": "comparison",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(6) by Demographics')\nga_rural = df.loc[df['State Name'] == 'Georgia', 'Rural'].values[0]\nnc_rural = df.loc[df['State Name'] == 'North Carolina', 'Rural'].values[0]\nresult = 'yes' if ga_rural > nc_rural else 'no'",
+   "qid": "cms_marketplace_oep_state_level_2024#9"
+  },
+  {
+   "question": "Which four states on HealthCare.gov had the largest number of consumers selecting a Gold tier plan for 2024?",
+   "sheet": "(7) by Metal Level",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Texas\", \"Florida\", \"Georgia\", \"North Carolina\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(7) by Metal Level')\nhc_df = df[(df['Platform'] == 'HC.gov') & (df['State Name'] != 'Total')].copy()\nhc_df['Gold'] = pd.to_numeric(hc_df['Gold'], errors='coerce')\ntop4 = hc_df.sort_values(by='Gold', ascending=False).head(4)['State Name'].tolist()\nresult = top4",
+   "qid": "cms_marketplace_oep_state_level_2024#10"
+  },
+  {
+   "question": "How many states using the HealthCare.gov platform had more than 100,000 consumers eligible to pay $10 or less per month after tax credits in 2024?",
+   "sheet": "(5) by Premium and FA",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "13",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(5) by Premium and FA')\nhc_states = df[(df['Platform'] == 'HC.gov') & (df['State Name'] != 'Total')]\ncount = (hc_states['Consumers with a Premium \u2264$10 after APTC'] > 100000).sum()\nresult = int(count)",
+   "qid": "cms_marketplace_oep_state_level_2024#11"
+  },
+  {
+   "question": "Across all reporting states, how many total consumers with Marketplace plan selections were aged 65 and older during the 2024 open enrollment period?",
+   "sheet": "(6) by Demographics",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "357890",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_marketplace_oep_state_level_2024.xlsx', sheet_name='(6) by Demographics')\ntotal_all = df[(df['State Name'] == 'Total') & (df['Platform'] == 'All')]\nresult = int(total_all['Age \u2265 65'].values[0])",
+   "qid": "cms_marketplace_oep_state_level_2024#12"
+  }
+ ],
+ "rounds": 2
+}

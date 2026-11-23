@@ -1,0 +1,36 @@
+{
+ "file": "ers_food_availability_red_meat_poultry_fish.xlsx",
+ "sheets": [
+  {
+   "name": "TableOfContents",
+   "rows": 7,
+   "cols": 2,
+   "shown_whole": true
+  },
+  {
+   "name": "Carcass",
+   "rows": 122,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "Retail",
+   "rows": 124,
+   "cols": 10,
+   "shown_whole": true
+  },
+  {
+   "name": "Boneless",
+   "rows": 124,
+   "cols": 12,
+   "shown_whole": true
+  },
+  {
+   "name": "Leading",
+   "rows": 122,
+   "cols": 6,
+   "shown_whole": true
+  }
+ ],
+ "chars": 69443
+}

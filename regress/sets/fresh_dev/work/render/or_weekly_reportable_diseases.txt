@@ -1,0 +1,91 @@
+FILE or_weekly_reportable_diseases.csv (CSV). pandas.read_csv gives 11932 data rows x 12 columns.
+Columns and pandas dtypes: FirstDateOfWeek (str); LastDateOfWeek (str); MMWRweek (int64); MMWRyear (int64); Disease (str); Place_name (str); Cases (int64); ReportWeekBegin (str); ReportWeekEnd (str); ReportWeek (int64); ReportYear (int64); RunDate (str)
+(sheet too large to show whole; r1 is the CSV header line; r2 is pandas index 0; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=FirstDateOfWeek | B=LastDateOfWeek | C=MMWRweek | D=MMWRyear | E=Disease | F=Place_name | G=Cases | H=ReportWeekBegin | I=ReportWeekEnd | J=ReportWeek | K=ReportYear | L=RunDate
+r2: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=Congenital syphilis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r3: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=Cryptosporidiosis | F=Oregon | G=2 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r4: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=Gonorrhea | F=Oregon | G=141 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r5: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=Hepatitis B (acute) | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r6: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=HUS | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r7: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=Listeriosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r8: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=Mpox | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r9: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=Pertussis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r10: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=Pesticide Poisoning | F=Oregon | G=2 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11: A=2020-11-01 | B=2020-11-07 | C=45 | D=2020 | E=Vibriosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r12: A=2020-11-08 | B=2020-11-14 | C=46 | D=2020 | E=Campylobacteriosis | F=Oregon | G=8 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r13: A=2020-11-08 | B=2020-11-14 | C=46 | D=2020 | E=Chlamydia | F=Oregon | G=381 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r14: A=2020-11-08 | B=2020-11-14 | C=46 | D=2020 | E=Early syphilis | F=Oregon | G=29 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r15: A=2020-11-08 | B=2020-11-14 | C=46 | D=2020 | E=Haemophilus influenzae | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r16: A=2020-11-08 | B=2020-11-14 | C=46 | D=2020 | E=Hepatitis C (chronic) | F=Oregon | G=58 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r17: A=2020-11-08 | B=2020-11-14 | C=46 | D=2020 | E=Malaria | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r18: A=2020-11-08 | B=2020-11-14 | C=46 | D=2020 | E=Measles | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r19: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Coccidioidomycosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r20: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=CRE | F=Oregon | G=3 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r21: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Cryptococcosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r22: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Giardiasis | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r23: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Gonorrhea | F=Oregon | G=128 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r24: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Hepatitis A | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r25: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Lead Poisoning - Child | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r26: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Mumps | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r27: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Salmonellosis | F=Oregon | G=6 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r28: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Tuberculosis | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r29: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Vibriosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r30: A=2020-11-15 | B=2020-11-21 | C=47 | D=2020 | E=Yersiniosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r31: A=2020-11-22 | B=2020-11-28 | C=48 | D=2020 | E=Hepatitis B (chronic) | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r32: A=2020-11-22 | B=2020-11-28 | C=48 | D=2020 | E=Hepatitis C (acute) | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r33: A=2020-11-22 | B=2020-11-28 | C=48 | D=2020 | E=Lead Poisoning - Adult | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r34: A=2020-11-22 | B=2020-11-28 | C=48 | D=2020 | E=Legionellosis | F=Oregon | G=3 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r35: A=2020-11-22 | B=2020-11-28 | C=48 | D=2020 | E=Lyme disease | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+... sampled rows:
+r2337: A=2022-01-23 | B=2022-01-29 | C=4 | D=2022 | E=Extrapulmonary NTM | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r2888: A=2022-07-24 | B=2022-07-30 | C=30 | D=2022 | E=Pesticide Poisoning | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r2896: A=2021-11-28 | B=2021-12-04 | C=48 | D=2021 | E=Measles | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r2985: A=2022-05-08 | B=2022-05-14 | C=19 | D=2022 | E=Lead Poisoning - Adult | F=Oregon | G=5 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r3686: A=2022-07-10 | B=2022-07-16 | C=28 | D=2022 | E=Lyme disease | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r3782: A=2022-12-04 | B=2022-12-10 | C=49 | D=2022 | E=Legionellosis | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r4937: A=2023-03-12 | B=2023-03-18 | C=11 | D=2023 | E=Malaria | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r5264: A=2023-10-01 | B=2023-10-07 | C=40 | D=2023 | E=Early syphilis | F=Oregon | G=13 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r5396: A=2023-07-09 | B=2023-07-15 | C=28 | D=2023 | E=Cryptococcosis | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r5408: A=2023-07-16 | B=2023-07-22 | C=29 | D=2023 | E=Lead Poisoning - Adult | F=Oregon | G=3 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r5801: A=2023-08-13 | B=2023-08-19 | C=33 | D=2023 | E=Meningococcal disease | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r6149: A=2023-12-03 | B=2023-12-09 | C=49 | D=2023 | E=Mpox | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r6601: A=2023-12-03 | B=2023-12-09 | C=49 | D=2023 | E=Listeriosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r6631: A=2023-12-24 | B=2023-12-30 | C=52 | D=2023 | E=Meningococcal disease | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r7372: A=2024-05-05 | B=2024-05-11 | C=19 | D=2024 | E=Giardiasis | F=Oregon | G=7 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r7756: A=2024-11-03 | B=2024-11-09 | C=45 | D=2024 | E=Yersiniosis | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r8176: A=2024-11-17 | B=2024-11-23 | C=47 | D=2024 | E=Tuberculosis | F=Oregon | G=3 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r8745: A=2025-01-26 | B=2025-02-01 | C=5 | D=2025 | E=Hepatitis C (acute) | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r8772: A=2025-02-09 | B=2025-02-15 | C=7 | D=2025 | E=Yersiniosis | F=Oregon | G=4 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r8971: A=2025-03-16 | B=2025-03-22 | C=12 | D=2025 | E=Vibriosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r9205: A=2025-05-25 | B=2025-05-31 | C=22 | D=2025 | E=Cryptococcosis | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r9288: A=2025-05-04 | B=2025-05-10 | C=19 | D=2025 | E=Tuberculosis | F=Oregon | G=2 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r9314: A=2025-05-25 | B=2025-05-31 | C=22 | D=2025 | E=Listeriosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r9758: A=2025-08-03 | B=2025-08-09 | C=32 | D=2025 | E=Lyme disease | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r10597: A=2026-01-25 | B=2026-01-31 | C=4 | D=2026 | E=Legionellosis | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r10869: A=2026-04-12 | B=2026-04-18 | C=15 | D=2026 | E=Mpox | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11252: A=2026-06-21 | B=2026-06-27 | C=25 | D=2026 | E=Lyme disease | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11504: A=2026-09-27 | B=2026-10-03 | C=39 | D=2026 | E=E. coli (STEC) | F=Oregon | G=7 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11796: A=2026-08-23 | B=2026-08-29 | C=34 | D=2026 | E=HIV | F=Oregon | G=4 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11901: A=2026-10-11 | B=2026-10-17 | C=41 | D=2026 | E=Lyme disease | F=Oregon | G=1 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+... last rows:
+r11926: A=2026-11-01 | B=2026-11-07 | C=44 | D=2026 | E=Chlamydia | F=Oregon | G=248 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11927: A=2026-11-01 | B=2026-11-07 | C=44 | D=2026 | E=E. coli (STEC) | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11928: A=2026-11-01 | B=2026-11-07 | C=44 | D=2026 | E=Early syphilis | F=Oregon | G=6 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11929: A=2026-11-01 | B=2026-11-07 | C=44 | D=2026 | E=Extrapulmonary NTM | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11930: A=2026-11-01 | B=2026-11-07 | C=44 | D=2026 | E=Giardiasis | F=Oregon | G=4 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11931: A=2026-11-01 | B=2026-11-07 | C=44 | D=2026 | E=Hepatitis C (chronic) | F=Oregon | G=60 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11932: A=2026-11-01 | B=2026-11-07 | C=44 | D=2026 | E=Malaria | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+r11933: A=2026-11-01 | B=2026-11-07 | C=44 | D=2026 | E=Measles | F=Oregon | G=0 | H=2026-11-01 | I=2026-11-07 | J=44 | K=2026 | L=2026-11-10
+... column profiles (data rows below Excel row 1):
+  A [FirstDateOfWeek]: {"non_empty": 11932, "distinct": 314, "top_values": {"2020-11-01": 38, "2020-11-08": 38, "2020-11-15": 38, "2020-11-22": 38, "2020-11-29": 38, "2020-12-06": 38}}
+  B [LastDateOfWeek]: {"non_empty": 11932, "distinct": 314, "top_values": {"2020-11-07": 38, "2020-11-14": 38, "2020-11-21": 38, "2020-11-28": 38, "2020-12-05": 38, "2020-12-12": 38}}
+  C [MMWRweek]: {"non_empty": 11932, "numeric": 11932, "min": "1", "max": "53", "sum": "318212", "distinct": 53, "top_values": {"1": 228, "10": 228, "11": 228, "12": 228, "13": 228, "14": 228}}
+  D [MMWRyear]: {"non_empty": 11932, "numeric": 11932, "min": "2020", "max": "2026", "sum": "24142502", "distinct": 7, "value_counts": {"2025": 2014, "2021": 1976, "2022": 1976, "2023": 1976, "2024": 1976, "2026": 1672, "2020": 342}}
+  E [Disease]: {"non_empty": 11932, "distinct": 38, "top_values": {"CRE": 314, "Campylobacteriosis": 314, "Chlamydia": 314, "Coccidioidomycosis": 314, "Congenital syphilis": 314, "Cryptococcosis": 314}}
+  F [Place_name]: {"non_empty": 11932, "distinct": 1, "value_counts": {"Oregon": 11932}}
+  G [Cases]: {"non_empty": 11932, "numeric": 11932, "min": "0", "max": "382", "sum": "171262", "distinct": 284, "top_values": {"0": 4450, "1": 1853, "2": 1058, "3": 727, "4": 492, "5": 376}}
+  H [ReportWeekBegin]: {"non_empty": 11932, "distinct": 1, "value_counts": {"2026-11-01": 11932}}
+  I [ReportWeekEnd]: {"non_empty": 11932, "distinct": 1, "value_counts": {"2026-11-07": 11932}}
+  J [ReportWeek]: {"non_empty": 11932, "numeric": 11932, "min": "44", "max": "44", "sum": "525008", "distinct": 1, "value_counts": {"44": 11932}}
+  K [ReportYear]: {"non_empty": 11932, "numeric": 11932, "min": "2026", "max": "2026", "sum": "24174232", "distinct": 1, "value_counts": {"2026": 11932}}
+  L [RunDate]: {"non_empty": 11932, "distinct": 1, "value_counts": {"2026-11-10": 11932}}

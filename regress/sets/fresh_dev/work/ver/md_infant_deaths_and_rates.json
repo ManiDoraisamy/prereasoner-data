@@ -1,0 +1,35 @@
+{
+ "id": "md_infant_deaths_and_rates",
+ "answers": [
+  {
+   "id": "md_infant_deaths_and_rates#1",
+   "answer": "458",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('md_infant_deaths_and_rates.csv')\nresult = int(df.loc[df['Year'] == 2012, 'Infant Deaths (Total)'].iloc[0])"
+  },
+  {
+   "id": "md_infant_deaths_and_rates#2",
+   "answer": "2012",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('md_infant_deaths_and_rates.csv')\nmin_row = df.loc[df['Infant Mortality Rate (Total)'].idxmin()]\nresult = str(int(min_row['Year']))"
+  },
+  {
+   "id": "md_infant_deaths_and_rates#3",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('md_infant_deaths_and_rates.csv')\nsub = df[(df['Year'] >= 2000) & (df['Year'] <= 2015)]\nresult = 'yes' if (sub['Infant Deaths (Total)'] > 700).any() else 'no'"
+  },
+  {
+   "id": "md_infant_deaths_and_rates#4",
+   "answer": "White infants",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('md_infant_deaths_and_rates.csv')\nsub = df[(df['Year'] >= 1919) & (df['Year'] <= 2015)]\nwhite_total = sub['Infant Deaths (White)'].sum()\nblack_total = sub['Infant Deaths (Black)'].sum()\nresult = 'White infants' if white_total > black_total else 'Black infants'"
+  },
+  {
+   "id": "md_infant_deaths_and_rates#5",
+   "answer": "1349",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('md_infant_deaths_and_rates.csv')\nsub = df[(df['Year'] >= 2010) & (df['Year'] <= 2014)]\nresult = int(sub['Infant Deaths (Black)'].sum())"
+  },
+  {
+   "id": "md_infant_deaths_and_rates#6",
+   "answer": "[1907, 1904, 1906]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('md_infant_deaths_and_rates.csv')\ntop3 = df.nlargest(3, 'Infant Mortality Rate (Total)')['Year'].tolist()\nresult = [int(y) for y in top3]"
+  }
+ ]
+}

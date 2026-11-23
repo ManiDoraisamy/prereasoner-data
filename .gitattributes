@@ -8,3 +8,8 @@
 *.png binary
 *.jpg binary
 *.woff2 binary
+*.gz binary
+*.xlsx binary
+*.sqlite binary
+*.parquet binary
+regress/sets/**/workbooks/** -text

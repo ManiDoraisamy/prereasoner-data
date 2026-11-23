@@ -1,0 +1,60 @@
+{
+ "id": "census_cps_median_household_income_by_state",
+ "file": "census_cps_median_household_income_by_state.xlsx",
+ "questions": [
+  {
+   "question": "What was Maryland's median household income in 2025?",
+   "sheet": "h08",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "116300",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\nmd_row = df[df[0] == 'Maryland'].iloc[0]\nresult = int(md_row[1])",
+   "qid": "census_cps_median_household_income_by_state#1"
+  },
+  {
+   "question": "Between California and Massachusetts, which state had the higher median household income in 2025?",
+   "sheet": "h08",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Massachusetts",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\nca_val = int(df[df[0] == 'California'].iloc[0][1])\nma_val = int(df[df[0] == 'Massachusetts'].iloc[0][1])\nresult = 'California' if ca_val > ma_val else 'Massachusetts'",
+   "qid": "census_cps_median_household_income_by_state#2"
+  },
+  {
+   "question": "Was the median household income in Mississippi above $60,000 in 2025?",
+   "sheet": "h08",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\nms_val = int(df[df[0] == 'Mississippi'].iloc[0][1])\nresult = 'yes' if ms_val > 60000 else 'no'",
+   "qid": "census_cps_median_household_income_by_state#3"
+  },
+  {
+   "question": "What was the average national median household income in current dollars from 2021 through 2025?",
+   "sheet": "h08",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "79318",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\nus_row = df[df[0] == 'United States'].iloc[0]\nvals = [int(us_row[c]) for c in [1, 3, 5, 7, 9]]\nresult = int(sum(vals) / len(vals))",
+   "qid": "census_cps_median_household_income_by_state#4"
+  },
+  {
+   "question": "In constant 2025 dollars, in which year between 2018 and 2022 was the United States median household income the highest?",
+   "sheet": "h08",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2019",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\nus_constant = df[df[0] == 'United States'].iloc[1]\nyear_cols = {\n    '2018': int(us_constant[15]),\n    '2019': int(us_constant[13]),\n    '2020': int(us_constant[11]),\n    '2021': int(us_constant[9]),\n    '2022': int(us_constant[7]),\n}\nresult = max(year_cols, key=year_cols.get)",
+   "qid": "census_cps_median_household_income_by_state#5"
+  },
+  {
+   "question": "Among California, Florida, Illinois, New York, and Texas, how many had a 2025 median household income of at least $80,000?",
+   "sheet": "h08",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\nstates = ['California', 'Florida', 'Illinois', 'New York', 'Texas']\ncount = 0\nfor state in states:\n    val = int(df[df[0] == state].iloc[0][1])\n    if val >= 80000:\n        count += 1\nresult = count",
+   "qid": "census_cps_median_household_income_by_state#6"
+  }
+ ]
+}

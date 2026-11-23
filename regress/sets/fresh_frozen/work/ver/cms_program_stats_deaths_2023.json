@@ -1,0 +1,35 @@
+{
+ "id": "cms_program_stats_deaths_2023",
+ "answers": [
+  {
+   "id": "cms_program_stats_deaths_2023#1",
+   "answer": "2517604",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 33_CPS_02ENR', header=None)\nrow = df[df[0].astype(str).str.strip() == '2023']\nresult = int(row.iloc[0, 1])"
+  },
+  {
+   "id": "cms_program_stats_deaths_2023#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 34_CPS_02ENR', header=None)\nmale_deaths = int(df[df[0].astype(str).str.strip() == 'Male'].iloc[0, 1])\nfemale_deaths = int(df[df[0].astype(str).str.strip() == 'Female'].iloc[0, 1])\nresult = 'yes' if female_deaths > male_deaths else 'no'"
+  },
+  {
+   "id": "cms_program_stats_deaths_2023#3",
+   "answer": "January",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 33_CPS_02ENR', header=None)\nheader_row = df[df[0].astype(str).str.strip() == 'Year'].iloc[0]\ndata_row = df[df[0].astype(str).str.strip() == '2023'].iloc[0]\nmonths = header_row[2:].values\ncounts = pd.to_numeric(data_row[2:].values)\nmax_idx = counts.argmax()\nresult = str(months[max_idx]).strip()"
+  },
+  {
+   "id": "cms_program_stats_deaths_2023#4",
+   "answer": "[\"California\", \"Florida\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 35_CPS_02ENR', header=None)\nstart_idx = df[df[0].astype(str).str.strip() == 'Alabama'].index[0]\nend_idx = df[df[0].astype(str).str.strip() == 'Wyoming'].index[0]\nstates_df = df.iloc[start_idx:end_idx+1].copy()\nstates_df = states_df[states_df[0].astype(str).str.strip() != 'District of Columbia']\nstates_df[1] = pd.to_numeric(states_df[1])\ntop3 = states_df.sort_values(by=1, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()"
+  },
+  {
+   "id": "cms_program_stats_deaths_2023#5",
+   "answer": "1055276",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 38_CPS_02ENR', header=None)\nrow = df[df[0].astype(str).str.strip() == '2020']\nresult = int(row.iloc[0, 1])"
+  },
+  {
+   "id": "cms_program_stats_deaths_2023#6",
+   "answer": "2426",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_deaths_2023.xlsx', sheet_name='MDCR ENROLL AB 37_CPS_02ENR', header=None)\nrow = df[df[0].astype(str).str.strip() == 'District of Columbia']\nresult = int(row.iloc[0, 1])"
+  }
+ ]
+}

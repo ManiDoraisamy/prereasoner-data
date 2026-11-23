@@ -1,0 +1,30 @@
+{
+ "id": "hhs_acf_child_victims_by_age",
+ "answers": [
+  {
+   "id": "hhs_acf_child_victims_by_age#1",
+   "answer": "64115",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = df.columns.str.strip()\nresult = int(df.loc[df['State'] == 'California', 'Total Victims'].iloc[0])"
+  },
+  {
+   "id": "hhs_acf_child_victims_by_age#2",
+   "answer": "West Virginia",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = df.columns.str.strip()\nstates_df = df[~df['State'].isin(['National', 'Reporting States'])]\nresult = states_df.loc[states_df['<1 Rate per 1,000 Children'].idxmax(), 'State']"
+  },
+  {
+   "id": "hhs_acf_child_victims_by_age#4",
+   "answer": "[\"New York\", \"California\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = df.columns.str.strip()\nstates_df = df[~df['State'].isin(['National', 'Reporting States'])]\nresult = states_df.sort_values(by='Total Victims', ascending=False).head(3)['State'].tolist()"
+  },
+  {
+   "id": "hhs_acf_child_victims_by_age#5",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = df.columns.str.strip()\ntx = df.loc[df['State'] == 'Texas', 'Total Victims'].iloc[0]\nny = df.loc[df['State'] == 'New York', 'Total Victims'].iloc[0]\nresult = 'yes' if tx > ny else 'no'"
+  },
+  {
+   "id": "hhs_acf_child_victims_by_age#6",
+   "answer": "25.7",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = df.columns.str.strip()\nresult = float(df.loc[df['State'] == 'National', '<1 Rate per 1,000 Children'].iloc[0])"
+  }
+ ]
+}

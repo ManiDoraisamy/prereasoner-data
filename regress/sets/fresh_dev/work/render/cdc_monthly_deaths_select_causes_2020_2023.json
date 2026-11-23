@@ -1,0 +1,12 @@
+{
+ "file": "cdc_monthly_deaths_select_causes_2020_2023.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 45,
+   "cols": 31,
+   "shown_whole": true
+  }
+ ],
+ "chars": 15049
+}

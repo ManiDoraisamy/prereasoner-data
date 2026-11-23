@@ -1,0 +1,84 @@
+{
+ "id": "ct_tax_revenue_by_month",
+ "file": "ct_tax_revenue_by_month.csv",
+ "questions": [
+  {
+   "question": "What was the total state tax revenue collected in Connecticut during June 2026?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "5293670010",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\nrow = df[(df['Calendar Year'] == 2026) & (df['Month'] == 'June')]\nresult = float(row['Total Revenue'].iloc[0])",
+   "qid": "ct_tax_revenue_by_month#1",
+   "pass1": true,
+   "result": 5293670010.43,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many monthly reporting entries in the dataset show recorded collections for the cannabis tax?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "42",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\nresult = int(df['Cannabis Tax'].dropna().count())",
+   "qid": "ct_tax_revenue_by_month#2",
+   "pass1": true,
+   "result": 42,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In calendar year 2012, between withholding taxes and sales and use taxes, which source generated more total revenue?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Withholding",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\ndf_2012 = df[df['Calendar Year'] == 2012]\nwithholding_total = df_2012['Withholding'].sum()\nsales_total = df_2012['Sales and Use'].sum()\nresult = 'Withholding' if withholding_total > sales_total else 'Sales and Use'",
+   "qid": "ct_tax_revenue_by_month#3",
+   "pass1": true,
+   "result": "Withholding",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did any month in the records see revenue from the cigarette tax drop below two million dollars?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\nresult = 'yes' if (df['Cigarette Tax'] < 2000000).any() else 'no'",
+   "qid": "ct_tax_revenue_by_month#4",
+   "pass1": true,
+   "result": "no",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the total revenue collected from the admissions and dues tax in fiscal year 2011-12?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "34438318.52",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\nfy12 = df[df['Fiscal Year'] == 'FY 2011-12']\nresult = float(fy12['Admissions & Dues'].sum())",
+   "qid": "ct_tax_revenue_by_month#5",
+   "pass1": true,
+   "result": 34361333.76,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which calendar year recorded the highest overall tax revenue across all months reported?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "date",
+   "answer": "2022",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\nyearly = df.groupby('Calendar Year')['Total Revenue'].sum()\nresult = str(yearly.idxmax())",
+   "qid": "ct_tax_revenue_by_month#6",
+   "pass1": false,
+   "result": "2025",
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  }
+ ]
+}

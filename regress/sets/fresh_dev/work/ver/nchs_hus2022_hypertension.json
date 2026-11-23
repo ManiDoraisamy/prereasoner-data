@@ -1,0 +1,35 @@
+{
+ "id": "nchs_hus2022_hypertension",
+ "answers": [
+  {
+   "id": "nchs_hus2022_hypertension#1",
+   "answer": "77.3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus2022_hypertension.xlsx', sheet_name='VI', header=None)\nrow = df[df[0].astype(str).str.contains('65 and older')].iloc[0]\nresult = float(row[2])"
+  },
+  {
+   "id": "nchs_hus2022_hypertension#2",
+   "answer": "12.3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus2022_hypertension.xlsx', sheet_name='VI', header=None)\nidx_adj = df[df[0].astype(str).str.contains('age adjusted', case=False)].index[0]\nidx_crude = df[df[0].astype(str).str.contains('crude', case=False)].index[0]\ndf_adj = df.iloc[idx_adj:idx_crude]\n\nmale_val = float(df_adj[df_adj[0].astype(str).str.strip() == 'Male'][2].iloc[0])\nfemale_val = float(df_adj[df_adj[0].astype(str).str.strip() == 'Female'][2].iloc[0])\nresult = round(male_val - female_val, 1)"
+  },
+  {
+   "id": "nchs_hus2022_hypertension#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus2022_hypertension.xlsx', sheet_name='VI', header=None)\nidx_adj = df[df[0].astype(str).str.contains('age adjusted', case=False)].index[0]\nidx_crude = df[df[0].astype(str).str.contains('crude', case=False)].index[0]\ndf_adj = df.iloc[idx_adj:idx_crude]\n\nraces = ['White only', 'Black only', 'Asian only', 'Hispanic or Latino']\nsub = df_adj[df_adj[0].astype(str).str.strip().isin(races)].copy()\nsub['val'] = sub[2].astype(float)\nmax_group = sub.loc[sub['val'].idxmax(), 0].strip()\nresult = 'yes' if 'Black' in max_group else 'no'"
+  },
+  {
+   "id": "nchs_hus2022_hypertension#4",
+   "answer": "20\u201344",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus2022_hypertension.xlsx', sheet_name='VI', header=None)\nsub = df[df[0].astype(str).str.contains('20[\u2013-]44|45[\u2013-]64|65 and older', regex=True)].copy()\nsub['val'] = sub[1].astype(float)\nresult = str(sub.loc[sub['val'].idxmin(), 0]).strip()"
+  },
+  {
+   "id": "nchs_hus2022_hypertension#5",
+   "answer": "41.3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus2022_hypertension.xlsx', sheet_name='VI', header=None)\nsub = df[df[0].astype(str).str.contains('20[\u2013-]44|45[\u2013-]64|65 and older', regex=True)].copy()\nresult = round(float(sub[1].astype(float).mean()), 1)"
+  },
+  {
+   "id": "nchs_hus2022_hypertension#6",
+   "answer": "[\"Black only\", \"Asian only\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus2022_hypertension.xlsx', sheet_name='VI', header=None)\nidx_adj = df[df[0].astype(str).str.contains('age adjusted', case=False)].index[0]\nidx_crude = df[df[0].astype(str).str.contains('crude', case=False)].index[0]\ndf_adj = df.iloc[idx_adj:idx_crude]\n\nraces = ['White only', 'Black only', 'Asian only', 'Hispanic or Latino']\nsub = df_adj[df_adj[0].astype(str).str.strip().isin(races)].copy()\nsub['val'] = sub[2].astype(float)\ntop2 = sub.sort_values(by='val', ascending=False).head(2)\nresult = [str(x).strip() for x in top2[0].tolist()]"
+  }
+ ]
+}

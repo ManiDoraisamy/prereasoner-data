@@ -1,0 +1,44 @@
+{
+ "nchs_vsrr27_online_table": {
+  "file": "nchs_vsrr27_online_table.xlsx",
+  "bytes": 34445,
+  "sha256": "72093bc7c00ed9fb90030a028021a291d3a10c2137d2501678caf2785060d728",
+  "retrieved_utc": "2026-11-11T23:40:46Z",
+  "reason": "a two-column mapping of drug search terms, not an analytic table"
+ },
+ "census_acs_health_insurance_by_state": {
+  "file": "census_acs_health_insurance_by_state.xlsx",
+  "bytes": 188045,
+  "sha256": "9d6d101122aad168fbd8b08da8f53d2dc04eed2074fea2b5c54d349ab3a75fa3",
+  "retrieved_utc": "2026-11-11T23:40:50Z",
+  "reason": "openpyxl cannot read the workbook (invalid stylesheet XML), so render.py and pandas fail"
+ },
+ "fdic_failed_bank_list": {
+  "file": "fdic_failed_bank_list.csv",
+  "bytes": 46300,
+  "sha256": "1e9c31465649f5f045b0026412521c8dc1cb0496206ec60f07c3604645899206",
+  "retrieved_utc": "2026-11-11T23:42:24Z",
+  "reason": "the CSV is not UTF-8, so render.py's pd.read_csv fails"
+ },
+ "ca_hcai_hospice_patient_demographics": {
+  "file": "ca_hcai_hospice_patient_demographics.xlsx",
+  "bytes": 37776,
+  "sha256": "f8b98a91c3a60ae637cced5407acf2a3534b87789b13076d8448536fc2f2976a",
+  "retrieved_utc": "2026-11-11T23:41:11Z",
+  "reason": "left out to keep the set at the frozen set's size and health share"
+ },
+ "cms_trustees_medicare_enrollment": {
+  "file": "cms_trustees_medicare_enrollment.xlsx",
+  "bytes": 22842,
+  "sha256": "490a2085a86469a9500986afcea769f84b9cfe9ea6a03a167ed4b87629d9d93c",
+  "retrieved_utc": "2026-11-11T23:40:52Z",
+  "reason": "the independent check program failed on all 6 candidates in three rounds (header-match bug), so no question passed both checks"
+ },
+ "cms_state_health_expenditures_by_residence": {
+  "file": "cms_state_health_expenditures_by_residence.xlsx",
+  "bytes": 367471,
+  "sha256": "139264db5233859072619ca9ac88c54a918a0296edb7413ce164b0db9cf9d45f",
+  "retrieved_utc": "2026-11-11T23:40:57Z",
+  "reason": "all 12 generated programs failed (two rounds), so no question passed the first check"
+ }
+}

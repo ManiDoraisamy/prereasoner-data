@@ -1,0 +1,35 @@
+{
+ "id": "cms_program_stats_hospice_2023",
+ "answers": [
+  {
+   "id": "cms_program_stats_hospice_2023#1",
+   "answer": "1257831",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_hospice_2023.xlsx', sheet_name='MDCR HOSPICE 1_CPS_08UHS', header=None)\n\nall_benes = False\nrow_idx = None\nfor idx, val in df[0].items():\n    s = str(val).strip()\n    if s == 'All Beneficiaries':\n        all_benes = True\n    elif all_benes and '2021' in s:\n        row_idx = idx\n        break\n\nresult = int(df.iloc[row_idx, 10])"
+  },
+  {
+   "id": "cms_program_stats_hospice_2023#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_hospice_2023.xlsx', sheet_name='MDCR HOSPICE 2_CPS_08UHS', header=None)\n\nmale_days = None\nfemale_days = None\nfor idx, val in df[0].items():\n    s = str(val).strip()\n    if s == 'Male':\n        male_days = float(df.iloc[idx, 3])\n    elif s == 'Female':\n        female_days = float(df.iloc[idx, 3])\n\nresult = 'yes' if female_days > male_days else 'no'"
+  },
+  {
+   "id": "cms_program_stats_hospice_2023#3",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_hospice_2023.xlsx', sheet_name='MDCR HOSPICE 3_CPS_08UHS', header=None)\n\n# The 50 states and DC are between 'United States' and 'Territories, Possessions, and Other'\nstart_idx = None\nend_idx = None\nfor idx, val in df[0].items():\n    s = str(val).strip()\n    if s == 'United States':\n        start_idx = idx + 1\n    elif 'Territories' in s:\n        end_idx = idx\n        break\n\nsub_df = df.iloc[start_idx:end_idx].dropna(subset=[0, 6])\n# Exclude any blank headers\nsub_df = sub_df[~sub_df[0].astype(str).str.contains('BLANK|^$', regex=True)]\nsub_df[6] = pd.to_numeric(sub_df[6], errors='coerce')\ntop3 = sub_df.sort_values(by=6, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()"
+  },
+  {
+   "id": "cms_program_stats_hospice_2023#4",
+   "answer": "37467064",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_hospice_2023.xlsx', sheet_name='MDCR HOSPICE 4_CPS_08UHS', header=None)\n\nfound_section = False\nres = None\nfor idx, val in df[0].items():\n    s = str(val).strip()\n    if 'Total --' in s and 'All Types of Control' in s:\n        found_section = True\n    elif found_section and s == 'Skilled Nursing':\n        res = int(df.iloc[idx, 2])\n        break\n\nresult = res"
+  },
+  {
+   "id": "cms_program_stats_hospice_2023#5",
+   "answer": "5390551707",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_hospice_2023.xlsx', sheet_name='MDCR HOSPICE 5_CPS_08UHS', header=None)\n\nfound_section = False\nres = None\nfor idx, val in df[0].items():\n    s = str(val).strip()\n    if s == 'Routine Home Care':\n        found_section = True\n    elif found_section and s == 'Assisted Living Facility':\n        res = int(df.iloc[idx, 2])\n        break\n\nresult = res"
+  },
+  {
+   "id": "cms_program_stats_hospice_2023#6",
+   "answer": "1-9",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_hospice_2023.xlsx', sheet_name='MDCR HOSPICE 6_CPS_08UHS', header=None)\n\n# Data rows for visit categories are rows with indices 7 to 14 (Excel rows 8 to 15)\ncats = df.iloc[7:15].copy()\ncats[1] = pd.to_numeric(cats[1])\nmax_row = cats.sort_values(by=1, ascending=False).iloc[0]\nresult = str(max_row[0]).strip()"
+  }
+ ]
+}

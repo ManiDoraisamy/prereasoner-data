@@ -1,0 +1,54 @@
+{
+ "file": "cms_program_stats_deaths_2023.xlsx",
+ "sheets": [
+  {
+   "name": "Table of Contents",
+   "rows": 9,
+   "cols": 2,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR ENROLL AB 33_CPS_02ENR",
+   "rows": 14,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR ENROLL AB 34_CPS_02ENR",
+   "rows": 40,
+   "cols": 4,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR ENROLL AB 35_CPS_02ENR",
+   "rows": 76,
+   "cols": 4,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR ENROLL AB 36_CPS_02ENR",
+   "rows": 12,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR ENROLL AB 37_CPS_02ENR",
+   "rows": 74,
+   "cols": 4,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR ENROLL AB 38_CPS_02ENR",
+   "rows": 14,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR ENROLL AB 39_CPS_02ENR",
+   "rows": 77,
+   "cols": 4,
+   "shown_whole": true
+  }
+ ],
+ "chars": 18553
+}

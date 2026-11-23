@@ -1,0 +1,12 @@
+{
+ "file": "fhwa_motor_vehicle_registrations_2022.xlsx",
+ "sheets": [
+  {
+   "name": "CY MV-1 Publish",
+   "rows": 65,
+   "cols": 16,
+   "shown_whole": true
+  }
+ ],
+ "chars": 11164
+}

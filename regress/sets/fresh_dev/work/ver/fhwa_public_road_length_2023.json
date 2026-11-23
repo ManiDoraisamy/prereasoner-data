@@ -1,0 +1,35 @@
+{
+ "id": "fhwa_public_road_length_2023",
+ "answers": [
+  {
+   "id": "fhwa_public_road_length_2023#1",
+   "answer": "177333.604",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\nstate_row = df[df[0] == 'California'].iloc[0]\nresult = float(state_row.iloc[17])"
+  },
+  {
+   "id": "fhwa_public_road_length_2023#2",
+   "answer": "[\"Texas\", \"Kansas\", \"Minnesota\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\n# Row 14 (index 14) to row 64 (index 64) are states\nstate_df = df.iloc[14:65].copy()\n# Column 0 is state name, Column 8 is Rural Total\nstate_df[8] = pd.to_numeric(state_df[8])\n# Exclude DC if present\nstate_df = state_df[state_df[0] != 'District of Columbia']\ntop3 = state_df.sort_values(by=8, ascending=False).head(3)\nresult = top3[0].tolist()"
+  },
+  {
+   "id": "fhwa_public_road_length_2023#3",
+   "answer": "New York",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\n# Column 9 is Urban Interstate (column J)\nny_val = float(df[df[0] == 'New York'].iloc[0, 9])\nfl_val = float(df[df[0] == 'Florida'].iloc[0, 9])\nresult = 'New York' if ny_val > fl_val else 'Florida'"
+  },
+  {
+   "id": "fhwa_public_road_length_2023#4",
+   "answer": "17",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\nstate_df = df.iloc[14:65].copy()\nstate_df = state_df[~state_df[0].isin(['District of Columbia', 'Puerto Rico'])]\nstate_df[17] = pd.to_numeric(state_df[17])\nresult = int((state_df[17] > 100000).sum())"
+  },
+  {
+   "id": "fhwa_public_road_length_2023#5",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\ntx = df[df[0] == 'Texas'].iloc[0]\nrural_local = float(tx.iloc[7])  # Column H (index 7)\nurban_local = float(tx.iloc[15]) # Column P (index 15)\nresult = 'yes' if urban_local > rural_local else 'no'"
+  },
+  {
+   "id": "fhwa_public_road_length_2023#6",
+   "answer": "118193.131",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\nnew_england = ['Connecticut', 'Maine', 'Massachusetts', 'New Hampshire', 'Rhode Island', 'Vermont']\nne_df = df[df[0].isin(new_england)]\nresult = float(pd.to_numeric(ne_df[17]).sum())"
+  }
+ ]
+}

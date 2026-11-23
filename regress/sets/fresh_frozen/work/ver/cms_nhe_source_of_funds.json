@@ -1,0 +1,35 @@
+{
+ "id": "cms_nhe_source_of_funds",
+ "answers": [
+  {
+   "id": "cms_nhe_source_of_funds#7",
+   "answer": "238.7",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_source_of_funds.xlsx', sheet_name='Table 3', header=None)\nheader_row = df.iloc[1].astype(str).str.strip()\ncol_2024 = header_row[header_row.str.startswith('2024')].index[0]\ninv_row = df[df[0].astype(str).str.strip().str.lower() == 'investment'].index[0]\nresult = float(df.iat[inv_row, col_2024])"
+  },
+  {
+   "id": "cms_nhe_source_of_funds#8",
+   "answer": "Federal",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_source_of_funds.xlsx', sheet_name='Table 3', header=None)\nheader_row = df.iloc[1].astype(str).str.strip()\ncol_2024 = header_row[header_row.str.startswith('2024')].index[0]\nfed_row = df[df[0].astype(str).str.strip() == 'Federal'].index[0]\nstate_row = df[df[0].astype(str).str.strip() == 'State and Local'].index[0]\nfed_val = float(df.iat[fed_row, col_2024])\nstate_val = float(df.iat[state_row, col_2024])\nresult = 'Federal' if fed_val > state_val else 'State and Local'"
+  },
+  {
+   "id": "cms_nhe_source_of_funds#9",
+   "answer": "7.60771894459174",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_source_of_funds.xlsx', sheet_name='Table 3', header=None)\nheader_row = df.iloc[1].astype(str).str.strip()\ncol_2020 = header_row[header_row.str.startswith('2020')].index[0]\ncol_2024 = header_row[header_row.str.startswith('2024')].index[0]\nmed_row = df[df[0].astype(str).str.strip() == 'Medicare'].index[0]\nval_2020 = float(df.iat[med_row, col_2020])\nval_2024 = float(df.iat[med_row, col_2024])\nresult = ((val_2024 / val_2020) ** (1 / (2024 - 2020)) - 1) * 100"
+  },
+  {
+   "id": "cms_nhe_source_of_funds#10",
+   "answer": "2023",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_source_of_funds.xlsx', sheet_name='Table 3', header=None)\nheader_row = df.iloc[1]\nmed_row = df[df[0].astype(str).str.strip() == 'Medicare'].index[0]\nyears = []\nfor c in range(1, df.shape[1]):\n    val = pd.to_numeric(df.iat[med_row, c], errors='coerce')\n    yr = str(header_row[c]).split('.')[0].strip()\n    if pd.notna(val) and yr.isdigit() and val >= 1000:\n        years.append(yr)\nresult = years[0]"
+  },
+  {
+   "id": "cms_nhe_source_of_funds#11",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_source_of_funds.xlsx', sheet_name='Table 3', header=None)\nheader_row = df.iloc[1].astype(str).str.strip()\ncol_2019 = header_row[header_row.str.startswith('2019')].index[0]\ncol_2020 = header_row[header_row.str.startswith('2020')].index[0]\noop_row = df[df[0].astype(str).str.strip().str.lower() == 'out of pocket'].index[0]\nval_2019 = float(df.iat[oop_row, col_2019])\nval_2020 = float(df.iat[oop_row, col_2020])\nresult = 'yes' if val_2020 < val_2019 else 'no'"
+  },
+  {
+   "id": "cms_nhe_source_of_funds#12",
+   "answer": "1113.8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_source_of_funds.xlsx', sheet_name='Table 3', header=None)\nheader_row = df.iloc[1].astype(str).str.strip()\ninv_row = df[df[0].astype(str).str.strip().str.lower() == 'investment'].index[0]\ntarget_years = [str(y) for y in range(2020, 2025)]\ncols = [c for c in range(1, df.shape[1]) if any(str(header_row[c]).startswith(y) for y in target_years)]\nresult = float(df.iloc[inv_row, cols].astype(float).sum())"
+  }
+ ]
+}

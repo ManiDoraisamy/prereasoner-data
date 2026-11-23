@@ -1,0 +1,192 @@
+{
+ "file": "cms_state_health_expenditures_by_residence.xlsx",
+ "sheets": [
+  {
+   "name": "Contents",
+   "rows": 64,
+   "cols": 1,
+   "shown_whole": true
+  },
+  {
+   "name": "Table 1 Personal Health Care",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": true
+  },
+  {
+   "name": "Table 2 Hospital",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": true
+  },
+  {
+   "name": "Table 3 Physician and Clinics",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": true
+  },
+  {
+   "name": "Table 4 Other Professionals",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": true
+  },
+  {
+   "name": "Table 5 Dental",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": true
+  },
+  {
+   "name": "Table 6 Home Health",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": true
+  },
+  {
+   "name": "Table 7 Nursing",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": true
+  },
+  {
+   "name": "Table 8 Drugs and Non-durables",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": true
+  },
+  {
+   "name": "Table 9 Durables",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 10 Other Health",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 11 Personal Health Care",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 12 Hospital",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 13 Physician and Clinics",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 14 Other Professionals",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 15 Dental",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 16 Home Health",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 17 Nursing",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 18 Drugs and Non-durables",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 19 Durables",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 20 Other Health",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 21 Population",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 22 Medicare",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 23 Medicare Per Enrollee",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 24 Medicare Enrollment",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 25 Medicaid",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 26 Medicaid Per Enrollee",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 27 Medicaid Enrollment",
+   "rows": 64,
+   "cols": 32,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 28 Private Health",
+   "rows": 64,
+   "cols": 22,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 29 Private Per Enrollee",
+   "rows": 64,
+   "cols": 22,
+   "shown_whole": null
+  },
+  {
+   "name": "Table 30 Private Enrollment",
+   "rows": 64,
+   "cols": 22,
+   "shown_whole": null
+  }
+ ],
+ "chars": 181565
+}

@@ -1,0 +1,35 @@
+{
+ "id": "cdc_drug_poisoning_mortality_state",
+ "answers": [
+  {
+   "id": "cdc_drug_poisoning_mortality_state#1",
+   "answer": "756",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nsub = df[(df['State'] == 'Alabama') & (df['Year'] == 2016)]\nresult = int(sub['Deaths'].iloc[0])"
+  },
+  {
+   "id": "cdc_drug_poisoning_mortality_state#2",
+   "answer": "6.057",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nsub = df[df['Year'] == 1999]\nresult = float(sub['US Age-adjusted Rate'].iloc[0])"
+  },
+  {
+   "id": "cdc_drug_poisoning_mortality_state#3",
+   "answer": "Alaska",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nalabama_rate = df[(df['State'] == 'Alabama') & (df['Year'] == 2012)]['Age-adjusted Rate'].iloc[0]\nalaska_rate = df[(df['State'] == 'Alaska') & (df['Year'] == 2012)]['Age-adjusted Rate'].iloc[0]\nresult = 'Alabama' if alabama_rate > alaska_rate else 'Alaska'"
+  },
+  {
+   "id": "cdc_drug_poisoning_mortality_state#4",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nrate = df[df['Year'] == 2014]['US Crude Rate'].iloc[0]\nresult = 'yes' if rate > 15 else 'no'"
+  },
+  {
+   "id": "cdc_drug_poisoning_mortality_state#5",
+   "answer": "2009",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nsub = df[(df['State'] == 'Alaska') & (df['Year'] >= 2008) & (df['Year'] <= 2016)]\nmax_year = sub.loc[sub['Crude Death Rate'].idxmax(), 'Year']\nresult = str(int(max_year))"
+  },
+  {
+   "id": "cdc_drug_poisoning_mortality_state#6",
+   "answer": "304",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nsub = df[(df['State'] == 'Wyoming') & (df['Year'].isin([2014, 2015, 2016]))]\nresult = int(sub['Deaths'].sum())"
+  }
+ ]
+}

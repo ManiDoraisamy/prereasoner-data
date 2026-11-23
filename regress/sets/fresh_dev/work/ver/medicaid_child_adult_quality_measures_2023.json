@@ -1,0 +1,35 @@
+{
+ "id": "medicaid_child_adult_quality_measures_2023",
+ "answers": [
+  {
+   "id": "medicaid_child_adult_quality_measures_2023#1",
+   "answer": "Behavioral Health Care",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nresult = df['Domain'].value_counts().idxmax()"
+  },
+  {
+   "id": "medicaid_child_adult_quality_measures_2023#2",
+   "answer": "[\"Alabama\", \"Texas\", \"Nevada\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nresult = df['State'].value_counts().nlargest(3).index.tolist()"
+  },
+  {
+   "id": "medicaid_child_adult_quality_measures_2023#3",
+   "answer": "5037",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nresult = int((df['Rate Used in Calculating State Mean and Median'] == 'Yes').sum())"
+  },
+  {
+   "id": "medicaid_child_adult_quality_measures_2023#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\ncounts = df['Reporting Program'].value_counts()\nresult = 'yes' if counts.get('Child Core Set', 0) > counts.get('Adult Core Set', 0) else 'no'"
+  },
+  {
+   "id": "medicaid_child_adult_quality_measures_2023#5",
+   "answer": "31.6",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nsubset = df[(df['State'] == 'Wyoming') & (df['Measure Abbreviation'] == 'CCS-AD') & (df['Population'] == 'Medicaid & Dual Eligibles')]\nresult = float(subset['State Rate'].iloc[0])"
+  },
+  {
+   "id": "medicaid_child_adult_quality_measures_2023#6",
+   "answer": "10.8",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nal_amb = df[(df['State'] == 'Alabama') & (df['Measure Abbreviation'] == 'AMB-CH')]\nmedicaid_rate = float(al_amb[al_amb['Population'] == 'Medicaid only']['State Rate'].iloc[0])\nchip_rate = float(al_amb[al_amb['Population'] == 'CHIP only']['State Rate'].iloc[0])\nresult = round(medicaid_rate - chip_rate, 1)"
+  }
+ ]
+}

@@ -1,0 +1,84 @@
+{
+ "id": "cdc_death_rates_life_expectancy",
+ "file": "cdc_death_rates_life_expectancy.csv",
+ "questions": [
+  {
+   "question": "What was the life expectancy at birth for females of all races in the year 2000?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "79.7",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nres = df[(df['Year'] == 2000) & (df['Race'] == 'All Races') & (df['Sex'] == 'Female')]['Average Life Expectancy (Years)'].iloc[0]\nresult = float(res)",
+   "qid": "cdc_death_rates_life_expectancy#1",
+   "pass1": true,
+   "result": 79.7,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In what year did the total population across all races experience the highest age-adjusted mortality rate?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "1918",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nsub = df[(df['Race'] == 'All Races') & (df['Sex'] == 'Both Sexes')]\nmax_row = sub.loc[sub['Age-adjusted Death Rate'].idxmax()]\nresult = str(int(max_row['Year']))",
+   "qid": "cdc_death_rates_life_expectancy#2",
+   "pass1": true,
+   "result": "1918",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many more years was the average life expectancy for White women compared to Black women in 2010?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "3.3",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nwf = df[(df['Year'] == 2010) & (df['Race'] == 'White') & (df['Sex'] == 'Female')]['Average Life Expectancy (Years)'].iloc[0]\nbf = df[(df['Year'] == 2010) & (df['Race'] == 'Black') & (df['Sex'] == 'Female')]['Average Life Expectancy (Years)'].iloc[0]\nresult = round(float(wf - bf), 1)",
+   "qid": "cdc_death_rates_life_expectancy#3",
+   "pass1": true,
+   "result": 3.3,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did the age-adjusted mortality rate for all races and both sexes fall below 800 deaths per 100,000 prior to 2005?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nsub = df[(df['Race'] == 'All Races') & (df['Sex'] == 'Both Sexes') & (df['Year'] < 2005)]\nresult = 'yes' if (sub['Age-adjusted Death Rate'] < 800).any() else 'no'",
+   "qid": "cdc_death_rates_life_expectancy#4",
+   "pass1": true,
+   "result": "no",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the mean life expectancy for Black men across the five years from 2000 through 2004?",
+   "sheet": "",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "68.74",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nsub = df[(df['Race'] == 'Black') & (df['Sex'] == 'Male') & (df['Year'].between(2000, 2004))]\nresult = round(float(sub['Average Life Expectancy (Years)'].mean()), 2)",
+   "qid": "cdc_death_rates_life_expectancy#5",
+   "pass1": true,
+   "result": 68.74,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Black and White Americans, which racial group had the higher age-adjusted death rate for both sexes combined in 2018?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Black",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nsub = df[(df['Year'] == 2018) & (df['Sex'] == 'Both Sexes') & (df['Race'].isin(['Black', 'White']))]\nresult = sub.loc[sub['Age-adjusted Death Rate'].idxmax()]['Race']",
+   "qid": "cdc_death_rates_life_expectancy#6",
+   "pass1": true,
+   "result": "Black",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

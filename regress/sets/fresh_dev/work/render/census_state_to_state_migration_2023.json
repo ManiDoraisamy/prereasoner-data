@@ -1,0 +1,24 @@
+{
+ "file": "census_state_to_state_migration_2023.xlsx",
+ "sheets": [
+  {
+   "name": "Table",
+   "rows": 74,
+   "cols": 119,
+   "shown_whole": true
+  },
+  {
+   "name": "Look-Up Tool",
+   "rows": 84,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "tool_input",
+   "rows": 2705,
+   "cols": 12,
+   "shown_whole": false
+  }
+ ],
+ "chars": 75013
+}

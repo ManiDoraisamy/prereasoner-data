@@ -1,0 +1,35 @@
+{
+ "id": "nys_mta_daily_ridership",
+ "answers": [
+  {
+   "id": "nys_mta_daily_ridership#1",
+   "answer": "90318",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_mta_daily_ridership.csv')\nrow = df[df['Date'] == '01/01/2025']\nresult = int(row['LIRR: Total Estimated Ridership'].iloc[0])"
+  },
+  {
+   "id": "nys_mta_daily_ridership#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_mta_daily_ridership.csv')\nrow = df[df['Date'] == '12/31/2024'].iloc[0]\nsubway = row['Subways: Total Estimated Ridership']\nbt = row['Bridges and Tunnels: Total Traffic']\nresult = 'yes' if subway > bt else 'no'"
+  },
+  {
+   "id": "nys_mta_daily_ridership#3",
+   "answer": "8854",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_mta_daily_ridership.csv')\nrow = df[df['Date'] == '01/01/2024'].iloc[0]\nlirr = row['LIRR: Total Estimated Ridership']\nmn = row['Metro-North: Total Estimated Ridership']\nresult = int(lirr - mn)"
+  },
+  {
+   "id": "nys_mta_daily_ridership#4",
+   "answer": "32",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_mta_daily_ridership.csv')\nresult = int((df['Staten Island Railway: Total Estimated Ridership'] == 0).sum())"
+  },
+  {
+   "id": "nys_mta_daily_ridership#5",
+   "answer": "2025",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_mta_daily_ridership.csv')\nny_days = [f'01/01/{year}' for year in range(2021, 2026)]\ndf_ny = df[df['Date'].isin(ny_days)]\ntop_row = df_ny.loc[df_ny['Subways: Total Estimated Ridership'].idxmax()]\nresult = str(pd.to_datetime(top_row['Date']).year)"
+  },
+  {
+   "id": "nys_mta_daily_ridership#6",
+   "answer": "6745203",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_mta_daily_ridership.csv')\nny_days = ['01/01/2021', '01/01/2022', '01/01/2023', '01/01/2024', '01/01/2025']\ndf_ny = df[df['Date'].isin(ny_days)]\nresult = int(df_ny['Subways: Total Estimated Ridership'].sum())"
+  }
+ ]
+}

@@ -1,0 +1,35 @@
+{
+ "id": "chicago_affordable_rental_housing",
+ "answers": [
+  {
+   "id": "chicago_affordable_rental_housing#1",
+   "answer": "29550",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_affordable_rental_housing.csv')\nresult = int(df['Units'].sum())"
+  },
+  {
+   "id": "chicago_affordable_rental_housing#2",
+   "answer": "156",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_affordable_rental_housing.csv')\nresult = int((df['Property Type'] == 'ARO').sum())"
+  },
+  {
+   "id": "chicago_affordable_rental_housing#3",
+   "answer": "Humboldt Park",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_affordable_rental_housing.csv')\nresult = str(df['Community Area Name'].value_counts().index[0])"
+  },
+  {
+   "id": "chicago_affordable_rental_housing#4",
+   "answer": "Senior Lifestyle Corp.",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_affordable_rental_housing.csv')\nresult = str(df.loc[df['Property Name'] == 'Senior Suites of Bridgeport', 'Management Company'].iloc[0])"
+  },
+  {
+   "id": "chicago_affordable_rental_housing#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_affordable_rental_housing.csv')\nuptown = (df['Community Area Name'] == 'Uptown').sum()\nnorth_lawndale = (df['Community Area Name'] == 'North Lawndale').sum()\nresult = 'yes' if uptown > north_lawndale else 'no'"
+  },
+  {
+   "id": "chicago_affordable_rental_housing#6",
+   "answer": "[\"Bickerdike Apts.\", \"Interstate Realty Management Co.\", \"Urban Property Advisors, LLC\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_affordable_rental_housing.csv')\nresult = df['Management Company'].value_counts().head(3).index.tolist()"
+  }
+ ]
+}

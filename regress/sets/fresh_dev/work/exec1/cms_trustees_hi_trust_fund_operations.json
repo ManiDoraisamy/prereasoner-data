@@ -1,0 +1,88 @@
+{
+ "id": "cms_trustees_hi_trust_fund_operations",
+ "file": "cms_trustees_hi_trust_fund_operations.xlsx",
+ "questions": [
+  {
+   "question": "In calendar year 2020, what was the total amount paid out in Hospital Insurance benefit payments (in millions)?",
+   "sheet": "HI",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "397668",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_hi_trust_fund_operations.xlsx', sheet_name='HI', header=None)\nyear_col = 0\nbenefit_col = 9\nrow = df[df[year_col] == 2020]\nresult = int(row[benefit_col].values[0])",
+   "qid": "cms_trustees_hi_trust_fund_operations#1",
+   "pass1": true,
+   "result": 397668,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did the Hospital Insurance Trust Fund end calendar year 2008 with a larger total balance than it did in 2007?",
+   "sheet": "HI",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_hi_trust_fund_operations.xlsx', sheet_name='HI', header=None)\nbalance_col = 13\nbal_2007 = df.loc[df[0] == 2007, balance_col].values[0]\nbal_2008 = df.loc[df[0] == 2008, balance_col].values[0]\nresult = 'yes' if bal_2008 > bal_2007 else 'no'",
+   "qid": "cms_trustees_hi_trust_fund_operations#2",
+   "pass1": true,
+   "result": "no",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which calendar year recorded the largest single-year drop (most negative net change) in the Hospital Insurance Trust Fund between 2000 and 2023?",
+   "sheet": "HI",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2020",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_hi_trust_fund_operations.xlsx', sheet_name='HI', header=None)\ndf_data = df[pd.to_numeric(df[0], errors='coerce').between(2000, 2023)].copy()\nnet_change_col = 12\nmin_row = df_data.loc[pd.to_numeric(df_data[net_change_col]).idxmin()]\nresult = str(int(min_row[0]))",
+   "qid": "cms_trustees_hi_trust_fund_operations#3",
+   "pass1": true,
+   "result": "2020",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many calendar years from 1966 through 2023 experienced a negative net annual change in the Hospital Insurance Trust Fund?",
+   "sheet": "HI",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "16",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_hi_trust_fund_operations.xlsx', sheet_name='HI', header=None)\ndf_data = df[pd.to_numeric(df[0], errors='coerce').between(1966, 2023)].copy()\nnet_change_col = 12\ncount = (pd.to_numeric(df_data[net_change_col]) < 0).sum()\nresult = int(count)",
+   "qid": "cms_trustees_hi_trust_fund_operations#4",
+   "pass1": false,
+   "result": 18,
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  },
+  {
+   "question": "What were the three calendar years with the highest total income for the Hospital Insurance Trust Fund between 2015 and 2020?",
+   "sheet": "HI",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"2020\", \"2019\", \"2018\"]",
+   "program": "import pandas as pd\nimport json\n\ndf = pd.read_excel('cms_trustees_hi_trust_fund_operations.xlsx', sheet_name='HI', header=None)\ndf_data = df[pd.to_numeric(df[0], errors='coerce').between(2015, 2020)].copy()\nincome_col = 8\ntop3 = df_data.sort_values(by=income_col, ascending=False).head(3)\nresult = [str(int(yr)) for yr in top3[0].tolist()]",
+   "qid": "cms_trustees_hi_trust_fund_operations#5",
+   "pass1": true,
+   "result": [
+    "2020",
+    "2019",
+    "2018"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What is the difference in millions between payroll tax receipts in 2022 and 2021?",
+   "sheet": "HI",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "50272",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_trustees_hi_trust_fund_operations.xlsx', sheet_name='HI', header=None)\npayroll_col = 1\ntax_2021 = df.loc[df[0] == 2021, payroll_col].values[0]\ntax_2022 = df.loc[df[0] == 2022, payroll_col].values[0]\nresult = int(tax_2022 - tax_2021)",
+   "qid": "cms_trustees_hi_trust_fund_operations#6",
+   "pass1": true,
+   "result": 50272,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

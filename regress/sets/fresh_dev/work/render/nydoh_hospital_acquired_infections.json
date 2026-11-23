@@ -1,0 +1,12 @@
+{
+ "file": "nydoh_hospital_acquired_infections.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 34945,
+   "cols": 13,
+   "shown_whole": false
+  }
+ ],
+ "chars": 21162
+}

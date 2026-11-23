@@ -1,0 +1,12 @@
+{
+ "file": "census_state_tax_collections_fy2023.xlsx",
+ "sheets": [
+  {
+   "name": "State Tax Collection 2023",
+   "rows": 39,
+   "cols": 54,
+   "shown_whole": true
+  }
+ ],
+ "chars": 19928
+}

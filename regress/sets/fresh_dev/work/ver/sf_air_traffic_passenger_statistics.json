@@ -1,0 +1,35 @@
+{
+ "id": "sf_air_traffic_passenger_statistics",
+ "answers": [
+  {
+   "id": "sf_air_traffic_passenger_statistics#1",
+   "answer": "4244",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\nresult = int((df['Price Category Code'] == 'Low Fare').sum())"
+  },
+  {
+   "id": "sf_air_traffic_passenger_statistics#2",
+   "answer": "1132828096",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\nresult = int(df['Passenger Count'].sum())"
+  },
+  {
+   "id": "sf_air_traffic_passenger_statistics#3",
+   "answer": "Asia",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\nnon_us = df[df['GEO Region'] != 'US']\nresult = str(non_us['GEO Region'].value_counts().index[0])"
+  },
+  {
+   "id": "sf_air_traffic_passenger_statistics#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\ncounts = df['GEO Summary'].value_counts()\nresult = 'yes' if counts.get('International', 0) > counts.get('Domestic', 0) else 'no'"
+  },
+  {
+   "id": "sf_air_traffic_passenger_statistics#5",
+   "answer": "[\"A\", \"G\", \"B\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\nresult = list(df['Boarding Area'].value_counts().head(3).index)"
+  },
+  {
+   "id": "sf_air_traffic_passenger_statistics#6",
+   "answer": "328",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('sf_air_traffic_passenger_statistics.csv')\ncounts = df['Activity Type Code'].value_counts()\nresult = int(counts.get('Enplaned', 0) - counts.get('Deplaned', 0))"
+  }
+ ]
+}

@@ -1,0 +1,87 @@
+{
+ "id": "census_business_dynamics_by_state",
+ "file": "census_business_dynamics_by_state.csv",
+ "questions": [
+  {
+   "question": "In 2022, what was the total employment count for businesses in state FIPS code 48?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "11489625",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nresult = int(df[(df['year'] == 2022) & (df['st'] == 48)]['emp'].iloc[0])",
+   "qid": "census_business_dynamics_by_state#1",
+   "pass1": true,
+   "result": 11489625,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2022, how many more business establishments entered than exited in state FIPS code 48?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "14498",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nrow = df[(df['year'] == 2022) & (df['st'] == 48)].iloc[0]\nresult = int(row['estabs_entry'] - row['estabs_exit'])",
+   "qid": "census_business_dynamics_by_state#2",
+   "pass1": true,
+   "result": 14498,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did state FIPS code 2 experience an overall net job loss in 1978?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nval = df[(df['year'] == 1978) & (df['st'] == 2)]['net_job_creation'].iloc[0]\nresult = 'yes' if val < 0 else 'no'",
+   "qid": "census_business_dynamics_by_state#3",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What is the earliest reporting year available in the business dynamics dataset?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "1978",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nresult = str(int(df['year'].min()))",
+   "qid": "census_business_dynamics_by_state#4",
+   "pass1": true,
+   "result": "1978",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Among state FIPS codes 48, 49, 50, and 51, which two states had the highest number of establishments in 2022?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[48, 51]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nfiltered = df[(df['year'] == 2022) & (df['st'].isin([48, 49, 50, 51]))]\nresult = filtered.sort_values(by='estabs', ascending=False)['st'].head(2).tolist()",
+   "qid": "census_business_dynamics_by_state#5",
+   "pass1": true,
+   "result": [
+    48,
+    51
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2022, what was the total number of establishment exits across state FIPS codes 49, 50, and 51 combined?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "28234",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('census_business_dynamics_by_state.csv')\nfiltered = df[(df['year'] == 2022) & (df['st'].isin([49, 50, 51]))]\nresult = int(filtered['estabs_exit'].sum())",
+   "qid": "census_business_dynamics_by_state#6",
+   "pass1": true,
+   "result": 28234,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

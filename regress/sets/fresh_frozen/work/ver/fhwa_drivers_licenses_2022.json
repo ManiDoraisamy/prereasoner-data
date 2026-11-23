@@ -1,0 +1,30 @@
+{
+ "id": "fhwa_drivers_licenses_2022",
+ "answers": [
+  {
+   "id": "fhwa_drivers_licenses_2022#1",
+   "answer": "27632103",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='TOTAL', header=None)\n# Row 14 contains headers, Column A is STATE, Column Q is TOTAL\nstate_col = 0\ntotal_col = 16\nca_row = df[df[state_col].astype(str).str.strip().str.startswith('California')]\nresult = int(ca_row[total_col].values[0])"
+  },
+  {
+   "id": "fhwa_drivers_licenses_2022#2",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='TOTAL', header=None)\n# States are from row index 14 to 64 (rows 15 to 65 in Excel)\nstates_df = df.iloc[14:65, [0, 16]].copy()\nstates_df.columns = ['state', 'total']\nstates_df['state'] = states_df['state'].astype(str).str.replace(r'\\s*\\(\\d+\\)', '', regex=True).str.strip()\nstates_df['total'] = pd.to_numeric(states_df['total'])\ntop3 = states_df.sort_values(by='total', ascending=False).head(3)\nresult = top3['state'].tolist()"
+  },
+  {
+   "id": "fhwa_drivers_licenses_2022#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\nmales = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='MALES', header=None)\nfemales = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='FEMALES', header=None)\n\nmale_tx = males[males[0].astype(str).str.strip().str.startswith('Texas')][16].values[0]\nfemale_tx = females[females[0].astype(str).str.strip().str.startswith('Texas')][16].values[0]\n\nresult = 'yes' if float(female_tx) > float(male_tx) else 'no'"
+  },
+  {
+   "id": "fhwa_drivers_licenses_2022#5",
+   "answer": "321645.101",
+   "program": "import pandas as pd\n\nmales = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='MALES', header=None)\nfemales = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='FEMALES', header=None)\n\n# Total row is at row index 65 (row 66 in Excel), column P is index 15 (85 AND OVER)\nmale_total = float(males[males[0].astype(str).str.strip() == 'Total'][15].values[0])\nfemale_total = float(females[females[0].astype(str).str.strip() == 'Total'][15].values[0])\n\nresult = round(abs(female_total - male_total), 3)"
+  },
+  {
+   "id": "fhwa_drivers_licenses_2022#6",
+   "answer": "1076583",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_drivers_licenses_2022.xlsx', sheet_name='TOTAL', header=None)\n# Column U is index 20 (age 16)\ntotal_row = df[df[18].astype(str).str.strip() == 'Total']\nresult = int(total_row[20].values[0])"
+  }
+ ]
+}

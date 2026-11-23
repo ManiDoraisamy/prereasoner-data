@@ -1,0 +1,35 @@
+{
+ "id": "dot_bts_monthly_transportation_statistics",
+ "answers": [
+  {
+   "id": "dot_bts_monthly_transportation_statistics#1",
+   "answer": "1030008",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ndf['Date_dt'] = pd.to_datetime(df['Date'])\nrow = df[(df['Date_dt'].dt.year == 2019) & (df['Date_dt'].dt.month == 3)]\nresult = int(row['Freight Rail Carloads'].iloc[0])"
+  },
+  {
+   "id": "dot_bts_monthly_transportation_statistics#2",
+   "answer": "2018-08",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ndf['Date_dt'] = pd.to_datetime(df['Date'])\ncol = 'Transit Ridership - Other Transit Modes - Adjusted'\nmax_row = df.loc[df[col].idxmax()]\nresult = max_row['Date_dt'].strftime('%Y-%m')"
+  },
+  {
+   "id": "dot_bts_monthly_transportation_statistics#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ndf['Date_dt'] = pd.to_datetime(df['Date'])\nrow = df[(df['Date_dt'].dt.year == 2018) & (df['Date_dt'].dt.month == 8)].iloc[0]\nmexico = row['Transborder - U.S. - Mexico Freight']\ncanada = row['Transborder - U.S. - Canada Freight']\nresult = 'yes' if mexico > canada else 'no'"
+  },
+  {
+   "id": "dot_bts_monthly_transportation_statistics#4",
+   "answer": "30",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ncol = 'Air Safety - Air Carrier Fatalities'\nresult = int((df[col] > 0).sum())"
+  },
+  {
+   "id": "dot_bts_monthly_transportation_statistics#5",
+   "answer": "381",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ncol = 'Air Safety - Air Carrier Fatalities'\nresult = int(df.loc[df[col] > 10, col].sum())"
+  },
+  {
+   "id": "dot_bts_monthly_transportation_statistics#6",
+   "answer": "141895",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('dot_bts_monthly_transportation_statistics.csv')\ndf['Date_dt'] = pd.to_datetime(df['Date'])\nrow = df[(df['Date_dt'].dt.year == 2019) & (df['Date_dt'].dt.month == 3)].iloc[0]\nresult = int(row['Freight Rail Intermodal Units'] - row['Freight Rail Carloads'])"
+  }
+ ]
+}

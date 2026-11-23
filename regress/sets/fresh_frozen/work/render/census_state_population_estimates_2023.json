@@ -1,0 +1,12 @@
+{
+ "file": "census_state_population_estimates_2023.xlsx",
+ "sheets": [
+  {
+   "name": "NST-EST2023-POP",
+   "rows": 68,
+   "cols": 6,
+   "shown_whole": true
+  }
+ ],
+ "chars": 5558
+}

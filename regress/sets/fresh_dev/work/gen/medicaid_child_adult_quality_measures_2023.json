@@ -1,0 +1,60 @@
+{
+ "id": "medicaid_child_adult_quality_measures_2023",
+ "file": "medicaid_child_adult_quality_measures_2023.csv",
+ "questions": [
+  {
+   "question": "Which clinical domain has the highest number of measure records in the 2023 Core Set dataset?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Behavioral Health Care",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nresult = df['Domain'].value_counts().idxmax()",
+   "qid": "medicaid_child_adult_quality_measures_2023#1"
+  },
+  {
+   "question": "Which three states have the largest number of measure records in the 2023 dataset?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Alabama\", \"Texas\", \"Nevada\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nresult = df['State'].value_counts().nlargest(3).index.tolist()",
+   "qid": "medicaid_child_adult_quality_measures_2023#2"
+  },
+  {
+   "question": "How many quality measure records in the 2023 dataset had their rates included in the calculation of national state medians and means?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "5037",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nresult = int((df['Rate Used in Calculating State Mean and Median'] == 'Yes').sum())",
+   "qid": "medicaid_child_adult_quality_measures_2023#3"
+  },
+  {
+   "question": "In the 2023 dataset, does the Child Core Set have more total reported records than the Adult Core Set?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nchild_count = (df['Reporting Program'] == 'Child Core Set').sum()\nadult_count = (df['Reporting Program'] == 'Adult Core Set').sum()\nresult = 'yes' if child_count > adult_count else 'no'",
+   "qid": "medicaid_child_adult_quality_measures_2023#4"
+  },
+  {
+   "question": "What was Wyoming's cervical cancer screening rate (CCS-AD) for Medicaid and dual eligible adults in the 2023 Adult Core Set?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "31.6",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nsubset = df[(df['State'] == 'Wyoming') & (df['Measure Abbreviation'] == 'CCS-AD') & (df['Population'] == 'Medicaid & Dual Eligibles')]\nresult = float(subset['State Rate'].iloc[0])",
+   "qid": "medicaid_child_adult_quality_measures_2023#5"
+  },
+  {
+   "question": "In Alabama's 2023 Child Core Set reporting, how many more emergency department visits per 1,000 beneficiary months (AMB-CH) were recorded for the Medicaid-only population compared to the CHIP-only population?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "10.8",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_child_adult_quality_measures_2023.csv')\nmedicaid_rate = float(df[(df['State'] == 'Alabama') & (df['Measure Abbreviation'] == 'AMB-CH') & (df['Population'] == 'Medicaid only')]['State Rate'].iloc[0])\nchip_rate = float(df[(df['State'] == 'Alabama') & (df['Measure Abbreviation'] == 'AMB-CH') & (df['Population'] == 'CHIP only')]['State Rate'].iloc[0])\nresult = round(medicaid_rate - chip_rate, 2)",
+   "qid": "medicaid_child_adult_quality_measures_2023#6"
+  }
+ ]
+}

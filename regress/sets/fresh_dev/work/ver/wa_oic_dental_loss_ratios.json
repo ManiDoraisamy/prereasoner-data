@@ -1,0 +1,35 @@
+{
+ "id": "wa_oic_dental_loss_ratios",
+ "answers": [
+  {
+   "id": "wa_oic_dental_loss_ratios#1",
+   "answer": "81",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nrow = df[(df['Company Name'] == 'Delta Dental of Washington') & (df['Year'] == 2024)]\nresult = int(row['Dental Loss Ratio'].iloc[0])"
+  },
+  {
+   "id": "wa_oic_dental_loss_ratios#2",
+   "answer": "92",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nresult = int((df['Domicile State'] == 'WA').sum())"
+  },
+  {
+   "id": "wa_oic_dental_loss_ratios#3",
+   "answer": "TX",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nresult = str(df['Domicile State'].value_counts().index[0])"
+  },
+  {
+   "id": "wa_oic_dental_loss_ratios#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nrow = df[(df['Company Name'] == 'UnitedHealthcare Insurance Company') & (df['Year'] == 2024)]\nresult = 'yes' if row['Dental Payments'].iloc[0] > 1e9 else 'no'"
+  },
+  {
+   "id": "wa_oic_dental_loss_ratios#5",
+   "answer": "63249175",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nrow = df[(df['Company Name'] == 'Willamette Dental of Washington Inc.') & (df['Year'] == 2021)]\nresult = int(row['Dental Payments'].iloc[0])"
+  },
+  {
+   "id": "wa_oic_dental_loss_ratios#6",
+   "answer": "36.49",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wa_oic_dental_loss_ratios.csv')\nrow = df[(df['Company Name'].str.upper() == 'AETNA LIFE INSURANCE COMPANY') & (df['Year'] == 2015)]\nresult = float(row['Average Amount of Premiums per Member per Month'].iloc[0])"
+  }
+ ]
+}

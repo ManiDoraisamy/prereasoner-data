@@ -1,0 +1,60 @@
+{
+ "id": "nydoh_nursing_home_bed_census",
+ "file": "nydoh_nursing_home_bed_census.csv",
+ "questions": [
+  {
+   "question": "Which regional area office oversees the greatest number of facility records in the dataset?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Metropolitan Area Regional Office - New York City",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\nresult = df['Area Office'].value_counts().index[0]",
+   "qid": "nydoh_nursing_home_bed_census#1"
+  },
+  {
+   "question": "How many entries in the census are specifically categorized under pediatric ventilator bed capacity (PEDVENTCAP)?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\nresult = int((df['Bed Type'] == 'PEDVENTCAP').sum())",
+   "qid": "nydoh_nursing_home_bed_census#2"
+  },
+  {
+   "question": "What is the total available bed capacity across all reported facilities and bed types in the census?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "14625",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\nresult = int(df['Available Capacity'].sum())",
+   "qid": "nydoh_nursing_home_bed_census#3"
+  },
+  {
+   "question": "Are all facility records in this census located in the state of New York?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\nresult = 'yes' if (df['State'] == 'NY').all() else 'no'",
+   "qid": "nydoh_nursing_home_bed_census#4"
+  },
+  {
+   "question": "What was the most common census date reported across all facilities?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2026-10-07",
+   "program": "import pandas as pd\nfrom datetime import datetime\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\ntop_date = df['Census Date'].value_counts().index[0]\nresult = datetime.strptime(top_date, '%m/%d/%Y').strftime('%Y-%m-%d')",
+   "qid": "nydoh_nursing_home_bed_census#5"
+  },
+  {
+   "question": "Between Kings County and Queens County, which one has a higher number of census entries in this dataset?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Queens",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_nursing_home_bed_census.csv')\nqueens = (df['County'] == 'Queens').sum()\nkings = (df['County'] == 'Kings').sum()\nresult = 'Queens' if queens > kings else 'Kings'",
+   "qid": "nydoh_nursing_home_bed_census#6"
+  }
+ ]
+}

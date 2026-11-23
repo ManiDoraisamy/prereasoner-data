@@ -1,0 +1,12 @@
+{
+ "file": "ca_hcai_rural_hospitals_overview.xlsx",
+ "sheets": [
+  {
+   "name": "in",
+   "rows": 360,
+   "cols": 27,
+   "shown_whole": false
+  }
+ ],
+ "chars": 25658
+}

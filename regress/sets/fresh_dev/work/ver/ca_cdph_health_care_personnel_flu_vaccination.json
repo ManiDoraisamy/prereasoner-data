@@ -1,0 +1,35 @@
+{
+ "id": "ca_cdph_health_care_personnel_flu_vaccination",
+ "answers": [
+  {
+   "id": "ca_cdph_health_care_personnel_flu_vaccination#1",
+   "answer": "81",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nrow = df[df['Facility_Name'].str.upper() == 'ALAMEDA HOSPITAL']\nresult = int(row['HCP_Percent_Vaccinated'].iloc[0])"
+  },
+  {
+   "id": "ca_cdph_health_care_personnel_flu_vaccination#2",
+   "answer": "38",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nresult = int((df['Hospital_Type'] == 'Critical Access').sum())"
+  },
+  {
+   "id": "ca_cdph_health_care_personnel_flu_vaccination#3",
+   "answer": "UCSF MEDICAL CENTER",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nf1 = 'UCSF MEDICAL CENTER'\nf2 = 'KECK HOSPITAL OF USC'\nsub = df[df['Facility_Name'].isin([f1, f2])]\nresult = sub.loc[sub['HCP_Total_Number_Vaccinated'].idxmax(), 'Facility_Name']"
+  },
+  {
+   "id": "ca_cdph_health_care_personnel_flu_vaccination#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nrow = df[df['Facility_Name'].str.contains(\"RADY CHILDREN'S\", case=False, na=False)]\nrate = row['HCP_Percent_Vaccinated'].iloc[0]\nresult = 'yes' if rate >= 90 else 'no'"
+  },
+  {
+   "id": "ca_cdph_health_care_personnel_flu_vaccination#5",
+   "answer": "714459",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nresult = int(df['HCP_Total_Number_Vaccinated'].dropna().sum())"
+  },
+  {
+   "id": "ca_cdph_health_care_personnel_flu_vaccination#6",
+   "answer": "Los Angeles",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nresult = str(df['County'].value_counts().idxmax())"
+  }
+ ]
+}

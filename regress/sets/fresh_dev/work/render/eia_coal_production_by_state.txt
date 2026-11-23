@@ -1,0 +1,118 @@
+FILE eia_coal_production_by_state.xlsx (Excel workbook) with 1 sheet(s): ["table1"]
+
+### Sheet "table1": 113 rows x 7 columns (Excel rows 1..113, columns A..G)
+merged cells: F4:G4, A1:G1, A2:G2, D4:E4, A113:G113, B4:C4
+(whole sheet shown; Excel row numbers)
+r1: A=Table 1.  Coal Production and Number of Mines by State and Mine Type, 2024 and 2023
+r2: A=(thousand short tons)
+r3: (blank)
+r4: B=2024 | D=2023 | F=Percent Change
+r5: A=Coal-Producing\nState and Region1 | B=Number of Mines | C=Production | D=Number of Mines | E=Production | F=Number of Mines | G=Production
+r6: A=Alabama | B=18 | C=14382 | D=20 | E=12043 | F=-10 | G=19.4
+r7: A=Underground | B=8 | C=13471 | D=7 | E=11130 | F=14.3 | G=21
+r8: A=Surface | B=10 | C=911 | D=13 | E=913 | F=-23.1 | G=-0.3
+r9: A=Alaska | B=1 | C=1004 | D=1 | E=1009 | F=- | G=-0.5
+r10: A=Surface | B=1 | C=1004 | D=1 | E=1009 | F=- | G=-0.5
+r11: A=Colorado | B=8 | C=12391 | D=9 | E=12371 | F=-11.1 | G=0.2
+r12: A=Underground | B=4 | C=7190 | D=5 | E=7443 | F=-20 | G=-3.4
+r13: A=Surface | B=4 | C=5201 | D=4 | E=4928 | F=- | G=5.5
+r14: A=Illinois | B=11 | C=34230 | D=14 | E=36865 | F=-21.4 | G=-7.2
+r15: A=Underground | B=8 | C=33530 | D=8 | E=36092 | F=- | G=-7.1
+r16: A=Surface | B=3 | C=700 | D=6 | E=773 | F=-50 | G=-9.5
+r17: A=Indiana | B=15 | C=20147 | D=17 | E=23782 | F=-11.8 | G=-15.3
+r18: A=Underground | B=4 | C=11311 | D=4 | E=13728 | F=- | G=-17.6
+r19: A=Surface | B=11 | C=8836 | D=13 | E=10054 | F=-15.4 | G=-12.1
+r20: A=Kentucky Total | B=94 | C=24309 | D=112 | E=28346 | F=-16.1 | G=-14.2
+r21: A=Underground | B=41 | C=18529 | D=47 | E=21564 | F=-12.8 | G=-14.1
+r22: A=Surface | B=53 | C=5780 | D=65 | E=6783 | F=-18.5 | G=-14.8
+r23: A=Kentucky (East) | B=90 | C=10332 | D=108 | E=12413 | F=-16.7 | G=-16.8
+r24: A=Underground | B=37 | C=4553 | D=43 | E=5631 | F=-14 | G=-19.1
+r25: A=Surface | B=53 | C=5780 | D=65 | E=6783 | F=-18.5 | G=-14.8
+r26: A=Kentucky (West) | B=4 | C=13976 | D=4 | E=15933 | F=- | G=-12.3
+r27: A=Underground | B=4 | C=13976 | D=4 | E=15933 | F=- | G=-12.3
+r28: A=Louisiana | B=1 | C=264 | D=1 | E=289 | F=- | G=-8.5
+r29: A=Surface | B=1 | C=264 | D=1 | E=289 | F=- | G=-8.5
+r30: A=Maryland | B=12 | C=1321 | D=12 | E=1280 | F=- | G=3.2
+r31: A=Underground | B=1 | C=504 | D=1 | E=398 | F=- | G=26.6
+r32: A=Surface | B=11 | C=817 | D=11 | E=882 | F=- | G=-7.3
+r33: A=Mississippi | B=1 | C=2041 | D=1 | E=2685 | F=- | G=-24
+r34: A=Surface | B=1 | C=2041 | D=1 | E=2685 | F=- | G=-24
+r35: A=Missouri | B=1 | C=147 | D=1 | E=140 | F=- | G=5.5
+r36: A=Surface | B=1 | C=147 | D=1 | E=140 | F=- | G=5.5
+r37: A=Montana | B=4 | C=26983 | D=4 | E=29072 | F=- | G=-7.2
+r38: A=Underground | B=1 | C=7068 | D=1 | E=7581 | F=- | G=-6.8
+r39: A=Surface | B=3 | C=19916 | D=3 | E=21491 | F=- | G=-7.3
+r40: A=New Mexico | B=3 | C=7199 | D=2 | E=7987 | F=50 | G=-9.9
+r41: A=Surface | B=3 | C=7199 | D=2 | E=7987 | F=50 | G=-9.9
+r42: A=North Dakota | B=4 | C=25415 | D=4 | E=24087 | F=- | G=5.5
+r43: A=Surface | B=4 | C=25415 | D=4 | E=24087 | F=- | G=5.5
+r44: A=Ohio | B=10 | C=1795 | D=9 | E=1947 | F=11.1 | G=-7.8
+r45: A=Underground | B=2 | C=780 | D=2 | E=712 | F=- | G=9.5
+r46: A=Surface | B=8 | C=1015 | D=7 | E=1235 | F=14.3 | G=-17.8
+r47: A=Oklahoma | B=1 | C=- | D=1 | E=2 | F=- | G=-93.4
+r48: A=Surface | B=1 | C=- | D=1 | E=2 | F=- | G=-93.4
+r49: A=Pennsylvania Total | B=110 | C=40597 | D=113 | E=42647 | F=-2.7 | G=-4.8
+r50: A=Underground | B=28 | C=36119 | D=29 | E=37466 | F=-3.5 | G=-3.6
+r51: A=Surface | B=82 | C=4478 | D=84 | E=5181 | F=-2.4 | G=-13.6
+r52: A=Pennsylvania (Anthracite) | B=40 | C=2958 | D=41 | E=2847 | F=-2.4 | G=3.9
+r53: A=Underground | B=4 | C=52 | D=5 | E=57 | F=-20 | G=-9.8
+r54: A=Surface | B=36 | C=2906 | D=36 | E=2789 | F=- | G=4.2
+r55: A=Pennsylvania (Bituminous) | B=70 | C=37639 | D=72 | E=39801 | F=-2.8 | G=-5.4
+r56: A=Underground | B=24 | C=36067 | D=24 | E=37409 | F=- | G=-3.6
+r57: A=Surface | B=46 | C=1572 | D=48 | E=2392 | F=-4.2 | G=-34.3
+r58: A=Texas | B=3 | C=12297 | D=4 | E=13815 | F=-25 | G=-11
+r59: A=Surface | B=3 | C=12297 | D=4 | E=13815 | F=-25 | G=-11
+r60: A=Utah | B=4 | C=7420 | D=6 | E=6921 | F=-33.3 | G=7.2
+r61: A=Underground | B=4 | C=7420 | D=5 | E=6854 | F=-20 | G=8.3
+r62: A=Surface | B=- | C=- | D=1 | E=67 | F=- | G=-
+r63: A=Virginia | B=36 | C=9750 | D=41 | E=10548 | F=-12.2 | G=-7.6
+r64: A=Underground | B=9 | C=7380 | D=10 | E=7693 | F=-10 | G=-4.1
+r65: A=Surface | B=27 | C=2370 | D=31 | E=2855 | F=-12.9 | G=-17
+r66: A=West Virginia Total | B=164 | C=79533 | D=165 | E=84560 | F=-0.6 | G=-5.9
+r67: A=Underground | B=67 | C=62865 | D=71 | E=67268 | F=-5.6 | G=-6.5
+r68: A=Surface | B=97 | C=16668 | D=94 | E=17292 | F=3.2 | G=-3.6
+r69: A=West Virginia (Northern) | B=11 | C=40238 | D=15 | E=44613 | F=-26.7 | G=-9.8
+r70: A=Underground | B=9 | C=39991 | D=11 | E=44181 | F=-18.2 | G=-9.5
+r71: A=Surface | B=2 | C=248 | D=4 | E=431 | F=-50 | G=-42.6
+r72: A=West Virginia (Southern) | B=153 | C=39295 | D=150 | E=39947 | F=2 | G=-1.6
+r73: A=Underground | B=58 | C=22875 | D=60 | E=23086 | F=-3.3 | G=-0.9
+r74: A=Surface | B=95 | C=16420 | D=90 | E=16860 | F=5.6 | G=-2.6
+r75: A=Wyoming | B=15 | C=190731 | D=15 | E=237261 | F=- | G=-19.6
+r76: A=Surface | B=15 | C=190731 | D=15 | E=237261 | F=- | G=-19.6
+r77: A=Appalachia Total | B=440 | C=157710 | D=468 | E=165439 | F=-6 | G=-4.7
+r78: A=Underground | B=152 | C=125672 | D=163 | E=130298 | F=-6.8 | G=-3.6
+r79: A=Surface | B=288 | C=32038 | D=305 | E=35141 | F=-5.6 | G=-8.8
+r80: A=Appalachia Central | B=279 | C=59377 | D=299 | E=62908 | F=-6.7 | G=-5.6
+r81: A=Underground | B=104 | C=34808 | D=113 | E=36410 | F=-8 | G=-4.4
+r82: A=Surface | B=175 | C=24569 | D=186 | E=26498 | F=-5.9 | G=-7.3
+r83: A=Appalachia Northern | B=143 | C=83951 | D=149 | E=90487 | F=-4 | G=-7.2
+r84: A=Underground | B=40 | C=77393 | D=43 | E=82758 | F=-7 | G=-6.5
+r85: A=Surface | B=103 | C=6558 | D=106 | E=7729 | F=-2.8 | G=-15.2
+r86: A=Appalachia Southern | B=18 | C=14382 | D=20 | E=12043 | F=-10 | G=19.4
+r87: A=Underground | B=8 | C=13471 | D=7 | E=11130 | F=14.3 | G=21
+r88: A=Surface | B=10 | C=911 | D=13 | E=913 | F=-23.1 | G=-0.3
+r89: A=Interior Region Total | B=37 | C=83104 | D=43 | E=93510 | F=-14 | G=-11.1
+r90: A=Underground | B=16 | C=58818 | D=16 | E=65754 | F=- | G=-10.6
+r91: A=Surface | B=21 | C=24286 | D=27 | E=27756 | F=-22.2 | G=-12.5
+r92: A=Illinois Basin | B=30 | C=68354 | D=35 | E=76581 | F=-14.3 | G=-10.7
+r93: A=Underground | B=16 | C=58818 | D=16 | E=65754 | F=- | G=-10.6
+r94: A=Surface | B=14 | C=9536 | D=19 | E=10827 | F=-26.3 | G=-11.9
+r95: A=Other Interior | B=7 | C=14750 | D=8 | E=16930 | F=-12.5 | G=-12.9
+r96: A=Surface | B=7 | C=14750 | D=8 | E=16930 | F=-12.5 | G=-12.9
+r97: A=Western Region Total | B=39 | C=271142 | D=41 | E=318708 | F=-4.9 | G=-14.9
+r98: A=Underground | B=9 | C=21678 | D=11 | E=21878 | F=-18.2 | G=-0.9
+r99: A=Surface | B=30 | C=249464 | D=30 | E=296830 | F=- | G=-16
+r100: A=Powder River Basin | B=15 | C=204945 | D=15 | E=251950 | F=- | G=-18.7
+r101: A=Surface | B=15 | C=204945 | D=15 | E=251950 | F=- | G=-18.7
+r102: A=Uinta Basin | B=11 | C=19229 | D=12 | E=18518 | F=-8.3 | G=3.8
+r103: A=Underground | B=7 | C=14028 | D=8 | E=13591 | F=-12.5 | G=3.2
+r104: A=Surface | B=4 | C=5201 | D=4 | E=4928 | F=- | G=5.5
+r105: A=Other Western | B=13 | C=46969 | D=14 | E=48240 | F=-7.1 | G=-2.6
+r106: A=Underground | B=2 | C=7650 | D=3 | E=8288 | F=-33.3 | G=-7.7
+r107: A=Surface | B=11 | C=39319 | D=11 | E=39953 | F=- | G=-1.6
+r108: A=East of Mississippi River | B=471 | C=228105 | D=504 | E=244704 | F=-6.6 | G=-6.8
+r109: A=West of Mississippi River | B=45 | C=283851 | D=48 | E=332953 | F=-6.3 | G=-14.8
+r110: A=U.S. Subtotal | B=516 | C=511956 | D=552 | E=577657 | F=-6.5 | G=-11.4
+r111: A=Refuse Recovery | B=8 | C=584 | D=8 | E=297 | F=- | G=97.1
+r112: A=U.S. Total | B=524 | C=512540 | D=560 | E=577954 | F=-6.4 | G=-11.3
+r113: A=- = No data reported.\n1 For a definition of coal producing regions, see the Glossary.\nNo...

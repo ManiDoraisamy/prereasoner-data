@@ -1,0 +1,57 @@
+FILE nchs_hus_health_care_employment.xlsx (Excel workbook) with 1 sheet(s): ["A"]
+
+### Sheet "A": 52 rows x 15 columns (Excel rows 1..52, columns A..O)
+merged cells: A2:O2, A51:O51, A52:O52, B4:H4, A1:O1, B6:H6, I4:O4, A50:O50, A3:O3
+(whole sheet shown; Excel row numbers)
+r1: A=Table HCEmpl. Health care employment and wages, by selected occupations: United States, se...
+r2: A=Excel version (with more data years and standard errors when available): https://www.cdc.g...
+r3: A=[Data are based on a semiannual survey of nonfarm establishments]
+r4: B=Employment\1 | I=Mean hourly wage (dollars)\2
+r5: A=Occupation title | B=2000 | C=2005 | D=2009 | E=2010 | F=2015 | G=2016 | H=2020 | I=2000 | J=2005 | K=2009 | L=2010 | M=2015 | N=2016 | O=2020
+r6: A=Health care practitioners and technical occupations
+r7: A=Audiologists | B=11530 | C=10030 | D=12590 | E=12860 | F=12070 | G=12310 | H=13300 | I=22.92 | J=27.72 | K=32.14 | L=33.58 | M=37.22 | N=38.12 | O=42.9
+r8: A=Cardiovascular technologists and technicians | B=40080 | C=43560 | D=48070 | E=48720 | F=51400 | G=53760 | H=55980 | I=16.81 | J=19.99 | K=23.91 | L=24.38 | M=26.97 | N=27.45 | O=29.3
+r9: A=Clinical laboratory technologists and technicians | B=… | C=… | D=… | E=… | F=320550 | G=326920 | H=326220 | I=… | J=… | K=… | L=… | M=24.91 | N=25.13 | O=26.92
+r10: A=Dental hygienists | B=148460 | C=161140 | D=173900 | E=177520 | F=200550 | G=204990 | H=194830 | I=24.99 | J=29.15 | K=32.63 | L=33.02 | M=34.96 | N=35.31 | O=37.53
+r11: A=Diagnostic medical sonographers | B=31760 | C=43590 | D=51630 | E=53010 | F=61250 | G=65790 | H=73920 | I=22.03 | J=26.65 | K=30.6 | L=31.2 | M=34.08 | N=34.49 | O=37.4
+r12: A=Dietetic technicians | B=28010 | C=23780 | D=24510 | E=23890 | F=28950 | G=32240 | H=26430 | I=10.98 | J=12.2 | K=13.72 | L=13.86 | M=14.03 | N=14.12 | O=15.83
+r13: A=Dietitians and nutritionists | B=43030 | C=48850 | D=53220 | E=53510 | F=59740 | G=61430 | H=66330 | I=18.76 | J=22.09 | K=25.59 | L=26.13 | M=28.08 | N=28.69 | O=30.84
+r14: A=Emergency medical technicians and paramedics | B=165530 | C=196880 | D=217920 | E=221760 | F=236890 | G=244960 | H=257700 | I=11.89 | J=13.68 | K=15.88 | L=16.01 | M=17.04 | N=17.36 | O=19.41
+r15: A=Licensed practical and licensed vocational nurses | B=679470 | C=710020 | D=728670 | E=730290 | F=697250 | G=702400 | H=676440 | I=14.65 | J=17.41 | K=19.66 | L=19.88 | M=21.17 | N=21.56 | O=24.08
+r16: A=Magnetic resonance imaging technologists\3 | B=… | C=… | D=… | E=… | F=33460 | G=35850 | H=39270 | I=… | J=… | K=… | L=… | M=32.86 | N=33.29 | O=36.52
+r17: A=Medical dosimetrists, medical records specialists, and health technologists and technician... | B=… | C=… | D=… | E=… | F=… | G=… | H=318010 | I=… | J=… | K=… | L=… | M=… | N=… | O=23.21
+r18: A=Nuclear medicine technologists | B=18030 | C=18280 | D=21670 | E=21600 | F=19740 | G=19650 | H=17510 | I=21.56 | J=29.1 | K=32.91 | L=33.2 | M=36.06 | N=36.52 | O=39.46
+r19: A=Nurse anesthetists\4 | B=… | C=… | D=… | E=… | F=39410 | G=39860 | H=41960 | I=… | J=… | K=… | L=… | M=77.04 | N=78.86 | O=90.96
+r20: A=Nurse midwives\4 | B=… | C=… | D=… | E=… | F=7430 | G=6270 | H=7120 | I=… | J=… | K=… | L=… | M=45.01 | N=49.23 | O=55.55
+r21: A=Nurse practitioners\4 | B=… | C=… | D=… | E=… | F=136060 | G=150230 | H=211280 | I=… | J=… | K=… | L=… | M=48.68 | N=50.3 | O=55.05
+r22: A=Occupational therapists | B=75150 | C=87430 | D=97840 | E=100300 | F=114660 | G=118070 | H=126610 | I=24.1 | J=28.41 | K=33.98 | L=35.28 | M=39.27 | N=40.25 | O=42.06
+r23: A=Opticians, dispensing | B=66580 | C=70090 | D=60840 | E=62200 | F=73520 | G=75270 | H=68180 | I=12.67 | J=14.8 | K=16.73 | L=16.73 | M=17.7 | N=18.2 | O=19.89
+r24: A=Pharmacists | B=212660 | C=229740 | D=267860 | E=268030 | F=295620 | G=305510 | H=315470 | I=33.39 | J=42.62 | K=51.27 | L=52.59 | M=57.34 | N=57.82 | O=60.32
+r25: A=Pharmacy technicians | B=190940 | C=266790 | D=331890 | E=333500 | F=379430 | G=398390 | H=415310 | I=10.38 | J=12.19 | K=13.92 | L=14.1 | M=15.23 | N=15.47 | O=17.52
+r26: A=Physical therapists | B=120410 | C=151280 | D=174490 | E=180280 | F=209690 | G=216920 | H=220870 | I=27.62 | J=31.42 | K=36.64 | L=37.5 | M=41.25 | N=41.93 | O=44.08
+r27: A=Physician assistants | B=55490 | C=63350 | D=76900 | E=81420 | F=98470 | G=104050 | H=125280 | I=29.17 | J=34.17 | K=40.78 | L=41.89 | M=47.73 | N=49.08 | O=55.81
+r28: A=Psychiatric technicians | B=53350 | C=62040 | D=70730 | E=72650 | F=58450 | G=61720 | H=85330 | I=12.53 | J=14.04 | K=14.77 | L=15.15 | M=17.44 | N=17.25 | O=18.31
+r29: A=Radiation therapists | B=13100 | C=14120 | D=15570 | E=16590 | F=16930 | G=17450 | H=17390 | I=25.59 | J=30.59 | K=37.18 | L=37.64 | M=40.61 | N=40.86 | O=45.34
+r30: A=Radiologic technologists and technicians\3 | B=172080 | C=184580 | D=213560 | E=216730 | F=195590 | G=200650 | H=206720 | I=17.93 | J=22.6 | K=26.05 | L=26.8 | M=28.13 | N=28.49 | O=31.17
+r31: A=Recreational therapists | B=26940 | C=23260 | D=21960 | E=20830 | F=17880 | G=18100 | H=20080 | I=14.23 | J=16.9 | K=19.84 | L=19.92 | M=22.98 | N=23.17 | O=24.64
+r32: A=Registered nurses\4 | B=2189670 | C=2368070 | D=2583770 | E=2655020 | F=2745910 | G=2857180 | H=2986500 | I=22.31 | J=27.35 | K=31.99 | L=32.56 | M=34.14 | N=34.7 | O=38.47
+r33: A=Respiratory therapists | B=82670 | C=95320 | D=107270 | E=109270 | F=120330 | G=126770 | H=131890 | I=18.37 | J=22.24 | K=26.06 | L=26.54 | M=28.67 | N=29.15 | O=31.56
+r34: A=Speech-language pathologists | B=82850 | C=94660 | D=111640 | E=112530 | F=131450 | G=135980 | H=148450 | I=23.31 | J=27.89 | K=32.86 | L=33.6 | M=36.97 | N=37.6 | O=40.02
+r35: A=Health care support occupations
+r36: A=Dental assistants | B=250870 | C=270720 | D=294020 | E=294030 | F=323110 | G=327290 | H=312140 | I=12.86 | J=14.41 | K=16.35 | L=16.41 | M=17.75 | N=18.22 | O=20.34
+r37: A=Home health and personal care aides | B=… | C=… | D=… | E=… | F=… | G=… | H=3211590 | I=… | J=… | K=… | L=… | M=… | N=… | O=13.49
+r38: A=Massage therapists | B=24620 | C=37670 | D=55920 | E=60040 | F=92090 | G=95830 | H=85040 | I=15.51 | J=19.33 | K=19.13 | L=19.12 | M=20.76 | N=21.39 | O=22.77
+r39: A=Medical assistants | B=330830 | C=382720 | D=495970 | E=523260 | F=601240 | G=623560 | H=710200 | I=11.46 | J=12.58 | K=14.16 | L=14.31 | M=15.34 | N=15.79 | O=17.75
+r40: A=Medical equipment preparers | B=32760 | C=41790 | D=47070 | E=47310 | F=50330 | G=52500 | H=56870 | I=10.68 | J=12.42 | K=14.32 | L=14.59 | M=16.8 | N=17.29 | O=19.75
+r41: A=Medical transcriptionists | B=97330 | C=90380 | D=82810 | E=78780 | F=57830 | G=54070 | H=49530 | I=12.37 | J=14.36 | K=16.03 | L=16.12 | M=17.17 | N=17.86 | O=17.94
+r42: A=Nursing assistants\5 | B=1273460 | C=1391430 | D=1438010 | E=1451090 | F=1420570 | G=1443150 | H=1371050 | I=9.18 | J=10.67 | K=12.01 | L=12.09 | M=12.89 | N=13.29 | O=15.41
+r43: A=Occupational therapy aides | B=8890 | C=6220 | D=8040 | E=7180 | F=7570 | G=7210 | H=5630 | I=11.21 | J=13.2 | K=13.89 | L=14.95 | M=14.95 | N=15.31 | O=16.42
+r44: A=Occupational therapy assistants | B=15910 | C=22160 | D=26680 | E=27720 | F=35460 | G=38170 | H=42750 | I=16.76 | J=19.13 | K=24.44 | L=24.66 | M=28.05 | N=28.62 | O=30.49
+r45: A=Orderlies\5 | B=… | C=… | D=… | E=… | F=52660 | G=52940 | H=43570 | I=… | J=… | K=… | L=… | M=13.26 | N=13.73 | O=15.28
+r46: A=Pharmacy aides | B=59890 | C=46610 | D=52230 | E=49580 | F=38040 | G=36660 | H=38900 | I=9.1 | J=9.76 | K=10.74 | L=10.98 | M=13.2 | N=13.66 | O=15.5
+r47: A=Physical therapist aides | B=34620 | C=41930 | D=44160 | E=45900 | F=50540 | G=50030 | H=45790 | I=10.06 | J=11.01 | K=12.01 | L=12.02 | M=13.19 | N=13.41 | O=14.47
+r48: A=Physical therapist assistants | B=44120 | C=58670 | D=63750 | E=65960 | F=81230 | G=85580 | H=92740 | I=16.52 | J=18.98 | K=23.36 | L=23.95 | M=26.56 | N=27.33 | O=28.58
+r49: A=Psychiatric aides | B=57680 | C=56150 | D=62610 | E=64730 | F=69550 | G=67410 | H=51550 | I=10.79 | J=11.47 | K=13.19 | L=12.84 | M=13.55 | N=13.83 | O=16.01
+r50: A=… Category not applicable.\n\1Number of filled positions. This table includes both full- a...
+r51: A=NOTES: This table excludes occupations such as dentists, physicians, and chiropractors, wh...
+r52: A=SOURCE: U.S. Department of Labor, Bureau of Labor Statistics. Occupational Employment and ...

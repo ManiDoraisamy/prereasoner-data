@@ -1,0 +1,88 @@
+{
+ "id": "medicaid_managed_care_enrollment_2024",
+ "file": "medicaid_managed_care_enrollment_2024.csv",
+ "questions": [
+  {
+   "question": "What was the total number of Medicaid enrollees in California in 2024?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "14904950",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\nca_2024 = df[(df['State'] == 'California') & (df['Year'] == 2024)]\nresult = int(ca_2024['Total Medicaid Enrollees'].str.replace(',', '').iloc[0])",
+   "qid": "medicaid_managed_care_enrollment_2024#1",
+   "pass1": true,
+   "result": 14904950,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2024, did Texas have more enrollees in comprehensive managed care than Florida?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\ntx = df[(df['State'] == 'Texas') & (df['Year'] == 2024)]['Medicaid Enrollment in Comprehensive Managed Care'].str.replace(',', '')\nfl = df[(df['State'] == 'Florida') & (df['Year'] == 2024)]['Medicaid Enrollment in Comprehensive Managed Care'].str.replace(',', '')\nresult = 'yes' if int(tx.iloc[0]) > int(fl.iloc[0]) else 'no'",
+   "qid": "medicaid_managed_care_enrollment_2024#2",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states had the highest enrollment in comprehensive managed care in 2024?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"New York\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\nd2024 = df[(df['Year'] == 2024) & (df['State'] != 'TOTALS')].copy()\ncol = 'Medicaid Enrollment in Comprehensive Managed Care'\nd2024[col] = pd.to_numeric(d2024[col].astype(str).str.replace(',', '').replace('--', None), errors='coerce')\nresult = d2024.sort_values(by=col, ascending=False).head(3)['State'].tolist()",
+   "qid": "medicaid_managed_care_enrollment_2024#3",
+   "pass1": true,
+   "result": [
+    "California",
+    "New York",
+    "Texas"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In which year between 2016 and 2024 was total national Medicaid enrollment the highest?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2023",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\ntotals = df[df['State'] == 'TOTALS'].copy()\ntotals['Total Medicaid Enrollees'] = totals['Total Medicaid Enrollees'].str.replace(',', '').astype(int)\nmax_year = totals.loc[totals['Total Medicaid Enrollees'].idxmax(), 'Year']\nresult = str(max_year)",
+   "qid": "medicaid_managed_care_enrollment_2024#4",
+   "pass1": true,
+   "result": "2023",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states or territories reported more than 5 million total Medicaid enrollees in 2023?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "4",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\nd2023 = df[(df['Year'] == 2023) & (df['State'] != 'TOTALS')].copy()\nd2023['Total Medicaid Enrollees'] = d2023['Total Medicaid Enrollees'].str.replace(',', '').astype(int)\nresult = int((d2023['Total Medicaid Enrollees'] > 5000000).sum())",
+   "qid": "medicaid_managed_care_enrollment_2024#5",
+   "pass1": true,
+   "result": 4,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which state had the largest number of newly eligible adults enrolled in comprehensive managed care organizations in 2024?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "California",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\nd2024 = df[(df['Year'] == 2024) & (df['State'] != 'TOTALS')].copy()\ncol = 'Medicaid Newly Eligible Adults Enrolled in Comprehensive MCOs'\nd2024[col] = pd.to_numeric(d2024[col].astype(str).str.replace(',', '').replace('--', None), errors='coerce')\nresult = d2024.loc[d2024[col].idxmax(), 'State']",
+   "qid": "medicaid_managed_care_enrollment_2024#6",
+   "pass1": true,
+   "result": "California",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

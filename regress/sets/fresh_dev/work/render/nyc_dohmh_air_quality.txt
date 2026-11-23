@@ -1,0 +1,91 @@
+FILE nyc_dohmh_air_quality.csv (CSV). pandas.read_csv gives 19827 data rows x 12 columns.
+Columns and pandas dtypes: Unique ID (int64); Indicator ID (int64); Name (str); Measure (str); Measure Info (str); Geo Type Name (str); Geo Join ID (int64); Geo Place Name (str); Time Period (str); Start_Date (str); Data Value (float64); Message (float64)
+(sheet too large to show whole; r1 is the CSV header line; r2 is pandas index 0; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Unique ID | B=Indicator ID | C=Name | D=Measure | E=Measure Info | F=Geo Type Name | G=Geo Join ID | H=Geo Place Name | I=Time Period | J=Start_Date | K=Data Value | L=Message
+r2: A=130355 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=101 | H=Kingsbridge - Riverdale | I=2005-2007 | J=01/01/2005 | K=117.7
+r3: A=130356 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=102 | H=Northeast Bronx | I=2005-2007 | J=01/01/2005 | K=77.3
+r4: A=130357 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=103 | H=Fordham - Bronx Pk | I=2005-2007 | J=01/01/2005 | K=67.3
+r5: A=130358 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=104 | H=Pelham - Throgs Neck | I=2005-2007 | J=01/01/2005 | K=73.6
+r6: A=130359 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=105 | H=Crotona - Tremont | I=2005-2007 | J=01/01/2005 | K=65.8
+r7: A=130360 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=106 | H=High Bridge - Morrisania | I=2005-2007 | J=01/01/2005 | K=84.8
+r8: A=130361 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=107 | H=Hunts Point - Mott Haven | I=2005-2007 | J=01/01/2005 | K=71
+r9: A=130362 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=201 | H=Greenpoint | I=2005-2007 | J=01/01/2005 | K=64
+r10: A=130363 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=202 | H=Downtown - Heights - Slope | I=2005-2007 | J=01/01/2005 | K=58.9
+r11: A=130364 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=203 | H=Bedford Stuyvesant - Crown Heights | I=2005-2007 | J=01/01/2005 | K=80
+r12: A=130365 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=204 | H=East New York | I=2005-2007 | J=01/01/2005 | K=64.1
+r13: A=130366 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=205 | H=Sunset Park | I=2005-2007 | J=01/01/2005 | K=49.2
+r14: A=130367 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=206 | H=Borough Park | I=2005-2007 | J=01/01/2005 | K=68.2
+r15: A=130368 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=207 | H=East Flatbush - Flatbush | I=2005-2007 | J=01/01/2005 | K=54.9
+r16: A=130369 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=208 | H=Canarsie - Flatlands | I=2005-2007 | J=01/01/2005 | K=61.1
+r17: A=130370 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=209 | H=Bensonhurst - Bay Ridge | I=2005-2007 | J=01/01/2005 | K=73.4
+r18: A=130371 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=210 | H=Coney Island - Sheepshead Bay | I=2005-2007 | J=01/01/2005 | K=83.3
+r19: A=130372 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=211 | H=Williamsburg - Bushwick | I=2005-2007 | J=01/01/2005 | K=72.2
+r20: A=130373 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=301 | H=Washington Heights | I=2005-2007 | J=01/01/2005 | K=60.5
+r21: A=130374 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=302 | H=Central Harlem - Morningside Heights | I=2005-2007 | J=01/01/2005 | K=105.2
+r22: A=130375 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=303 | H=East Harlem | I=2005-2007 | J=01/01/2005 | K=100.5
+r23: A=130376 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=304 | H=Upper West Side | I=2005-2007 | J=01/01/2005 | K=59.5
+r24: A=130377 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=305 | H=Upper East Side | I=2005-2007 | J=01/01/2005 | K=55.3
+r25: A=130378 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=306 | H=Chelsea - Clinton | I=2005-2007 | J=01/01/2005 | K=57.5
+r26: A=130379 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=307 | H=Gramercy Park - Murray Hill | I=2005-2007 | J=01/01/2005 | K=52.7
+r27: A=130380 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=308 | H=Greenwich Village - SoHo | I=2005-2007 | J=01/01/2005 | K=45.4
+r28: A=130381 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=309 | H=Union Square - Lower East Side | I=2005-2007 | J=01/01/2005 | K=66.9
+r29: A=130382 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=310 | H=Lower Manhattan | I=2005-2007 | J=01/01/2005 | K=59.5
+r30: A=130383 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=401 | H=Long Island City - Astoria | I=2005-2007 | J=01/01/2005 | K=55.3
+r31: A=130384 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=402 | H=West Queens | I=2005-2007 | J=01/01/2005 | K=44.6
+r32: A=130385 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=403 | H=Flushing - Clearview | I=2005-2007 | J=01/01/2005 | K=54.5
+r33: A=130386 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=404 | H=Bayside - Little Neck | I=2005-2007 | J=01/01/2005 | K=48.9
+r34: A=130387 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=405 | H=Ridgewood - Forest Hills | I=2005-2007 | J=01/01/2005 | K=72
+r35: A=130388 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=406 | H=Fresh Meadows | I=2005-2007 | J=01/01/2005 | K=52
+... sampled rows:
+r4639: A=176510 | B=1431 | C=Nitrogen dioxide (NO2) | D=Annual mean | E=ppb | F=UHF42 | G=102 | H=Northeast Bronx | I=2009 | J=01/01/2009 | K=22.39
+r5075: A=177786 | B=1426 | C=Fine particles (PM 2.5) | D=Summer mean | E=mcg/m3 | F=UHF42 | G=211 | H=Williamsburg - Bushwick | I=2009 | J=01/01/2009 | K=12.74
+r5354: A=178485 | B=1425 | C=Fine particles (PM 2.5) | D=Annual mean | E=mcg/m3 | F=UHF42 | G=103 | H=Fordham - Bronx Pk | I=2011 | J=01/01/2011 | K=10.77
+r5740: A=211423 | B=1426 | C=Fine particles (PM 2.5) | D=Summer mean | E=mcg/m3 | F=Borough | G=4 | H=Queens | I=2014 | J=01/01/2014 | K=8.23
+r5757: A=211562 | B=1433 | C=Nitrogen dioxide (NO2) | D=Winter mean | E=ppb | F=UHF34 | G=207 | H=East Flatbush - Flatbush | I=2014 | J=01/01/2014 | K=28.3
+r5934: A=212079 | B=1425 | C=Fine particles (PM 2.5) | D=Annual mean | E=mcg/m3 | F=UHF34 | G=303 | H=East Harlem | I=2014 | J=01/01/2014 | K=9.84
+r6777: A=216498 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=313 | H=Coney Island (CD13) | I=2013 | J=01/01/2013 | K=34.64
+r6797: A=216518 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=317 | H=East Flatbush (CD17) | I=2009 | J=01/01/2009 | K=25.74
+r7337: A=222587 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=UHF42 | G=404 | H=Bayside - Little Neck | I=2009 | J=01/01/2009 | K=26.29
+r7529: A=315593 | B=646 | C=Outdoor Air Toxics - Benzene | D=Annual average concentration | E=Âµg/m3 | F=UHF42 | G=104 | H=Pelham - Throgs Neck | I=2011 | J=01/01/2011 | K=1.3
+r8705: A=410821 | B=1425 | C=Fine particles (PM 2.5) | D=Annual mean | E=mcg/m3 | F=UHF42 | G=401 | H=Long Island City - Astoria | I=2016 | J=01/01/2016 | K=8.65
+r9839: A=518747 | B=639 | C=Deaths due to PM2.5 | D=Estimated annual rate (age 30+) | E=per 100,000 adults | F=UHF42 | G=104 | H=Pelham - Throgs Neck | I=2012-2014 | J=01/02/2012 | K=45.39894534
+r10493: A=547775 | B=1427 | C=Fine particles (PM 2.5) | D=Winter mean | E=mcg/m3 | F=CD | G=503 | H=Tottenville and Great Kills (CD3) | I=2017 | J=01/01/2017 | K=6.87
+r10757: A=549867 | B=1433 | C=Nitrogen dioxide (NO2) | D=Winter mean | E=ppb | F=UHF42 | G=408 | H=Jamaica | I=2017 | J=01/01/2017 | K=24.81
+r10780: A=549890 | B=1431 | C=Nitrogen dioxide (NO2) | D=Annual mean | E=ppb | F=UHF34 | G=102 | H=Northeast Bronx | I=2017 | J=01/01/2017 | K=18.87
+r11567: A=605311 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=105 | H=Midtown (CD5) | I=2018 | J=01/01/2018 | K=22.91
+r12262: A=628601 | B=651 | C=Cardiovascular hospitalizations due to PM2.5 (age 40+) | D=Estimated annual rate | E=per 100,000 adults | F=UHF42 | G=303 | H=East Harlem | I=2015-2017 | J=01/01/2015 | K=25.5
+r13166: A=649866 | B=1427 | C=Fine particles (PM 2.5) | D=Winter mean | E=mcg/m3 | F=UHF34 | G=409 | H=Southeast Queens | I=2019 | J=01/01/2019 | K=6.73
+r13227: A=649927 | B=1425 | C=Fine particles (PM 2.5) | D=Annual mean | E=mcg/m3 | F=CD | G=112 | H=Washington Heights and Inwood (CD12) | I=2019 | J=01/01/2019 | K=7.17
+r14709: A=741088 | B=1433 | C=Nitrogen dioxide (NO2) | D=Winter mean | E=ppb | F=UHF34 | G=407 | H=Southwest Queens | I=2021 | J=01/01/2021 | K=21.28584552
+r15477: A=743723 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=UHF42 | G=104 | H=Pelham - Throgs Neck | I=2021 | J=01/01/2021 | K=30.29229041
+r16317: A=823248 | B=1427 | C=Fine particles (PM 2.5) | D=Winter mean | E=mcg/m3 | F=UHF42 | G=309 | H=Union Square - Lower East Side | I=2022 | J=01/01/2022 | K=8.39859803
+r17455: A=827826 | B=653 | C=Asthma emergency department visits due to Ozone | D=Estimated annual rate (under age 18) | E=per 100,000 children | F=UHF42 | G=105 | H=Crotona - Tremont | I=2017-2019 | J=01/01/2017 | K=157
+r17509: A=827880 | B=659 | C=Asthma emergency department visits due to Ozone | D=Estimated annual rate (age 18+) | E=per 100,000 adults | F=UHF42 | G=204 | H=East New York | I=2017-2019 | J=01/01/2017 | K=86
+r17781: A=874397 | B=1427 | C=Fine particles (PM 2.5) | D=Winter mean | E=mcg/m3 | F=UHF34 | G=204 | H=East New York | I=2023 | J=01/01/2023 | K=6.284280262
+r17906: A=874522 | B=1427 | C=Fine particles (PM 2.5) | D=Winter mean | E=mcg/m3 | F=CD | G=103 | H=Lower East Side and Chinatown (CD3) | I=2023 | J=01/01/2023 | K=7.36189413
+r18375: A=877106 | B=1431 | C=Nitrogen dioxide (NO2) | D=Annual mean | E=ppb | F=CD | G=106 | H=Stuyvesant Town and Turtle Bay (CD6) | I=2023 | J=01/01/2023 | K=21.89410171
+r18540: A=878117 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=305 | H=East New York and Starrett City (CD5) | I=2023 | J=01/01/2023 | K=36.56098667
+r18592: A=878169 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=102 | H=Greenwich Village and Soho (CD2) | I=2023 | J=01/01/2023 | K=28.97905331
+r19480: A=980206 | B=1432 | C=Nitrogen dioxide (NO2) | D=Summer mean | E=ppb | F=CD | G=309 | H=South Crown Heights and Lefferts Gardens (CD9) | I=2024 | J=01/01/2024 | K=11.60456065
+... last rows:
+r19821: A=980547 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=410 | H=South Ozone Park and Howard Beach (CD10) | I=2024 | J=01/01/2024 | K=36.06666739
+r19822: A=980548 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=411 | H=Bayside and Little Neck (CD11) | I=2024 | J=01/01/2024 | K=34.07478247
+r19823: A=980549 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=412 | H=Jamaica and Hollis (CD12) | I=2024 | J=01/01/2024 | K=35.49967545
+r19824: A=980550 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=413 | H=Queens Village (CD13) | I=2024 | J=01/01/2024 | K=35.87566759
+r19825: A=980551 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=414 | H=Rockaway and Broad Channel (CD14) | I=2024 | J=01/01/2024 | K=38.44312178
+r19826: A=980552 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=501 | H=St. George and Stapleton (CD1) | I=2024 | J=01/01/2024 | K=32.30501081
+r19827: A=980553 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=502 | H=South Beach and Willowbrook (CD2) | I=2024 | J=01/01/2024 | K=33.43066386
+r19828: A=980554 | B=1435 | C=Ozone (O3) | D=Summer mean | E=ppb | F=CD | G=503 | H=Tottenville and Great Kills (CD3) | I=2024 | J=01/01/2024 | K=34.20650959
+... column profiles (data rows below Excel row 1):
+  A [Unique ID]: {"non_empty": 19827, "numeric": 19827, "min": "130355", "max": "980554", "sum": "9612734146", "distinct": 19827, "top_values": {"130355": 1, "130356": 1, "130357": 1, "130358": 1, "130359": 1, "130360": 1}}
+  B [Indicator ID]: {"non_empty": 19827, "numeric": 19827, "min": "639", "max": "1435", "sum": "25199447", "distinct": 25, "value_counts": {"1425": 2256, "1426": 2256, "1427": 2256, "1431": 2256, "1432": 2256, "1433": 2256, "1435": 2256, "643": 321, "644": 321, "645": 321, "639": 240, "648": 240, "650": 240, "651": 240, "652": 240, "653": 240, "655": 240, "657": 240, "659": 240, "661": 240, "646": 203, "647": 203, "640": 96, "641": 88, "642": 82}}
+  C [Name]: {"non_empty": 19827, "distinct": 18, "value_counts": {"Fine particles (PM 2.5)": 6768, "Nitrogen dioxide (NO2)": 6768, "Ozone (O3)": 2256, "Asthma emergency department visits due to Ozone": 480, "Asthma emergency department visits due to PM2.5": 480, "Asthma hospitalizations due to Ozone": 480, "Traffic density": 321, "Traffic density (cars)": 321, "Traffic density (trucks)": 321, "Cardiac and respiratory deaths due to Ozone": 240, "Cardiovascular hospitalizations due to PM2.5 (age 40+)": 240, "Deaths due to PM2.5": 240, "Respiratory hospitalizations due to PM2.5 (age 20+)": 240, "Outdoor Air Toxics - Benzene": 203, "Outdoor Air Toxics - Formaldehyde": 203, "Boiler emissions (SO2)": 96, "Boiler emissions (PM2.5)": 88, "Boiler emissions (NOx)": 82}}
+  D [Measure]: {"non_empty": 19827, "distinct": 10, "value_counts": {"Summer mean": 6768, "Annual mean": 4512, "Winter mean": 4512, "Million miles": 963, "Estimated annual rate": 720, "Estimated annual rate (age 18+)": 720, "Estimated annual rate (under age 18)": 720, "Annual average concentration": 406, "Tons": 266, "Estimated annual rate (age 30+)": 240}}
+  E [Measure Info]: {"non_empty": 19827, "distinct": 8, "value_counts": {"ppb": 9024, "mcg/m3": 6768, "per 100,000 adults": 1440, "per square mile": 963, "per 100,000 children": 720, "Âµg/m3": 406, "per square kilometer": 266, "per 100,000": 240}}
+  F [Geo Type Name]: {"non_empty": 19827, "distinct": 5, "value_counts": {"UHF42": 7602, "CD": 7257, "UHF34": 3876, "Borough": 910, "Citywide": 182}}
+  G [Geo Join ID]: {"non_empty": 19827, "numeric": 19827, "min": "1", "max": "105106107", "sum": "12252797270", "distinct": 72, "top_values": {"101": 418, "102": 418, "103": 418, "104": 418, "201": 418, "202": 418}}
+  H [Geo Place Name]: {"non_empty": 19827, "distinct": 114, "top_values": {"Bedford Stuyvesant - Crown Heights": 295, "Bensonhurst - Bay Ridge": 295, "Borough Park": 295, "Canarsie - Flatlands": 295, "Central Harlem - Morningside Heights": 295, "Coney Island - Sheepshead Bay": 295}}
+  I [Time Period]: {"non_empty": 19827, "distinct": 22, "value_counts": {"2019": 1472, "2010": 1308, "2011": 1201, "2014": 1083, "2015": 1040, "2013": 1036, "2009": 987, "2012": 987, "2016": 987, "2017": 987, "2018": 987, "2020": 987, "2021": 987, "2022": 987, "2023": 987, "2024": 987, "2005-2007": 480, "2009-2011": 480, "2012-2014": 480, "2015-2017": 480, "2017-2019": 480, "2005": 417}}
+  J [Start_Date]: {"non_empty": 19827, "distinct": 18, "value_counts": {"01/01/2015": 1520, "01/01/2019": 1472, "01/01/2009": 1467, "01/01/2017": 1467, "01/01/2010": 1308, "01/01/2011": 1201, "01/01/2014": 1083, "01/01/2013": 1036, "01/01/2012": 987, "01/01/2016": 987, "01/01/2018": 987, "01/01/2020": 987, "01/01/2021": 987, "01/01/2022": 987, "01/01/2023": 987, "01/01/2024": 987, "01/01/2005": 897, "01/02/2012": 480}}
+  K [Data Value]: {"non_empty": 19827, "numeric": 19827, "min": "0", "max": "424.7", "sum": "409403.1871", "distinct": 8375, "top_values": {"5": 45, "10": 41, "2": 40, "9": 37, "4": 36, "3": 32}}
+  L [Message]: {"non_empty": 0, "distinct": 0, "value_counts": {}}

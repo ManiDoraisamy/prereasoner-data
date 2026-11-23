@@ -1,0 +1,35 @@
+{
+ "id": "cdc_death_rates_life_expectancy",
+ "answers": [
+  {
+   "id": "cdc_death_rates_life_expectancy#1",
+   "answer": "79.7",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nfiltered = df[(df['Year'] == 2000) & (df['Race'] == 'All Races') & (df['Sex'] == 'Female')]\nresult = float(filtered['Average Life Expectancy (Years)'].iloc[0])"
+  },
+  {
+   "id": "cdc_death_rates_life_expectancy#2",
+   "answer": "1918",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nfiltered = df[(df['Race'] == 'All Races') & (df['Sex'] == 'Both Sexes')]\nmax_row = filtered.loc[filtered['Age-adjusted Death Rate'].idxmax()]\nresult = str(int(max_row['Year']))"
+  },
+  {
+   "id": "cdc_death_rates_life_expectancy#3",
+   "answer": "3.3",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nwhite_females = df[(df['Year'] == 2010) & (df['Race'] == 'White') & (df['Sex'] == 'Female')]['Average Life Expectancy (Years)'].iloc[0]\nblack_females = df[(df['Year'] == 2010) & (df['Race'] == 'Black') & (df['Sex'] == 'Female')]['Average Life Expectancy (Years)'].iloc[0]\nresult = round(white_females - black_females, 2)"
+  },
+  {
+   "id": "cdc_death_rates_life_expectancy#4",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nfiltered = df[(df['Race'] == 'All Races') & (df['Sex'] == 'Both Sexes') & (df['Year'] < 2005)]\nresult = 'yes' if (filtered['Age-adjusted Death Rate'] < 800).any() else 'no'"
+  },
+  {
+   "id": "cdc_death_rates_life_expectancy#5",
+   "answer": "68.74",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nfiltered = df[(df['Race'] == 'Black') & (df['Sex'] == 'Male') & (df['Year'].between(2000, 2004))]\nresult = round(float(filtered['Average Life Expectancy (Years)'].mean()), 2)"
+  },
+  {
+   "id": "cdc_death_rates_life_expectancy#6",
+   "answer": "Black",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_death_rates_life_expectancy.csv')\nfiltered = df[(df['Year'] == 2018) & (df['Sex'] == 'Both Sexes') & (df['Race'].isin(['Black', 'White']))]\nresult = filtered.sort_values(by='Age-adjusted Death Rate', ascending=False).iloc[0]['Race']"
+  }
+ ]
+}

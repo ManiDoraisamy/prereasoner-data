@@ -1,0 +1,126 @@
+{
+ "dataset": "orders-tiers",
+ "kind": "world+fx",
+ "uploads": [
+  {
+   "name": "orders",
+   "columns": [
+    "order ID",
+    "customer",
+    "city",
+    "tier",
+    "ordered",
+    "currency",
+    "amount"
+   ],
+   "rows": 23
+  },
+  {
+   "name": "tier",
+   "columns": [
+    "tier",
+    "rank",
+    "min_order_amount",
+    "discount_percent",
+    "benefits"
+   ],
+   "rows": 3
+  }
+ ],
+ "normalized": [
+  {
+   "name": "orders",
+   "upload": "orders",
+   "columns": [
+    "order ID",
+    "customer",
+    "city",
+    "tier",
+    "ordered",
+    "currency",
+    "amount"
+   ]
+  },
+  {
+   "name": "tier",
+   "upload": "tier",
+   "columns": [
+    "tier",
+    "rank",
+    "min_order_amount",
+    "discount_percent",
+    "benefits"
+   ]
+  }
+ ],
+ "links_between_uploads": [
+  {
+   "from_table": "orders",
+   "from_col": "tier",
+   "to_table": "tier",
+   "to_col": "tier",
+   "conf": 1.0,
+   "inclusion": 1.0
+  }
+ ],
+ "routes": [
+  {
+   "upload": "orders",
+   "table": "orders",
+   "column": "city",
+   "column_index": 2,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "orders connected to knowledgebase",
+   "bridged": true,
+   "cells": 7,
+   "cells_matched": 7
+  }
+ ],
+ "entity_columns": [],
+ "conversions": [
+  {
+   "upload": "orders",
+   "table": "orders",
+   "currency_column": "currency",
+   "currency_index": 5,
+   "date_column": null,
+   "date_index": null,
+   "measures": [
+    {
+     "column": "amount",
+     "column_index": 6
+    }
+   ],
+   "rate_columns": [
+    "rate_to_aud",
+    "rate_to_cad",
+    "rate_to_chf",
+    "rate_to_cny",
+    "rate_to_eur",
+    "rate_to_gbp",
+    "rate_to_inr",
+    "rate_to_jpy",
+    "rate_to_usd"
+   ],
+   "as_of": "2026-11-18",
+   "days": 1
+  }
+ ],
+ "knowledgebase_tables": {
+  "Cities": 47,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 47,
+  "country": 209,
+  "exchange_rate": 30,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 2.5
+}

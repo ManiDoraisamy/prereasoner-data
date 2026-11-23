@@ -1,0 +1,481 @@
+FILE census_hvs_homeownership_rates_by_region.xlsx (Excel workbook) with 1 sheet(s): ["Sheet1"]
+
+### Sheet "Sheet1": 476 rows x 5 columns (Excel rows 1..476, columns A..E)
+merged cells: B4:B5, A472:H473, C4:C5, A4:A5, E4:E5, D4:D5
+(whole sheet shown; Excel row numbers)
+r1: A=Table with row headings in column A and column headings in rows 4-5.
+r2: A=Table 14. Homeownership Rates for the US and Regions: 1964 to Present
+r3: (blank)
+r4: A=Year and Area | B=First               Quarter | C=Second                Quarter | D=Third Quarter | E=Fourth        Quarter
+r5: (blank)
+r6: A=1964
+r7: A=United States………. | B=63.1 | C=63.3 | D=62.9 | E=63
+r8: A=Northeast…………… | B=57.8 | C=58.3 | D=57 | E=57.8
+r9: A=Midwest……………. | B=69.1 | C=68.6 | D=68.7 | E=68.3
+r10: A=South………………. | B=64.4 | C=64.1 | D=64.2 | E=64.8
+r11: A=West………………… | B=59.2 | C=60.5 | D=59.9 | E=59.1
+r12: (blank)
+r13: A=1965
+r14: A=United States………. | B=62.9 | C=62.9 | D=62.9 | E=63.4
+r15: A=Northeast…………… | B=57.9 | C=57.3 | D=57.2 | E=58.4
+r16: A=Midwest……………. | B=68.1 | C=68.7 | D=69.2 | E=68.4
+r17: A=South………………. | B=64.9 | C=63.8 | D=63.7 | E=65.4
+r18: A=West………………… | B=57.9 | C=59.9 | D=59.7 | E=59.5
+r19: (blank)
+r20: A=1966
+r21: A=United States………. | B=63.5 | C=63.2 | D=63.3 | E=63.8
+r22: A=Northeast…………… | B=57.5 | C=57.2 | D=57.6 | E=58.6
+r23: A=Midwest……………. | B=68.8 | C=68.5 | D=68.6 | E=68.1
+r24: A=South………………. | B=65.4 | C=64.8 | D=65 | E=65.9
+r25: A=West………………… | B=60.3 | C=60.7 | D=59.9 | E=60.9
+r26: (blank)
+r27: A=1967
+r28: A=United States………. | B=63.3 | C=63.9 | D=63.8 | E=63.5
+r29: A=Northeast…………… | B=58.4 | C=57.4 | D=58.6 | E=57.9
+r30: A=Midwest……………. | B=67.7 | C=69.3 | D=67.6 | E=68
+r31: A=South………………. | B=64.7 | C=65.4 | D=65 | E=65.4
+r32: A=West………………… | B=61.2 | C=61.8 | D=59.8 | E=61.1
+r33: (blank)
+r34: A=1968
+r35: A=United States………. | B=63.6 | C=64.1 | D=64.1 | E=63.6
+r36: A=Northeast…………… | B=59.5 | C=59.1 | D=59.1 | E=58.9
+r37: A=Midwest……………. | B=67.7 | C=69.5 | D=69.7 | E=68.6
+r38: A=South………………. | B=65 | C=64.6 | D=65.2 | E=65
+r39: A=West………………… | B=60.5 | C=61.8 | D=60.3 | E=59.9
+r40: (blank)
+r41: A=1969
+r42: A=United States………. | B=64.1 | C=64.4 | D=64.4 | E=64.4
+r43: A=Northeast…………… | B=58.8 | C=58.8 | D=59.4 | E=58.3
+r44: A=Midwest……………. | B=69.2 | C=69.7 | D=69.5 | E=70.5
+r45: A=South………………. | B=65.2 | C=65.4 | D=65.6 | E=65.9
+r46: A=West………………… | B=61.7 | C=61.8 | D=61.2 | E=60.3
+r47: (blank)
+r48: A=1970
+r49: A=United States………. | B=64.3 | C=64 | D=64.4 | E=64
+r50: A=Northeast…………… | B=58.5 | C=58.2 | D=58 | E=57.8
+r51: A=Midwest……………. | B=70 | C=69.3 | D=69.6 | E=69.3
+r52: A=South………………. | B=66 | C=66.3 | D=66.4 | E=65.5
+r53: A=West………………… | B=60.4 | C=59.4 | D=61.4 | E=61.3
+r54: (blank)
+r55: A=1971
+r56: A=United States………. | B=64 | C=64.1 | D=64.4 | E=64.5
+r57: A=Northeast…………… | B=58.4 | C=58.2 | D=59 | E=58.4
+r58: A=Midwest……………. | B=69.4 | C=69.3 | D=69.3 | E=69.4
+r59: A=South………………. | B=66.2 | C=66.3 | D=66.2 | E=66.9
+r60: A=West………………… | B=59.3 | C=59.4 | D=60.9 | E=61
+r61: (blank)
+r62: A=1972
+r63: A=United States………. | B=64.3 | C=64.5 | D=64.3 | E=64.4
+r64: A=Northeast…………… | B=58.4 | C=58.6 | D=59.1 | E=58.5
+r65: A=Midwest……………. | B=68.8 | C=69.8 | D=68.9 | E=69.7
+r66: A=South………………. | B=66.8 | C=67 | D=65.7 | E=66
+r67: A=West………………… | B=60.7 | C=60.1 | D=61.8 | E=61.3
+r68: (blank)
+r69: A=1973
+r70: A=United States………. | B=64.9 | C=64.4 | D=64.4 | E=64.4
+r71: A=Northeast…………… | B=58.9 | C=58.3 | D=57.9 | E=58.4
+r72: A=Midwest……………. | B=70.6 | C=70.2 | D=70.4 | E=70.7
+r73: A=South………………. | B=67.3 | C=66.2 | D=66.6 | E=66
+r74: A=West………………… | B=59.8 | C=61 | D=60 | E=60.2
+r75: (blank)
+r76: A=1974
+r77: A=United States………. | B=64.8 | C=64.8 | D=64.6 | E=64.4
+r78: A=Northeast…………… | B=59 | C=59.2 | D=58.8 | E=58.3
+r79: A=Midwest……………. | B=69.9 | C=70.6 | D=71.1 | E=70
+r80: A=South………………. | B=66.8 | C=66.4 | D=66 | E=66.2
+r81: A=West………………… | B=61.2 | C=60.4 | D=60.1 | E=60.7
+r82: (blank)
+r83: A=1975
+r84: A=United States………. | B=64.4 | C=64.9 | D=64.6 | E=64.5
+r85: A=Northeast…………… | B=59.4 | C=59.6 | D=59.1 | E=58.9
+r86: A=Midwest……………. | B=69.4 | C=71 | D=70.2 | E=70.1
+r87: A=South………………. | B=65.8 | C=66.1 | D=66 | E=66
+r88: A=West………………… | B=60.9 | C=60.5 | D=61 | E=60.9
+r89: (blank)
+r90: A=1976
+r91: A=United States………. | B=64.6 | C=64.6 | D=64.9 | E=64.8
+r92: A=Northeast…………… | B=59.4 | C=59.7 | D=60.1 | E=60.1
+r93: A=Midwest……………. | B=70 | C=69.8 | D=69.7 | E=69.2
+r94: A=South………………. | B=66.1 | C=66.2 | D=66.6 | E=66.5
+r95: A=West………………… | B=60.9 | C=60.4 | D=61.1 | E=61.1
+r96: (blank)
+r97: A=1977
+r98: A=United States………. | B=64.8 | C=64.5 | D=65 | E=64.9
+r99: A=Northeast…………… | B=60.2 | C=59.7 | D=60.5 | E=60.7
+r100: A=Midwest……………. | B=69 | C=69.3 | D=69.8 | E=69.4
+r101: A=South………………. | B=67.2 | C=66.7 | D=67.2 | E=67.4
+r102: A=West………………… | B=60.1 | C=59.7 | D=60 | E=59.3
+r103: (blank)
+r104: A=1978
+r105: A=United States………. | B=64.8 | C=64.4 | D=65.2 | E=65.4
+r106: A=Northeast…………… | B=60.3 | C=59.9 | D=61.5 | E=60.5
+r107: A=Midwest……………. | B=69.4 | C=68.9 | D=69.8 | E=69.5
+r108: A=South………………. | B=67.5 | C=67.3 | D=67.7 | E=68.7
+r109: A=West………………… | B=59.2 | C=58.7 | D=59.1 | E=59.6
+r110: (blank)
+r111: A=1979
+r112: A=United States………. | B=65.3 | C=65.1 | D=66 | E=65.8
+r113: A=Northeast…………… | B=60.9 | C=60.3 | D=61 | E=60.8
+r114: A=Midwest……………. | B=69.1 | C=69.2 | D=69.9 | E=70.3
+r115: A=South………………. | B=68.4 | C=68.3 | D=69.1 | E=68.6
+r116: A=West………………… | B=59.9 | C=59.5 | D=61 | E=60.7
+r117: (blank)
+r118: A=1979r1
+r119: A=United States………. | B=64.8 | C=64.9 | D=65.8 | E=65.4
+r120: A=Northeast…………… | B=60.4 | C=60.2 | D=60.8 | E=60.7
+r121: A=Midwest……………. | B=68.9 | C=69.4 | D=70.2 | E=70
+r122: A=South………………. | B=68.1 | C=67.8 | D=68.8 | E=68.3
+r123: A=West………………… | B=58.9 | C=59.4 | D=60.6 | E=59.9
+r124: (blank)
+r125: A=1980
+r126: A=United States………. | B=65.5 | C=65.5 | D=65.8 | E=65.5
+r127: A=Northeast…………… | B=60.7 | C=60.8 | D=61.1 | E=60.5
+r128: A=Midwest……………. | B=69.6 | C=69.4 | D=70 | E=70.1
+r129: A=South………………. | B=69.1 | C=68.6 | D=68.9 | E=68.3
+r130: A=West………………… | B=59.4 | C=60.2 | D=60.3 | E=60.1
+r131: (blank)
+r132: A=1981
+r133: A=United States………. | B=65.6 | C=65.3 | D=65.6 | E=65.2
+r134: A=Northeast…………… | B=60.2 | C=60.4 | D=61.7 | E=60.8
+r135: A=Midwest……………. | B=70.1 | C=69.7 | D=69.6 | E=69.6
+r136: A=South………………. | B=69.1 | C=68 | D=68 | E=67.8
+r137: A=West………………… | B=59.8 | C=60.3 | D=60.8 | E=59.9
+r138: (blank)
+r139: A=1982
+r140: A=United States………. | B=64.8 | C=64.9 | D=64.9 | E=64.5
+r141: A=Northeast…………… | B=60.7 | C=60.8 | D=61.9 | E=61.1
+r142: A=Midwest……………. | B=69.5 | C=69.8 | D=69.3 | E=69.1
+r143: A=South………………. | B=67.1 | C=66.8 | D=66.5 | E=66.5
+r144: A=West………………… | B=59.3 | C=59.8 | D=60 | E=58.7
+r145: (blank)
+r146: A=1983
+r147: A=United States………. | B=64.7 | C=64.7 | D=64.8 | E=64.4
+r148: A=Northeast…………… | B=61.6 | C=61.4 | D=61.8 | E=61.2
+r149: A=Midwest……………. | B=69.6 | C=69.6 | D=69.3 | E=68.9
+r150: A=South………………. | B=66.7 | C=66.7 | D=67 | E=67.4
+r151: A=West………………… | B=58.4 | C=59 | D=58.3 | E=57.2
+r152: (blank)
+r153: A=1984
+r154: A=United States………. | B=64.6 | C=64.6 | D=64.6 | E=64.1
+r155: A=Northeast…………… | B=61.1 | C=61.1 | D=61.7 | E=60.9
+r156: A=Midwest……………. | B=69 | C=68.6 | D=68.5 | E=67.7
+r157: A=South………………. | B=67.2 | C=66.8 | D=66.8 | E=67.2
+r158: A=West………………… | B=58.3 | C=59.4 | D=59 | E=57.5
+r159: (blank)
+r160: A=1985
+r161: A=United States………. | B=64.1 | C=64.1 | D=63.9 | E=63.5
+r162: A=Northeast…………… | B=60.8 | C=60.9 | D=60.8 | E=60.8
+r163: A=Midwest……………. | B=67.3 | C=67.3 | D=66.8 | E=66.4
+r164: A=South………………. | B=66.7 | C=66.7 | D=66.3 | E=66
+r165: A=West………………… | B=59 | C=59.2 | D=59.3 | E=58.5
+r166: (blank)
+r167: A=1986
+r168: A=United States………. | B=63.6 | C=63.8 | D=63.8 | E=63.9
+r169: A=Northeast…………… | B=61 | C=61.4 | D=61.2 | E=61.9
+r170: A=Midwest……………. | B=66.5 | C=67 | D=67.2 | E=67
+r171: A=South………………. | B=66.4 | C=66.1 | D=66.1 | E=65.9
+r172: A=West………………… | B=57.7 | C=58.5 | D=58.6 | E=58.6
+r173: (blank)
+r174: A=1987
+r175: A=United States………. | B=63.8 | C=63.8 | D=64.2 | E=64.1
+r176: A=Northeast…………… | B=61.3 | C=61.7 | D=61.8 | E=61.9
+r177: A=Midwest……………. | B=66.8 | C=67.3 | D=67.8 | E=67.2
+r178: A=South………………. | B=66.5 | C=66 | D=66.2 | E=66.4
+r179: A=West………………… | B=58.1 | C=58.3 | D=58.9 | E=58.6
+r180: (blank)
+r181: A=1988
+r182: A=United States………. | B=63.7 | C=63.7 | D=64 | E=63.8
+r183: A=Northeast…………… | B=61.5 | C=61.3 | D=61.5 | E=60.8
+r184: A=Midwest……………. | B=67.2 | C=67.3 | D=67.6 | E=67.8
+r185: A=South………………. | B=65.5 | C=65.7 | D=66.1 | E=66
+r186: A=West………………… | B=58.7 | C=58.4 | D=58.7 | E=58.2
+r187: (blank)
+r188: A=1989
+r189: A=United States………. | B=63.9 | C=63.8 | D=64.1 | E=63.8
+r190: A=Northeast…………… | B=61.2 | C=62 | D=62.2 | E=62.6
+r191: A=Midwest……………. | B=67.8 | C=67.8 | D=67.9 | E=67
+r192: A=South………………. | B=66.2 | C=65.9 | D=66 | E=65.6
+r193: A=West………………… | B=58.2 | C=57.7 | D=58 | E=57.5
+r194: (blank)
+r195: A=1990
+r196: A=United States………. | B=64 | C=63.7 | D=64 | E=64.1
+r197: A=Northeast…………… | B=62.2 | C=62.2 | D=63.1 | E=62.8
+r198: A=Midwest……………. | B=67.2 | C=67.4 | D=67.8 | E=67.8
+r199: A=South………………. | B=66.3 | C=65.8 | D=65.2 | E=65.7
+r200: A=West………………… | B=58.3 | C=57.3 | D=58.3 | E=58.3
+r201: (blank)
+r202: A=1991
+r203: A=United States………. | B=63.9 | C=63.9 | D=64.2 | E=64.2
+r204: A=Northeast…………… | B=62 | C=62.1 | D=62.7 | E=62.7
+r205: A=Midwest……………. | B=67.1 | C=66.8 | D=67.2 | E=67.2
+r206: A=South………………. | B=65.9 | C=66.3 | D=66.2 | E=66.2
+r207: A=West………………… | B=58.5 | C=58.3 | D=58.9 | E=58.9
+r208: (blank)
+r209: A=1992
+r210: A=United States………. | B=64 | C=63.9 | D=64.3 | E=64.4
+r211: A=Northeast…………… | B=62.3 | C=62.5 | D=62.6 | E=62.8
+r212: A=Midwest……………. | B=67.5 | C=66.5 | D=67.5 | E=67.3
+r213: A=South………………. | B=65.8 | C=65.7 | D=65.8 | E=66.2
+r214: A=West………………… | B=58.7 | C=59.1 | D=59.6 | E=59.9
+r215: (blank)
+r216: A=1993
+r217: A=United States………. | B=64.2 | C=64.4 | D=64.7 | E=64.6
+r218: A=Northeast…………… | B=62.6 | C=62.6 | D=62.3 | E=62.1
+r219: A=Midwest……………. | B=66.9 | C=67.1 | D=67.8 | E=67.8
+r220: A=South………………. | B=65.8 | C=66 | D=66.4 | E=66.3
+r221: A=West………………… | B=59.8 | C=60.4 | D=60.6 | E=60.7
+r222: (blank)
+r223: A=1993r2
+r224: A=United States………. | B=63.7 | C=63.9 | D=64.2 | E=64.2
+r225: A=Northeast…………… | B=62 | C=62 | D=61.7 | E=61.5
+r226: A=Midwest……………. | B=66.6 | C=66.8 | D=67.4 | E=67.5
+r227: A=South………………. | B=65.3 | C=65.5 | D=66 | E=65.8
+r228: A=West………………… | B=59.2 | C=59.9 | D=60.1 | E=60.2
+r229: (blank)
+r230: A=1994
+r231: A=United States………. | B=63.8 | C=63.8 | D=64.1 | E=64.2
+r232: A=Northeast…………… | B=61.7 | C=61.3 | D=61.4 | E=61.4
+r233: A=Midwest……………. | B=66.8 | C=67.5 | D=67.9 | E=68.6
+r234: A=South………………. | B=65.6 | C=65.2 | D=66 | E=65.7
+r235: A=West………………… | B=59.5 | C=59.7 | D=59 | E=59.6
+r236: (blank)
+r237: A=1995
+r238: A=United States………. | B=64.2 | C=64.7 | D=65 | E=65.1
+r239: A=Northeast…………… | B=61.9 | C=62.3 | D=62.2 | E=61.6
+r240: A=Midwest……………. | B=67.9 | C=68.5 | D=70.1 | E=70.1
+r241: A=South………………. | B=66.1 | C=66.5 | D=66.6 | E=67.5
+r242: A=West………………… | B=58.9 | C=59.8 | D=59.1 | E=59
+r243: (blank)
+r244: A=1996
+r245: A=United States………. | B=65.1 | C=65.4 | D=65.6 | E=65.4
+r246: A=Northeast…………… | B=61.4 | C=62.3 | D=62.8 | E=62.3
+r247: A=Midwest……………. | B=70.4 | C=70.5 | D=70.7 | E=70.8
+r248: A=South………………. | B=67.5 | C=67.2 | D=67.5 | E=67.6
+r249: A=West………………… | B=58.9 | C=59.8 | D=59.2 | E=58.9
+r250: (blank)
+r251: A=1997
+r252: A=United States………. | B=65.4 | C=65.7 | D=66 | E=65.7
+r253: A=Northeast…………… | B=61.6 | C=62.4 | D=63 | E=62.7
+r254: A=Midwest……………. | B=70.6 | C=70.3 | D=70.7 | E=70.4
+r255: A=South………………. | B=67.8 | C=68.1 | D=68.2 | E=67.8
+r256: A=West………………… | B=59 | C=59.9 | D=59.8 | E=59.8
+r257: (blank)
+r258: A=1998
+r259: A=United States………. | B=65.9 | C=66 | D=66.8 | E=66.4
+r260: A=Northeast…………… | B=62.4 | C=62.7 | D=63.4 | E=62
+r261: A=Midwest……………. | B=70.6 | C=70.3 | D=71.7 | E=71.5
+r262: A=South………………. | B=68.2 | C=68.4 | D=68.8 | E=69
+r263: A=West………………… | B=60.1 | C=60.3 | D=61.1 | E=60.4
+r264: (blank)
+r265: A=1999
+r266: A=United States………. | B=66.7 | C=66.6 | D=67 | E=66.9
+r267: A=Northeast…………… | B=62.7 | C=62.8 | D=63.6 | E=63.2
+r268: A=Midwest……………. | B=71.2 | C=71.2 | D=72.1 | E=72.5
+r269: A=South………………. | B=69.2 | C=68.9 | D=69.3 | E=69.1
+r270: A=West………………… | B=61 | C=61.3 | D=60.8 | E=60.6
+r271: (blank)
+r272: A=2000
+r273: A=United States………. | B=67.1 | C=67.2 | D=67.7 | E=67.5
+r274: A=Northeast…………… | B=63.3 | C=63.4 | D=63.9 | E=63.2
+r275: A=Midwest……………. | B=72.2 | C=72.2 | D=72.9 | E=73.1
+r276: A=South………………. | B=69.5 | C=69.2 | D=69.7 | E=69.8
+r277: A=West………………… | B=61.3 | C=61.9 | D=62.2 | E=61.6
+r278: (blank)
+r279: A=2001
+r280: A=United States………. | B=67.5 | C=67.7 | D=68.1 | E=68
+r281: A=Northeast…………… | B=63.6 | C=63.2 | D=64.1 | E=64
+r282: A=Midwest……………. | B=73.2 | C=72.7 | D=72.9 | E=73.5
+r283: A=South………………. | B=69.3 | C=69.7 | D=70.1 | E=70.1
+r284: A=West………………… | B=62 | C=62.9 | D=63.1 | E=62.3
+r285: (blank)
+r286: A=2002
+r287: A=United States………. | B=67.8 | C=67.6 | D=68 | E=68.3
+r288: A=Northeast…………… | B=63.9 | C=63.9 | D=64.7 | E=64.9
+r289: A=Midwest……………. | B=73.1 | C=72.8 | D=73.2 | E=73.3
+r290: A=South………………. | B=69.9 | C=69.3 | D=69.5 | E=70.3
+r291: A=West………………… | B=62.2 | C=62.4 | D=62.8 | E=62.6
+r292: (blank)
+r293: A=2002r3
+r294: A=United States………. | B=67.8 | C=67.6 | D=68 | E=68.3
+r295: A=Northeast…………… | B=63.8 | C=63.8 | D=64.6 | E=64.8
+r296: A=Midwest……………. | B=73.2 | C=72.8 | D=73.2 | E=73.3
+r297: A=South………………. | B=69.8 | C=69.3 | D=69.5 | E=70.3
+r298: A=West………………… | B=62.1 | C=62.4 | D=62.7 | E=62.5
+r299: (blank)
+r300: A=2003
+r301: A=United States………. | B=68 | C=68 | D=68.4 | E=68.6
+r302: A=Northeast…………… | B=64.2 | C=64.2 | D=64.4 | E=64.7
+r303: A=Midwest……………. | B=72.9 | C=72.8 | D=73.5 | E=73.5
+r304: A=South………………. | B=69.9 | C=69.9 | D=70 | E=70.5
+r305: A=West………………… | B=62.8 | C=63.2 | D=63.8 | E=63.8
+r306: (blank)
+r307: A=2004
+r308: A=United States………. | B=68.6 | C=69.2 | D=69 | E=69.2
+r309: A=Northeast…………… | B=65.1 | C=65.4 | D=64.4 | E=65.2
+r310: A=Midwest……………. | B=73.5 | C=74.2 | D=73.8 | E=73.7
+r311: A=South………………. | B=70.3 | C=70.9 | D=71 | E=71.5
+r312: A=West………………… | B=63.7 | C=64.5 | D=64.7 | E=63.9
+r313: (blank)
+r314: A=2005
+r315: A=United States………. | B=69.1 | C=68.6 | D=68.8 | E=69
+r316: A=Northeast…………… | B=65.4 | C=64.7 | D=65.1 | E=65.4
+r317: A=Midwest……………. | B=73.1 | C=73.4 | D=73.3 | E=72.8
+r318: A=South………………. | B=71.1 | C=70.4 | D=70.6 | E=71.1
+r319: A=West………………… | B=64.9 | C=63.8 | D=64.2 | E=64.6
+r320: (blank)
+r321: A=2006
+r322: A=United States………. | B=68.5 | C=68.7 | D=69 | E=68.9
+r323: A=Northeast…………… | B=64.7 | C=65.4 | D=65.5 | E=65.3
+r324: A=Midwest……………. | B=72.5 | C=72.5 | D=72.8 | E=73
+r325: A=South………………. | B=70.4 | C=70.4 | D=70.6 | E=70.8
+r326: A=West………………… | B=64.4 | C=64.7 | D=65.3 | E=64.5
+r327: (blank)
+r328: A=2007
+r329: A=United States………. | B=68.4 | C=68.2 | D=68.2 | E=67.8
+r330: A=Northeast…………… | B=64.8 | C=65.4 | D=65.2 | E=64.6
+r331: A=Midwest……………. | B=72.2 | C=71.8 | D=71.9 | E=71.7
+r332: A=South………………. | B=70.6 | C=69.9 | D=70.1 | E=70
+r333: A=West………………… | B=63.6 | C=64.1 | D=63.5 | E=62.7
+r334: (blank)
+r335: A=2008
+r336: A=United States………. | B=67.8 | C=68.1 | D=67.9 | E=67.5
+r337: A=Northeast…………… | B=64.7 | C=65.3 | D=64.4 | E=64
+r338: A=Midwest……………. | B=72 | C=71.7 | D=71.9 | E=71.4
+r339: A=South………………. | B=69.7 | C=70.2 | D=69.9 | E=69.8
+r340: A=West………………… | B=62.8 | C=63 | D=63.5 | E=62.7
+r341: (blank)
+r342: A=2009
+r343: A=United States………. | B=67.3 | C=67.4 | D=67.6 | E=67.2
+r344: A=Northeast…………… | B=63.7 | C=64.3 | D=64 | E=63.9
+r345: A=Midwest……………. | B=70.7 | C=70.5 | D=71.6 | E=71.3
+r346: A=South………………. | B=69.6 | C=70 | D=69.7 | E=69.1
+r347: A=West………………… | B=62.8 | C=62.5 | D=62.7 | E=62.3
+r348: (blank)
+r349: A=2010
+r350: A=United States………. | B=67.1 | C=66.9 | D=66.9 | E=66.5
+r351: A=Northeast…………… | B=64.4 | C=64.2 | D=63.9 | E=64.1
+r352: A=Midwest……………. | B=70.9 | C=70.8 | D=71.1 | E=70.5
+r353: A=South………………. | B=69.2 | C=69.1 | D=69.1 | E=68.5
+r354: A=West………………… | B=61.9 | C=61.4 | D=61.3 | E=61
+r355: (blank)
+r356: A=2011
+r357: A=United States………. | B=66.4 | C=65.9 | D=66.3 | E=66
+r358: A=Northeast…………… | B=63.9 | C=63 | D=63.7 | E=63.7
+r359: A=Midwest……………. | B=70.4 | C=70 | D=70.3 | E=70
+r360: A=South………………. | B=68.4 | C=68.2 | D=68.4 | E=68.3
+r361: A=West………………… | B=60.9 | C=60.3 | D=60.7 | E=60.1
+r362: (blank)
+r363: A=2012
+r364: A=United States………. | B=65.4 | C=65.5 | D=65.5 | E=65.4
+r365: A=Northeast…………… | B=62.5 | C=63.7 | D=63.9 | E=63.9
+r366: A=Midwest……………. | B=69.5 | C=69.6 | D=69.6 | E=69.7
+r367: A=South………………. | B=67.5 | C=67.4 | D=66.9 | E=67
+r368: A=West………………… | B=59.9 | C=59.7 | D=60.1 | E=59.5
+r369: (blank)
+r370: A=2013
+r371: A=United States………. | B=65 | C=65 | D=65.3 | E=65.2
+r372: A=Northeast…………… | B=62.5 | C=63.2 | D=63.6 | E=62.8
+r373: A=Midwest……………. | B=70 | C=69.4 | D=69.6 | E=69.8
+r374: A=South………………. | B=66.5 | C=66.5 | D=66.9 | E=67.1
+r375: A=West………………… | B=59.4 | C=59.4 | D=59.5 | E=59.3
+r376: (blank)
+r377: A=2014
+r378: A=United States………. | B=64.8 | C=64.7 | D=64.4 | E=64
+r379: A=Northeast…………… | B=62.4 | C=62.1 | D=62.3 | E=61.9
+r380: A=Midwest……………. | B=69.3 | C=69.6 | D=68.8 | E=68.3
+r381: A=South………………. | B=66.5 | C=65.9 | D=65.7 | E=65.5
+r382: A=West………………… | B=59.4 | C=59.6 | D=59.4 | E=58.6
+r383: (blank)
+r384: A=2015
+r385: A=United States………. | B=63.7 | C=63.4 | D=63.7 | E=63.8
+r386: A=Northeast…………… | B=61.1 | C=60.2 | D=60.8 | E=61.6
+r387: A=Midwest……………. | B=68.6 | C=68.4 | D=68.1 | E=68.1
+r388: A=South………………. | B=65.1 | C=64.9 | D=65.4 | E=65.3
+r389: A=West………………… | B=58.5 | C=58.5 | D=58.7 | E=59
+r390: (blank)
+r391: A=2016
+r392: A=United States………. | B=63.5 | C=62.9 | D=63.5 | E=63.7
+r393: A=Northeast…………… | B=60.4 | C=59.2 | D=60.8 | E=60.4
+r394: A=Midwest……………. | B=68.9 | C=67.7 | D=68.6 | E=68.4
+r395: A=South………………. | B=64.8 | C=64.8 | D=65 | E=65.3
+r396: A=West………………… | B=58.7 | C=57.9 | D=58.2 | E=59
+r397: (blank)
+r398: A=2017
+r399: A=United States………. | B=63.6 | C=63.7 | D=63.9 | E=64.2
+r400: A=Northeast…………… | B=60.6 | C=60.4 | D=60.4 | E=60.6
+r401: A=Midwest……………. | B=67.6 | C=68 | D=69.1 | E=68.7
+r402: A=South………………. | B=65.4 | C=65.5 | D=65.5 | E=65.8
+r403: A=West………………… | B=59 | C=58.9 | D=58.9 | E=60
+r404: (blank)
+r405: A=2018
+r406: A=United States………. | B=64.2 | C=64.3 | D=64.4 | E=64.8
+r407: A=Northeast…………… | B=60.5 | C=61.3 | D=61.5 | E=61.3
+r408: A=Midwest……………. | B=67.9 | C=68.3 | D=69 | E=69.3
+r409: A=South………………. | B=66.3 | C=65.9 | D=65.4 | E=66
+r410: A=West………………… | B=59.7 | C=59.7 | D=60.2 | E=60.9
+r411: (blank)
+r412: A=2019
+r413: A=United States………. | B=64.2 | C=64.1 | D=64.8 | E=65.1
+r414: A=Northeast…………… | B=60.7 | C=61.2 | D=61.7 | E=62.3
+r415: A=Midwest……………. | B=68.2 | C=68 | D=69 | E=69.5
+r416: A=South………………. | B=66.2 | C=66 | D=66.2 | E=66.7
+r417: A=West………………… | B=59.8 | C=59.3 | D=60.6 | E=60.3
+r418: (blank)
+r419: (blank)
+r420: A=2020
+r421: A=United States………. | B=65.3 | C=67.9 | D=67.4 | E=65.8
+r422: A=Northeast…………… | B=62.4 | C=63.3 | D=62 | E=62.6
+r423: A=Midwest……………. | B=69.2 | C=71.4 | D=71.2 | E=70.8
+r424: A=South………………. | B=67.6 | C=71.1 | D=70.8 | E=67.7
+r425: A=West………………… | B=60.1 | C=62.6 | D=62.1 | E=60.4
+r426: (blank)
+r427: A=2021
+r428: A=United States………. | B=65.6 | C=65.4 | D=65.4 | E=65.5
+r429: A=Northeast…………… | B=63.1 | C=61.8 | D=61.7 | E=62.4
+r430: A=Midwest……………. | B=70.3 | C=70.7 | D=70.9 | E=70.1
+r431: A=South………………. | B=67.4 | C=67.1 | D=67 | E=67.3
+r432: A=West………………… | B=59.7 | C=60.1 | D=59.9 | E=60.5
+r433: (blank)
+r434: A=2022
+r435: A=United States………. | B=65.4 | C=65.8 | D=66 | E=65.9
+r436: A=Northeast…………… | B=61.8 | C=62.1 | D=63 | E=63
+r437: A=Midwest……………. | B=70 | C=70.1 | D=70.1 | E=70.1
+r438: A=South………………. | B=67.4 | C=67.8 | D=67.5 | E=66.7
+r439: A=West………………… | B=60.2 | C=60.9 | D=62 | E=62.6
+r440: (blank)
+r441: A=2023
+r442: A=United States………. | B=66 | C=65.9 | D=66 | E=65.7
+r443: A=Northeast…………… | B=62.7 | C=62.5 | D=63 | E=61.5
+r444: A=Midwest……………. | B=70.3 | C=70.2 | D=69.6 | E=69.8
+r445: A=South………………. | B=67.3 | C=67.5 | D=67.4 | E=67.8
+r446: A=West………………… | B=61.9 | C=61.7 | D=62.3 | E=61.4
+r447: (blank)
+r448: A=2024
+r449: A=United States………. | B=65.6 | C=65.6 | D=65.6 | E=65.7
+r450: A=Northeast…………… | B=62.6 | C=62.5 | D=62.2 | E=61.9
+r451: A=Midwest……………. | B=69.4 | C=69.9 | D=70.1 | E=71.1
+r452: A=South………………. | B=67.3 | C=67.2 | D=67.2 | E=67
+r453: A=West………………… | B=61.5 | C=61.3 | D=61 | E=61.1
+r454: (blank)
+r455: A=2025
+r456: A=United States………. | B=65.1 | C=65 | D=65.3 | E=*65.7
+r457: A=Northeast…………… | B=61 | C=61.4 | D=62.5 | E=*63.1
+r458: A=Midwest……………. | B=69.3 | C=69.5 | D=68.9 | E=*71.3
+r459: A=South………………. | B=67.1 | C=66.6 | D=67.2 | E=*66.5
+r460: A=West………………… | B=60.6 | C=60.7 | D=60.7 | E=*60.8
+r461: (blank)
+r462: A=2026
+r463: A=United States………. | B=65.3 | C=65 | D=65.5
+r464: A=Northeast…………… | B=61.5 | C=61.6 | D=62.9
+r465: A=Midwest……………. | B=70.1 | C=69 | D=69.5
+r466: A=South………………. | B=66.9 | C=66.9 | D=67.2
+r467: A=West………………… | B=60.7 | C=60.5 | D=60.6
+r468: (blank)
+r469: (blank)
+r470: A=Source: U.S. Census Bureau, Current Population Survey/Housing Vacancy Survey, October 28, ...
+r471: (blank)
+r472: A=* Due to a lapse in federal funding, the Current Population Survey/Housing Vacancy Survey ...
+r473: (blank)
+r474: A=r1 Revised to reflect changes made in 1980. See Source and Accuracy Statement for more inf...
+r475: A=r2 Revised based on the 1990 Census.
+r476: A=r3 Revised based on the 2000 Census.

@@ -1,0 +1,35 @@
+{
+ "id": "wadoh_school_immunization",
+ "answers": [
+  {
+   "id": "wadoh_school_immunization#1",
+   "answer": "1104370",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nresult = int(df[df['Reported'] == 'Y']['K_12_enrollment'].sum())"
+  },
+  {
+   "id": "wadoh_school_immunization#2",
+   "answer": "195",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nresult = int((df['Reported'] == 'N').sum())"
+  },
+  {
+   "id": "wadoh_school_immunization#3",
+   "answer": "PUGET SOUND EDUCATIONAL SERVICE DISTRICT 121",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nresult = df['ESD'].value_counts().idxmax()"
+  },
+  {
+   "id": "wadoh_school_immunization#4",
+   "answer": "91.1",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nrow = df[(df['School_Name'] == '10TH STREET SCHOOL') & (df['School_year'] == '2014-15')]\nresult = float(row['Percent_complete_for_all_immunizations'].iloc[0])"
+  },
+  {
+   "id": "wadoh_school_immunization#5",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nreporting = df[df['Reported'] == 'Y']\npertussis = reporting['Number_exempt_for_pertussis'].sum()\npolio = reporting['Number_exempt_for_polio'].sum()\nresult = 'yes' if pertussis > polio else 'no'"
+  },
+  {
+   "id": "wadoh_school_immunization#6",
+   "answer": "[\"KING\", \"PIERCE\", \"SNOHOMISH\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('wadoh_school_immunization.csv')\nresult = df['County'].value_counts().head(3).index.tolist()"
+  }
+ ]
+}

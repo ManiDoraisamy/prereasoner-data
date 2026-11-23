@@ -1,0 +1,12 @@
+{
+ "file": "eia_epm_average_price_by_sector_and_state.xlsx",
+ "sheets": [
+  {
+   "name": "Table_5_06_A",
+   "rows": 67,
+   "cols": 11,
+   "shown_whole": true
+  }
+ ],
+ "chars": 7796
+}

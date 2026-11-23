@@ -1,0 +1,30 @@
+{
+ "id": "ca_hcai_rural_hospitals_overview",
+ "answers": [
+  {
+   "id": "ca_hcai_rural_hospitals_overview#1",
+   "answer": "37",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nresult = int((df['CAH'] == 'Yes').sum())"
+  },
+  {
+   "id": "ca_hcai_rural_hospitals_overview#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nrural_count = (df['Rural'] == 'Yes').sum()\nresult = 'yes' if rural_count > 50 else 'no'"
+  },
+  {
+   "id": "ca_hcai_rural_hospitals_overview#4",
+   "answer": "BARSTOW COMMUNITY HOSPITAL",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\ntargets = ['BARSTOW COMMUNITY HOSPITAL', 'BARTON MEMORIAL HOSPITAL']\nsubset = df[df['FacilityName'].isin(targets)]\nresult = subset.loc[subset['Discharges'].idxmax()]['FacilityName']"
+  },
+  {
+   "id": "ca_hcai_rural_hospitals_overview#5",
+   "answer": "83672",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nresult = int(df['LicensedBeds'].sum())"
+  },
+  {
+   "id": "ca_hcai_rural_hospitals_overview#6",
+   "answer": "[\"BARTON MEMORIAL HOSPITAL\", \"MARSHALL MEDICAL CENTER\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_rural_hospitals_overview.xlsx', sheet_name='in')\nresult = df[df['CountyName'] == 'El Dorado']['FacilityName'].tolist()"
+  }
+ ]
+}

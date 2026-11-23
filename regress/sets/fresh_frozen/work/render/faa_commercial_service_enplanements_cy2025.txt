@@ -1,0 +1,527 @@
+FILE faa_commercial_service_enplanements_cy2025.xlsx (Excel workbook) with 1 sheet(s): ["ChangeinRevenuePassengerEnplan "]
+
+### Sheet "ChangeinRevenuePassengerEnplan ": 523 rows x 11 columns (Excel rows 1..523, columns A..K)
+(whole sheet shown; Excel row numbers)
+r1: A=Rank | B=RO | C=ST | D=Locid | E=City | F=Airport Name | G=S/L | H=Hub | I=CY 25 Enplanements | J=CY 24 Enplanements | K=% Change
+r2: A=1 | B=SO | C=GA | D=ATL | E=Atlanta | F=Hartsfield/Jackson Atlanta International | G=P | H=L | I=51459786 | J=52511402 | K=-0.02
+r3: A=2 | B=SW | C=TX | D=DFW | E=Fort Worth | F=Dallas-Fort Worth International | G=P | H=L | I=41297009 | J=42351316 | K=-0.0249
+r4: A=3 | B=GL | C=IL | D=ORD | E=Chicago | F=Chicago O'Hare International | G=P | H=L | I=40680735 | J=38575693 | K=0.0546
+r5: A=4 | B=NM | C=CO | D=DEN | E=Denver | F=Denver International | G=P | H=L | I=39976695 | J=40012895 | K=-0.0009
+r6: A=5 | B=WP | C=CA | D=LAX | E=Los Angeles | F=Los Angeles International | G=P | H=L | I=36497303 | J=37760834 | K=-0.0335
+r7: A=6 | B=EA | C=NY | D=JFK | E=New York | F=John F Kennedy International | G=P | H=L | I=30792806 | J=31466102 | K=-0.0214
+r8: A=7 | B=SO | C=FL | D=MCO | E=Orlando | F=Orlando International | G=P | H=L | I=27999709 | J=27859783 | K=0.005
+r9: A=8 | B=WP | C=NV | D=LAS | E=Las Vegas | F=Harry Reid International | G=P | H=L | I=26531765 | J=28244966 | K=-0.0607
+r10: A=9 | B=SO | C=FL | D=MIA | E=Miami | F=Miami International | G=P | H=L | I=26450972 | J=26588002 | K=-0.0052
+r11: A=10 | B=WP | C=CA | D=SFO | E=San Francisco International Airport | F=San Francisco International | G=P | H=L | I=26251850 | J=25078968 | K=0.0468
+r12: A=11 | B=SO | C=NC | D=CLT | E=Charlotte | F=Charlotte/Douglas International | G=P | H=L | I=25873555 | J=28523822 | K=-0.0929
+r13: A=12 | B=NM | C=WA | D=SEA | E=Seattle | F=Seattle-Tacoma International | G=P | H=L | I=25417071 | J=25414592 | K=0.0001
+r14: A=13 | B=WP | C=AZ | D=PHX | E=Phoenix | F=Phoenix Sky Harbor International | G=P | H=L | I=25094817 | J=25595723 | K=-0.0196
+r15: A=14 | B=EA | C=NJ | D=EWR | E=Newark | F=Newark Liberty International | G=P | H=L | I=23464492 | J=24544320 | K=-0.044
+r16: A=15 | B=SW | C=TX | D=IAH | E=Houston | F=George Bush Intcntl/Houston | G=P | H=L | I=23265028 | J=23349157 | K=-0.0036
+r17: A=16 | B=NE | C=MA | D=BOS | E=Boston | F=General Edward Lawrence Logan International | G=P | H=L | I=21021153 | J=21090721 | K=-0.0033
+r18: A=17 | B=GL | C=MN | D=MSP | E=Minneapolis | F=Minneapolis-St Paul International/Wold-Chamberlain | G=P | H=L | I=17488261 | J=18054481 | K=-0.0314
+r19: A=18 | B=GL | C=MI | D=DTW | E=Detroit | F=Detroit Metro Wayne County | G=P | H=L | I=16294768 | J=16110696 | K=0.0114
+r20: A=19 | B=EA | C=NY | D=LGA | E=New York | F=Laguardia | G=P | H=L | I=16278532 | J=16715567 | K=-0.0261
+r21: A=20 | B=SO | C=FL | D=FLL | E=Fort Lauderdale | F=Fort Lauderdale/Hollywood International | G=P | H=L | I=15646752 | J=17096131 | K=-0.0848
+r22: A=21 | B=EA | C=PA | D=PHL | E=Philadelphia | F=Philadelphia International | G=P | H=L | I=14779849 | J=15102261 | K=-0.0213
+r23: A=22 | B=EA | C=VA | D=IAD | E=Dulles | F=Washington Dulles International | G=P | H=L | I=13859569 | J=13003234 | K=0.0659
+r24: A=23 | B=NM | C=UT | D=SLC | E=Salt Lake City | F=Salt Lake City International | G=P | H=L | I=13429128 | J=13543570 | K=-0.0084
+r25: A=24 | B=WP | C=CA | D=SAN | E=San Diego | F=San Diego International | G=P | H=L | I=12675684 | J=12780013 | K=-0.0082
+r26: A=25 | B=SO | C=TN | D=BNA | E=Nashville | F=Nashville International | G=P | H=L | I=12549304 | J=12058688 | K=0.0407
+r27: A=26 | B=EA | C=MD | D=BWI | E=Glen Burnie | F=Baltimore/Washington International Thurgood Marshall | G=P | H=L | I=12274134 | J=13221461 | K=-0.0717
+r28: A=27 | B=SO | C=FL | D=TPA | E=Tampa | F=Tampa International | G=P | H=L | I=12110427 | J=12075591 | K=0.0029
+r29: A=28 | B=EA | C=VA | D=DCA | E=Arlington | F=Ronald Reagan Washington Ntl | G=P | H=L | I=12003594 | J=12750892 | K=-0.0586
+r30: A=29 | B=SW | C=TX | D=AUS | E=Austin | F=Austin-Bergstrom International | G=P | H=L | I=10651727 | J=10678073 | K=-0.0025
+r31: A=30 | B=WP | C=HI | D=HNL | E=Honolulu | F=Daniel K Inouye International | G=P | H=L | I=10430353 | J=10449022 | K=-0.0018
+r32: D=30 | E=Large Count
+r33: A=31 | B=GL | C=IL | D=MDW | E=Chicago | F=Chicago Midway International | G=P | H=M | I=9367712 | J=10360093 | K=-0.0958
+r34: A=32 | B=NM | C=OR | D=PDX | E=Portland | F=Portland International | G=P | H=M | I=9054394 | J=8639088 | K=0.0481
+r35: A=33 | B=SW | C=TX | D=DAL | E=Dallas | F=Dallas Love Field | G=P | H=M | I=8151354 | J=8654991 | K=-0.0582
+r36: A=34 | B=SO | C=NC | D=RDU | E=Raleigh | F=Raleigh-Durham International | G=P | H=M | I=7670956 | J=7584394 | K=0.0114
+r37: A=35 | B=CE | C=MO | D=STL | E=St. Louis | F=St Louis Lambert International | G=P | H=M | I=7483526 | J=7807362 | K=-0.0415
+r38: A=36 | B=WP | C=CA | D=SMF | E=Sacramento | F=Sacramento International | G=P | H=M | I=6805910 | J=6679426 | K=0.0189
+r39: A=37 | B=SW | C=TX | D=HOU | E=Houston | F=William P Hobby | G=P | H=M | I=6790274 | J=7116967 | K=-0.0459
+r40: A=38 | B=SO | C=PR | D=SJU | E=San Juan | F=Luis Munoz Marin International | G=P | H=M | I=6658037 | J=6490669 | K=0.0258
+r41: A=39 | B=SW | C=LA | D=MSY | E=Kenner | F=Louis Armstrong New Orleans International | G=P | H=M | I=6221146 | J=6537092 | K=-0.0483
+r42: A=40 | B=CE | C=MO | D=MCI | E=Kansas City | F=Kansas City International | G=P | H=M | I=5613974 | J=5915078 | K=-0.0509
+r43: A=41 | B=WP | C=CA | D=SNA | E=Santa Ana | F=John Wayne/Orange County | G=P | H=M | I=5521729 | J=5370273 | K=0.0282
+r44: A=42 | B=SO | C=FL | D=RSW | E=Fort Myers | F=Southwest Florida International | G=P | H=M | I=5504420 | J=5425293 | K=0.0146
+r45: A=43 | B=WP | C=CA | D=SJC | E=San Jose | F=Mineta San Jose International | G=P | H=M | I=5257421 | J=5822019 | K=-0.097
+r46: A=44 | B=SW | C=TX | D=SAT | E=San Antonio | F=San Antonio International | G=P | H=M | I=5237816 | J=5466684 | K=-0.0419
+r47: A=45 | B=GL | C=IN | D=IND | E=Indianapolis | F=Indianapolis International | G=P | H=M | I=5221447 | J=5181947 | K=0.0076
+r48: A=46 | B=GL | C=OH | D=CLE | E=Cleveland | F=Cleveland-Hopkins International | G=P | H=M | I=4855943 | J=4950345 | K=-0.0191
+r49: A=47 | B=EA | C=PA | D=PIT | E=Pittsburgh | F=Pittsburgh International | G=P | H=M | I=4792035 | J=4862376 | K=-0.0145
+r50: A=48 | B=WP | C=CA | D=OAK | E=Oakland | F=Oakland San Francisco Bay | G=P | H=M | I=4532494 | J=5292736 | K=-0.1436
+r51: A=49 | B=GL | C=OH | D=CMH | E=Columbus | F=John Glenn Columbus International | G=P | H=M | I=4396625 | J=4387395 | K=0.0021
+r52: A=50 | B=SO | C=KY | D=CVG | E=Hebron | F=Cincinnati/Northern Kentucky International | G=P | H=M | I=4366865 | J=4500414 | K=-0.0297
+r53: A=51 | B=SO | C=FL | D=DJT | E=West Palm Beach | F=President Donald J Trump International | G=P | H=M | I=4257185 | J=4127211 | K=0.0315
+r54: A=52 | B=SO | C=FL | D=JAX | E=Jacksonville | F=Jacksonville International | G=P | H=M | I=3719723 | J=3749791 | K=-0.008
+r55: A=53 | B=WP | C=CA | D=ONT | E=Ontario | F=Ontario International | G=P | H=M | I=3473874 | J=3494554 | K=-0.0059
+r56: A=54 | B=WP | C=HI | D=OGG | E=Kahului | F=Kahului | G=P | H=M | I=3450472 | J=3415615 | K=0.0102
+r57: A=55 | B=NE | C=CT | D=BDL | E=Windsor Locks | F=Bradley International | G=P | H=M | I=3283397 | J=3285194 | K=-0.0005
+r58: A=56 | B=WP | C=CA | D=BUR | E=Burbank | F=Hollywood Burbank | G=P | H=M | I=3218222 | J=3383237 | K=-0.0488
+r59: A=57 | B=SO | C=SC | D=CHS | E=Charleston | F=Charleston AFB/International | G=P | H=M | I=3142402 | J=3115194 | K=0.0087
+r60: A=58 | B=GL | C=WI | D=MKE | E=Milwaukee | F=General Mitchell International | G=P | H=M | I=2889040 | J=3104054 | K=-0.0693
+r61: A=59 | B=AL | C=AK | D=ANC | E=Anchorage | F=Ted Stevens Anchorage International | G=P | H=M | I=2729285 | J=2767856 | K=-0.0139
+r62: A=60 | B=NM | C=ID | D=BOI | E=Boise | F=Boise Air Trml/Gowen Field | G=P | H=M | I=2579647 | J=2475370 | K=0.0421
+r63: A=61 | B=CE | C=NE | D=OMA | E=Omaha | F=Eppley Airfield | G=P | H=M | I=2565135 | J=2583212 | K=-0.007
+r64: A=62 | B=SW | C=NM | D=ABQ | E=Albuquerque | F=Albuquerque International Sunport | G=P | H=M | I=2562028 | J=2690218 | K=-0.0477
+r65: A=63 | B=EA | C=NY | D=BUF | E=Buffalo | F=Buffalo Niagara International | G=P | H=M | I=2533180 | J=2499295 | K=0.0136
+r66: A=64 | B=EA | C=VA | D=RIC | E=Highland Springs | F=Richmond International | G=P | H=M | I=2481863 | J=2456422 | K=0.0104
+r67: A=65 | B=EA | C=VA | D=ORF | E=Norfolk | F=Norfolk International | G=P | H=M | I=2466474 | J=2444897 | K=0.0088
+r68: D=35 | E=Medium Count
+r69: A=66 | B=WP | C=NV | D=RNO | E=Reno | F=Reno/Tahoe International | G=P | H=S | I=2420373 | J=2377780 | K=0.0179
+r70: A=67 | B=SO | C=TN | D=MEM | E=Memphis | F=Frederick W Smith International/Memphis | G=P | H=S | I=2368014 | J=2439366 | K=-0.0293
+r71: A=68 | B=SW | C=OK | D=OKC | E=Oklahoma City | F=Okc Will Rogers International | G=P | H=S | I=2242888 | J=2243575 | K=-0.0003
+r72: A=69 | B=SO | C=FL | D=SRQ | E=Sarasota | F=Sarasota/Bradenton International | G=P | H=S | I=2242138 | J=2112417 | K=0.0614
+r73: A=70 | B=SO | C=KY | D=SDF | E=Louisville | F=Louisville Muhammad Ali International | G=P | H=S | I=2237842 | J=2343305 | K=-0.045
+r74: A=71 | B=GL | C=MI | D=GRR | E=Grand Rapids | F=Gerald R Ford International | G=P | H=S | I=2127668 | J=2065053 | K=0.0303
+r75: A=72 | B=NE | C=RI | D=PVD | E=Warwick | F=Rhode Island Tf Green International | G=P | H=S | I=2117401 | J=1984916 | K=0.0667
+r76: A=73 | B=NM | C=WA | D=GEG | E=Spokane | F=Spokane International | G=P | H=S | I=2106307 | J=2064142 | K=0.0204
+r77: A=74 | B=SO | C=GA | D=SAV | E=Savannah | F=Savannah/Hilton Head International | G=P | H=S | I=2064691 | J=2020753 | K=0.0217
+r78: A=75 | B=WP | C=HI | D=KOA | E=Kailua Kona | F=Ellison Onizuka Kona International at Keahole | G=P | H=S | I=2034749 | J=2023899 | K=0.0054
+r79: A=76 | B=SW | C=TX | D=ELP | E=El Paso | F=El Paso International | G=P | H=S | I=1940314 | J=2071894 | K=-0.0635
+r80: A=77 | B=WP | C=AZ | D=TUS | E=Tucson International Airport | F=Tucson International | G=P | H=S | I=1891548 | J=1959789 | K=-0.0348
+r81: A=78 | B=WP | C=CA | D=LGB | E=Long Beach | F=Long Beach (Daugherty Field) | G=P | H=S | I=1867498 | J=2031810 | K=-0.0809
+r82: A=79 | B=WP | C=HI | D=LIH | E=Lihue | F=Lihue | G=P | H=S | I=1822008 | J=1776627 | K=0.0255
+r83: A=80 | B=SO | C=TN | D=TYS | E=Alcoa | F=McGhee Tyson | G=P | H=S | I=1786752 | J=1639080 | K=0.0901
+r84: A=81 | B=SO | C=SC | D=MYR | E=Myrtle Beach | F=Myrtle Beach International | G=P | H=S | I=1743132 | J=1894929 | K=-0.0801
+r85: A=82 | B=WP | C=CA | D=PSP | E=Palm Springs | F=Palm Springs International | G=P | H=S | I=1654109 | J=1617586 | K=0.0226
+r86: A=83 | B=SO | C=AL | D=BHM | E=Birmingham | F=Birmingham-Shuttlesworth International | G=P | H=S | I=1615940 | J=1596510 | K=0.0122
+r87: A=84 | B=SW | C=OK | D=TUL | E=Tulsa | F=Tulsa International | G=P | H=S | I=1597865 | J=1627181 | K=-0.018
+r88: A=85 | B=CE | C=IA | D=DSM | E=Des Moines | F=Des Moines International | G=P | H=S | I=1596784 | J=1555454 | K=0.0266
+r89: A=86 | B=EA | C=NY | D=ALB | E=Albany | F=Albany International | G=P | H=S | I=1573771 | J=1490673 | K=0.0557
+r90: A=87 | B=SO | C=FL | D=SFB | E=Sanford | F=Orlando Sanford International | G=P | H=S | I=1553711 | J=1412954 | K=0.0996
+r91: A=88 | B=SO | C=FL | D=PNS | E=Pensacola | F=Pensacola International | G=P | H=S | I=1519799 | J=1528204 | K=-0.0055
+r92: A=89 | B=SO | C=SC | D=GSP | E=Greer | F=Greenville Spartanburg International | G=P | H=S | I=1499920 | J=1412702 | K=0.0617
+r93: A=90 | B=EA | C=NY | D=SYR | E=Syracuse | F=Syracuse Hancock International | G=P | H=S | I=1415346 | J=1486554 | K=-0.0479
+r94: A=91 | B=NM | C=MT | D=BZN | E=Bozeman | F=Bozeman Yellowstone International | G=P | H=S | I=1406833 | J=1321790 | K=0.0643
+r95: A=92 | B=SO | C=FL | D=PIE | E=Clearwater | F=St Pete-Clearwater International | G=P | H=S | I=1398845 | J=1228048 | K=0.1391
+r96: A=93 | B=WP | C=CA | D=FAT | E=Fresno | F=Fresno Yosemite International | G=P | H=S | I=1394397 | J=1318250 | K=0.0578
+r97: A=94 | B=EA | C=NY | D=ROC | E=Rochester | F=Frederick Douglass/Greater Rochester International | G=P | H=S | I=1385078 | J=1331837 | K=0.04
+r98: A=95 | B=NE | C=ME | D=PWM | E=Portland | F=Portland International Jetport | G=P | H=S | I=1287041 | J=1221913 | K=0.0533
+r99: A=96 | B=SW | C=AR | D=XNA | E=Bentonville | F=Northwest Arkansas Ntl | G=P | H=S | I=1234923 | J=1123106 | K=0.0996
+r100: A=97 | B=NM | C=CO | D=COS | E=Colorado Springs | F=City of Colorado Springs Municipal | G=P | H=S | I=1230941 | J=1248261 | K=-0.0139
+r101: A=98 | B=GL | C=WI | D=MSN | E=Madison | F=Dane County Regional/Truax Field | G=P | H=S | I=1226462 | J=1156399 | K=0.0606
+r102: A=99 | B=SO | C=FL | D=VPS | E=Valparaiso | F=Eglin AFB/Destin-Ft Walton Beach | G=P | H=S | I=1221553 | J=1164880 | K=0.0487
+r103: A=100 | B=EA | C=NY | D=HPN | E=White Plains | F=Westchester County | G=P | H=S | I=1198585 | J=1182384 | K=0.0137
+r104: A=101 | B=SO | C=FL | D=PGD | E=Punta Gorda | F=Punta Gorda | G=P | H=S | I=1140842 | J=957136 | K=0.1919
+r105: A=102 | B=SW | C=AR | D=LIT | E=Little Rock | F=Bill and Hillary Clinton Ntl/Adams Field | G=P | H=S | I=1126047 | J=1145693 | K=-0.0171
+r106: A=103 | B=SO | C=NC | D=AVL | E=Asheville | F=Asheville Regional | G=P | H=S | I=1114820 | J=1096465 | K=0.0167
+r107: A=104 | B=WP | C=AZ | D=IWA | E=Mesa | F=Mesa Gateway | G=P | H=S | I=1032493 | J=978296 | K=0.0554
+r108: A=105 | B=SO | C=NC | D=GSO | E=Greensboro | F=Piedmont Triad International | G=P | H=S | I=1020112 | J=985563 | K=0.0351
+r109: A=106 | B=WP | C=GU | D=GUM | E=Tamuning | F=Guam International | G=P | H=S | I=966278 | J=932832 | K=0.0359
+r110: A=107 | B=SO | C=FL | D=ECP | E=Panama City | F=Northwest Florida Beaches International | G=P | H=S | I=947007 | J=918470 | K=0.0311
+r111: A=108 | B=SO | C=NC | D=ILM | E=Wilmington | F=Wilmington International | G=P | H=S | I=912516 | J=737065 | K=0.238
+r112: A=109 | B=CE | C=KS | D=ICT | E=Wichita | F=Wichita Dwight D Eisenhower Ntl | G=P | H=S | I=909224 | J=885585 | K=0.0267
+r113: A=110 | B=SO | C=AL | D=HSV | E=Huntsville | F=Huntsville International-Carl T Jones Field | G=P | H=S | I=843482 | J=804665 | K=0.0482
+r114: A=111 | B=NM | C=OR | D=EUG | E=Eugene | F=Mahlon Sweet Field | G=P | H=S | I=838572 | J=824952 | K=0.0165
+r115: A=112 | B=EA | C=PA | D=MDT | E=Harrisburg | F=Harrisburg International | G=P | H=S | I=810498 | J=727163 | K=0.1146
+r116: A=113 | B=SO | C=VI | D=STT | E=Charlotte Amalie | F=Cyril E King | G=P | H=S | I=802734 | J=821945 | K=-0.0234
+r117: A=114 | B=CE | C=IA | D=CID | E=Cedar Rapids | F=The Eastern Iowa | G=P | H=S | I=801353 | J=759978 | K=0.0544
+r118: A=115 | B=SO | C=KY | D=LEX | E=Lexington | F=Blue Grass | G=P | H=S | I=796256 | J=776297 | K=0.0257
+r119: A=116 | B=EA | C=NY | D=ISP | E=Islip | F=Long Island MacArthur | G=P | H=S | I=790218 | J=682804 | K=0.1573
+r120: A=117 | B=CE | C=MO | D=SGF | E=Springfield | F=Springfield-Branson Ntl | G=P | H=S | I=766308 | J=702338 | K=0.0911
+r121: A=118 | B=SO | C=FL | D=EYW | E=Key West | F=Key West International | G=P | H=S | I=760753 | J=740762 | K=0.027
+r122: A=119 | B=SW | C=TX | D=MAF | E=Midland | F=Midland International Air And Space Port | G=P | H=S | I=760636 | J=761865 | K=-0.0016
+r123: A=120 | B=GL | C=SD | D=FSD | E=Sioux Falls | F=Joe Foss Field | G=P | H=S | I=741643 | J=701353 | K=0.0574
+r124: A=121 | B=WP | C=CA | D=SBA | E=Santa Barbara | F=Santa Barbara Municipal | G=P | H=S | I=740028 | J=696396 | K=0.0627
+r125: A=122 | B=NE | C=CT | D=HVN | E=New Haven | F=Tweed/New Haven | G=P | H=S | I=737789 | J=589409 | K=0.2517
+r126: A=123 | B=NE | C=VT | D=BTV | E=Burlington | F=Patrick Leahy Burlington International | G=P | H=S | I=709881 | J=670636 | K=0.0585
+r127: A=124 | B=WP | C=HI | D=ITO | E=Hilo | F=Hilo International | G=P | H=S | I=703669 | J=680640 | K=0.0338
+r128: A=125 | B=NE | C=NH | D=MHT | E=Manchester | F=Manchester Boston Regional | G=P | H=S | I=685594 | J=633257 | K=0.0826
+r129: A=126 | B=SO | C=SC | D=CAE | E=Columbia | F=Columbia Metro | G=P | H=S | I=662756 | J=654460 | K=0.0127
+r130: A=127 | B=NM | C=OR | D=RDM | E=Redmond | F=Roberts Field/Redmond Municipal | G=P | H=S | I=645569 | J=601152 | K=0.0739
+r131: A=128 | B=GL | C=OH | D=DAY | E=Dayton | F=James M Cox Dayton International | G=P | H=S | I=637571 | J=624995 | K=0.0201
+r132: A=129 | B=SO | C=TN | D=CHA | E=Chattanooga | F=Lovell Field | G=P | H=S | I=631853 | J=557741 | K=0.1329
+r133: A=130 | B=GL | C=WI | D=ATW | E=Appleton | F=Appleton International | G=P | H=S | I=628853 | J=540349 | K=0.1638
+r134: A=131 | B=SO | C=MS | D=JAN | E=Jackson | F=Jackson-Medgar Wiley Evers International | G=P | H=S | I=600350 | J=616695 | K=-0.0265
+r135: A=132 | B=GL | C=ND | D=FAR | E=Fargo | F=Hector International | G=P | H=S | I=598611 | J=552860 | K=0.0828
+r136: A=133 | B=SW | C=TX | D=HRL | E=Harlingen | F=Valley International | G=P | H=S | I=597403 | J=603561 | K=-0.0102
+r137: A=134 | B=NM | C=WY | D=JAC | E=Jackson | F=Jackson Hole | G=P | H=S | I=572151 | J=518754 | K=0.1029
+r138: A=135 | B=SW | C=TX | D=LBB | E=Lubbock | F=Lubbock Preston Smith International | G=P | H=S | I=570308 | J=563180 | K=0.0127
+r139: A=136 | B=SW | C=TX | D=MFE | E=McAllen | F=McAllen International | G=P | H=S | I=568312 | J=625670 | K=-0.0917
+r140: A=137 | B=AL | C=AK | D=FAI | E=Fairbanks | F=Fairbanks International | G=P | H=S | I=563672 | J=574012 | K=-0.018
+r141: A=138 | B=NM | C=MT | D=GPI | E=Kalispell | F=Glacier Park International | G=P | H=S | I=560572 | J=503816 | K=0.1127
+r142: A=139 | B=GL | C=IN | D=SBN | E=South Bend | F=South Bend International | G=P | H=S | I=551719 | J=454920 | K=0.2128
+r143: A=140 | B=NM | C=OR | D=MFR | E=Medford | F=Rogue Valley International/Medford | G=P | H=S | I=536021 | J=503733 | K=0.0641
+r144: A=141 | B=NM | C=UT | D=PVU | E=Provo | F=Provo Municipal | G=P | H=S | I=531126 | J=455219 | K=0.1667
+r145: A=142 | B=NM | C=WA | D=PSC | E=Pasco | F=Tri-Cities | G=P | H=S | I=525838 | J=476639 | K=0.1032
+r146: A=143 | B=NM | C=MT | D=MSO | E=Missoula | F=Missoula Montana | G=P | H=S | I=525225 | J=511553 | K=0.0267
+r147: A=144 | B=NM | C=MT | D=BIL | E=Billings | F=Billings Logan International | G=P | H=S | I=503097 | J=475334 | K=0.0584
+r148: D=79 | E=Small Count
+r149: A=145 | B=GL | C=IN | D=FWA | E=Fort Wayne | F=Fort Wayne International | G=P | H=N | I=486022 | J=424491 | K=0.145
+r150: A=146 | B=GL | C=OH | D=CAK | E=Akron | F=Akron-Canton Regional | G=P | H=N | I=470991 | J=380232 | K=0.2387
+r151: A=147 | B=EA | C=PA | D=ABE | E=Allentown | F=Lehigh Valley International | G=P | H=N | I=470198 | J=447899 | K=0.0498
+r152: A=148 | B=GL | C=MI | D=TVC | E=Traverse City | F=Cherry Capital | G=P | H=N | I=462251 | J=393108 | K=0.1759
+r153: A=149 | B=GL | C=SD | D=RAP | E=Rapid City | F=Rapid City Regional | G=P | H=N | I=443125 | J=418183 | K=0.0596
+r154: A=150 | B=SO | C=FL | D=TLH | E=Tallahassee | F=Tallahassee International | G=P | H=N | I=442104 | J=469318 | K=-0.058
+r155: A=151 | B=NE | C=ME | D=BGR | E=Bangor | F=Bangor International | G=P | H=N | I=437108 | J=376456 | K=0.1611
+r156: A=152 | B=SO | C=MS | D=GPT | E=Gulfport | F=Gulfport-Biloxi International | G=P | H=N | I=435199 | J=424624 | K=0.0249
+r157: A=153 | B=SW | C=LA | D=BTR | E=Baton Rouge | F=Baton Rouge Metro, Ryan Field | G=P | H=N | I=420519 | J=419446 | K=0.0026
+r158: A=154 | B=EA | C=VA | D=ROA | E=Roanoke | F=Roanoke/Blacksburg Regional (Woodrum Field) | G=P | H=N | I=417158 | J=382103 | K=0.0917
+r159: A=155 | B=SW | C=TX | D=AMA | E=Amarillo | F=Rick Husband Amarillo International | G=P | H=N | I=401948 | J=402315 | K=-0.0009
+r160: A=156 | B=GL | C=IL | D=PIA | E=Peoria | F=General Downing - Peoria International | G=P | H=N | I=400503 | J=343114 | K=0.1673
+r161: A=157 | B=WP | C=CA | D=SBP | E=San Luis Obispo | F=San Luis Obispo County Regional | G=P | H=N | I=399302 | J=366428 | K=0.0897
+r162: A=158 | B=EA | C=NJ | D=ACY | E=Atlantic City | F=Atlantic City International | G=P | H=N | I=389051 | J=489848 | K=-0.2058
+r163: A=159 | B=WP | C=CA | D=STS | E=Santa Rosa | F=Charles M Schulz/Sonoma County | G=P | H=N | I=386629 | J=382556 | K=0.0106
+r164: A=160 | B=SW | C=LA | D=SHV | E=Shreveport | F=Shreveport Regional | G=P | H=N | I=386509 | J=352281 | K=0.0972
+r165: A=161 | B=SO | C=FL | D=DAB | E=Daytona Beach | F=Daytona Beach International | G=P | H=N | I=375353 | J=337763 | K=0.1113
+r166: A=162 | B=SW | C=TX | D=CRP | E=Corpus Christi | F=Corpus Christi International | G=P | H=N | I=372988 | J=369393 | K=0.0097
+r167: A=163 | B=AL | C=AK | D=JNU | E=Juneau | F=Juneau International | G=P | H=N | I=369999 | J=436457 | K=-0.1523
+r168: A=164 | B=NM | C=CO | D=ASE | E=Aspen | F=Aspen-Pitkin County/Sardy Field | G=P | H=N | I=360020 | J=349781 | K=0.0293
+r169: A=165 | B=GL | C=WI | D=GRB | E=Green Bay | F=Green Bay/Austin Straubel International | G=P | H=N | I=357163 | J=338127 | K=0.0563
+r170: A=166 | B=EA | C=VA | D=CHO | E=Charlottesville-Albemarle Airport | F=Charlottesville-Albemarle | G=P | H=N | I=355240 | J=351138 | K=0.0117
+r171: A=167 | B=NM | C=ID | D=IDA | E=Idaho Falls | F=Idaho Falls Regional | G=P | H=N | I=350457 | J=301674 | K=0.1617
+r172: A=168 | B=GL | C=MI | D=FNT | E=Flint | F=Bishop International | G=P | H=N | I=344343 | J=285088 | K=0.2078
+r173: A=169 | B=GL | C=IL | D=MLI | E=Moline | F=Quad Cities International | G=P | H=N | I=342129 | J=326888 | K=0.0466
+r174: A=170 | B=SO | C=AL | D=MOB | E=Mobile | F=Mobile Regional | G=P | H=N | I=335385 | J=314406 | K=0.0667
+r175: A=171 | B=SO | C=PR | D=BQN | E=Aguadilla | F=Rafael Hernandez | G=P | H=N | I=335014 | J=360645 | K=-0.0711
+r176: A=172 | B=WP | C=CA | D=MRY | E=Monterey | F=Monterey Regional | G=P | H=N | I=326154 | J=305434 | K=0.0678
+r177: A=173 | B=NM | C=CO | D=EGE | E=Eagle | F=Eagle County Regional | G=P | H=N | I=321903 | J=282849 | K=0.1381
+r178: A=174 | B=SO | C=GA | D=AGS | E=Augusta | F=Augusta Regional at Bush Field | G=P | H=N | I=319015 | J=299141 | K=0.0664
+r179: A=175 | B=SO | C=FL | D=MLB | E=Melbourne | F=Melbourne Orlando International | G=P | H=N | I=313198 | J=348283 | K=-0.1007
+r180: A=176 | B=GL | C=ND | D=BIS | E=Bismarck | F=Bismarck Municipal | G=P | H=N | I=309651 | J=295900 | K=0.0465
+r181: A=177 | B=NM | C=CO | D=GJT | E=Grand Junction | F=Grand Junction Regional | G=P | H=N | I=309536 | J=270935 | K=0.1425
+r182: A=178 | B=NM | C=WA | D=PAE | E=Everett | F=Seattle Paine Field International | G=P | H=N | I=305739 | J=275996 | K=0.1078
+r183: A=179 | B=SW | C=LA | D=LFT | E=Lafayette | F=Lafayette Regional/Paul Fournet Field | G=P | H=N | I=293609 | J=264471 | K=0.1102
+r184: A=180 | B=SO | C=FL | D=GNV | E=Gainesville | F=Gainesville Regional | G=P | H=N | I=288515 | J=290563 | K=-0.007
+r185: A=181 | B=NM | C=CO | D=DRO | E=Durango | F=Durango-La Plata County | G=P | H=N | I=282549 | J=250640 | K=0.1273
+r186: A=182 | B=SW | C=LA | D=AEX | E=Alexandria | F=Alexandria International | G=P | H=N | I=271793 | J=204603 | K=0.3284
+r187: A=183 | B=SO | C=VI | D=STX | E=Christiansted | F=Henry E Rohlsen | G=P | H=N | I=264630 | J=265243 | K=-0.0023
+r188: A=184 | B=NM | C=CO | D=MTJ | E=Montrose | F=Montrose Regional | G=P | H=N | I=254763 | J=264973 | K=-0.0385
+r189: A=185 | B=SO | C=TN | D=TRI | E=Bristol/Johnson/Kingsport | F=Tri-Cities | G=P | H=N | I=251070 | J=229860 | K=0.0923
+r190: A=186 | B=NM | C=CO | D=HDN | E=Hayden | F=Yampa Valley | G=P | H=N | I=229989 | J=226830 | K=0.0139
+r191: A=187 | B=GL | C=IN | D=EVV | E=Evansville | F=Evansville Regional | G=P | H=N | I=227895 | J=189706 | K=0.2013
+r192: A=188 | B=NM | C=WA | D=BLI | E=Bellingham | F=Bellingham International | G=P | H=N | I=226185 | J=266703 | K=-0.1519
+r193: A=189 | B=EA | C=PA | D=AVP | E=Avoca | F=Wilkes-Barre/Scranton International | G=P | H=N | I=221878 | J=219572 | K=0.0105
+r194: A=190 | B=EA | C=WV | D=CRW | E=Charleston | F=West Virginia International Yeager | G=P | H=N | I=220015 | J=202303 | K=0.0876
+r195: A=191 | B=NM | C=UT | D=SGU | E=St. George | F=St George Regional | G=P | H=N | I=219286 | J=161201 | K=0.3603
+r196: A=192 | B=WP | C=CA | D=BFL | E=Bakersfield | F=Meadows Field | G=P | H=N | I=218742 | J=195148 | K=0.1209
+r197: A=193 | B=SW | C=NM | D=SAF | E=Santa Fe | F=Santa Fe Regional | G=P | H=N | I=204161 | J=180248 | K=0.1327
+r198: A=194 | B=SO | C=AL | D=MGM | E=Montgomery | F=Montgomery Regional (Dannelly Field) | G=P | H=N | I=201158 | J=193746 | K=0.0383
+r199: A=195 | B=SO | C=NC | D=JQF | E=Concord | F=Concord-Padgett Regional | G=P | H=N | I=195791 | J=132000 | K=0.4833
+r200: A=196 | B=GL | C=IL | D=BLV | E=Belleville | F=Scott AFB/Midamerica St Louis | G=P | H=N | I=192593 | J=152632 | K=0.2618
+r201: A=197 | B=NM | C=MT | D=GTF | E=Great Falls | F=Great Falls International | G=P | H=N | I=186341 | J=186778 | K=-0.0023
+r202: A=198 | B=GL | C=ND | D=MOT | E=Minot | F=Minot International | G=P | H=N | I=179412 | J=169463 | K=0.0587
+r203: A=199 | B=GL | C=OH | D=LCK | E=Columbus | F=Rickenbacker International | G=P | H=N | I=170808 | J=143035 | K=0.1942
+r204: A=200 | B=AL | C=AK | D=BET | E=Bethel | F=Bethel | G=P | H=N | I=169624 | J=165846 | K=0.0228
+r205: A=201 | B=EA | C=DE | D=ILG | E=Wilmington | F=New Castle | G=P | H=N | I=169382 | J=125071 | K=0.3543
+r206: A=202 | B=SO | C=NC | D=FAY | E=Fayetteville | F=Fayetteville Regional/Grannis Field | G=P | H=N | I=167660 | J=168117 | K=-0.0027
+r207: A=203 | B=EA | C=NJ | D=TTN | E=Trenton | F=Trenton Mercer | G=P | H=N | I=161820 | J=241950 | K=-0.3312
+r208: A=204 | B=GL | C=IL | D=BMI | E=Bloomington-Normal Airport | F=Central Il Regional/Bloomington-Normal | G=P | H=N | I=159245 | J=161971 | K=-0.0168
+r209: A=205 | B=WP | C=MP | D=GSN | E=Saipan | F=Francisco C Ada/Saipan International | G=P | H=N | I=158529 | J=234042 | K=-0.3226
+r210: A=206 | B=SO | C=NC | D=OAJ | E=Richlands | F=Albert J Ellis | G=P | H=N | I=156204 | J=145901 | K=0.0706
+r211: A=207 | B=NE | C=MA | D=ACK | E=Nantucket | F=Nantucket Memorial | G=P | H=N | I=152789 | J=154173 | K=-0.009
+r212: A=208 | B=EA | C=PA | D=UNV | E=State College | F=State College Regional | G=P | H=N | I=150927 | J=134128 | K=0.1252
+r213: A=209 | B=AL | C=AK | D=KTN | E=Ketchikan | F=Ketchikan International | G=P | H=N | I=147342 | J=152082 | K=-0.0312
+r214: A=210 | B=GL | C=IL | D=RFD | E=Rockford | F=Chicago/Rockford International | G=P | H=N | I=146094 | J=132154 | K=0.1055
+r215: A=211 | B=EA | C=NY | D=SWF | E=Newburgh | F=New York Stewart International | G=P | H=N | I=143717 | J=143310 | K=0.0028
+r216: A=212 | B=NM | C=ID | D=SUN | E=Hailey | F=Friedman Memorial | G=P | H=N | I=142525 | J=121123 | K=0.1767
+r217: A=213 | B=GL | C=MN | D=DLH | E=Duluth | F=Duluth International | G=P | H=N | I=141901 | J=135966 | K=0.0437
+r218: A=214 | B=SW | C=TX | D=LRD | E=Laredo | F=Laredo International | G=P | H=N | I=140929 | J=172726 | K=-0.1841
+r219: A=215 | B=SW | C=TX | D=BRO | E=Brownsville | F=Brownsville/South Padre Island International | G=P | H=N | I=140914 | J=188157 | K=-0.2511
+r220: A=216 | B=WP | C=CA | D=ACV | E=Arcata | F=California Redwood Coast-Humboldt County | G=P | H=N | I=135016 | J=133682 | K=0.01
+r221: A=217 | B=CE | C=NE | D=LNK | E=Lincoln | F=Lincoln | G=P | H=N | I=134898 | J=129968 | K=0.0379
+r222: A=218 | B=SO | C=FL | D=VRB | E=Vero Beach | F=Vero Beach Regional | G=P | H=N | I=128961 | J=88608 | K=0.4554
+r223: A=219 | B=CE | C=MO | D=COU | E=Columbia | F=Columbia Regional | G=P | H=N | I=122397 | J=103081 | K=0.1874
+r224: A=220 | B=SO | C=SC | D=HXD | E=Hilton Head Island | F=Hilton Head | G=P | H=N | I=118471 | J=108775 | K=0.0891
+r225: A=221 | B=GL | C=MI | D=LAN | E=Clinton (Township of) | F=Capital Region International | G=P | H=N | I=116841 | J=123608 | K=-0.0547
+r226: A=222 | B=SW | C=LA | D=MLU | E=Monroe | F=Monroe Regional | G=P | H=N | I=116245 | J=105274 | K=0.1042
+r227: A=223 | B=GL | C=MI | D=MBS | E=Saginaw | F=MBS International | G=P | H=N | I=116020 | J=110822 | K=0.0469
+r228: A=224 | B=SW | C=TX | D=GRK | E=Killeen | F=Robert Gray AAF | G=P | H=N | I=112853 | J=117523 | K=-0.0397
+r229: A=225 | B=EA | C=WV | D=HTS | E=Huntington | F=Tri-State/Milton J Ferguson Field | G=P | H=N | I=110174 | J=93330 | K=0.1805
+r230: A=226 | B=AL | C=AK | D=SCC | E=Deadhorse | F=Deadhorse | G=P | H=N | I=106752 | J=96967 | K=0.1009
+r231: A=227 | B=EA | C=NY | D=ELM | E=Elmira | F=Elmira/Corning Regional | G=P | H=N | I=106375 | J=85696 | K=0.2413
+r232: A=228 | B=NE | C=MA | D=ORH | E=Worcester | F=Worcester Regional | G=P | H=N | I=106229 | J=112872 | K=-0.0589
+r233: A=229 | B=SW | C=TX | D=ABI | E=Abilene | F=Abilene Regional | G=P | H=N | I=105976 | J=94579 | K=0.1205
+r234: A=230 | B=GL | C=MN | D=RST | E=Rochester | F=Rochester International | G=P | H=N | I=105117 | J=98537 | K=0.0668
+r235: A=231 | B=GL | C=ND | D=XWA | E=Williston | F=Williston Basin International | G=P | H=N | I=104945 | J=99735 | K=0.0522
+r236: A=232 | B=NM | C=WY | D=CPR | E=Casper | F=Casper/Natrona County International | G=P | H=N | I=102638 | J=99658 | K=0.0299
+r237: A=233 | B=NM | C=MT | D=HLN | E=Helena | F=Helena Regional | G=P | H=N | I=101803 | J=101591 | K=0.0021
+r238: A=235 | B=SO | C=PR | D=PSE | E=Ponce | F=Mercedita | G=P | H=N | I=95055 | J=137553 | K=-0.309
+r239: A=236 | B=AL | C=AK | D=SIT | E=Sitka | F=Sitka Rocky Gutierrez | G=P | H=N | I=94471 | J=98066 | K=-0.0367
+r240: A=237 | B=GL | C=ND | D=GFK | E=Grand Forks | F=Grand Forks International | G=P | H=N | I=94416 | J=92482 | K=0.0209
+r241: A=238 | B=SW | C=LA | D=LCH | E=Lake Charles | F=Lake Charles Regional | G=P | H=N | I=91944 | J=90791 | K=0.0127
+r242: A=239 | B=SO | C=FL | D=LAL | E=Lakeland | F=Lakeland Linder International | G=P | H=N | I=91018 | J=24185 | K=2.7634
+r243: A=240 | B=NE | C=NH | D=PSM | E=Portsmouth | F=Portsmouth International at Pease | G=P | H=N | I=90771 | J=100298 | K=-0.095
+r244: A=241 | B=GL | C=MI | D=AZO | E=Kalamazoo | F=Kalamazoo/Battle Creek International | G=P | H=N | I=88713 | J=92510 | K=-0.041
+r245: A=242 | B=CE | C=KS | D=MHK | E=Manhattan | F=Manhattan Regional | G=P | H=N | I=88640 | J=85901 | K=0.0319
+r246: A=243 | B=NE | C=MA | D=MVY | E=Vineyard Haven | F=Martha's Vineyard | G=P | H=N | I=88454 | J=83419 | K=0.0604
+r247: A=244 | B=GL | C=WI | D=CWA | E=Mosinee | F=Central Wisconsin | G=P | H=N | I=87834 | J=90087 | K=-0.025
+r248: A=245 | B=SO | C=NC | D=EWN | E=New Bern | F=Coastal Carolina Regional | G=P | H=N | I=87405 | J=86653 | K=0.0087
+r249: A=246 | B=GL | C=IL | D=CMI | E=Savoy | F=University of Illinois/Willard | G=P | H=N | I=87225 | J=86626 | K=0.0069
+r250: A=247 | B=WP | C=CA | D=RDD | E=Redding | F=Redding Regional | G=P | H=N | I=86888 | J=88676 | K=-0.0202
+r251: A=248 | B=EA | C=NY | D=PBG | E=Plattsburgh | F=Plattsburgh International | G=P | H=N | I=86231 | J=92960 | K=-0.0724
+r252: A=249 | B=WP | C=AZ | D=NYL | E=Yuma | F=Yuma MCAS/Yuma International | G=P | H=N | I=85504 | J=85227 | K=0.0033
+r253: A=250 | B=AL | C=AK | D=ADQ | E=Kodiak | F=Kodiak | G=P | H=N | I=84831 | J=86579 | K=-0.0202
+r254: A=251 | B=WP | C=AZ | D=FLG | E=- Flagstaff | F=Flagstaff Pulliam | G=P | H=N | I=83280 | J=79081 | K=0.0531
+r255: A=252 | B=CE | C=NE | D=GRI | E=Grand Island | F=Central Nebraska Regional | G=P | H=N | I=75908 | J=67747 | K=0.1205
+r256: A=253 | B=WP | C=AZ | D=IFP | E=Bullhead City | F=Laughlin/Bullhead International | G=P | H=N | I=75880 | J=68837 | K=0.1023
+r257: A=254 | B=WP | C=HI | D=MKK | E=Kaunakakai | F=Molokai | G=P | H=N | I=74970 | J=84029 | K=-0.1078
+r258: A=255 | B=NM | C=WA | D=PUW | E=Pullman | F=Pullman/Moscow Regional | G=P | H=N | I=74351 | J=64580 | K=0.1513
+r259: A=256 | B=AL | C=AK | D=OME | E=Nome | F=Nome | G=P | H=N | I=72120 | J=69593 | K=0.0363
+r260: A=257 | B=EA | C=VA | D=LYH | E=Timberlake | F=Lynchburg Regional/Preston Glenn Field | G=P | H=N | I=71780 | J=81477 | K=-0.119
+r261: A=258 | B=NM | C=CO | D=GUC | E=Gunnison | F=Gunnison-Crested Butte Regional | G=P | H=N | I=70846 | J=58804 | K=0.2048
+r262: A=259 | B=SW | C=TX | D=CLL | E=College Station | F=Easterwood Field | G=P | H=N | I=68532 | J=68316 | K=0.0032
+r263: A=260 | B=EA | C=NY | D=ITH | E=Ithaca | F=Ithaca Tompkins International | G=P | H=N | I=68209 | J=69613 | K=-0.0202
+r264: A=261 | B=EA | C=NY | D=IAG | E=Niagara Falls | F=Niagara Falls International | G=P | H=N | I=67904 | J=59119 | K=0.1486
+r265: A=262 | B=WP | C=CA | D=CRQ | E=Carlsbad | F=McClellan-Palomar | G=P | H=N | I=67693 | J=17434 | K=2.8828
+r266: A=263 | B=GL | C=OH | D=TOL | E=Toledo | F=Eugene F Kranz Toledo Express | G=P | H=N | I=66949 | J=66614 | K=0.005
+r267: A=265 | B=WP | C=CA | D=SCK | E=Stockton | F=Stockton Metro | G=P | H=N | I=66395 | J=63668 | K=0.0428
+r268: A=266 | B=EA | C=PA | D=ERI | E=Erie | F=Erie International/Tom Ridge Field | G=P | H=N | I=66066 | J=46810 | K=0.4114
+r269: A=267 | B=EA | C=MD | D=SBY | E=Salisbury | F=Salisbury-Ocean City Wicomico Regional | G=P | H=N | I=65979 | J=60442 | K=0.0916
+r270: A=268 | B=AL | C=AK | D=ENA | E=Kenai | F=Kenai Municipal | G=P | H=N | I=64627 | J=75395 | K=-0.1428
+r271: A=269 | B=EA | C=PA | D=LBE | E=Latrobe | F=Arnold Palmer Regional | G=P | H=N | I=62553 | J=76437 | K=-0.1816
+r272: A=270 | B=SW | C=AR | D=FSM | E=Fort Smith | F=Fort Smith Regional | G=P | H=N | I=59805 | J=59250 | K=0.0094
+r273: A=271 | B=SO | C=MS | D=GTR | E=Columbus | F=Golden Triangle Regional | G=P | H=N | I=59472 | J=47323 | K=0.2567
+r274: A=272 | B=EA | C=VA | D=PHF | E=Newport News | F=Newport News/Williamsburg International | G=P | H=N | I=59297 | J=68787 | K=-0.138
+r275: A=273 | B=AL | C=AK | D=OTZ | E=Kotzebue | F=Ralph Wien Memorial | G=P | H=N | I=57929 | J=60547 | K=-0.0432
+r276: A=274 | B=GL | C=MI | D=SAW | E=Gwinn | F=Marquette Sawyer Regional | G=P | H=N | I=57478 | J=44574 | K=0.2895
+r277: A=275 | B=SO | C=GA | D=VLD | E=Valdosta | F=Valdosta Regional | G=P | H=N | I=55995 | J=46744 | K=0.1979
+r278: A=276 | B=SO | C=GA | D=BQK | E=Brunswick | F=Brunswick Golden Isles | G=P | H=N | I=54311 | J=42771 | K=0.2698
+r279: A=277 | B=WP | C=NV | D=BVU | E=Boulder City | F=Boulder City Municipal | G=P | H=N | I=53813 | J=59617 | K=-0.0974
+r280: A=278 | B=SW | C=TX | D=ACT | E=Waco | F=Waco Regional | G=P | H=N | I=52669 | J=53849 | K=-0.0219
+r281: A=279 | B=SO | C=AL | D=DHN | E=Dothan | F=Dothan Regional | G=P | H=N | I=51827 | J=39339 | K=0.3174
+r282: A=280 | B=SW | C=TX | D=TYR | E=Tyler | F=Tyler Pounds Regional | G=P | H=N | I=51380 | J=51296 | K=0.0016
+r283: A=281 | B=SW | C=TX | D=SJT | E=San Angelo | F=San Angelo Regional/Mathis Field | G=P | H=N | I=51300 | J=49493 | K=0.0365
+r284: A=282 | B=WP | C=HI | D=LNY | E=Lanai City | F=Lanai | G=P | H=N | I=49572 | J=25186 | K=0.9682
+r285: A=283 | B=GL | C=IL | D=SPI | E=Springfield | F=Abraham Lincoln Capital | G=P | H=N | I=49317 | J=51784 | K=-0.0476
+r286: A=284 | B=SW | C=NM | D=ROW | E=Roswell | F=Roswell Air Center | G=P | H=N | I=45500 | J=48740 | K=-0.0665
+r287: A=285 | B=EA | C=MD | D=HGR | E=Hagerstown | F=Hagerstown Regional/Richard A Henson Field | G=P | H=N | I=45273 | J=41508 | K=0.0907
+r288: A=286 | B=NM | C=WA | D=YKM | E=Yakima | F=Yakima Air Trml/McAllister Field | G=P | H=N | I=44766 | J=41471 | K=0.0795
+r289: A=287 | B=GL | C=WI | D=LSE | E=La Crosse | F=La Crosse Regional | G=P | H=N | I=44202 | J=40608 | K=0.0885
+r290: A=289 | B=AL | C=AK | D=BRW | E=Barrow | F=Wiley Post-Will Rogers Memorial | G=P | H=N | I=43574 | J=43364 | K=0.0048
+r291: A=290 | B=SO | C=GA | D=CSG | E=Columbus | F=Columbus | G=P | H=N | I=43211 | J=63422 | K=-0.3187
+r292: A=291 | B=NM | C=WA | D=EAT | E=East Wenatchee | F=Pangborn Memorial | G=P | H=N | I=43169 | J=44459 | K=-0.029
+r293: A=292 | B=WP | C=AS | D=PPG | E=Pago Pago | F=Pago Pago International | G=P | H=N | I=42626 | J=44656 | K=-0.0455
+r294: A=293 | B=SO | C=NC | D=PGV | E=Greenville | F=Pitt-Greenville | G=P | H=N | I=41290 | J=42318 | K=-0.0243
+r295: A=294 | B=EA | C=WV | D=CKB | E=Clarksburg | F=North Central West Virginia | G=P | H=N | I=41067 | J=42288 | K=-0.0289
+r296: A=295 | B=SW | C=OK | D=LAW | E=Lawton | F=Lawton-Fort Sill Regional | G=P | H=N | I=39734 | J=45031 | K=-0.1176
+r297: A=296 | B=NM | C=WA | D=ALW | E=Walla Walla | F=Walla Walla Regional | G=P | H=N | I=38825 | J=36873 | K=0.0529
+r298: A=297 | B=SO | C=AL | D=JKA | E=Gulf Shores | F=Gulf Shores International/Jack Edwards Field | G=P | H=N | I=37951 | J=30 | K=1264.0333
+r299: A=298 | B=SO | C=GA | D=ABY | E=Albany | F=Southwest Georgia Regional | G=P | H=N | I=37923 | J=30295 | K=0.2518
+r300: A=299 | B=NM | C=ID | D=LWS | E=Lewiston | F=Lewiston/Nez Perce County | G=P | H=N | I=37341 | J=55467 | K=-0.3268
+r301: A=300 | B=AL | C=AK | D=AKN | E=King Salmon | F=King Salmon | G=P | H=N | I=37302 | J=39289 | K=-0.0506
+r302: A=301 | B=SO | C=PR | D=VQS | E=Vieques | F=Antonio Rivera Rodriguez | G=P | H=N | I=35973 | J=37756 | K=-0.0472
+r303: A=302 | B=NM | C=WY | D=COD | E=Cody | F=Yellowstone Regional | G=P | H=N | I=35346 | J=37437 | K=-0.0559
+r304: A=303 | B=CE | C=KS | D=SLN | E=Salina | F=Salina Regional | G=P | H=N | I=34766 | J=23456 | K=0.4822
+r305: A=304 | B=CE | C=KS | D=GCK | E=Garden City | F=Garden City Regional | G=P | H=N | I=34391 | J=31167 | K=0.1034
+r306: A=305 | B=SW | C=AR | D=TXK | E=Texarkana | F=Texarkana Regional-Webb Field | G=P | H=N | I=34254 | J=36307 | K=-0.0565
+r307: A=306 | B=NM | C=ID | D=TWF | E=Twin Falls | F=Joslin Field/Magic Valley Regional | G=P | H=N | I=34206 | J=31734 | K=0.0779
+r308: A=307 | B=NE | C=MA | D=HYA | E=Hyannis | F=Cape Cod Gateway | G=P | H=N | I=33895 | J=25626 | K=0.3227
+r309: A=308 | B=AL | C=AK | D=DLG | E=Dillingham | F=Dillingham | G=P | H=N | I=33595 | J=34656 | K=-0.0306
+r310: A=309 | B=SW | C=TX | D=GGG | E=Longview | F=East Texas Regional | G=P | H=N | I=33436 | J=35057 | K=-0.0462
+r311: A=310 | B=SW | C=OK | D=SWO | E=Stillwater | F=Stillwater Regional | G=P | H=N | I=33239 | J=34729 | K=-0.0429
+r312: A=311 | B=SW | C=TX | D=BPT | E=Beaumont | F=Jack Brooks Regional | G=P | H=N | I=33070 | J=33907 | K=-0.0247
+r313: A=313 | B=SW | C=TX | D=SPS | E=Wichita Falls | F=Sheppard AFB/Wichita Falls Municipal | G=P | H=N | I=31815 | J=29702 | K=0.0711
+r314: A=314 | B=GL | C=MI | D=PLN | E=Pellston | F=Pellston Regional/Emmet County | G=P | H=N | I=31252 | J=31060 | K=0.0062
+r315: A=315 | B=NM | C=WA | D=BFI | E=Seattle | F=Boeing Field/King County International | G=P | H=N | I=30724 | J=28769 | K=0.068
+r316: A=316 | B=GL | C=WI | D=RHI | E=Rhinelander | F=Rhinelander/Oneida County | G=P | H=N | I=30666 | J=24826 | K=0.2352
+r317: A=317 | B=NM | C=WY | D=CYS | E=Cheyenne | F=Cheyenne Regional/Jerry Olson Field | G=P | H=N | I=30585 | J=27602 | K=0.1081
+r318: A=318 | B=GL | C=MI | D=CMX | E=Hancock | F=Houghton County Memorial | G=P | H=N | I=30547 | J=25833 | K=0.1825
+r319: A=319 | B=GL | C=MI | D=CIU | E=Sault Ste. Marie | F=Chippewa County International | G=P | H=N | I=30412 | J=26482 | K=0.1484
+r320: A=320 | B=NM | C=WY | D=SHR | E=Sheridan | F=Sheridan County | G=P | H=N | I=30328 | J=29471 | K=0.0291
+r321: A=321 | B=NM | C=WY | D=GCC | E=Gillette | F=Northeast Wyoming Regional | G=P | H=N | I=30254 | J=30321 | K=-0.0022
+r322: A=322 | B=CE | C=IA | D=SUX | E=Sioux City | F=Sioux Gateway/Brig General Bud Day Field | G=P | H=N | I=28858 | J=28299 | K=0.0198
+r323: A=323 | B=SW | C=NM | D=HOB | E=Hobbs | F=Lea County Regional | G=P | H=N | I=28799 | J=26212 | K=0.0987
+r324: A=324 | B=GL | C=MN | D=STC | E=St. Cloud | F=St Cloud Sky Central | G=P | H=N | I=28515 | J=23885 | K=0.1938
+r325: A=325 | B=GL | C=MN | D=BJI | E=Bemidji | F=Bemidji Regional | G=P | H=N | I=28439 | J=28536 | K=-0.0034
+r326: A=326 | B=WP | C=AZ | D=1G4 | E=Peach Springs | F=Grand Canyon West | G=P | H=N | I=26748 | J=29597 | K=-0.0963
+r327: A=327 | B=WP | C=AZ | D=PRC | E=Prescott | F=Prescott Regional/Ernest A Love Field | G=P | H=N | I=26392 | J=25316 | K=0.0425
+r328: A=328 | B=AL | C=AK | D=MRI | E=Anchorage | F=Merrill Field | G=P | H=N | I=26386 | J=32601 | K=-0.1906
+r329: A=330 | B=GL | C=SD | D=ABR | E=Aberdeen | F=Aberdeen Regional | G=P | H=N | I=26173 | J=23705 | K=0.1041
+r330: A=331 | B=NM | C=OR | D=OTH | E=North Bend | F=Southwest Oregon Regional | G=P | H=N | I=26142 | J=20495 | K=0.2755
+r331: A=332 | B=NM | C=WY | D=RKS | E=Rock Springs | F=Southwest Wyoming Regional | G=P | H=N | I=26134 | J=21541 | K=0.2132
+r332: A=333 | B=GL | C=WI | D=EAU | E=Eau Claire | F=Chippewa Valley Regional | G=P | H=N | I=25976 | J=22289 | K=0.1654
+r333: A=334 | B=WP | C=CA | D=SBD | E=San Bernardino | F=San Bernardino International | G=P | H=N | I=25957 | J=20147 | K=0.2884
+r334: A=335 | B=EA | C=NY | D=ART | E=Watertown | F=Watertown International | G=P | H=N | I=25579 | J=23188 | K=0.1031
+r335: A=336 | B=NM | C=WY | D=RIW | E=Riverton | F=Central Wyoming Regional | G=P | H=N | I=25562 | J=21624 | K=0.1821
+r336: A=338 | B=SO | C=SC | D=FLO | E=Florence | F=Florence Regional | G=P | H=N | I=25238 | J=24728 | K=0.0206
+r337: A=339 | B=GL | C=ND | D=DIK | E=Dickinson | F=Dickinson/Theodore Roosevelt Regional | G=P | H=N | I=24935 | J=26146 | K=-0.0463
+r338: A=340 | B=WP | C=MP | D=TNI | E=Tinian (Municipality) | F=Francisco Manglona Borja/Tinian International | G=P | H=N | I=24851 | J=30538 | K=-0.1862
+r339: A=341 | B=AL | C=AK | D=PSG | E=Petersburg | F=Petersburg James A Johnson | G=P | H=N | I=24579 | J=25209 | K=-0.025
+r340: A=342 | B=CE | C=NE | D=EAR | E=Kearney | F=Kearney Regional | G=P | H=N | I=24236 | J=14130 | K=0.7152
+r341: A=343 | B=NM | C=MT | D=BTM | E=Butte | F=Bert Mooney | G=P | H=N | I=23278 | J=15773 | K=0.4758
+r342: A=344 | B=SO | C=PR | D=RVR | E=Ceiba | F=Jose Aponte De La Torre | G=P | H=N | I=23214 | J=19681 | K=0.1795
+r343: A=345 | B=CE | C=MO | D=JLN | E=Joplin | F=Joplin Regional | G=P | H=N | I=23134 | J=18362 | K=0.2599
+r344: A=346 | B=WP | C=AZ | D=PGA | E=Page | F=Page Municipal | G=P | H=N | I=22910 | J=22400 | K=0.0228
+r345: A=347 | B=AL | C=AK | D=HOM | E=Homer | F=Homer | G=P | H=N | I=22117 | J=27482 | K=-0.1952
+r346: A=348 | B=NE | C=ME | D=PQI | E=Presque Isle | F=Presque Isle International | G=P | H=N | I=21393 | J=21633 | K=-0.0111
+r347: A=349 | B=AL | C=AK | D=DUT | E=Unalaska | F=Unalaska | G=P | H=N | I=20507 | J=22712 | K=-0.0971
+r348: A=350 | B=CE | C=IA | D=ALO | E=Waterloo | F=Waterloo Regional | G=P | H=N | I=20402 | J=12006 | K=0.6993
+r349: A=352 | B=NM | C=ID | D=PIH | E=Arbon Valley | F=Pocatello Regional | G=P | H=N | I=20034 | J=24610 | K=-0.1859
+r350: A=353 | B=GL | C=MI | D=IMT | E=Iron Mountain | F=Ford | G=P | H=N | I=19916 | J=19483 | K=0.0222
+r351: A=354 | B=NE | C=RI | D=BID | E=Block Island | F=Block Island State | G=P | H=N | I=19914 | J=11867 | K=0.6781
+r352: A=355 | B=SO | C=PR | D=CPX | E=Culebra | F=Benjamin Rivera Noriega | G=P | H=N | I=19812 | J=14663 | K=0.3512
+r353: A=356 | B=NE | C=RI | D=WST | E=Westerly | F=Westerly State | G=P | H=N | I=19694 | J=12320 | K=0.5985
+r354: A=357 | B=EA | C=PA | D=JST | E=Johnstown | F=John Murtha Johnstown/Cambria County | G=P | H=N | I=19443 | J=17690 | K=0.0991
+r355: A=358 | B=NM | C=WY | D=LAR | E=Laramie | F=Laramie Regional | G=P | H=N | I=19103 | J=19061 | K=0.0022
+r356: A=359 | B=SO | C=MS | D=MEI | E=Meridian | F=Key Field | G=P | H=N | I=19066 | J=17003 | K=0.1213
+r357: A=360 | B=EA | C=PA | D=LNS | E=Lititz | F=Lancaster | G=P | H=N | I=18796 | J=8417 | K=1.2331
+r358: A=363 | B=AL | C=AK | D=CDV | E=Cordova | F=Merle K (Mudhole) Smith | G=P | H=N | I=18124 | J=18641 | K=-0.0277
+r359: A=364 | B=SO | C=MS | D=TUP | E=Tupelo | F=Tupelo Regional | G=P | H=N | I=18095 | J=16194 | K=0.1174
+r360: A=365 | B=SO | C=MS | D=PIB | E=Moselle | F=Hattiesburg/Laurel Regional | G=P | H=N | I=17647 | J=15575 | K=0.133
+r361: A=366 | B=SO | C=PR | D=SIG | E=San Juan | F=Fernando Luis Ribas Dominicci | G=P | H=N | I=17466 | J=16844 | K=0.0369
+r362: A=367 | B=CE | C=KS | D=HYS | E=Hays | F=Hays Regional | G=P | H=N | I=17298 | J=15002 | K=0.153
+r363: A=368 | B=GL | C=MI | D=ESC | E=Escanaba | F=Delta County | G=P | H=N | I=17102 | J=17120 | K=-0.0011
+r364: A=369 | B=WP | C=CA | D=SMX | E=Santa Maria | F=Santa Maria Public/Capt G Allan Hancock Field | G=P | H=N | I=17081 | J=13525 | K=0.2629
+r365: A=370 | B=AL | C=AK | D=AKW | E=Klawock | F=Klawock | G=P | H=N | I=16988 | J=16224 | K=0.0471
+r366: A=371 | B=GL | C=MN | D=BRD | E=Brainerd | F=Brainerd Lakes Regional | G=P | H=N | I=16510 | J=16255 | K=0.0157
+r367: A=372 | B=EA | C=NY | D=OGS | E=Ogdensburg | F=Ogdensburg International | G=P | H=N | I=16272 | J=6269 | K=1.5956
+r368: A=373 | B=WP | C=NV | D=EKO | E=Elko | F=Elko Regional | G=P | H=N | I=16142 | J=12881 | K=0.2532
+r369: A=374 | B=GL | C=SD | D=PIR | E=Pierre | F=Pierre Regional | G=P | H=N | I=15917 | J=14887 | K=0.0692
+r370: A=375 | B=SO | C=GA | D=MCN | E=Macon | F=Middle Georgia Regional | G=P | H=N | I=15862 | J=17020 | K=-0.068
+r371: A=377 | B=CE | C=NE | D=LBF | E=North Platte | F=North Platte Regional/Lee Bird Field | G=P | H=N | I=15344 | J=16537 | K=-0.0721
+r372: A=378 | B=EA | C=WV | D=MGW | E=Morgantown | F=Morgantown Municipal/Walter L Bill Hart Field | G=P | H=N | I=15288 | J=8017 | K=0.9069
+r373: A=379 | B=GL | C=MN | D=INL | E=International Falls | F=Falls International/Einarson Field | G=P | H=N | I=14998 | J=14842 | K=0.0105
+r374: A=380 | B=EA | C=NY | D=BGM | E=Binghamton | F=Greater Binghamton/Edwin A Link Field | G=P | H=N | I=14986 | J=24496 | K=-0.3882
+r375: A=381 | B=CE | C=NE | D=BFF | E=Scottsbluff | F=Scottsbluff/Western Nebraska Regional/Wm B Heilig Field | G=P | H=N | I=14729 | J=13841 | K=0.0642
+r376: A=382 | B=AL | C=AK | D=WRG | E=Wrangell | F=Wrangell | G=P | H=N | I=14611 | J=14560 | K=0.0035
+r377: A=383 | B=SW | C=TX | D=VCT | E=Victoria | F=Victoria Regional | G=P | H=N | I=14417 | J=14006 | K=0.0293
+r378: A=386 | B=GL | C=SD | D=ATY | E=Watertown | F=Watertown Regional | G=P | H=N | I=13503 | J=14134 | K=-0.0446
+r379: A=387 | B=SO | C=KY | D=PAH | E=Paducah | F=Barkley Regional | G=P | H=N | I=13314 | J=13456 | K=-0.0106
+r380: A=388 | B=WP | C=CA | D=BIH | E=Bishop | F=Bishop | G=P | H=N | I=13219 | J=10119 | K=0.3064
+r381: A=389 | B=NM | C=UT | D=CDC | E=Cedar City | F=Cedar City Regional | G=P | H=N | I=13198 | J=11855 | K=0.1133
+r382: A=390 | B=GL | C=IL | D=MWA | E=Marion | F=Veterans Airport of Southern Illinois | G=P | H=N | I=13176 | J=13816 | K=-0.0463
+r383: A=391 | B=GL | C=MI | D=APN | E=Alpena | F=Alpena County Regional | G=P | H=N | I=13066 | J=11150 | K=0.1718
+r384: A=393 | B=NM | C=UT | D=CNY | E=Moab | F=Canyonlands Regional | G=P | H=N | I=12643 | J=10625 | K=0.1899
+r385: A=394 | B=NM | C=UT | D=OGD | E=Ogden | F=Ogden-Hinckley | G=P | H=N | I=12597 | J=15582 | K=-0.1916
+r386: A=395 | B=GL | C=MN | D=HIB | E=Hibbing | F=Range Regional | G=P | H=N | I=12539 | J=11294 | K=0.1102
+r387: A=396 | B=NM | C=UT | D=VEL | E=Vernal | F=Vernal Regional | G=P | H=N | I=12518 | J=10578 | K=0.1834
+r388: A=398 | B=AL | C=AK | D=GAL | E=Galena | F=Edward G Pitka Sr | G=P | H=N | I=12046 | J=11852 | K=0.0164
+r389: A=400 | B=NM | C=CO | D=ALS | E=Alamosa | F=San Luis Valley Regional/Bergman Field | G=P | H=N | I=11956 | J=12232 | K=-0.0226
+r390: A=401 | B=NM | C=MT | D=WYS | E=West Yellowstone | F=Yellowstone | G=P | H=N | I=11649 | J=9569 | K=0.2174
+r391: A=402 | B=GL | C=ND | D=JMS | E=Jamestown | F=Jamestown Regional | G=P | H=N | I=11547 | J=9516 | K=0.2134
+r392: A=403 | B=SW | C=NM | D=CVN | E=Clovis | F=Clovis Regional | G=P | H=N | I=11518 | J=12033 | K=-0.0428
+r393: A=404 | B=GL | C=IN | D=LAF | E=West Lafayette | F=Purdue University | G=P | H=N | I=11408 | J=5647 | K=1.0202
+r394: A=405 | B=AL | C=AK | D=YAK | E=Yakutat | F=Yakutat | G=P | H=N | I=11406 | J=11923 | K=-0.0434
+r395: A=406 | B=NM | C=WA | D=FHR | E=Friday Harbor | F=Friday Harbor | G=P | H=N | I=11325 | J=12898 | K=-0.122
+r396: A=407 | B=CE | C=MO | D=TBN | E=Fort Leonard Wood (U.S. Army) | F=Waynesville-St Robert Regional Forney Field | G=P | H=N | I=11199 | J=11276 | K=-0.0068
+r397: A=408 | B=NM | C=OR | D=SLE | E=Salem | F=McNary Field | G=P | H=N | I=11060 | J=28119 | K=-0.6067
+r398: A=409 | B=GL | C=IL | D=DEC | E=Decatur | F=Decatur | G=P | H=N | I=10837 | J=12747 | K=-0.1498
+r399: A=410 | B=EA | C=PA | D=AOO | E=Altoona | F=Altoona/Blair County | G=P | H=N | I=10671 | J=5151 | K=1.0716
+r400: A=411 | B=SO | C=TN | D=MKL | E=Jackson | F=Jackson Regional | G=P | H=N | I=10417 | J=3383 | K=2.0792
+r401: A=412 | B=GL | C=ND | D=DVL | E=Devils Lake | F=Devils Lake Regional | G=P | H=N | I=10414 | J=9488 | K=0.0976
+r402: A=413 | B=CE | C=MO | D=CGI | E=Cape Girardeau | F=Cape Girardeau Regional | G=P | H=N | I=10410 | J=9493 | K=0.0966
+r403: A=414 | B=NM | C=CO | D=TEX | E=Telluride | F=Telluride Regional | G=P | H=N | I=10385 | J=10721 | K=-0.0313
+r404: A=415 | B=WP | C=AZ | D=SOW | E=Show Low | F=Show Low Regional | G=P | H=N | I=10345 | J=3655 | K=1.8304
+r405: A=416 | B=AL | C=AK | D=GST | E=Gustavus | F=Gustavus | G=P | H=N | I=10243 | J=10074 | K=0.0168
+r406: A=362 | B=GL | C=OH | D=YNG | E=Youngstown | F=Youngstown/Warren Regional | G=P | H=N | I=18252 | J=523 | K=33.8987
+r407: D=258 | E=Nonhub Count
+r408: A=418 | B=NE | C=ME | D=BHB | E=Bar Harbor | F=Hancock County/Bar Harbor | G=CS | H=None | I=9936 | J=11042 | K=-0.1002
+r409: A=419 | B=AL | C=AK | D=ENM | E=Emmonak | F=Emmonak | G=CS | H=None | I=9654 | J=9854 | K=-0.0203
+r410: A=420 | B=CE | C=KS | D=LBL | E=Liberal | F=Liberal Mid-America Regional | G=CS | H=None | I=9410 | J=8181 | K=0.1502
+r411: A=421 | B=NE | C=NH | D=LEB | E=Lebanon | F=Lebanon Municipal | G=CS | H=None | I=9304 | J=10934 | K=-0.1491
+r412: A=422 | B=WP | C=MP | D=GRO | E=Northern Islands (Municipality) | F=Benjamin Taisacan Manglona International | G=CS | H=None | I=9295 | J=10717 | K=-0.1327
+r413: A=423 | B=CE | C=IA | D=FOD | E=Fort Dodge | F=Fort Dodge Regional | G=CS | H=None | I=9173 | J=7733 | K=0.1862
+r414: A=424 | B=SO | C=AL | D=MSL | E=Muscle Shoals | F=Northwest Alabama Regional | G=CS | H=None | I=9164 | J=7373 | K=0.2429
+r415: A=425 | B=CE | C=KS | D=DDC | E=Dodge City | F=Dodge City Regional | G=CS | H=None | I=9108 | J=8300 | K=0.0973
+r416: A=426 | B=SO | C=PR | D=MAZ | E=Mayaguez | F=Eugenio Maria De Hostos | G=CS | H=None | I=8991 | J=9207 | K=-0.0235
+r417: A=427 | B=EA | C=WV | D=LWB | E=Lewisburg | F=Greenbrier Valley | G=CS | H=None | I=8989 | J=9011 | K=-0.0024
+r418: A=428 | B=SO | C=KY | D=OWB | E=Owensboro | F=Owensboro/Daviess County Regional | G=CS | H=None | I=8938 | J=8835 | K=0.0117
+r419: A=429 | B=CE | C=IA | D=MCW | E=Clear Lake | F=Mason City Municipal | G=CS | H=None | I=8747 | J=6564 | K=0.3326
+r420: A=430 | B=EA | C=VA | D=SHD | E=Weyers Cave | F=Shenandoah Valley Regional | G=CS | H=None | I=8470 | J=8762 | K=-0.0333
+r421: A=431 | B=GL | C=MN | D=TVF | E=Thief River Falls | F=Thief River Falls Regional | G=CS | H=None | I=8446 | J=8675 | K=-0.0264
+r422: A=432 | B=SW | C=NM | D=SKX | E=Taos | F=Taos Regional | G=CS | H=None | I=8366 | J=5118 | K=0.6346
+r423: A=433 | B=CE | C=IA | D=DBQ | E=Dubuque | F=Dubuque Regional | G=CS | H=None | I=8317 | J=6078 | K=0.3684
+r424: A=434 | B=GL | C=MI | D=MBL | E=Manistee | F=Manistee County/Blacker | G=CS | H=None | I=8108 | J=6968 | K=0.1636
+r425: A=436 | B=NM | C=WA | D=ORS | E=Eastsound | F=Orcas Island | G=CS | H=None | I=7912 | J=9512 | K=-0.1682
+r426: A=437 | B=SO | C=FL | D=FXE | E=Fort Lauderdale | F=Fort Lauderdale Exec | G=CS | H=None | I=7892 | J=10493 | K=-0.2479
+r427: A=439 | B=WP | C=CA | D=CEC | E=Crescent City | F=Jack McNamara Field | G=CS | H=None | I=7646 | J=8027 | K=-0.0475
+r428: A=440 | B=SW | C=NM | D=FMN | E=Farmington | F=Four Corners Regional | G=CS | H=None | I=7643 | J=11 | K=693.8182
+r429: A=441 | B=GL | C=MI | D=IWD | E=Ironwood | F=Gogebic/Iron County | G=CS | H=None | I=7578 | J=7091 | K=0.0687
+r430: A=446 | B=SO | C=MS | D=GLH | E=Greenville | F=Greenville Mid-Delta | G=CS | H=None | I=7243 | J=6582 | K=0.1004
+r431: A=447 | B=NM | C=CO | D=CEZ | E=Cortez | F=Cortez Municipal | G=CS | H=None | I=7108 | J=8820 | K=-0.1941
+r432: A=448 | B=NM | C=MT | D=SDY | E=Sidney | F=Sidney-Richland Regional | G=CS | H=None | I=6981 | J=7331 | K=-0.0477
+r433: A=450 | B=GL | C=MI | D=MKG | E=Muskegon | F=Muskegon County | G=CS | H=None | I=6940 | J=2729 | K=1.5431
+r434: A=455 | B=NM | C=OR | D=PDT | E=Pendleton | F=Eastern Oregon Regional at Pendleton | G=CS | H=None | I=6683 | J=6579 | K=0.0158
+r435: A=456 | B=NE | C=ME | D=RKD | E=Rockland | F=Knox County Regional | G=CS | H=None | I=6540 | J=13309 | K=-0.5086
+r436: A=457 | B=SW | C=NM | D=SVC | E=Silver City | F=Grant County | G=CS | H=None | I=6516 | J=6915 | K=-0.0577
+r437: A=458 | B=AL | C=AK | D=ANI | E=Aniak | F=Aniak | G=CS | H=None | I=6441 | J=5579 | K=0.1545
+r438: A=460 | B=AL | C=AK | D=HNS | E=Haines | F=Haines | G=CS | H=None | I=6361 | J=6362 | K=-0.0002
+r439: A=461 | B=WP | C=CA | D=HHR | E=Hawthorne | F=Jack Northrop Field/Hawthorne Municipal | G=CS | H=None | I=6315 | J=6417 | K=-0.0159
+r440: A=462 | B=EA | C=WV | D=BKW | E=Beckley | F=Raleigh County Memorial | G=CS | H=None | I=6300 | J=5918 | K=0.0645
+r441: A=465 | B=AL | C=AK | D=AQH | E=Quinhagak | F=Quinhagak | G=CS | H=None | I=5948 | J=5733 | K=0.0375
+r442: A=468 | B=AL | C=AK | D=HNH | E=Hoonah | F=Hoonah | G=CS | H=None | I=5754 | J=5667 | K=0.0154
+r443: A=469 | B=AL | C=AK | D=VAK | E=Chevak | F=Chevak | G=CS | H=None | I=5727 | J=5426 | K=0.0555
+r444: A=471 | B=NE | C=MA | D=PVC | E=Provincetown | F=Provincetown Municipal | G=CS | H=None | I=5566 | J=7033 | K=-0.2086
+r445: A=472 | B=NM | C=WA | D=W33 | E=Friday Harbor | F=Friday Harbor | G=CS | H=None | I=5419 | J=6167 | K=-0.1213
+r446: A=473 | B=EA | C=NY | D=MSS | E=Massena | F=Massena International-Richards Field | G=CS | H=None | I=5400 | J=5375 | K=0.0047
+r447: A=474 | B=CE | C=MO | D=IRK | E=Kirksville | F=Kirksville Regional | G=CS | H=None | I=5375 | J=5611 | K=-0.0421
+r448: A=475 | B=AL | C=AK | D=FYU | E=Fort Yukon | F=Fort Yukon | G=CS | H=None | I=5340 | J=5492 | K=-0.0277
+r449: A=476 | B=AL | C=AK | D=IIK | E=Kipnuk | F=Kipnuk | G=CS | H=None | I=5275 | J=4978 | K=0.0597
+r450: A=478 | B=EA | C=WV | D=PKB | E=Parkersburg | F=Mid-Ohio Valley Regional | G=CS | H=None | I=5257 | J=4356 | K=0.2068
+r451: A=479 | B=AL | C=AK | D=HPB | E=Hooper Bay | F=Hooper Bay | G=CS | H=None | I=5200 | J=4801 | K=0.0831
+r452: A=480 | B=AL | C=AK | D=CXF | E=Coldfoot | F=Coldfoot | G=CS | H=None | I=5141 | J=5985 | K=-0.141
+r453: A=481 | B=NE | C=VT | D=RUT | E=Rutland | F=Rutland/Southern Vermont Regional | G=CS | H=None | I=4986 | J=4519 | K=0.1033
+r454: A=484 | B=WP | C=CA | D=MCE | E=Merced | F=Merced Yosemite Regional | G=CS | H=None | I=4935 | J=4858 | K=0.0159
+r455: A=485 | B=AL | C=AK | D=SGY | E=Skagway | F=Skagway | G=CS | H=None | I=4734 | J=4607 | K=0.0276
+r456: A=486 | B=AL | C=AK | D=Z09 | E=Kasigluk | F=Kasigluk | G=CS | H=None | I=4608 | J=4028 | K=0.144
+r457: A=487 | B=CE | C=IA | D=BRL | E=Burlington | F=Southeast Iowa Regional | G=CS | H=None | I=4574 | J=3951 | K=0.1577
+r458: A=488 | B=AL | C=AK | D=UNK | E=Unalakleet | F=Unalakleet | G=CS | H=None | I=4473 | J=7030 | K=-0.3637
+r459: A=489 | B=EA | C=NY | D=SLK | E=Saranac Lake | F=Adirondack Regional | G=CS | H=None | I=4426 | J=4930 | K=-0.1022
+r460: A=490 | B=NE | C=ME | D=AUG | E=Augusta | F=Augusta State | G=CS | H=None | I=4327 | J=5241 | K=-0.1744
+r461: A=491 | B=SW | C=NM | D=CNM | E=Carlsbad | F=Cavern City Air Terminal | G=CS | H=None | I=4284 | J=4076 | K=0.051
+r462: A=492 | B=EA | C=PA | D=DUJ | E=Brookville | F=Dubois Regional | G=CS | H=None | I=4271 | J=5584 | K=-0.2351
+r463: A=493 | B=AL | C=AK | D=0AK | E=Pilot Station | F=Pilot Station | G=CS | H=None | I=4242 | J=3469 | K=0.2228
+r464: A=495 | B=AL | C=AK | D=KSM | E=Saint Mary's | F=St Mary's | G=CS | H=None | I=4211 | J=4250 | K=-0.0092
+r465: A=497 | B=AL | C=AK | D=SOV | E=Seldovia | F=Seldovia | G=CS | H=None | I=4158 | J=4309 | K=-0.035
+r466: A=498 | B=AL | C=AK | D=AUK | E=Alakanuk | F=Alakanuk | G=CS | H=None | I=4144 | J=3430 | K=0.2082
+r467: A=499 | B=WP | C=HI | D=MUE | E=Kamuela | F=Waimea-Kohala | G=CS | H=None | I=4129 | J=3903 | K=0.0579
+r468: A=501 | B=CE | C=NE | D=AIA | E=Alliance | F=Alliance Municipal | G=CS | H=None | I=3954 | J=4207 | K=-0.0601
+r469: A=502 | B=AL | C=AK | D=A61 | E=Tuntutuliak | F=Tuntutuliak | G=CS | H=None | I=3923 | J=3474 | K=0.1292
+r470: A=503 | B=SW | C=NM | D=GUP | E=Gallup | F=Gallup Municipal | G=CS | H=None | I=3923 | J=2619 | K=0.4979
+r471: A=504 | B=AL | C=AK | D=MOU | E=Mountain Village | F=Mountain Village | G=CS | H=None | I=3868 | J=3678 | K=0.0517
+r472: A=505 | B=AL | C=AK | D=SCM | E=Scammon Bay | F=Scammon Bay | G=CS | H=None | I=3843 | J=3719 | K=0.0333
+r473: A=506 | B=AL | C=AK | D=PHO | E=Point Hope | F=Point Hope | G=CS | H=None | I=3751 | J=3998 | K=-0.0618
+r474: A=508 | B=AL | C=AK | D=OOK | E=Toksook Bay | F=Toksook Bay | G=CS | H=None | I=3718 | J=3342 | K=0.1125
+r475: A=509 | B=AL | C=AK | D=WLK | E=Selawik | F=Selawik | G=CS | H=None | I=3696 | J=4154 | K=-0.1103
+r476: A=510 | B=AL | C=AK | D=WTK | E=Noatak | F=Noatak | G=CS | H=None | I=3671 | J=4062 | K=-0.0963
+r477: A=511 | B=WP | C=HI | D=LUP | E=Kalaupapa | F=Kalaupapa | G=CS | H=None | I=3654 | J=4174 | K=-0.1246
+r478: A=512 | B=AL | C=AK | D=CFK | E=Chefornak | F=Chefornak | G=CS | H=None | I=3643 | J=3330 | K=0.094
+r479: A=513 | B=SW | C=AR | D=HRO | E=Harrison | F=Boone County | G=CS | H=None | I=3632 | J=4032 | K=-0.0992
+r480: A=514 | B=AL | C=AK | D=2A9 | E=Kotlik | F=Kotlik | G=CS | H=None | I=3631 | J=3069 | K=0.1831
+r481: A=515 | B=AL | C=AK | D=AWI | E=Wainwright | F=Wainwright | G=CS | H=None | I=3620 | J=3416 | K=0.0597
+r482: A=516 | B=GL | C=IL | D=UIN | E=Quincy | F=Quincy Regional-Baldwin Field | G=CS | H=None | I=3620 | J=4112 | K=-0.1196
+r483: A=517 | B=AL | C=AK | D=Z13 | E=Akiachak | F=Akiachak | G=CS | H=None | I=3539 | J=3448 | K=0.0264
+r484: A=518 | B=AL | C=AK | D=BVK | E=Buckland | F=Buckland | G=CS | H=None | I=3526 | J=3835 | K=-0.0806
+r485: A=519 | B=SO | C=FL | D=SUA | E=Stuart | F=Witham Field | G=CS | H=None | I=3519 | J=706 | K=3.9844
+r486: A=520 | B=AL | C=AK | D=D76 | E=Noorvik | F=Robert /Bob/ Curtis Memorial | G=CS | H=None | I=3506 | J=3715 | K=-0.0563
+r487: A=521 | B=AL | C=AK | D=KWT | E=Kwethluk | F=Kwethluk | G=CS | H=None | I=3481 | J=3587 | K=-0.0296
+r488: A=522 | B=AL | C=AK | D=AFE | E=Kake | F=Kake | G=CS | H=None | I=3433 | J=3372 | K=0.0181
+r489: A=525 | B=AL | C=AK | D=DUY | E=Kongiganak | F=Kongiganak | G=CS | H=None | I=3361 | J=3077 | K=0.0923
+r490: A=527 | B=WP | C=CA | D=IPL | E=Imperial | F=Imperial County | G=CS | H=None | I=3309 | J=4183 | K=-0.2089
+r491: A=528 | B=AL | C=AK | D=SHH | E=Shishmaref | F=Shishmaref | G=CS | H=None | I=3290 | J=3282 | K=0.0024
+r492: A=529 | B=AL | C=AK | D=AKP | E=Anaktuvuk Pass | F=Anaktuvuk Pass | G=CS | H=None | I=3287 | J=3255 | K=0.0098
+r493: A=530 | B=WP | C=CA | D=MMH | E=Mammoth Lakes | F=Mammoth Yosemite | G=CS | H=None | I=3260 | J=3632 | K=-0.1024
+r494: A=531 | B=AL | C=AK | D=SVA | E=Savoonga | F=Savoonga | G=CS | H=None | I=3259 | J=3199 | K=0.0188
+r495: A=532 | B=AL | C=AK | D=EEK | E=Eek | F=Eek | G=CS | H=None | I=3258 | J=2920 | K=0.1158
+r496: A=533 | B=AL | C=AK | D=RSH | E=Russian Mission | F=Russian Mission | G=CS | H=None | I=3243 | J=2807 | K=0.1553
+r497: A=534 | B=AL | C=AK | D=16A | E=Nunapitchuk | F=Nunapitchuk | G=CS | H=None | I=3226 | J=3329 | K=-0.0309
+r498: A=535 | B=AL | C=AK | D=ILI | E=Iliamna | F=Iliamna | G=CS | H=None | I=3219 | J=5544 | K=-0.4194
+r499: A=537 | B=AL | C=AK | D=MDM | E=Marshall | F=Marshall Don Hunter Sr | G=CS | H=None | I=3176 | J=2724 | K=0.1659
+r500: A=538 | B=AL | C=AK | D=HLA | E=Huslia | F=Huslia | G=CS | H=None | I=3172 | J=3291 | K=-0.0362
+r501: A=539 | B=NM | C=MT | D=HVR | E=Havre | F=Havre City-County | G=CS | H=None | I=3152 | J=3095 | K=0.0184
+r502: A=540 | B=NE | C=MA | D=EWB | E=New Bedford | F=New Bedford Regional | G=CS | H=None | I=3145 | J=2060 | K=0.5267
+r503: A=542 | B=AL | C=AK | D=KLG | E=Upper Kalskag (native name: Kalskag) | F=Kalskag | G=CS | H=None | I=3094 | J=2524 | K=0.2258
+r504: A=543 | B=NM | C=MT | D=GGW | E=Glasgow | F=Wokal Field/Glasgow-Valley County | G=CS | H=None | I=3061 | J=2970 | K=0.0306
+r505: A=544 | B=NM | C=MT | D=OLF | E=Wolf Point | F=L M Clayton | G=CS | H=None | I=3042 | J=3183 | K=-0.0443
+r506: A=545 | B=AL | C=AK | D=VDZ | E=Valdez | F=Valdez Pioneer Field | G=CS | H=None | I=2993 | J=2874 | K=0.0414
+r507: A=546 | B=NM | C=CO | D=PUB | E=Pueblo | F=Pueblo Memorial | G=CS | H=None | I=2991 | J=1397 | K=1.141
+r508: A=547 | B=AL | C=AK | D=MCG | E=McGrath | F=McGrath | G=CS | H=None | I=2961 | J=2676 | K=0.1065
+r509: A=548 | B=AL | C=AK | D=4A2 | E=Atmautluak | F=Atmautluak | G=CS | H=None | I=2941 | J=2733 | K=0.0761
+r510: A=550 | B=AL | C=AK | D=AKI | E=Akiak | F=Akiak | G=CS | H=None | I=2877 | J=2674 | K=0.0759
+r511: A=551 | B=AL | C=AK | D=GAM | E=Gambell | F=Gambell | G=CS | H=None | I=2845 | J=2855 | K=-0.0035
+r512: A=552 | B=EA | C=PA | D=BFD | E=Bradford | F=Bradford Regional | G=CS | H=None | I=2828 | J=3521 | K=-0.1968
+r513: A=553 | B=SW | C=AR | D=HOT | E=Hot Springs | F=Memorial Field | G=CS | H=None | I=2783 | J=3303 | K=-0.1574
+r514: A=554 | B=AL | C=AK | D=KVL | E=Kivalina | F=Kivalina | G=CS | H=None | I=2742 | J=3039 | K=-0.0977
+r515: A=556 | B=AL | C=AK | D=TLT | E=Tuluksak | F=Tuluksak | G=CS | H=None | I=2730 | J=2628 | K=0.0388
+r516: A=557 | B=AL | C=AK | D=GGV | E=Kwigillingok | F=Kwigillingok | G=CS | H=None | I=2723 | J=2534 | K=0.0746
+r517: A=559 | B=AL | C=AK | D=TOG | E=Togiak | F=Togiak | G=CS | H=None | I=2690 | J=3082 | K=-0.1272
+r518: A=561 | B=AL | C=AK | D=NUL | E=Nulato | F=Nulato | G=CS | H=None | I=2573 | J=2480 | K=0.0375
+r519: A=562 | B=AL | C=AK | D=CDB | E=Cold Bay | F=Cold Bay | G=CS | H=None | I=2567 | J=3543 | K=-0.2755
+r520: A=563 | B=AL | C=AK | D=ADK | E=Adak (Naval) Station/Mitchell Field | F=Adak | G=CS | H=None | I=2524 | J=2179 | K=0.1583
+r521: A=564 | B=AL | C=AK | D=IAN | E=Kiana | F=Bob Baker Memorial | G=CS | H=None | I=2509 | J=2555 | K=-0.018
+r522: D=114 | E=Nonprimary Commercial Service
+r523: D=402 | E=Total Primary Airports

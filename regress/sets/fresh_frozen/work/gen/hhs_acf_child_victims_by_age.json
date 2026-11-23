@@ -1,0 +1,60 @@
+{
+ "id": "hhs_acf_child_victims_by_age",
+ "file": "hhs_acf_child_victims_by_age.csv",
+ "questions": [
+  {
+   "question": "How many total child victims were reported in California?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "64115",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = [c.strip() for c in df.columns]\nresult = int(df.loc[df['State'] == 'California', 'Total Victims'].values[0])",
+   "qid": "hhs_acf_child_victims_by_age#1"
+  },
+  {
+   "question": "Which state had the highest rate of child maltreatment victims under age 1 per 1,000 children?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "West Virginia",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = [c.strip() for c in df.columns]\nstates_df = df[~df['State'].isin(['National', 'Reporting States'])]\nresult = states_df.sort_values(by='<1 Rate per 1,000 Children', ascending=False).iloc[0]['State']",
+   "qid": "hhs_acf_child_victims_by_age#2"
+  },
+  {
+   "question": "How many states had more than 20,000 total child victims, excluding national totals and summary rows?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = [c.strip() for c in df.columns]\nstates_df = df[~df['State'].isin(['National', 'Reporting States'])]\nresult = int((states_df['Total Victims'] > 20000).sum())",
+   "qid": "hhs_acf_child_victims_by_age#3"
+  },
+  {
+   "question": "Which three states had the largest number of total child victims?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"New York\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = [c.strip() for c in df.columns]\nstates_df = df[~df['State'].isin(['National', 'Reporting States'])]\nresult = states_df.sort_values(by='Total Victims', ascending=False).head(3)['State'].tolist()",
+   "qid": "hhs_acf_child_victims_by_age#4"
+  },
+  {
+   "question": "Did Texas have more total child victims than New York?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = [c.strip() for c in df.columns]\ntx_total = df.loc[df['State'] == 'Texas', 'Total Victims'].values[0]\nny_total = df.loc[df['State'] == 'New York', 'Total Victims'].values[0]\nresult = 'yes' if tx_total > ny_total else 'no'",
+   "qid": "hhs_acf_child_victims_by_age#5"
+  },
+  {
+   "question": "What was the national victim rate per 1,000 children for infants under 1 year of age?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "25.7",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('hhs_acf_child_victims_by_age.csv')\ndf.columns = [c.strip() for c in df.columns]\nresult = float(df.loc[df['State'] == 'National', '<1 Rate per 1,000 Children'].values[0])",
+   "qid": "hhs_acf_child_victims_by_age#6"
+  }
+ ]
+}

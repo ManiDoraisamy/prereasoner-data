@@ -1,0 +1,469 @@
+FILE cms_program_stats_premiums_2023.xlsx (Excel workbook) with 10 sheet(s): ["Table of Contents", "MDCR PREMIUMS 1_CPS_04PRM", "MDCR PREMIUMS 2_CPS_04PRM", "MDCR PREMIUMS 3_CPS_04PRM", "MDCR PREMIUMS 4_CPS_04PRM", "MDCR PREMIUMS 5_CPS_04PRM", "MDCR PREMIUMS 6_CPS_04PRM", "MDCR PREMIUMS 7_CPS_04PRM", "MDCR PREMIUMS 8_CPS_04PRM", "MDCR PREMIUMS 9_CPS_04PRM"]
+
+### Sheet "Table of Contents": 11 rows x 2 columns (Excel rows 1..11, columns A..B)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Premiums
+r2: A=Table Name | B=Description
+r3: A=MDCR PREMIUMS 1_CPS_04PRM | B=Medicare Premiums:  Medicare Part A Premium Beneficiaries and Amounts, Calendar Years 2018...
+r4: A=MDCR PREMIUMS 2_CPS_04PRM | B=Medicare Premiums:  Medicare Part A Premium Beneficiaries and Amounts by Demographic Chara...
+r5: A=MDCR PREMIUMS 3_CPS_04PRM | B=Medicare Premiums:  Medicare Part A Premium Beneficiaries and Amounts, by Area of Residenc...
+r6: A=MDCR PREMIUMS 4_CPS_04PRM | B=Medicare Premiums:  Medicare Part B Premium Beneficiaries and Amounts, Calendar Years 2018...
+r7: A=MDCR PREMIUMS 5_CPS_04PRM | B=Medicare Premiums:  Medicare Part B Premium Beneficiaries and Amounts by  Demographic Char...
+r8: A=MDCR PREMIUMS 6_CPS_04PRM | B=Medicare Premiums:  Medicare Part B Premium Beneficiaries and Amounts, by Area of Residenc...
+r9: A=MDCR PREMIUMS 7_CPS_04PRM | B=Medicare Premiums:  Medicare Part D Premium Beneficiaries and Amounts, Calendar Years 2018...
+r10: A=MDCR PREMIUMS 8_CPS_04PRM | B=Medicare Premiums:  Medicare Part D Premium Beneficiaries and Amounts by Demographic Chara...
+r11: A=MDCR PREMIUMS 9_CPS_04PRM | B=Medicare Premiums:  Medicare Part D Premium Beneficiaries and Amounts, by Area of Residenc...
+
+### Sheet "MDCR PREMIUMS 1_CPS_04PRM": 17 rows x 9 columns (Excel rows 1..17, columns A..I)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Premiums
+r2: A=Medicare Part A Premium Beneficiaries and Amounts, Calendar Years 2018-2023
+r3: A=Calendar Year | B=Total Part A Premium Number of Beneficiaries | C=Total Part A Premium Amount | D=Part A Standard Base Premium Number of Beneficiaries | E=Part A Standard Base Premium Amount | F=Part A Reduced Base Premium Number of Beneficiaries | G=Part A Reduced Base Premium Amount | H=Penalty Addition Number of Beneficiaries¹ | I=Penalty Addition Amount
+r4: (blank)
+r5: A=2018 | B=731753 | C=3572239014 | D=666494 | E=3375124772 | F=65259 | G=181682216 | H=31825 | I=15432026
+r6: A=2019 | B=746837 | C=3770523939 | D=678514 | E=3558129164 | F=68322 | G=196768080 | H=31131 | I=15626695
+r7: A=2020 | B=759262 | C=4012181234 | D=687776 | E=3780016896 | F=71486 | G=216174672 | H=30413 | I=15989666
+r8: A=2021 | B=763607 | C=4143802510 | D=689825 | E=3898888074 | F=73782 | G=229314456 | H=28869 | I=15599980
+r9: A=2022 | B=775784 | C=4451745796 | D=698259 | E=4181174393 | F=77525 | G=254903570 | H=27400 | I=15667833
+r10: A=2023 | B=806736 | C=4682104952 | D=721978 | E=4383850922 | F=84758 | G=282752688 | H=26785 | I=15501342
+r11: (blank)
+r12: A=¹Penalty Addition beneficiaries are also counted as either Part A Standard Base Premium be...
+r13: (blank)
+r14: A=NOTES:  Excludes Part A premium-terminated beneficiaries.  Data are determined using a per...
+r15: A=The counts and amounts differ from previous releases of this table because of differences ...
+r16: (blank)
+r17: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PREMIUMS 2_CPS_04PRM": 44 rows x 9 columns (Excel rows 1..44, columns A..I)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Premiums
+r2: A=Medicare Part A Premium Beneficiaries and Amounts, by Demographic Characteristics and Medi...
+r3: A=Calendar Year 2023
+r4: A=Demographic Characteristic and Medicare-Medicaid Enrollment Status | B=Total Part A Premium Number of Beneficiaries | C=Total Part A Premium Amount | D=Part A Standard Base Premium Number of Beneficiaries | E=Part A Standard Base Premium Amount | F=Part A Reduced Base Premium Number of Beneficiaries | G=Part A Reduced Base Premium Amount | H=Penalty Addition Number of Beneficiaries¹ | I=Penalty Addition Amount
+r5: A=BLANK
+r6: A=Total | B=806736 | C=4682104952 | D=721978 | E=4383850922 | F=84758 | G=282752688 | H=26785 | I=15501342
+r7: A=BLANK
+r8: A=Age
+r9: A=Under 65 Years | B=640 | C=2614730 | D=176 | E=1067660 | F=464 | G=1547070 | H=0 | I=0
+r10: A=65 Years and Over | B=806097 | C=4679490222 | D=721802 | E=4382783262 | F=84294 | G=281205618 | H=26785 | I=15501342
+r11: A=BLANK
+r12: A=Under 18 Years | B=0 | C=0 | D=0 | E=0 | F=0 | G=0 | H=0 | I=0
+r13: A=18-24 Years | B=0 | C=0 | D=0 | E=0 | F=0 | G=0 | H=0 | I=0
+r14: A=25-34 years | B=27 | C=128070 | D=14 | E=82478 | F=14 | G=45592 | H=0 | I=0
+r15: A=35-44 Years | B=143 | C=596848 | D=44 | E=264638 | F=100 | G=332210 | H=0 | I=0
+r16: A=45-54 Years | B=191 | C=768226 | D=48 | E=291456 | F=143 | G=476770 | H=0 | I=0
+r17: A=55-64 Years | B=278 | C=1121586 | D=71 | E=429088 | F=208 | G=692498 | H=0 | I=0
+r18: A=65-74 Years | B=314388 | C=1775931756 | D=264658 | E=1607004894 | F=49730 | G=165897890 | H=5359 | I=3028972
+r19: A=75-84 Years | B=291400 | C=1705694194 | D=265602 | E=1612732308 | F=25798 | G=86062406 | H=11986 | I=6899480
+r20: A=85-94 Years | B=172139 | C=1027616370 | D=163980 | E=995686054 | F=8159 | G=27217034 | H=7999 | I=4713282
+r21: A=95 Years and Over | B=28171 | C=170247902 | D=27563 | E=167360006 | F=608 | G=2028288 | H=1441 | I=859608
+r22: A=BLANK
+r23: A=Sex
+r24: A=Male | B=253308 | C=1436544523 | D=214409 | E=1301889930 | F=38900 | G=129769010 | H=8630 | I=4885583
+r25: A=Female | B=553428 | C=3245560428 | D=507569 | E=3081960992 | F=45858 | G=152983678 | H=18155 | I=10615758
+r26: A=BLANK
+r27: A=Race
+r28: A=Non-Hispanic White | B=211426 | C=1207804452 | D=181937 | E=1104718934 | F=29489 | G=98375026 | H=8345 | I=4710492
+r29: A=Black (or African-American) | B=108159 | C=603288180 | D=88254 | E=535876770 | F=19905 | G=66404470 | H=1833 | I=1006940
+r30: A=Asian/Pacific Islander | B=205918 | C=1224997552 | D=194771 | E=1182647994 | F=11147 | G=37186948 | H=8688 | I=5162610
+r31: A=Hispanic | B=202332 | C=1177562649 | D=182604 | E=1108773006 | F=19728 | G=65811496 | H=5148 | I=2978147
+r32: A=American Indian/Alaska Native | B=2201 | C=12285133 | D=1802 | E=10940226 | F=400 | G=1332732 | H=25 | I=12175
+r33: A=Other | B=10337 | C=60890067 | D=9574 | E=58132822 | F=763 | G=2545924 | H=360 | I=211321
+r34: A=Unknown | B=66363 | C=395276918 | D=63037 | E=382761170 | F=3326 | G=11096092 | H=2386 | I=1419656
+r35: (blank)
+r36: A=Medicare-Medicaid Enrollment (MME) Status
+r37: A=MME | B=762993 | C=4438542675 | D=687748 | E=4176004844 | F=75245 | G=251017042 | H=19615 | I=11520789
+r38: A=Non-MME | B=43743 | C=243562277 | D=34230 | E=207846078 | F=9513 | G=31735646 | H=7170 | I=3980553
+r39: (blank)
+r40: A=¹Penalty Addition beneficiaries are also counted as either Part A Standard Base Premium be...
+r41: (blank)
+r42: A=NOTES:  Excludes Part A premium-terminated beneficiaries.  Data are determined using a per...
+r43: (blank)
+r44: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PREMIUMS 3_CPS_04PRM": 74 rows x 9 columns (Excel rows 1..74, columns A..I)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Premiums
+r2: A=Medicare Part A Premium Beneficiaries and Amounts, by Area of Residence, Calendar Year 202...
+r3: A=Area of Residence | B=Total Part A Premium Number of Beneficiaries | C=Total Part A Premium Amount | D=Part A Standard Base Premium Number of Beneficiaries | E=Part A Standard Base Premium Amount | F=Part A Reduced Base Premium Number of Beneficiaries | G=Part A Reduced Base Premium Amount | H=Penalty Addition Number of Beneficiaries¹ | I=Penalty Addition Amount
+r4: A=BLANK
+r5: A=All Areas | B=806736 | C=4682104952 | D=721978 | E=4383850922 | F=84758 | G=282752688 | H=26785 | I=15501342
+r6: A=United States | B=806316 | C=4679697894 | D=721617 | E=4381655388 | F=84699 | G=282556976 | H=26755 | I=15485530
+r7: A=BLANK
+r8: A=Alabama | B=3009 | C=17113285 | D=2502 | E=15193156 | F=507 | G=1690518 | H=416 | I=229611
+r9: A=Alaska | B=906 | C=5029273 | D=734 | E=4454318 | F=172 | G=574904 | H=* | I=51
+r10: A=Arizona | B=4950 | C=28574519 | D=4287 | E=26032688 | F=662 | G=2209266 | H=578 | I=332565
+r11: A=Arkansas | B=3884 | C=21660055 | D=3179 | E=19301876 | F=705 | G=2351046 | H=13 | I=7133
+r12: A=California | B=174550 | C=1032531881 | D=161565 | E=981025210 | F=12985 | G=43317126 | H=13933 | I=8189545
+r13: A=Colorado | B=1393 | C=7888892 | D=1141 | E=6925622 | F=253 | G=843174 | H=208 | I=120096
+r14: A=Connecticut | B=2854 | C=16363828 | D=2478 | E=15048440 | F=375 | G=1251834 | H=114 | I=63554
+r15: A=Delaware | B=1078 | C=6174097 | D=942 | E=5717800 | F=136 | G=453140 | H=* | I=3157
+r16: A=District of Columbia | B=2617 | C=14391242 | D=2064 | E=12535138 | F=553 | G=1843140 | H=22 | I=12964
+r17: A=Florida | B=116706 | C=681827339 | D=106757 | E=648227492 | F=9950 | G=33191810 | H=718 | I=408037
+r18: A=Georgia | B=3000 | C=17068413 | D=2554 | E=15505864 | F=447 | G=1489524 | H=131 | I=73025
+r19: A=Hawaii | B=3655 | C=20700700 | D=3103 | E=18841922 | F=552 | G=1840638 | H=33 | I=18140
+r20: A=Idaho | B=551 | C=3090156 | D=455 | E=2763266 | F=96 | G=319978 | H=12 | I=6912
+r21: A=Illinois | B=5010 | C=28391664 | D=4196 | E=25477606 | F=814 | G=2714392 | H=359 | I=199666
+r22: A=Indiana | B=1786 | C=10066545 | D=1494 | E=9071568 | F=292 | G=973278 | H=39 | I=21699
+r23: A=Iowa | B=3302 | C=18676639 | D=2796 | E=16975288 | F=507 | G=1689962 | H=20 | I=11389
+r24: A=Kansas | B=751 | C=4333102 | D=658 | E=3995376 | F=93 | G=309970 | H=50 | I=27756
+r25: A=Kentucky | B=1291 | C=7409119 | D=1126 | E=6837578 | F=165 | G=551274 | H=38 | I=20267
+r26: A=Louisiana | B=10940 | C=61050374 | D=8965 | E=54433456 | F=1976 | G=6590546 | H=48 | I=26372
+r27: A=Maine | B=409 | C=2244091 | D=315 | E=1914704 | F=94 | G=312750 | H=31 | I=16637
+r28: A=Maryland | B=16983 | C=98924604 | D=15429 | E=93682864 | F=1554 | G=5183588 | H=99 | I=58152
+r29: A=Massachusetts | B=36156 | C=211334739 | D=32994 | E=200339568 | F=3162 | G=10549544 | H=812 | I=445627
+r30: A=Michigan | B=30729 | C=176648052 | D=27080 | E=164432290 | F=3649 | G=12172230 | H=81 | I=43532
+r31: A=Minnesota | B=9781 | C=57325099 | D=9018 | E=54758814 | F=763 | G=2544256 | H=39 | I=22029
+r32: A=Mississippi | B=6290 | C=35342981 | D=5247 | E=31856748 | F=1043 | G=3479726 | H=† | I=6507
+r33: A=Missouri | B=2467 | C=14080617 | D=2106 | E=12784596 | F=362 | G=1206242 | H=158 | I=89779
+r34: A=Montana | B=808 | C=4477554 | D=649 | E=3942752 | F=159 | G=530702 | H=* | I=4100
+r35: A=Nebraska | B=159 | C=899300 | D=132 | E=804034 | F=26 | G=87292 | H=14 | I=7974
+r36: A=Nevada | B=7375 | C=42565614 | D=6550 | E=39773624 | F=824 | G=2750254 | H=80 | I=41736
+r37: A=New Hampshire | B=284 | C=1588715 | D=226 | E=1369236 | F=58 | G=194044 | H=44 | I=25435
+r38: A=New Jersey | B=19609 | C=116883650 | D=17858 | E=108433270 | F=1751 | G=5840780 | H=4455 | I=2609600
+r39: A=New Mexico | B=635 | C=3580015 | D=516 | E=3132140 | F=119 | G=396984 | H=87 | I=50891
+r40: A=New York | B=142038 | C=823043500 | D=127581 | E=774673856 | F=14456 | G=48226328 | H=256 | I=143316
+r41: A=North Carolina | B=10319 | C=58952585 | D=8947 | E=54325678 | F=1372 | G=4576992 | H=88 | I=49915
+r42: A=North Dakota | B=153 | C=855995 | D=125 | E=760518 | F=28 | G=93130 | H=* | I=2347
+r43: A=Ohio | B=15780 | C=89250893 | D=13018 | E=79042766 | F=2763 | G=9215978 | H=1822 | I=992149
+r44: A=Oklahoma | B=2655 | C=14838475 | D=2182 | E=13251128 | F=473 | G=1577094 | H=18 | I=10253
+r45: A=Oregon | B=7809 | C=44802149 | D=6841 | E=41539058 | F=968 | G=3230360 | H=60 | I=32731
+r46: A=Pennsylvania | B=31607 | C=181650284 | D=27824 | E=168946316 | F=3783 | G=12621478 | H=146 | I=82490
+r47: A=Rhode Island | B=3345 | C=18968090 | D=2850 | E=17305200 | F=495 | G=1651876 | H=20 | I=11014
+r48: A=South Carolina | B=2304 | C=13159581 | D=1980 | E=12023572 | F=324 | G=1081142 | H=101 | I=54867
+r49: A=South Dakota | B=1607 | C=9377861 | D=1468 | E=8913190 | F=139 | G=462870 | H=* | I=1801
+r50: A=Tennessee | B=7123 | C=40231415 | D=6006 | E=36467926 | F=1117 | G=3725478 | H=69 | I=38011
+r51: A=Texas | B=60206 | C=342103719 | D=51521 | E=312832982 | F=8686 | G=28974828 | H=522 | I=295909
+r52: A=Utah | B=302 | C=1691794 | D=243 | E=1478026 | F=59 | G=196824 | H=30 | I=16944
+r53: A=Vermont | B=912 | C=5090491 | D=748 | E=4538820 | F=165 | G=548772 | H=* | I=2899
+r54: A=Virginia | B=6389 | C=37629538 | D=5806 | E=35252514 | F=583 | G=1944888 | H=731 | I=432136
+r55: A=Washington | B=26782 | C=155541860 | D=24161 | E=146705086 | F=2621 | G=8742544 | H=168 | I=94230
+r56: A=West Virginia | B=5103 | C=28964303 | D=4362 | E=26485052 | F=741 | G=2472532 | H=12 | I=6719
+r57: A=Wisconsin | B=7727 | C=44005994 | D=6654 | E=40404100 | F=1073 | G=3578972 | H=41 | I=22922
+r58: A=Wyoming | B=239 | C=1303215 | D=185 | E=1121296 | F=54 | G=180978 | H=* | I=941
+r59: A=BLANK
+r60: A=Territories, Possessions, and Other
+r61: A=Puerto Rico | B=260 | C=1487647 | D=224 | E=1361646 | F=36 | G=119818 | H=† | I=6183
+r62: A=U.S. Territories² | B=55 | C=303497 | D=† | E=† | F=† | G=† | H=15 | I=7613
+r63: A=Foreign Countries | B=102 | C=597698 | D=† | E=† | F=* | G=† | H=* | I=2016
+r64: A=Unknown | B=* | C=18216 | D=* | E=† | F=† | G=† | H=0 | I=0
+r65: (blank)
+r66: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r67: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r68: (blank)
+r69: A=¹Penalty Addition beneficiaries are also counted as either Part A Standard Base Premium be...
+r70: A=²Includes Virgin Islands, American Samoa, Guam, and Northern Mariana Islands.  The U.S. Te...
+r71: (blank)
+r72: A=NOTES:  Excludes Part A premium-terminated beneficiaries.  Data are determined using a per...
+r73: (blank)
+r74: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PREMIUMS 4_CPS_04PRM": 19 rows x 15 columns (Excel rows 1..19, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Premiums
+r2: A=Medicare Part B Premium Beneficiaries and Amounts, Calendar Years 2018-2023
+r3: A=Calendar Year | B=Total Part B Premium Number of Beneficiaries | C=Total Part B Premium Amount | D=Part B Standard Base Premium Number of Beneficiaries | E=Part B Standard Base Premium Amount | F=Part B Reduced Base Premium Number of Beneficiaries | G=Part B Reduced Base Premium Amount | H=Penalty Addition Number of Beneficiaries¹ | I=Penalty Addition Amount | J=IRMAA Addition Number of Beneficiaries¹˒² | K=IRMAA Addition Amount² | L=Managed Care Reduction Number of Beneficiaries¹ | M=Managed Care Reduction Amount | N=Part B-ID Number of Beneficiaries³ | O=Part B-ID Premium Amount³
+r4: A=BLANK
+r5: A=2018 | B=54689179 | C=93591968608 | D=42990366 | E=69128508394 | F=11698814 | G=17546256669 | H=687177 | I=335780630 | J=3614777 | K=6889608546 | L=573537 | M=-308185630 | N=0 | O=0
+r6: A=2019 | B=56001053 | C=98987505000 | D=54587179 | E=88758752376 | F=1413874 | G=2116181097 | H=695431 | I=340790752 | J=4198942 | K=8278506655 | L=788171 | M=-506725881 | N=0 | O=0
+r7: A=2020 | B=57307454 | C=108732188073 | D=55607662 | E=96490414958 | F=1699792 | G=2724418215 | H=712012 | I=369927288 | J=4603262 | K=9854204069 | L=1084738 | M=-706776458 | N=0 | O=0
+r8: A=2021 | B=58375751 | C=113431357453 | D=57163554 | E=101865453674 | F=1212196 | G=1972655973 | H=724645 | I=383460606 | J=4694478 | K=10240624419 | L=1362064 | M=-1030837219 | N=0 | O=0
+r9: A=2022 | B=59482817 | C=130814874672 | D=58571832 | E=119556822458 | F=910986 | G=1660790198 | H=738307 | I=443081804 | J=4263642 | K=10717284592 | L=1856801 | M=-1563104380 | N=0 | O=0
+r10: A=2023 | B=60749932 | C=134555554004 | D=60570592 | E=123127898571 | F=179254 | G=319801423 | H=790618 | I=471005825 | J=5212994 | K=13281510471 | L=2695958 | M=-2644762783 | N=86 | O=100499
+r11: (blank)
+r12: A=¹Penalty addition, IRMAA addition, and Managed Care Reduction are not mutually exclusive; ...
+r13: A=²IRMAA - Income Related Monthly Adjustment Amount
+r14: A=³Part B-ID - Medicare Part B Immunosuppressive Drug Benefit, new in 2023.
+r15: (blank)
+r16: A=NOTES:  Data are determined using a person-year methodology.  Counts and amounts may not s...
+r17: A=differences to the source data.
+r18: (blank)
+r19: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PREMIUMS 5_CPS_04PRM": 49 rows x 15 columns (Excel rows 1..49, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Premiums
+r2: A=Medicare Part B Premium Beneficiaries and Amounts, by Demographic Characteristics and Medi...
+r3: A=Calendar Year 2023
+r4: A=Demographic Characteristic and Medicare-Medicaid Enrollment Status | B=Total Part B Premium Number of Beneficiaries | C=Total Part B Premium Amount | D=Part B Standard Base Premium Number of Beneficiaries | E=Part B Standard Base Premium Amount | F=Part B Reduced Base Premium Number of Beneficiaries | G=Part B Reduced Base Premium Amount | H=Penalty Addition Number of Beneficiaries¹ | I=Penalty Addition Amount | J=IRMAA Addition Number of Beneficiaries¹˒² | K=IRMAA Addition Amount² | L=Managed Care Reduction Number of Beneficiaries¹ | M=Managed Care Reduction Amount | N=Part B-ID Number of Beneficiaries³ | O=Part B-ID Premium Amount³
+r5: A=BLANK
+r6: A=Total | B=60749932 | C=134555554004 | D=60570592 | E=123127898571 | F=179254 | G=319801423 | H=790618 | I=471005825 | J=5212994 | K=13281510471 | L=2695958 | M=-2644762783 | N=86 | O=100499
+r7: A=BLANK
+r8: A=Age
+r9: A=Under 65 Years | B=6830353 | C=13788441985 | D=6829396 | E=13882797036 | F=† | G=† | H=63598 | I=49142635 | J=54634 | K=119348579 | L=263724 | M=-264544417 | N=† | O=†
+r10: A=65 Years and Over | B=53919579 | C=120767112019 | D=53741195 | E=109245101535 | F=† | G=† | H=727020 | I=421863189 | J=5158360 | K=13162161891 | L=2432234 | M=-2380218366 | N=* | O=†
+r11: A=BLANK
+r12: A=Under 18 Years | B=1068 | C=2168941 | D=1068 | E=2170014 | F=† | G=† | H=* | I=644 | J=0 | K=0 | L=* | M=-1814 | N=* | O=†
+r13: A=18-24 Years | B=77990 | C=157797834 | D=77984 | E=158526722 | F=* | G=† | H=† | I=18346 | J=20 | K=59563 | L=† | M=-816882 | N=* | O=†
+r14: A=25-34 years | B=463433 | C=938754220 | D=463350 | E=941897541 | F=† | G=† | H=1236 | I=666470 | J=363 | K=967701 | L=4776 | M=-4924231 | N=* | O=†
+r15: A=35-44 Years | B=903575 | C=1829314928 | D=903416 | E=1836463706 | F=† | G=† | H=5020 | I=3312583 | J=2607 | K=5818117 | L=16474 | M=-16555716 | N=† | O=†
+r16: A=45-54 Years | B=1559743 | C=3148267122 | D=1559528 | E=3170208518 | F=192 | G=355138 | H=13504 | I=10054771 | J=9650 | K=21638212 | L=53312 | M=-54016607 | N=23 | O=27091
+r17: A=55-64 Years | B=3824545 | C=7712138939 | D=3824051 | E=7773530534 | F=462 | G=845576 | H=43777 | I=35089821 | J=41994 | K=90864986 | L=188457 | M=-188229167 | N=32 | O=37189
+r18: A=65-74 Years | B=28884710 | C=64115867694 | D=28848867 | E=58643977007 | F=† | G=† | H=305219 | I=122019582 | J=2682073 | K=6725243637 | L=1430561 | M=-1440843484 | N=* | O=†
+r19: A=75-84 Years | B=18435739 | C=41656335416 | D=18331854 | E=37264992472 | F=103885 | G=186704571 | H=306180 | I=200614305 | J=1848281 | K=4750338870 | L=781969 | M=-746314802 | N=0 | O=0
+r20: A=85-94 Years | B=5898405 | C=13377682964 | D=5862455 | E=11917197508 | F=35950 | G=61347518 | H=98619 | I=84062616 | J=557978 | K=1494307976 | L=202705 | M=-179232653 | N=0 | O=0
+r21: A=95 Years and Over | B=700725 | C=1617225946 | D=698020 | E=1418934548 | F=2705 | G=4680729 | H=17002 | I=15166687 | J=70027 | K=192271408 | L=17000 | M=-13827427 | N=0 | O=0
+r22: A=BLANK
+r23: A=Sex
+r24: A=Male | B=27080770 | C=60269336398 | D=27000365 | E=54886341125 | F=80358 | G=143984456 | H=442769 | I=255638982 | J=2461499 | K=6375806086 | L=1408339 | M=-1392489113 | N=47 | O=54862
+r25: A=Female | B=33669162 | C=74286217606 | D=33570227 | E=68241557446 | F=98896 | G=175816968 | H=347849 | I=215366842 | J=2751494 | K=6905704384 | L=1287619 | M=-1252273671 | N=39 | O=45637
+r26: A=BLANK
+r27: A=Race
+r28: A=Non-Hispanic White | B=44005673 | C=99728891002 | D=43874050 | E=89187167993 | F=131594 | G=234562291 | H=462765 | I=280022977 | J=4464519 | K=11394213917 | L=1470994 | M=-1367110257 | N=29 | O=34082
+r29: A=Black (or African-American) | B=6344452 | C=12883106956 | D=6325627 | E=12858735074 | F=18794 | G=33574191 | H=108323 | I=64535132 | J=137983 | K=272584425 | L=339922 | M=-346357308 | N=30 | O=35442
+r30: A=Asian/Pacific Islander | B=2271496 | C=5069130192 | D=2266460 | E=4607259719 | F=† | G=† | H=43567 | I=25049026 | J=195977 | K=531594280 | L=88267 | M=-103808459 | N=* | O=†
+r31: A=Hispanic | B=5964320 | C=11715388523 | D=5945026 | E=12085049192 | F=† | G=† | H=138691 | I=80131350 | J=119739 | K=276650808 | L=727775 | M=-760858843 | N=† | O=†
+r32: A=American Indian/Alaska Native | B=216795 | C=444780657 | D=216280 | E=439652968 | F=† | G=† | H=5937 | I=3712452 | J=4193 | K=9642598 | L=11301 | M=-9148719 | N=* | O=†
+r33: A=Other | B=520538 | C=1223956365 | D=519359 | E=1055753145 | F=† | G=† | H=10688 | I=6659368 | J=66860 | K=179241851 | L=18732 | M=-19821814 | N=* | O=†
+r34: A=Unknown | B=1426658 | C=3490300310 | D=1423790 | E=2894280481 | F=† | G=† | H=20646 | I=10895520 | J=223723 | K=617582593 | L=38968 | M=-37657383 | N=* | O=†
+r35: (blank)
+r36: A=Medicare-Medicaid Enrollment (MME) Status
+r37: A=MME | B=13153585 | C=26589280697 | D=13150965 | E=26733280805 | F=2591 | G=4612104 | H=31450 | I=21652488 | J=5074 | K=10708902 | L=196597 | M=-181007975 | N=30 | O=34373
+r38: A=Non-MME | B=47596347 | C=107966273307 | D=47419627 | E=96394617766 | F=176663 | G=315189320 | H=759168 | I=449353337 | J=5207919 | K=13270801568 | L=2499361 | M=-2463754808 | N=57 | O=66125
+r39: (blank)
+r40: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r41: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r42: (blank)
+r43: A=¹Penalty addition, IRMAA addition, and Managed Care Reduction are not mutually exclusive; ...
+r44: A=²IRMAA - Income Related Monthly Adjustment Amount
+r45: A=³Part B-ID - Medicare Part B Immunosuppressive Drug Benefit, new in 2023.
+r46: (blank)
+r47: A=NOTES:  Data are determined using a person-year methodology.  Counts and amounts may not s...
+r48: (blank)
+r49: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PREMIUMS 6_CPS_04PRM": 76 rows x 15 columns (Excel rows 1..76, columns A..O)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Premiums
+r2: A=Medicare Part B Premium Beneficiaries and Amounts, by Area of Residence, Calendar Year 202...
+r3: A=Area of Residence | B=Total Part B Premium Number of Beneficiaries | C=Total Part B Premium Amount | D=Part B Standard Base Premium Number of Beneficiaries | E=Part B Standard Base Premium Amount | F=Part B Reduced Base Premium Number of Beneficiaries | G=Part B Reduced Base Premium Amount | H=Penalty Addition Number of Beneficiaries¹ | I=Penalty Addition Amount | J=IRMAA Addition Number of Beneficiaries¹˒² | K=IRMAA Addition Amount² | L=Managed Care  Reduction Number of Beneficiaries¹ | M=Managed Care Reduction Amount | N=Part B-ID Number of Beneficiaries⁴ | O=Part B-ID Premium Amount⁴
+r4: A=BLANK
+r5: A=All Areas | B=60749932 | C=134555554004 | D=60570592 | E=123127898571 | F=179254 | G=319801423 | H=790618 | I=471005825 | J=5212994 | K=13281510471 | L=2695958 | M=-2644762783 | N=86 | O=100499
+r6: A=United States | B=59983834 | C=133425234965 | D=59812867 | E=121587596207 | F=170882 | G=304986064 | H=750328 | I=444542699 | J=5208915 | K=13269845271 | L=2209177 | M=-2181833930 | N=85 | O=98654
+r7: A=BLANK
+r8: A=Alabama | B=1025038 | C=2198834287 | D=1023128 | E=2079815107 | F=† | G=† | H=8773 | I=5272609 | J=51805 | K=125310578 | L=23027 | M=-14978154 | N=* | O=†
+r9: A=Alaska | B=101496 | C=237093272 | D=101079 | E=205473899 | F=416 | G=751272 | H=2373 | I=1219612 | J=12332 | K=29825233 | L=188 | M=-176744 | N=0 | O=0
+r10: A=Arizona | B=1353928 | C=3029546207 | D=1350772 | E=2745849491 | F=† | G=† | H=17340 | I=10528142 | J=120980 | K=304938325 | L=63275 | M=-37421502 | N=* | O=†
+r11: A=Arkansas | B=622770 | C=1324811176 | D=621649 | E=1263688087 | F=† | G=† | H=5785 | I=3336621 | J=28060 | K=67448965 | L=16072 | M=-11665127 | N=* | O=†
+r12: A=California | B=6193218 | C=14422946501 | D=6172131 | E=12546707727 | F=† | G=† | H=95426 | I=56282879 | J=751191 | K=1975680499 | L=154340 | M=-193317364 | N=* | O=†
+r13: A=Colorado | B=928236 | C=2161057106 | D=922491 | E=1875239027 | F=† | G=† | H=12124 | I=6830428 | J=111909 | K=289716562 | L=31178 | M=-20956613 | N=* | O=†
+r14: A=Connecticut | B=657442 | C=1547872405 | D=655305 | E=1332103835 | F=† | G=† | H=7385 | I=4804370 | J=82064 | K=210747267 | L=5109 | M=-3587260 | N=* | O=†
+r15: A=Delaware | B=220059 | C=493995263 | D=219709 | E=446623439 | F=351 | G=630907 | H=2302 | I=1298570 | J=20478 | K=48057893 | L=3958 | M=-2615545 | N=0 | O=0
+r16: A=District of Columbia | B=80382 | C=201910999 | D=79808 | E=162234549 | F=† | G=† | H=2526 | I=1656393 | J=12689 | K=37607609 | L=561 | M=-595906 | N=* | O=†
+r17: A=Florida | B=4711969 | C=10087187385 | D=4701870 | E=9557961336 | F=† | G=† | H=62449 | I=37646761 | J=453354 | K=1241165247 | L=464031 | M=-767622071 | N=* | O=†
+r18: A=Georgia | B=1759830 | C=3831599881 | D=1755332 | E=3568239737 | F=† | G=† | H=21839 | I=13037481 | J=127609 | K=319952315 | L=72303 | M=-77675671 | N=* | O=†
+r19: A=Hawaii | B=261540 | C=599206513 | D=260645 | E=529839834 | F=† | G=† | H=4154 | I=2525229 | J=27799 | K=67196860 | L=3358 | M=-1955969 | N=* | O=†
+r20: A=Idaho | B=356494 | C=791940623 | D=355500 | E=722660400 | F=994 | G=1785861 | H=3784 | I=2180568 | J=27780 | K=71882873 | L=8861 | M=-6569078 | N=0 | O=0
+r21: A=Illinois | B=2157310 | C=4880744622 | D=2147168 | E=4364762941 | F=† | G=† | H=25576 | I=14995813 | J=209797 | K=513414534 | L=52621 | M=-30405795 | N=* | O=†
+r22: A=Indiana | B=1257555 | C=2702465997 | D=1255956 | E=2553107357 | F=† | G=† | H=9565 | I=5289837 | J=71502 | K=175123890 | L=34017 | M=-33932195 | N=* | O=†
+r23: A=Iowa | B=627832 | C=1382182773 | D=626850 | E=1274260172 | F=982 | G=1743786 | H=3927 | I=2120041 | J=45957 | K=110601938 | L=8058 | M=-6543164 | N=0 | O=0
+r24: A=Kansas | B=532332 | C=1180299275 | D=531362 | E=1080152843 | F=† | G=† | H=4689 | I=2593785 | J=41636 | K=102518162 | L=8663 | M=-6699318 | N=* | O=†
+r25: A=Kentucky | B=911247 | C=1928348515 | D=907633 | E=1845036024 | F=† | G=† | H=7636 | I=4683791 | J=42482 | K=104401310 | L=34711 | M=-32184274 | N=* | O=†
+r26: A=Louisiana | B=859451 | C=1837820492 | D=855258 | E=1738568124 | F=† | G=† | H=11500 | I=6718573 | J=46281 | K=117766470 | L=76211 | M=-32772951 | N=* | O=†
+r27: A=Maine | B=344895 | C=753344776 | D=342538 | E=696311755 | F=2357 | G=4194646 | H=3308 | I=2309413 | J=22859 | K=57939634 | L=10212 | M=-7410672 | N=0 | O=0
+r28: A=Maryland | B=969400 | C=2257101115 | D=965067 | E=1961788198 | F=† | G=† | H=19805 | I=11852766 | J=116442 | K=283807233 | L=7497 | M=-8060297 | N=* | O=†
+r29: A=Massachusetts | B=1285219 | C=2994558222 | D=1277348 | E=2596592337 | F=† | G=† | H=19914 | I=14355075 | J=143265 | K=374438113 | L=6233 | M=-4928868 | N=* | O=†
+r30: A=Michigan | B=2069289 | C=4496815441 | D=2066948 | E=4201690878 | F=† | G=† | H=16882 | I=10077521 | J=133445 | K=322704505 | L=44069 | M=-41847805 | N=* | O=†
+r31: A=Minnesota | B=1039626 | C=2313498982 | D=1037265 | E=2108552631 | F=† | G=† | H=9185 | I=5617033 | J=88219 | K=212565056 | L=32627 | M=-17408677 | N=* | O=†
+r32: A=Mississippi | B=591552 | C=1249990607 | D=590552 | E=1200474275 | F=† | G=† | H=5501 | I=3205404 | J=24889 | K=59030713 | L=18516 | M=-14514312 | N=* | O=†
+r33: A=Missouri | B=1211600 | C=2638418073 | D=1205713 | E=2450973217 | F=† | G=† | H=12544 | I=7559729 | J=77293 | K=189810350 | L=23072 | M=-20336465 | N=* | O=†
+r34: A=Montana | B=237301 | C=533672395 | D=236556 | E=480870529 | F=† | G=† | H=3159 | I=1843902 | J=20087 | K=52477325 | L=4216 | M=-2850000 | N=* | O=†
+r35: A=Nebraska | B=345567 | C=771295318 | D=344899 | E=701111534 | F=† | G=† | H=2961 | I=1751528 | J=28583 | K=70634833 | L=4607 | M=-3390706 | N=* | O=†
+r36: A=Nevada | B=531447 | C=1195361385 | D=529130 | E=1075615125 | F=† | G=† | H=9509 | I=5776252 | J=49096 | K=130232144 | L=20311 | M=-20439542 | N=* | O=†
+r37: A=New Hampshire | B=299822 | C=683265382 | D=299039 | E=607887326 | F=† | G=† | H=3862 | I=2386439 | J=30417 | K=78222733 | L=9412 | M=-6632413 | N=* | O=†
+r38: A=New Jersey | B=1543274 | C=3583253663 | D=1541231 | E=3133014546 | F=† | G=† | H=22917 | I=13314959 | J=180486 | K=452191542 | L=22211 | M=-18938926 | N=* | O=†
+r39: A=New Mexico | B=418976 | C=921989353 | D=417814 | E=849332469 | F=1162 | G=2085359 | H=6930 | I=4119249 | J=31688 | K=78022781 | L=17516 | M=-11570505 | N=0 | O=0
+r40: A=New York | B=3495869 | C=7905180031 | D=3493273 | E=7101126201 | F=† | G=† | H=51608 | I=31032234 | J=334208 | K=852387710 | L=131652 | M=-84024390 | N=* | O=†
+r41: A=North Carolina | B=2040435 | C=4420053077 | D=2037162 | E=4141142405 | F=† | G=† | H=19910 | I=11319189 | J=146515 | K=366191939 | L=117734 | M=-104448250 | N=* | O=†
+r42: A=North Dakota | B=132608 | C=303498389 | D=132309 | E=268958413 | F=298 | G=535182 | H=1239 | I=748409 | J=13364 | K=34392996 | L=1423 | M=-1136611 | N=0 | O=0
+r43: A=Ohio | B=2312342 | C=5014509900 | D=2297416 | E=4670186398 | F=† | G=† | H=18755 | I=10509424 | J=145548 | K=359923493 | L=50346 | M=-52738195 | N=* | O=†
+r44: A=Oklahoma | B=721841 | C=1555191131 | D=719839 | E=1463288889 | F=† | G=† | H=9839 | I=5600940 | J=42445 | K=106543472 | L=27478 | M=-23804153 | N=* | O=†
+r45: A=Oregon | B=859733 | C=1933634062 | D=857950 | E=1744040252 | F=† | G=† | H=9136 | I=5370827 | J=77554 | K=190131331 | L=15355 | M=-9100388 | N=* | O=†
+r46: A=Pennsylvania | B=2666178 | C=5865686285 | D=2662570 | E=5412471618 | F=† | G=† | H=24714 | I=15075109 | J=201440 | K=496911341 | L=165783 | M=-65238781 | N=* | O=†
+r47: A=Rhode Island | B=213777 | C=481139567 | D=213075 | E=433139538 | F=702 | G=1246023 | H=3071 | I=2266453 | J=18323 | K=45641343 | L=1541 | M=-1153790 | N=0 | O=0
+r48: A=South Carolina | B=1123931 | C=2426415224 | D=1121938 | E=2280675397 | F=† | G=† | H=11231 | I=6551426 | J=80648 | K=200543148 | L=76592 | M=-64920423 | N=* | O=†
+r49: A=South Dakota | B=178414 | C=402347783 | D=177964 | E=361765727 | F=450 | G=797675 | H=1659 | I=917437 | J=16182 | K=41424420 | L=3057 | M=-2557475 | N=0 | O=0
+r50: A=Tennessee | B=1352884 | C=2937461322 | D=1350630 | E=2745559817 | F=† | G=† | H=12409 | I=7357042 | J=83404 | K=210691826 | L=36866 | M=-30174260 | N=* | O=†
+r51: A=Texas | B=4235660 | C=9391926225 | D=4218301 | E=8574962781 | F=† | G=† | H=80257 | I=44847888 | J=348516 | K=920522079 | L=164349 | M=-179380579 | N=† | O=†
+r52: A=Utah | B=412184 | C=921315610 | D=410491 | E=834445258 | F=† | G=† | H=5987 | I=3484016 | J=35879 | K=93216290 | L=21868 | M=-12837136 | N=* | O=†
+r53: A=Vermont | B=149075 | C=335420076 | D=148823 | E=302528241 | F=252 | G=446604 | H=1440 | I=815932 | J=12895 | K=32916633 | L=2152 | M=-1287335 | N=0 | O=0
+r54: A=Virginia | B=1485624 | C=3406332353 | D=1481675 | E=3011949618 | F=† | G=† | H=22934 | I=13752011 | J=164644 | K=404004216 | L=30445 | M=-30420182 | N=* | O=†
+r55: A=Washington | B=1358891 | C=3129381670 | D=1356057 | E=2756592670 | F=2834 | G=5094286 | H=17304 | I=10013929 | J=146231 | K=372875498 | L=19328 | M=-15194712 | N=0 | O=0
+r56: A=West Virginia | B=418806 | C=871206951 | D=418087 | E=849887592 | F=† | G=† | H=3672 | I=2089092 | J=14715 | K=34996181 | L=18537 | M=-17054027 | N=* | O=†
+r57: A=Wisconsin | B=1204976 | C=2629488818 | D=1203309 | E=2446086705 | F=† | G=† | H=7967 | I=4750196 | J=83045 | K=201465375 | L=42672 | M=-25779069 | N=* | O=†
+r58: A=Wyoming | B=114513 | C=262618485 | D=114251 | E=232249941 | F=262 | G=465976 | H=1567 | I=850371 | J=10887 | K=29632488 | L=964 | M=-580290 | N=0 | O=0
+r59: A=BLANK
+r60: A=Territories, Possessions, and Other
+r61: A=Puerto Rico | B=678088 | C=936916970 | D=670197 | E=1362376800 | F=† | G=† | H=31253 | I=20285040 | J=884 | K=2210890 | L=485886 | M=-461892239 | N=* | O=†
+r62: A=U.S. Territories³ | B=37310 | C=77208670 | D=37028 | E=75270180 | F=283 | G=515879 | H=† | I=1496852 | J=† | K=208159 | L=242 | M=-282399 | N=0 | O=0
+r63: A=Foreign Countries | B=50432 | C=115641515 | D=50232 | E=102111948 | F=† | G=† | H=6581 | I=4680827 | J=3113 | K=9238108 | L=652 | M=-754215 | N=* | O=†
+r64: A=Unknown | B=267 | C=551884 | D=267 | E=543435 | F=0 | G=0 | H=* | I=407 | J=* | K=8042 | L=0 | M=0 | N=0 | O=0
+r65: (blank)
+r66: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r67: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r68: (blank)
+r69: A=¹Penalty addition, IRMAA addition, and Managed Care Reduction are not mutually exclusive; ...
+r70: A=²IRMAA - Income Related Monthly Adjustment Amount
+r71: A=³Includes Virgin Islands, American Samoa, Guam, and Northern Mariana Islands.  The U.S. Te...
+r72: A=⁴Part B-ID - Medicare Part B Immunosuppressive Drug Benefit, new in 2023.
+r73: (blank)
+r74: A=NOTES:  Data are determined using a person-year methodology.  Counts and amounts may not s...
+r75: (blank)
+r76: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PREMIUMS 7_CPS_04PRM": 20 rows x 11 columns (Excel rows 1..20, columns A..K)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Premiums
+r2: A=Medicare Part D Premium Beneficiaries and Amounts, Calendar Years 2018-2023
+r3: A=Calendar Year | B=Total Part D Premium Number of Beneficiaries | C=Total Part D Premium Amount | D=Part D Base Beneficiary Premium Number of Beneficiaries | E=Part D Base Beneficiary Premium Amount | F=Part D Supplemental Beneficiary Premium Number of Beneficiaries | G=Part D Supplemental Beneficiary Premium Amount | H=Penalty Addition Number of Beneficiaries¹ | I=Penalty Addition Amount | J=IRMAA Addition Number of Beneficiaries¹˒² | K=IRMAA Addition Amount²
+r4: A=BLANK
+r5: A=2018 | B=36984584 | C=18245437059 | D=36212159 | E=14874384497 | F=9641838 | G=1733652916 | H=1987970 | I=263814293 | J=2832228 | K=1373585354
+r6: A=2019 | B=37562710 | C=17836123877 | D=35867261 | E=14275642179 | F=9706992 | G=1711998822 | H=2140490 | I=276087356 | J=3337515 | K=1572395520
+r7: A=2020 | B=37938786 | C=17516180187 | D=35107766 | E=13640175545 | F=10142208 | G=1821615754 | H=2329753 | I=305652387 | J=3699276 | K=1748736501
+r8: A=2021 | B=37978996 | C=17756192275 | D=34338879 | E=13665730196 | F=10712725 | G=1936700609 | H=2522809 | I=344427921 | J=3821581 | K=1809333549
+r9: A=2022 | B=38156907 | C=18156654947 | D=32416986 | E=13914024609 | F=10956199 | G=2183833036 | H=2701626 | I=380575535 | J=3489436 | K=1678221767
+r10: A=2023 | B=38703135 | C=18929727310 | D=31905213 | E=14019645160 | F=11210087 | G=2370367292 | H=2835397 | I=397168358 | J=4341676 | K=2142546500
+r11: (blank)
+r12: A=¹Penalty addition and IRMAA addition are not mutually exclusive; one or more of these cate...
+r13: A=²IRMAA - Income Related Monthly Adjustment Amount
+r14: (blank)
+r15: A=NOTES:  The total number of Part D premium beneficiaries is a count of persons who paid a ...
+r16: A=Part D enrollment counts reported in other CMS Program Statistics reports because there ar...
+r17: A=Advantage Drug rebates are applied and include Low Income Subsidy amounts, which are not r...
+r18: A=not sum to totals because of rounding.
+r19: (blank)
+r20: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PREMIUMS 8_CPS_04PRM": 51 rows x 11 columns (Excel rows 1..51, columns A..K)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Premiums
+r2: A=Medicare Part D Premium Beneficiaries and Amounts, by Demographic Characteristics and Medi...
+r3: A=Calendar Year 2023
+r4: A=Demographic Characteristic and Medicare-Medicaid Enrollment Status | B=Total Part D Premium Number of Beneficiaries | C=Total Part D Premium Amount | D=Part D Base Beneficiary Premium Number of Beneficiaries | E=Part D Beneficiary Base Premium Amount | F=Part D Supplemental Beneficiary Premium Number of Beneficiaries | G=Part D Supplemental Beneficiary Premium Amount | H=Penalty Addition Number of Beneficiaries¹ | I=Penalty Addition Amount | J=IRMAA Addition Number of Beneficiaries¹˒² | K=IRMAA Addition Amount²
+r5: A=BLANK
+r6: A=Total | B=38703135 | C=18929727310 | D=31905213 | E=14019645160 | F=11210087 | G=2370367292 | H=2835397 | I=397168358 | J=4341676 | K=2142546500
+r7: A=BLANK
+r8: A=Age
+r9: A=Under 65 Years | B=4646716 | C=1889098464 | D=4411823 | E=1767365077 | F=258811 | G=72336094 | H=235218 | I=35436131 | J=32574 | K=13961163
+r10: A=65 Years and Over | B=34056420 | C=17040628846 | D=27493390 | E=12252280083 | F=10951276 | G=2298031198 | H=2600179 | I=361732227 | J=4309102 | K=2128585337
+r11: A=BLANK
+r12: A=Under 18 Years | B=816 | C=312050 | D=810 | E=308995 | F=14 | G=2938 | H=* | I=117 | J=0 | K=0
+r13: A=18-24 Years | B=64060 | C=24858549 | D=63503 | E=24695863 | F=730 | G=139180 | H=† | I=14762 | J=15 | K=8745
+r14: A=25-34 years | B=381529 | C=150707103 | D=376122 | E=148483139 | F=6306 | G=1592435 | H=4628 | I=540834 | J=175 | K=90695
+r15: A=35-44 Years | B=696061 | C=279588593 | D=679916 | E=270585457 | F=21576 | G=6192125 | H=16171 | I=2281381 | J=1172 | K=529630
+r16: A=45-54 Years | B=1092106 | C=440836584 | D=1045865 | E=415608400 | F=53425 | G=15719198 | H=49385 | I=7429082 | J=4634 | K=2079904
+r17: A=55-64 Years | B=2412143 | C=992795585 | D=2245607 | E=907683225 | F=176761 | G=48690216 | H=164769 | I=25169955 | J=26579 | K=11252189
+r18: A=65-74 Years | B=17795353 | C=7799036100 | D=13502943 | E=5530655871 | F=6049733 | G=1067744414 | H=1200517 | I=100882105 | J=2260717 | K=1099753710
+r19: A=75-84 Years | B=11970829 | C=6627535121 | D=10117617 | E=4780344492 | F=3646491 | G=882184840 | H=1122621 | I=193701135 | J=1551285 | K=771304654
+r20: A=85-94 Years | B=3836997 | C=2327596900 | D=3453892 | E=1725738480 | F=1125900 | G=310689126 | H=253367 | I=61270898 | J=444831 | K=229898396
+r21: A=95 Years and Over | B=453241 | C=286460724 | D=418938 | E=215541240 | F=129153 | G=37412818 | H=23674 | I=5878089 | J=52269 | K=27628577
+r22: A=BLANK
+r23: A=Sex
+r24: A=Male | B=16664238 | C=8112554506 | D=13504487 | E=5883075501 | F=4823724 | G=1016040861 | H=1420036 | I=197008733 | J=2022040 | K=1016429410
+r25: A=Female | B=22038897 | C=10817172805 | D=18400726 | E=8136569659 | F=6386363 | G=1354326431 | H=1415361 | I=200159625 | J=2319635 | K=1126117090
+r26: A=BLANK
+r27: A=Race
+r28: A=Non-Hispanic White | B=28602893 | C=14578224300 | D=22989472 | E=10340055941 | F=9968510 | G=2107849290 | H=2005985 | I=289544778 | J=3727867 | K=1840774289
+r29: A=Black (or African-American) | B=3912278 | C=1615403715 | D=3543742 | E=1453496084 | F=319776 | G=77735312 | H=341060 | I=46368841 | J=99441 | K=37803478
+r30: A=Asian/Pacific Islander | B=1485965 | C=700738918 | D=1287015 | E=552783198 | F=225344 | G=45696885 | H=108120 | I=13562792 | J=168858 | K=88696043
+r31: A=Hispanic | B=3263727 | C=1307593092 | D=2922372 | E=1170627208 | F=278173 | G=57510286 | H=289740 | I=36390248 | J=96106 | K=43065349
+r32: A=American Indian/Alaska Native | B=137764 | C=62101196 | D=128863 | E=55098929 | F=17234 | G=4641565 | H=7498 | I=1328635 | J=2363 | K=1032067
+r33: A=Other | B=312236 | C=166573735 | D=257321 | E=116766151 | F=77385 | G=16777034 | H=27832 | I=4155878 | J=55291 | K=28874671
+r34: A=Unknown | B=988272 | C=499092356 | D=776429 | E=330817650 | F=323666 | G=60156919 | H=55162 | I=5817184 | J=191749 | K=102300603
+r35: (blank)
+r36: A=Medicare-Medicaid Enrollment (MME) Status
+r37: A=MME | B=10898897 | C=4527734268 | D=10802751 | E=4427828356 | F=363455 | G=94422744 | H=23498 | I=3553006 | J=4763 | K=1930162
+r38: A=Non-MME | B=27804238 | C=14401993042 | D=21102462 | E=9591816805 | F=10846632 | G=2275944548 | H=2811899 | I=393615352 | J=4336912 | K=2140616338
+r39: (blank)
+r40: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r41: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r42: (blank)
+r43: A=¹Penalty addition and IRMAA addition are not mutually exclusive; one or more of these cate...
+r44: A=²IRMAA - Income Related Monthly Adjustment Amount
+r45: (blank)
+r46: A=NOTES:  The total number of Part D premium beneficiaries is a count of persons who paid a ...
+r47: A=Part D enrollment counts reported in other CMS Program Statistics reports because there ar...
+r48: A=Advantage Drug rebates are applied and include Low Income Subsidy amounts, which are not r...
+r49: A=not sum to totals because of rounding.
+r50: (blank)
+r51: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR PREMIUMS 9_CPS_04PRM": 77 rows x 11 columns (Excel rows 1..77, columns A..K)
+(whole sheet shown; Excel row numbers)
+r1: A=MDCR PREMIUMS 9
+r2: A=Medicare Part D Premium Beneficiaries and Amounts, by Area of Residence, Calendar Year 202...
+r3: A=Area of Residence | B=Total Part D Premium Number of Beneficiaries | C=Total Part D Premium Amount | D=Part D Beneficiary Base Premium Number of Beneficiaries | E=Part D Beneficiary Base Premium Amount | F=Part D Beneficiary Supplemental Premium Number of Beneficiaries | G=Part D Beneficiary Supplemental Premium Amount | H=Penalty Addition Number of Beneficiaries¹ | I=Penalty Addition Amount | J=IRMAA Addition Number of Beneficiaries¹˒² | K=IRMAA Addition Amount²
+r4: A=BLANK
+r5: A=All Areas | B=38703135 | C=18929727310 | D=31905213 | E=14019645160 | F=11210087 | G=2370367292 | H=2835397 | I=397168358 | J=4341676 | K=2142546500
+r6: A=United States | B=38543229 | C=18861450930 | D=31765148 | E=13956623034 | F=11205494 | G=2369747790 | H=2807589 | I=393230710 | J=4340400 | K=2141849395
+r7: A=BLANK
+r8: A=Alabama | B=574438 | C=275040533 | D=493716 | E=217650384 | F=122916 | G=31705527 | H=46929 | I=6699664 | J=39669 | K=18984958
+r9: A=Alaska | B=74566 | C=36230006 | D=64396 | E=27482370 | F=18724 | G=3882189 | H=3832 | I=522595 | J=9414 | K=4342853
+r10: A=Arizona | B=775612 | C=384166131 | D=590922 | E=273148287 | F=288924 | G=52924140 | H=67593 | I=9335764 | J=99803 | K=48757940
+r11: A=Arkansas | B=389061 | C=169734610 | D=333007 | E=127921401 | F=114377 | G=26122526 | H=33191 | I=4971838 | J=22737 | K=10718845
+r12: A=California | B=4029438 | C=2163900664 | D=3439845 | E=1646188185 | F=828549 | G=150482313 | H=262402 | I=34331151 | J=657854 | K=332899015
+r13: A=Colorado | B=575815 | C=304867379 | D=441970 | E=227108988 | F=177638 | G=24508360 | H=46763 | I=6393112 | J=93167 | K=46856919
+r14: A=Connecticut | B=466707 | C=241388460 | D=404618 | E=180142008 | F=102039 | G=22254241 | H=20631 | I=2805212 | J=73471 | K=36186999
+r15: A=Delaware | B=158209 | C=81641902 | D=131908 | E=61282162 | F=54170 | G=11367250 | H=9390 | I=1308240 | J=16794 | K=7684251
+r16: A=District of Columbia | B=58540 | C=32525491 | D=54435 | E=25161956 | F=9520 | G=2362074 | H=3063 | I=443670 | J=7703 | K=4557793
+r17: A=Florida | B=2484788 | C=1294952577 | D=2044891 | E=910965323 | F=764772 | G=155175687 | H=222691 | I=30485411 | J=371204 | K=198326156
+r18: A=Georgia | B=1097151 | C=521454057 | D=903308 | E=398983452 | F=268998 | G=58101587 | H=94754 | I=13003993 | J=105287 | K=51365025
+r19: A=Hawaii | B=185777 | C=96293425 | D=172868 | E=72947900 | F=28133 | G=11325055 | H=10688 | I=1435279 | J=22665 | K=10585191
+r20: A=Idaho | B=210811 | C=93440800 | D=154478 | E=62555570 | F=83521 | G=16811143 | H=18307 | I=2513312 | J=23029 | K=11560776
+r21: A=Illinois | B=1388785 | C=662965907 | D=1070840 | E=443695640 | F=535621 | G=116409990 | H=108619 | I=16620062 | J=183829 | K=86240215
+r22: A=Indiana | B=863974 | C=351866640 | D=676741 | E=250046691 | F=293347 | G=62779096 | H=62208 | I=9286143 | J=62865 | K=29754711
+r23: A=Iowa | B=431266 | C=188172470 | D=261271 | E=130547505 | F=224474 | G=35609994 | H=23392 | I=3288599 | J=40476 | K=18726373
+r24: A=Kansas | B=342503 | C=145515195 | D=218945 | E=89203089 | F=190335 | G=35437259 | H=29265 | I=4246426 | J=34839 | K=16628421
+r25: A=Kentucky | B=602808 | C=241258263 | D=508051 | E=181264056 | F=163456 | G=36610567 | H=40023 | I=6220881 | J=36197 | K=17162760
+r26: A=Louisiana | B=529527 | C=250946297 | D=451381 | E=205870209 | F=105676 | G=20079053 | H=41106 | I=6043125 | J=38378 | K=18953911
+r27: A=Maine | B=206842 | C=93366894 | D=178185 | E=72016595 | F=45566 | G=9979021 | H=12410 | I=1798484 | J=19362 | K=9572793
+r28: A=Maryland | B=705853 | C=365659240 | D=612868 | E=273683729 | F=213924 | G=48760700 | H=46364 | I=6139254 | J=76250 | K=37075557
+r29: A=Massachusetts | B=952293 | C=505582478 | D=836887 | E=379318932 | F=244581 | G=57146782 | H=48718 | I=6616215 | J=124730 | K=62500549
+r30: A=Michigan | B=1415421 | C=647520505 | D=1217917 | E=508640438 | F=300343 | G=72565447 | H=81088 | I=11958661 | J=117434 | K=54355959
+r31: A=Minnesota | B=841880 | C=444718037 | D=723439 | E=296228198 | F=337317 | G=106975317 | H=36406 | I=4873306 | J=79022 | K=36641217
+r32: A=Mississippi | B=393549 | C=171135442 | D=320156 | E=130489725 | F=129134 | G=26307335 | H=35447 | I=5260548 | J=19549 | K=9077834
+r33: A=Missouri | B=689399 | C=313340774 | D=513760 | E=222434399 | F=252841 | G=50922776 | H=57834 | I=8360280 | J=66609 | K=31623319
+r34: A=Montana | B=163042 | C=72716558 | D=117103 | E=51413288 | F=74060 | G=11270802 | H=13655 | I=1874697 | J=16045 | K=8157771
+r35: A=Nebraska | B=243760 | C=102704349 | D=152179 | E=67995282 | F=130129 | G=20677604 | H=16393 | I=2289935 | J=24400 | K=11741528
+r36: A=Nevada | B=243396 | C=118539687 | D=188977 | E=78131523 | F=79806 | G=15552159 | H=33524 | I=4699604 | J=39060 | K=20156403
+r37: A=New Hampshire | B=204395 | C=102186722 | D=159441 | E=70937414 | F=82388 | G=16398153 | H=15946 | I=2428949 | J=24942 | K=12422208
+r38: A=New Jersey | B=1146363 | C=605303544 | D=950884 | E=438510625 | F=376769 | G=78633360 | H=88043 | I=12714665 | J=156415 | K=75444894
+r39: A=New Mexico | B=246943 | C=112354128 | D=219073 | E=88155571 | F=48832 | G=9776351 | H=20056 | I=2885830 | J=24033 | K=11536376
+r40: A=New York | B=2613677 | C=1370039693 | D=2445993 | E=1115333700 | F=436382 | G=98353571 | H=118195 | I=15905339 | J=286396 | K=140447083
+r41: A=North Carolina | B=1282406 | C=636425250 | D=1050502 | E=479725766 | F=358508 | G=82740211 | H=101045 | I=14709709 | J=121537 | K=59249563
+r42: A=North Dakota | B=101424 | C=47952324 | D=66266 | E=33733891 | F=50664 | G=7713654 | H=6062 | I=825508 | J=11382 | K=5679271
+r43: A=Ohio | B=1473109 | C=652774823 | D=1159370 | E=475463252 | F=474933 | G=103355655 | H=97365 | I=13680888 | J=126737 | K=60275027
+r44: A=Oklahoma | B=465473 | C=209084552 | D=399347 | E=160848368 | F=138852 | G=25580264 | H=40936 | I=6017625 | J=33716 | K=16638296
+r45: A=Oregon | B=581340 | C=300864027 | D=497822 | E=232622356 | F=147082 | G=30702724 | H=40006 | I=5627633 | J=67578 | K=31911314
+r46: A=Pennsylvania | B=1937500 | C=987737619 | D=1625503 | E=771445116 | F=532531 | G=118679563 | H=101488 | I=13973923 | J=175298 | K=83639017
+r47: A=Rhode Island | B=125215 | C=69002885 | D=105004 | E=44384215 | F=46461 | G=15842832 | H=7838 | I=1051796 | J=15990 | K=7724043
+r48: A=South Carolina | B=682016 | C=326788914 | D=546801 | E=244990746 | F=206704 | G=41708448 | H=59741 | I=8749891 | J=64528 | K=31339828
+r49: A=South Dakota | B=128039 | C=54391800 | D=72718 | E=35125362 | F=80330 | G=11558158 | H=7602 | I=1008009 | J=13413 | K=6700270
+r50: A=Tennessee | B=805098 | C=375521054 | D=648442 | E=277467664 | F=257865 | G=55410410 | H=65394 | I=8896167 | J=68862 | K=33746813
+r51: A=Texas | B=2430131 | C=1048828657 | D=1914308 | E=724210007 | F=690609 | G=141690445 | H=272790 | I=37192381 | J=283985 | K=145735824
+r52: A=Utah | B=233230 | C=111683900 | D=184015 | E=79923077 | F=69612 | G=13529925 | H=22330 | I=2928806 | J=30257 | K=15302093
+r53: A=Vermont | B=109127 | C=54371721 | D=89143 | E=41015115 | F=34986 | G=6779502 | H=7805 | I=1156001 | J=11063 | K=5421103
+r54: A=Virginia | B=870071 | C=421372438 | D=678555 | E=278595498 | F=337958 | G=81676544 | H=76066 | I=10997746 | J=102621 | K=50102651
+r55: A=Washington | B=848202 | C=446063586 | D=696260 | E=325673352 | F=272615 | G=54991285 | H=70771 | I=9854053 | J=110755 | K=55544896
+r56: A=West Virginia | B=295550 | C=131832370 | D=262515 | E=108430706 | F=67493 | G=15339803 | H=17543 | I=2626648 | J=11720 | K=5435214
+r57: A=Wisconsin | B=787231 | C=383440390 | D=655376 | E=289170551 | F=266623 | G=57106085 | H=37174 | I=5276974 | J=68923 | K=31886780
+r58: A=Wyoming | B=81481 | C=41785759 | D=58754 | E=28343401 | F=44407 | G=8074853 | H=6710 | I=896713 | J=8407 | K=4470793
+r59: A=BLANK
+r60: A=Territories, Possessions, and Other
+r61: A=Puerto Rico | B=136405 | C=53800359 | D=118726 | E=50052597 | F=3120 | G=356293 | H=22730 | I=3086081 | J=623 | K=305387
+r62: A=U.S. Territories³ | B=15050 | C=10730623 | D=14579 | E=10121178 | F=275 | G=57794 | H=3322 | I=524148 | J=51 | K=27503
+r63: A=Foreign Countries | B=8425 | C=3733584 | D=6735 | E=2837930 | F=1195 | G=204873 | H=1757 | I=327418 | J=599 | K=363362
+r64: A=Unknown | B=27 | C=11815 | D=† | E=† | F=* | G=† | H=0 | I=0 | J=* | K=852
+r65: (blank)
+r66: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r67: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r68: (blank)
+r69: A=¹Penalty addition and IRMAA addition are not mutually exclusive; one or more of these cate...
+r70: A=²IRMAA - Income Related Monthly Adjustment Amount
+r71: A=³Includes Virgin Islands, American Samoa, Guam, and Northern Mariana Islands.  The U.S. Te...
+r72: (blank)
+r73: A=NOTES:  The total number of Part D premium beneficiaries is a count of persons who paid a ...
+r74: A=counts reported in other CMS Program Statistics reports because there are some Part D enro...
+r75: A=include Low Income Subsidy amounts, which are not reported separately.  Data are determine...
+r76: (blank)
+r77: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...

@@ -1,0 +1,12 @@
+{
+ "file": "cms_trustees_medicare_enrollment.xlsx",
+ "sheets": [
+  {
+   "name": "Enrollment",
+   "rows": 134,
+   "cols": 5,
+   "shown_whole": true
+  }
+ ],
+ "chars": 7628
+}

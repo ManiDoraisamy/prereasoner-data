@@ -1,0 +1,517 @@
+FILE medicaid_managed_care_enrollment_2024.csv (CSV). pandas.read_csv gives 513 data rows x 7 columns.
+Columns and pandas dtypes: State (str); Notes (str); Total Medicaid Enrollees (str); Total Medicaid Enrollment in Any Type of Managed Care (str); Medicaid Enrollment in Comprehensive Managed Care (str); Medicaid Newly Eligible Adults Enrolled in Comprehensive MCOs (str); Year (int64)
+(whole sheet shown; r1 is the CSV header line; r2 is pandas index 0)
+r1: A=State | B=Notes | C=Total Medicaid Enrollees | D=Total Medicaid Enrollment in Any Type of Managed Care | E=Medicaid Enrollment in Comprehensive Managed Care | F=Medicaid Newly Eligible Adults Enrolled in Comprehensive MCOs | G=Year
+r2: A=TOTALS | C=80,263,839 | D=65,034,032 | E=54,547,048 | F=11,898,178 | G=2016
+r3: A=Arkansas6 | B=Arkansas is unable to report enrollment as of July 1, 2016. Enrollment figures represent c... | C=1,026,621 | D=512,041 | E=167 | F=0 | G=2016
+r4: A=District of Columbia | C=251,791 | D=180,942 | E=180,942 | F=63,350 | G=2016
+r5: A=Wyoming | C=64,442 | D=391 | E=112 | F=0 | G=2016
+r6: A=Pennsylvania | C=2,753,618 | D=2,521,421 | E=2,233,115 | F=701,225 | G=2016
+r7: A=Massachusetts | C=1,889,306 | D=1,268,120 | E=874,367 | F=289,891 | G=2016
+r8: A=North Dakota | C=93,422 | D=48,621 | E=21,347 | F=21,232 | G=2016
+r9: A=Michigan | C=4,448,582 | D=4,370,138 | E=2,220,029 | F=484,937 | G=2016
+r10: A=Virginia | C=1,111,999 | D=761,019 | E=761,019 | F=0 | G=2016
+r11: A=Hawaii | C=358,302 | D=354,289 | E=354,289 | F=113,737 | G=2016
+r12: A=Kentucky | C=1,361,722 | D=1,284,134 | E=1,262,610 | F=457,746 | G=2016
+r13: A=South Dakota | C=125,395 | D=94,295 | E=0 | F=0 | G=2016
+r14: A=Montana | C=207,340 | D=121,277 | E=0 | F=0 | G=2016
+r15: A=Alabama | C=1,037,037 | D=664,687 | E=175 | F=0 | G=2016
+r16: A=California | C=13,739,388 | D=10,574,784 | E=10,571,742 | F=3,022,256 | G=2016
+r17: A=Missouri | C=982,776 | D=961,682 | E=494,392 | F=0 | G=2016
+r18: A=Northern Mariana Islands | G=2016
+r19: A=Louisiana | C=1,504,333 | D=1,381,116 | E=1,263,562 | F=282,115 | G=2016
+r20: A=New Jersey | C=1,679,572 | D=1,557,081 | E=1,557,081 | F=516,336 | G=2016
+r21: A=Delaware | C=221,229 | D=196,102 | E=196,102 | F=53,352 | G=2016
+r22: A=Washington | C=1,820,084 | D=1,820,084 | E=1,557,421 | F=525,700 | G=2016
+r23: A=Guam | G=2016
+r24: A=Oregon | C=1,109,321 | D=894,543 | E=894,543 | F=422,316 | G=2016
+r25: A=Alaska5 | B=Alaska was not able to provide total Medicaid enrollment as of July 1, 2016.  This figure ... | C=155,865 | D=0 | E=0 | F=0 | G=2016
+r26: A=New Hampshire | C=206,997 | D=136,985 | E=136,985 | F=5,929 | G=2016
+r27: A=New Mexico | C=884,368 | D=684,488 | E=684,488 | F=222,110 | G=2016
+r28: A=South Carolina | C=1,235,361 | D=1,235,361 | E=742,528 | F=0 | G=2016
+r29: A=Indiana | C=1,421,696 | D=1,078,625 | E=1,078,625 | F=318,450 | G=2016
+r30: A=Maine | C=277,697 | D=239,953 | E=0 | F=0 | G=2016
+r31: A=Rhode Island | C=293,676 | D=278,087 | E=251,714 | F=66,909 | G=2016
+r32: A=Mississippi | C=726,473 | D=499,365 | E=499,365 | F=0 | G=2016
+r33: A=Georgia | C=1,857,292 | D=1,228,700 | E=1,218,210 | F=0 | G=2016
+r34: A=West Virginia | C=553,318 | D=390,083 | E=390,083 | F=163,693 | G=2016
+r35: A=Utah | C=294,707 | D=291,426 | E=244,763 | F=0 | G=2016
+r36: A=Colorado | C=1,344,548 | D=1,291,043 | E=134,792 | F=37,943 | G=2016
+r37: A=Ohio | C=3,022,121 | D=2,455,224 | E=2,413,500 | F=643,312 | G=2016
+r38: A=American Samoa | G=2016
+r39: A=New York | C=6,139,403 | D=4,669,344 | E=4,512,115 | F=1,887,296 | G=2016
+r40: A=Texas | C=4,051,664 | D=3,922,822 | E=3,582,604 | F=0 | G=2016
+r41: A=Iowa | C=624,973 | D=562,382 | E=562,382 | F=144,383 | G=2016
+r42: A=Vermont | C=200,481 | D=124,399 | E=124,399 | F=46,107 | G=2016
+r43: A=Illinois | C=3,230,870 | D=1,967,783 | E=1,967,553 | F=434,953 | G=2016
+r44: A=Nevada | C=629,265 | D=557,397 | E=401,434 | F=175,686 | G=2016
+r45: A=Florida | C=3,900,380 | D=3,280,187 | E=3,187,837 | F=0 | G=2016
+r46: A=Puerto Rico8 | B=Puerto Rico expanded Medicaid to 382,368 low-income, childless adults under an authority o... | C=1,617,501 | D=1,617,501 | E=1,617,501 | F=0 | G=2016
+r47: A=Oklahoma | C=792,387 | D=643,789 | E=310 | F=0 | G=2016
+r48: A=Minnesota | C=1,088,610 | D=817,463 | E=814,947 | F=162,747 | G=2016
+r49: A=Wisconsin | C=1,204,511 | D=801,939 | E=754,202 | F=0 | G=2016
+r50: A=Maryland | C=1,324,796 | D=1,080,085 | E=1,080,085 | F=247,085 | G=2016
+r51: A=Connecticut7 | B=Connecticut was not able to provide total Medicaid enrollment as of July 1, 2016.  This fi... | C=860,758 | D=0 | E=0 | F=0 | G=2016
+r52: A=North Carolina | C=2,028,935 | D=1,581,301 | E=1,636 | F=0 | G=2016
+r53: A=Nebraska | C=244,355 | D=242,836 | E=191,479 | F=0 | G=2016
+r54: A=Virgin Islands | G=2016
+r55: A=Kansas | C=435,850 | D=390,829 | E=390,829 | F=0 | G=2016
+r56: A=Arizona | C=1,849,166 | D=1,560,972 | E=1,560,972 | F=387,382 | G=2016
+r57: A=Tennessee9 | B=For purposes of this report, partial duals are included in the count of Total Medicaid Enr... | C=1,684,268 | D=1,556,369 | E=1,556,369 | F=0 | G=2016
+r58: A=Idaho | C=295,267 | D=280,527 | E=2,326 | F=0 | G=2016
+r59: A=TOTALS | C=80,242,585 | D=65,796,338 | E=55,562,750 | F=13,563,854 | G=2017
+r60: A=Georgia | B=Georgia's Total Medicaid Enrollment in Any Type of Managed Care does not include 1,556,221... | C=1,813,016 | D=1,256,809 | E=1,247,705 | F=0 | G=2017
+r61: A=Rhode Island | C=337,809 | D=309,037 | E=270,550 | F=76,676 | G=2017
+r62: A=Nevada | C=653,968 | D=578,683 | E=448,513 | F=183,853 | G=2017
+r63: A=Washington | C=1,824,730 | D=1,824,730 | E=1,612,402 | F=535,481 | G=2017
+r64: A=North Carolina | C=2,110,914 | D=1,607,806 | E=1,943 | F=0 | G=2017
+r65: A=Louisiana | C=1,626,037 | D=1,493,106 | E=1,378,125 | F=431,971 | G=2017
+r66: A=Utah | C=284,316 | D=282,603 | E=235,408 | F=0 | G=2017
+r67: A=Mississippi | C=708,992 | D=487,201 | E=487,201 | F=0 | G=2017
+r68: A=Arizona | C=1,917,183 | D=1,617,558 | E=1,617,558 | F=398,993 | G=2017
+r69: A=New Hampshire | C=204,458 | D=133,811 | E=133,811 | F=7,005 | G=2017
+r70: A=Indiana | C=1,475,463 | D=1,138,368 | E=1,138,368 | F=337,415 | G=2017
+r71: A=American Samoa | G=2017
+r72: A=Missouri | C=983,835 | D=975,297 | E=733,120 | F=0 | G=2017
+r73: A=South Carolina | C=1,217,302 | D=1,217,302 | E=772,513 | F=0 | G=2017
+r74: A=Guam | G=2017
+r75: A=New York | C=6,105,120 | D=4,710,609 | E=4,526,311 | F=3,133,832 | G=2017
+r76: A=Connecticut | B=Connecticut did not provide total Medicaid enrollment as of July 1, 2017. This figure is f... | C=860,758 | D=0 | E=0 | F=0 | G=2017
+r77: A=Oklahoma | C=808,267 | D=652,952 | E=410 | F=0 | G=2017
+r78: A=Virginia | C=1,083,750 | D=723,896 | E=723,896 | F=0 | G=2017
+r79: A=Kentucky | C=1,403,257 | D=1,308,047 | E=1,251,070 | F=457,720 | G=2017
+r80: A=Ohio | C=3,083,411 | D=2,551,378 | E=2,551,378 | F=636,997 | G=2017
+r81: A=Illinois | C=3,192,569 | D=1,912,602 | E=1,884,379 | F=419,341 | G=2017
+r82: A=Texas | C=4,038,159 | D=3,903,380 | E=3,693,046 | F=0 | G=2017
+r83: A=Colorado | B=Colorado reported plan level enrollment as 30 for plans that had less than 30 beneficiaire... | C=1,381,208 | D=1,327,452 | E=140,886 | F=52,630 | G=2017
+r84: A=Alaska | B=Alaska did not provide total Medicaid enrollment as of July 1, 2017. This figure is from t... | C=155,865 | D=0 | E=0 | F=0 | G=2017
+r85: A=Hawaii | C=365,087 | D=360,905 | E=360,905 | F=95,601 | G=2017
+r86: A=Montana | C=230,296 | D=175,012 | E=0 | F=0 | G=2017
+r87: A=Wyoming | C=61,529 | D=395 | E=129 | F=0 | G=2017
+r88: A=Massachusetts | C=1,874,779 | D=1,247,614 | E=851,372 | F=275,432 | G=2017
+r89: A=Kansas | C=416,645 | D=398,556 | E=398,556 | F=0 | G=2017
+r90: A=Oregon | C=1,067,322 | D=859,634 | E=859,634 | F=388,131 | G=2017
+r91: A=South Dakota | C=124,676 | D=93,369 | E=0 | F=0 | G=2017
+r92: A=New Mexico | C=898,965 | D=695,772 | E=695,772 | F=232,260 | G=2017
+r93: A=Delaware | C=222,859 | D=208,221 | E=208,221 | F=55,786 | G=2017
+r94: A=Virgin Islands | G=2017
+r95: A=Maryland | C=1,326,080 | D=1,161,315 | E=1,161,315 | F=288,234 | G=2017
+r96: A=Wisconsin | C=1,197,770 | D=799,040 | E=748,664 | F=0 | G=2017
+r97: A=California | C=13,515,168 | D=10,805,936 | E=10,805,232 | F=3,156,055 | G=2017
+r98: A=Northern Mariana Islands | G=2017
+r99: A=District of Columbia | C=265,547 | D=196,704 | E=196,704 | F=65,641 | G=2017
+r100: A=Idaho | C=299,253 | D=292,732 | E=2,290 | F=0 | G=2017
+r101: A=Pennsylvania | C=2,835,800 | D=2,562,466 | E=2,265,668 | F=700,899 | G=2017
+r102: A=Nebraska | C=247,894 | D=246,633 | E=246,633 | F=0 | G=2017
+r103: A=Tennessee | C=1,522,658 | D=1,409,555 | E=1,409,555 | F=0 | G=2017
+r104: A=Iowa | C=623,501 | D=556,741 | E=556,741 | F=157,186 | G=2017
+r105: A=Alabama | C=1,037,814 | D=636,919 | E=172 | F=0 | G=2017
+r106: A=Michigan | C=4,668,815 | D=4,655,013 | E=2,413,094 | F=553,352 | G=2017
+r107: A=Vermont | C=183,918 | D=96,823 | E=96,823 | F=40,682 | G=2017
+r108: A=Maine | C=273,451 | D=238,937 | E=0 | F=0 | G=2017
+r109: A=North Dakota | C=92,595 | D=49,733 | E=20,672 | F=20,515 | G=2017
+r110: A=Florida | C=3,916,490 | D=3,280,341 | E=3,182,703 | F=0 | G=2017
+r111: A=Arkansas | C=993,792 | D=522,252 | E=209 | F=0 | G=2017
+r112: A=New Jersey | C=1,678,888 | D=1,560,395 | E=1,560,395 | F=521,538 | G=2017
+r113: A=West Virginia | C=521,186 | D=424,662 | E=424,662 | F=161,432 | G=2017
+r114: A=Minnesota | C=1,107,499 | D=846,115 | E=846,115 | F=179,196 | G=2017
+r115: A=Puerto Rico | B=Puerto Rico expanded Medicaid to 372,142 low-income, childless adults under an authority o... | C=1,401,921 | D=1,401,921 | E=1,401,921 | F=0 | G=2017
+r116: A=TOTALS | C=79,898,701 | D=66,163,611 | E=55,605,461 | F=13,618,612 | G=2018
+r117: A=Alabama | C=1,019,417 | D=638,221 | E=174 | F=0 | G=2018
+r118: A=Alaska5 | B=Alaska was not able to provide total Medicaid enrollment as of July 1, 2018. This figure i... | C=198,417 | D=0 | E=0 | F=0 | G=2018
+r119: A=American Samoa | G=2018
+r120: A=Arizona | C=1,849,465 | D=1,560,593 | E=1,560,593 | F=383,615 | G=2018
+r121: A=Arkansas | C=979,619 | D=871,262 | E=258 | F=0 | G=2018
+r122: A=California | C=13,140,347 | D=10,670,306 | E=10,661,382 | F=3,144,393 | G=2018
+r123: A=Colorado6 | B=Colorado reported plan level enrollment as 0 for plans that had less than 30 beneficiaires... | C=1,302,808 | D=1,171,171 | E=122,207 | F=47,361 | G=2018
+r124: A=Connecticut7 | B=Connecticut was not able to provide total Medicaid enrollment as of July 1, 2018. This fig... | C=928,800 | D=0 | E=0 | F=0 | G=2018
+r125: A=Delaware | C=236,760 | D=208,802 | E=199,887 | F=57,851 | G=2018
+r126: A=District of Columbia | C=264,984 | D=245,921 | E=189,363 | F=65,150 | G=2018
+r127: A=Florida | C=3,885,169 | D=3,178,981 | E=3,027,995 | F=0 | G=2018
+r128: A=Georgia8 | B=Georgia's Total Medicaid Enrollment in Any Type of Managed Care does not include 1,626,252... | C=2,074,310 | D=1,485,250 | E=1,445,804 | F=0 | G=2018
+r129: A=Guam | G=2018
+r130: A=Hawaii | C=355,873 | D=351,685 | E=351,685 | F=23,714 | G=2018
+r131: A=Idaho | C=300,252 | D=272,979 | E=3,799 | F=0 | G=2018
+r132: A=Illinois | C=3,110,093 | D=2,176,902 | E=2,145,760 | F=476,583 | G=2018
+r133: A=Indiana | C=1,457,544 | D=1,126,425 | E=1,126,425 | F=344,386 | G=2018
+r134: A=Iowa | C=626,011 | D=580,507 | E=564,926 | F=166,755 | G=2018
+r135: A=Kansas | C=417,140 | D=358,225 | E=358,225 | F=0 | G=2018
+r136: A=Kentucky | C=1,385,239 | D=1,259,525 | E=1,259,525 | F=459,092 | G=2018
+r137: A=Louisiana | C=1,640,075 | D=1,504,540 | E=1,385,242 | F=473,308 | G=2018
+r138: A=Maine | C=270,243 | D=234,327 | E=0 | F=0 | G=2018
+r139: A=Maryland | C=1,401,781 | D=1,169,708 | E=1,169,708 | F=291,852 | G=2018
+r140: A=Massachusetts | C=1,865,755 | D=1,211,485 | E=750,573 | F=180,657 | G=2018
+r141: A=Michigan | C=4,623,834 | D=4,608,988 | E=2,379,554 | F=554,203 | G=2018
+r142: A=Minnesota | C=1,122,672 | D=892,137 | E=892,137 | F=184,105 | G=2018
+r143: A=Mississippi | C=683,577 | D=441,782 | E=441,782 | F=0 | G=2018
+r144: A=Missouri | C=971,143 | D=954,603 | E=712,335 | F=0 | G=2018
+r145: A=Montana | C=291,890 | D=215,475 | E=0 | F=0 | G=2018
+r146: A=Nebraska | C=250,056 | D=249,024 | E=249,022 | F=0 | G=2018
+r147: A=Nevada | C=666,561 | D=588,111 | E=457,782 | F=187,715 | G=2018
+r148: A=New Hampshire | C=200,850 | D=133,829 | E=133,829 | F=9,046 | G=2018
+r149: A=New Jersey | C=1,668,451 | D=1,569,344 | E=1,569,344 | F=523,347 | G=2018
+r150: A=New Mexico | C=842,138 | D=666,050 | E=666,050 | F=224,743 | G=2018
+r151: A=New York | C=6,153,799 | D=4,764,261 | E=4,552,993 | F=3,337,546 | G=2018
+r152: A=North Carolina | C=2,178,225 | D=1,581,469 | E=2,112 | F=0 | G=2018
+r153: A=North Dakota | C=93,042 | D=48,957 | E=19,696 | F=19,515 | G=2018
+r154: A=Northern Mariana Islands | G=2018
+r155: A=Ohio | C=2,915,546 | D=2,450,031 | E=2,450,031 | F=606,662 | G=2018
+r156: A=Oklahoma | C=880,954 | D=649,023 | E=466 | F=0 | G=2018
+r157: A=Oregon | C=1,062,787 | D=847,570 | E=847,570 | F=386,277 | G=2018
+r158: A=Pennsylvania | C=2,897,085 | D=2,627,563 | E=2,359,277 | F=705,010 | G=2018
+r159: A=Puerto Rico9 | B=Puerto Rico provides expanded Medicaid to 421,577 low-income, childless adults under an au... | C=1,505,610 | D=1,505,610 | E=1,505,610 | F=0 | G=2018
+r160: A=Rhode Island | C=313,095 | D=302,407 | E=248,278 | F=73,323 | G=2018
+r161: A=South Carolina | C=1,195,703 | D=1,195,703 | E=745,911 | F=0 | G=2018
+r162: A=South Dakota | C=123,890 | D=92,184 | E=0 | F=0 | G=2018
+r163: A=Tennessee | C=1,510,045 | D=1,386,664 | E=1,386,664 | F=0 | G=2018
+r164: A=Texas | C=3,981,912 | D=3,845,916 | E=3,695,426 | F=0 | G=2018
+r165: A=Utah | C=275,511 | D=271,137 | E=226,893 | F=0 | G=2018
+r166: A=Vermont | C=174,682 | D=123,310 | E=123,310 | F=48,637 | G=2018
+r167: A=Virgin Islands | G=2018
+r168: A=Virginia | C=1,063,122 | D=875,351 | E=875,351 | F=0 | G=2018
+r169: A=Washington | C=1,781,048 | D=1,781,048 | E=1,574,163 | F=491,177 | G=2018
+r170: A=West Virginia | C=505,528 | D=407,193 | E=407,193 | F=152,589 | G=2018
+r171: A=Wisconsin | C=1,197,453 | D=811,920 | E=759,015 | F=0 | G=2018
+r172: A=Wyoming | C=58,390 | D=136 | E=136 | F=0 | G=2018
+r173: A=TOTALS | C=78,737,936 | D=65,745,133 | E=55,162,437 | F=14,223,275 | G=2019
+r174: A=Alabama | C=1,039,621 | D=869,791 | E=173 | F=0 | G=2019
+r175: A=Alaska5 | B=Alaska's Total Medicaid Enrollment as of July 1, 2019 was taken from the Medicaid Budget a... | C=207,174 | D=0 | E=0 | F=0 | G=2019
+r176: A=American Samoa | G=2019
+r177: A=Arizona | C=1,874,857 | D=1,580,628 | E=1,580,628 | F=399,639 | G=2019
+r178: A=Arkansas | C=951,645 | D=822,839 | E=45,600 | F=0 | G=2019
+r179: A=California | C=12,780,305 | D=10,394,575 | E=10,394,126 | F=3,078,552 | G=2019
+r180: A=Colorado6 | B=Colorado reported plan level enrollment as 0 for plans that had less than 30 beneficiaries... | C=1,231,952 | D=1,182,928 | E=117,271 | F=45,636 | G=2019
+r181: A=Connecticut7 | B=Connecticut's Total Medicaid Enrollment as of July 1, 2019 was taken from the Medicaid Bud... | C=837,367 | D=0 | E=0 | F=0 | G=2019
+r182: A=Delaware | C=237,244 | D=208,650 | E=199,985 | F=63,169 | G=2019
+r183: A=District of Columbia | C=267,329 | D=249,119 | E=194,136 | F=66,283 | G=2019
+r184: A=Florida | C=3,813,067 | D=3,097,487 | E=2,969,638 | F=0 | G=2019
+r185: A=Georgia8 | B=Georgia's Total Medicaid Enrollment in Any Type of Managed Care does not include NEMT enro... | C=1,917,560 | D=1,466,300 | E=1,418,039 | F=0 | G=2019
+r186: A=Guam | G=2019
+r187: A=Hawaii | C=327,893 | D=327,762 | E=327,762 | F=104,712 | G=2019
+r188: A=Idaho | C=291,466 | D=289,155 | E=12,230 | F=0 | G=2019
+r189: A=Illinois | C=3,001,288 | D=2,122,611 | E=2,122,611 | F=445,661 | G=2019
+r190: A=Indiana | C=1,462,152 | D=1,074,748 | E=1,074,748 | F=560,574 | G=2019
+r191: A=Iowa | C=642,329 | D=603,246 | E=603,246 | F=174,583 | G=2019
+r192: A=Kansas | C=398,034 | D=341,879 | E=341,879 | F=0 | G=2019
+r193: A=Kentucky | C=1,353,368 | D=1,224,145 | E=1,224,145 | F=446,084 | G=2019
+r194: A=Louisiana | C=1,622,025 | D=1,501,128 | E=1,356,874 | F=456,191 | G=2019
+r195: A=Maine | C=258,581 | D=242,488 | E=0 | F=0 | G=2019
+r196: A=Maryland | C=1,457,966 | D=1,190,559 | E=1,190,559 | F=296,967 | G=2019
+r197: A=Massachusetts | C=1,829,245 | D=1,187,701 | E=731,688 | F=165,865 | G=2019
+r198: A=Michigan | C=4,713,103 | D=4,650,365 | E=2,446,408 | F=621,998 | G=2019
+r199: A=Minnesota | C=1,085,204 | D=849,507 | E=849,507 | F=166,096 | G=2019
+r200: A=Mississippi | C=673,247 | D=436,028 | E=436,028 | F=0 | G=2019
+r201: A=Missouri | C=858,077 | D=840,878 | E=596,646 | F=0 | G=2019
+r202: A=Montana | C=254,273 | D=207,316 | E=0 | F=0 | G=2019
+r203: A=Nebraska | C=248,377 | D=247,490 | E=247,490 | F=0 | G=2019
+r204: A=Nevada | C=654,497 | D=575,184 | E=498,872 | F=196,682 | G=2019
+r205: A=New Hampshire | C=193,363 | D=173,073 | E=173,073 | F=48,680 | G=2019
+r206: A=New Jersey | C=1,612,863 | D=1,499,339 | E=1,499,339 | F=488,119 | G=2019
+r207: A=New Mexico | C=832,295 | D=668,435 | E=668,435 | F=230,343 | G=2019
+r208: A=New York | C=6,140,117 | D=4,705,224 | E=4,466,540 | F=3,447,402 | G=2019
+r209: A=North Carolina | C=2,173,625 | D=1,621,483 | E=2,310 | F=0 | G=2019
+r210: A=North Dakota | C=88,829 | D=45,939 | E=19,872 | F=19,692 | G=2019
+r211: A=Northern Mariana Islands | G=2019
+r212: A=Ohio | C=2,823,271 | D=2,371,585 | E=2,371,585 | F=564,575 | G=2019
+r213: A=Oklahoma | C=790,443 | D=645,075 | E=537 | F=0 | G=2019
+r214: A=Oregon | C=1,080,170 | D=869,710 | E=869,710 | F=396,073 | G=2019
+r215: A=Pennsylvania | C=2,827,289 | D=2,626,598 | E=2,442,251 | F=686,944 | G=2019
+r216: A=Puerto Rico | C=1,331,694 | D=1,331,694 | E=1,331,694 | F=408,694 | G=2019
+r217: A=Rhode Island | C=312,141 | D=293,043 | E=259,274 | F=70,388 | G=2019
+r218: A=South Carolina | C=1,253,433 | D=1,253,433 | E=801,566 | F=0 | G=2019
+r219: A=South Dakota | C=122,209 | D=90,253 | E=0 | F=0 | G=2019
+r220: A=Tennessee | C=1,565,485 | D=1,437,688 | E=1,437,688 | F=0 | G=2019
+r221: A=Texas | C=3,878,840 | D=3,742,053 | E=3,578,633 | F=0 | G=2019
+r222: A=Utah | C=290,203 | D=258,484 | E=215,764 | F=0 | G=2019
+r223: A=Vermont9 | B=The Department of Vermont Health Access, a state agency, acts as Vermont's single MCO enti... | C=166,114 | D=108,731 | E=108,731 | F=44,868 | G=2019
+r224: A=Virgin Islands | G=2019
+r225: A=Virginia | C=1,460,075 | D=1,275,928 | E=1,275,928 | F=303,154 | G=2019
+r226: A=Washington | C=1,742,684 | D=1,742,684 | E=1,513,259 | F=78,346 | G=2019
+r227: A=West Virginia | C=508,092 | D=387,376 | E=387,376 | F=147,305 | G=2019
+r228: A=Wisconsin | C=1,194,983 | D=812,661 | E=758,446 | F=0 | G=2019
+r229: A=Wyoming | C=60,472 | D=137 | E=137 | F=0 | G=2019
+r230: A=TOTALS | C=80,814,842 | D=67,836,622 | E=58,521,930 | F=17,365,895 | G=2020
+r231: A=Alabama | C=1,092,935 | D=861,758 | E=166 | F=0 | G=2020
+r232: A=Alaska5 | C=222,723 | D=0 | E=0 | F=0 | G=2020
+r233: A=American Samoa | G=2020
+r234: A=Arizona | C=2,013,348 | D=1,711,292 | E=1,711,292 | F=461,077 | G=2020
+r235: A=Arkansas | C=988,178 | D=875,994 | E=42,938 | F=0 | G=2020
+r236: A=California | C=13,016,208 | D=10,650,556 | E=10,650,549 | F=3,218,039 | G=2020
+r237: A=Colorado6 | C=1,316,543 | D=1,266,374 | E=133,992 | F=58,559 | G=2020
+r238: A=Connecticut7 | B=Connecticut's Total Medicaid Enrollment as of July 1, 2020 was taken from the July - Septe... | C=990,928 | D=0 | E=0 | F=0 | G=2020
+r239: A=Delaware | C=248,794 | D=217,895 | E=212,163 | F=62,344 | G=2020
+r240: A=District of Columbia | C=265,501 | D=247,592 | E=193,692 | F=59,644 | G=2020
+r241: A=Florida | C=4,210,849 | D=3,580,237 | E=3,281,271 | F=0 | G=2020
+r242: A=Georgia8 | B=Georgia's Total Medicaid Enrollment in Any Type of Managed Care does not include 1,766,478... | C=2,288,352 | D=1,647,055 | E=1,585,535 | F=0 | G=2020
+r243: A=Guam | G=2020
+r244: A=Hawaii | C=360,381 | D=360,277 | E=360,277 | F=122,907 | G=2020
+r245: A=Idaho | C=375,710 | D=344,075 | E=25,711 | F=0 | G=2020
+r246: A=Illinois | C=3,143,105 | D=2,394,304 | E=2,337,395 | F=551,899 | G=2020
+r247: A=Indiana9 | C=1,597,421 | D=1,200,444 | E=1,200,444 | F=597,002 | G=2020
+r248: A=Iowa | C=673,328 | D=603,274 | E=603,274 | F=192,488 | G=2020
+r249: A=Kansas | C=413,787 | D=365,808 | E=365,808 | F=0 | G=2020
+r250: A=Kentucky | C=1,503,931 | D=1,418,458 | E=1,365,246 | F=459,608 | G=2020
+r251: A=Louisiana | C=1,731,060 | D=1,612,144 | E=1,468,845 | F=532,697 | G=2020
+r252: A=Maine | C=291,765 | D=265,968 | E=0 | F=0 | G=2020
+r253: A=Maryland | C=1,483,337 | D=1,256,287 | E=1,256,287 | F=320,468 | G=2020
+r254: A=Massachusetts | C=1,893,605 | D=1,239,099 | E=761,847 | F=177,331 | G=2020
+r255: A=Michigan10 | C=2,573,851 | D=2,415,313 | E=1,930,736 | F=621,998 | G=2020
+r256: A=Minnesota | C=1,119,244 | D=941,818 | E=941,818 | F=192,354 | G=2020
+r257: A=Mississippi | C=704,743 | D=450,665 | E=450,665 | F=0 | G=2020
+r258: A=Missouri | C=939,919 | D=815,724 | E=657,492 | F=0 | G=2020
+r259: A=Montana | C=263,872 | D=235,052 | E=0 | F=0 | G=2020
+r260: A=Nebraska | C=262,780 | D=261,472 | E=261,438 | F=0 | G=2020
+r261: A=Nevada | C=720,389 | D=650,160 | E=558,040 | F=213,483 | G=2020
+r262: A=New Hampshire | C=210,094 | D=190,713 | E=190,713 | F=58,654 | G=2020
+r263: A=New Jersey | C=1,683,987 | D=1,588,936 | E=1,588,936 | F=542,076 | G=2020
+r264: A=New Mexico | C=876,406 | D=718,655 | E=718,655 | F=250,856 | G=2020
+r265: A=New York11 | C=6,458,770 | D=5,014,525 | E=4,765,561 | F=3,780,522 | G=2020
+r266: A=North Carolina | C=2,266,262 | D=1,703,303 | E=2,205 | F=0 | G=2020
+r267: A=North Dakota | C=94,716 | D=52,986 | E=21,673 | F=21,497 | G=2020
+r268: A=Northern Mariana Islands | G=2020
+r269: A=Ohio | C=2,973,911 | D=2,575,003 | E=2,575,003 | F=649,674 | G=2020
+r270: A=Oklahoma | C=877,492 | D=701,359 | E=638 | F=0 | G=2020
+r271: A=Oregon | C=1,159,844 | D=969,719 | E=969,719 | F=451,468 | G=2020
+r272: A=Pennsylvania | C=2,984,420 | D=2,842,424 | E=2,759,465 | F=975,848 | G=2020
+r273: A=Puerto Rico | C=1,283,091 | D=1,283,091 | E=1,283,091 | F=408,122 | G=2020
+r274: A=Rhode Island | C=309,491 | D=301,740 | E=267,202 | F=78,769 | G=2020
+r275: A=South Carolina | C=1,277,117 | D=1,277,117 | E=841,817 | F=0 | G=2020
+r276: A=South Dakota | C=123,000 | D=79,462 | E=0 | F=0 | G=2020
+r277: A=Tennessee | C=1,582,708 | D=1,464,590 | E=1,464,590 | F=0 | G=2020
+r278: A=Texas | C=4,222,317 | D=4,074,510 | E=4,007,391 | F=0 | G=2020
+r279: A=Utah | C=342,000 | D=324,302 | E=273,388 | F=37,484 | G=2020
+r280: A=Vermont | C=174,068 | D=118,656 | E=118,656 | F=55,412 | G=2020
+r281: A=Virgin Islands | G=2020
+r282: A=Virginia | C=1,473,316 | D=1,473,316 | E=1,400,015 | F=436,180 | G=2020
+r283: A=Washington | C=1,830,122 | D=1,830,122 | E=1,608,661 | F=1,607,696 | G=2020
+r284: A=West Virginia | C=534,107 | D=429,336 | E=429,336 | F=169,739 | G=2020
+r285: A=Wisconsin | C=1,308,070 | D=933,527 | E=878,159 | F=0 | G=2020
+r286: A=Wyoming | C=62,946 | D=135 | E=135 | F=0 | G=2020
+r287: A=TOTALS | C=90,519,895 | D=77,211,654 | E=67,561,426 | F=19,313,621 | G=2021
+r288: A=Alabama | C=1,198,510 | D=951,174 | E=161 | F=0 | G=2021
+r289: A=Alaska5 | B=Alaska's Total Medicaid Enrollment as of July 1, 2021 was taken from the July - September ... | C=242,176 | D=0 | E=0 | F=0 | G=2021
+r290: A=American Samoa | G=2021
+r291: A=Arizona | C=2,244,273 | D=1,920,290 | E=1,795,458 | F=581,850 | G=2021
+r292: A=Arkansas | C=1,069,577 | D=963,945 | E=50,269 | F=1,961 | G=2021
+r293: A=California | C=14,150,266 | D=11,674,619 | E=11,663,813 | F=3,774,831 | G=2021
+r294: A=Colorado6 | B=Colorado reported plan level enrollment as 0 for plans that had fewer than 30 beneficiarie... | C=1,499,303 | D=1,422,844 | E=4,818 | F=77,560 | G=2021
+r295: A=Connecticut7 | B=Connecticut's Total Medicaid Enrollment as of July 1, 2021 was taken from the July - Septe... | C=1,106,169 | D=0 | E=0 | F=0 | G=2021
+r296: A=Delaware | C=276,475 | D=244,822 | E=240,913 | F=74,684 | G=2021
+r297: A=District of Columbia | C=285,297 | D=268,245 | E=231,323 | F=73,744 | G=2021
+r298: A=Florida | C=4,871,362 | D=4,099,027 | E=3,812,042 | F=0 | G=2021
+r299: A=Georgia | C=2,539,039 | D=2,229,243 | E=1,829,900 | F=0 | G=2021
+r300: A=Guam | G=2021
+r301: A=Hawaii | C=420,033 | D=420,033 | E=420,033 | F=159,087 | G=2021
+r302: A=Idaho | C=421,589 | D=391,216 | E=23,603 | F=0 | G=2021
+r303: A=Illinois | C=3,467,588 | D=2,680,873 | E=2,616,074 | F=665,086 | G=2021
+r304: A=Indiana | C=1,870,171 | D=1,474,054 | E=1,474,054 | F=461,955 | G=2021
+r305: A=Iowa | C=749,862 | D=711,427 | E=704,047 | F=229,765 | G=2021
+r306: A=Kansas | C=461,405 | D=407,229 | E=406,634 | F=0 | G=2021
+r307: A=Kentucky | C=1,584,976 | D=1,582,351 | E=1,416,189 | F=645,520 | G=2021
+r308: A=Louisiana | C=1,894,676 | D=1,759,372 | E=1,617,083 | F=662,959 | G=2021
+r309: A=Maine | C=331,396 | D=326,611 | E=0 | F=0 | G=2021
+r310: A=Maryland | C=1,780,886 | D=1,520,599 | E=1,520,599 | F=440,264 | G=2021
+r311: A=Massachusetts | C=2,091,955 | D=1,387,657 | E=848,004 | F=187,809 | G=2021
+r312: A=Michigan8 | B=Michigan reported a number for total enrollment in comprehensive managed care that was gre... | C=2,900,801 | D=2,692,435 | E=2,914,629 | F=758,228 | G=2021
+r313: A=Minnesota | C=1,253,815 | D=1,150,333 | E=1,086,715 | F=239,203 | G=2021
+r314: A=Mississippi | C=776,482 | D=475,168 | E=475,168 | F=0 | G=2021
+r315: A=Missouri | C=1,048,083 | D=810,775 | E=777,173 | F=0 | G=2021
+r316: A=Montana | C=309,776 | D=245,390 | E=0 | F=0 | G=2021
+r317: A=Nebraska | C=336,290 | D=334,939 | E=334,931 | F=51,213 | G=2021
+r318: A=Nevada | C=847,650 | D=792,428 | E=641,100 | F=273,265 | G=2021
+r319: A=New Hampshire | C=239,439 | D=218,604 | E=218,604 | F=76,648 | G=2021
+r320: A=New Jersey | C=1,892,091 | D=1,821,033 | E=1,821,033 | F=664,202 | G=2021
+r321: A=New Mexico | C=941,830 | D=781,820 | E=781,820 | F=267,716 | G=2021
+r322: A=New York9 | B=New York's total Medicaid Section VIII expansion count is higher than expected as compared... | C=7,145,884 | D=5,620,459 | E=5,377,127 | F=4,262,161 | G=2021
+r323: A=North Carolina | C=2,557,593 | D=2,054,350 | E=1,549,975 | F=0 | G=2021
+r324: A=North Dakota | C=125,354 | D=86,164 | E=33,806 | F=33,639 | G=2021
+r325: A=Northern Mariana Islands | G=2021
+r326: A=Ohio | C=3,238,849 | D=2,782,891 | E=2,782,891 | F=756,534 | G=2021
+r327: A=Oklahoma10 | B=Oklahoma's total Medicaid enrollment increased due to expanding Medicaid coverage to child... | C=1,065,121 | D=1,049,630 | E=1,171 | F=0 | G=2021
+r328: A=Oregon | C=1,286,095 | D=1,164,999 | E=1,164,999 | F=545,022 | G=2021
+r329: A=Pennsylvania | C=3,292,313 | D=3,155,790 | E=3,090,783 | F=1,032,189 | G=2021
+r330: A=Puerto Rico | C=1,501,860 | D=1,501,860 | E=1,501,860 | F=587,748 | G=2021
+r331: A=Rhode Island | C=339,276 | D=336,240 | E=287,052 | F=97,032 | G=2021
+r332: A=South Carolina | C=1,446,070 | D=1,446,070 | E=962,377 | F=0 | G=2021
+r333: A=South Dakota | C=137,268 | D=83,890 | E=0 | F=0 | G=2021
+r334: A=Tennessee | C=1,717,984 | D=1,596,482 | E=1,596,482 | F=0 | G=2021
+r335: A=Texas | C=4,928,655 | D=4,770,549 | E=4,024,322 | F=0 | G=2021
+r336: A=Utah11 | B=Utah Medicaid enrollment increased due to state Medicaid expansion in 2020. | C=424,565 | D=402,216 | E=351,918 | F=62,863 | G=2021
+r337: A=Vermont12 | B=The Department of Vermont Health Access, a state agency, acts as Vermont's single MCO enti... | C=191,240 | D=131,002 | E=131,002 | F=57,656 | G=2021
+r338: A=Virgin Islands | G=2021
+r339: A=Virginia | C=1,852,563 | D=1,692,156 | E=1,692,156 | F=523,964 | G=2021
+r340: A=Washington | C=2,008,655 | D=2,008,655 | E=1,772,786 | F=789,431 | G=2021
+r341: A=West Virginia | C=599,336 | D=488,048 | E=488,048 | F=197,832 | G=2021
+r342: A=Wisconsin | C=1,484,746 | D=1,081,647 | E=1,026,481 | F=0 | G=2021
+r343: A=Wyoming13 | B=Wyoming's Total Medicaid Enrollment as of July 1, 2021 was taken from the July - September... | C=73,227 | D=0 | E=0 | F=0 | G=2021
+r344: A=TOTALS | C=98,019,715 | D=83,331,189 | E=73,639,082 | F=21,232,035 | G=2022
+r345: A=Alabama | C=1,287,819 | D=1,028,114 | E=179 | F=0 | G=2022
+r346: A=Alaska | B=Total Medicaid Enrollment as of July 1, 2022, was taken from the July - September 2022 enr... | C=254,283 | D=0 | E=0 | F=0 | G=2022
+r347: A=American Samoa | G=2022
+r348: A=Arizona | C=2,412,424 | D=2,066,895 | E=1,938,718 | F=654,153 | G=2022
+r349: A=Arkansas | C=1,763,975 | D=1,707,791 | E=64,026 | F=3,664 | G=2022
+r350: A=California | C=15,136,020 | D=12,841,729 | E=12,781,265 | F=4,354,086 | G=2022
+r351: A=Colorado | C=1,608,310 | D=1,544,749 | E=4,525 | F=83,198 | G=2022
+r352: A=Connecticut | B=Total Medicaid Enrollment as of July 1, 2022, was taken from the July - September 2022 enr... | C=1,140,225 | D=0 | E=0 | F=0 | G=2022
+r353: A=Delaware | C=302,869 | D=268,117 | E=261,758 | F=85,300 | G=2022
+r354: A=District of Columbia | C=300,381 | D=288,796 | E=259,159 | F=83,046 | G=2022
+r355: A=Florida | C=5,399,695 | D=5,076,398 | E=4,202,917 | F=0 | G=2022
+r356: A=Georgia | C=2,734,003 | D=2,416,856 | E=2,008,026 | F=0 | G=2022
+r357: A=Guam | G=2022
+r358: A=Hawaii | C=450,268 | D=450,159 | E=450,159 | F=383,844 | G=2022
+r359: A=Idaho | C=424,893 | D=404,124 | E=25,689 | F=0 | G=2022
+r360: A=Illinois | C=3,726,082 | D=2,796,521 | E=2,796,521 | F=711,004 | G=2022
+r361: A=Indiana | C=2,070,992 | D=1,659,715 | E=1,659,715 | F=506,135 | G=2022
+r362: A=Iowa | C=803,050 | D=761,121 | E=753,561 | F=239,789 | G=2022
+r363: A=Kansas | C=525,725 | D=443,835 | E=443,835 | F=0 | G=2022
+r364: A=Kentucky | C=1,651,543 | D=1,494,070 | E=1,494,070 | F=543,684 | G=2022
+r365: A=Louisiana | C=1,985,537 | D=1,839,327 | E=1,694,452 | F=728,952 | G=2022
+r366: A=Maine | C=393,783 | D=345,429 | E=0 | F=0 | G=2022
+r367: A=Maryland | C=1,734,624 | D=1,496,250 | E=1,496,250 | F=430,370 | G=2022
+r368: A=Massachusetts | C=2,091,955 | D=1,387,657 | E=848,004 | F=187,809 | G=2022
+r369: A=Michigan | C=3,092,404 | D=3,074,187 | E=3,074,159 | F=782,520 | G=2022
+r370: A=Minnesota | C=1,348,563 | D=1,168,879 | E=1,180,108 | F=272,666 | G=2022
+r371: A=Mississippi | C=858,687 | D=367,137 | E=365,169 | F=129,351 | G=2022
+r372: A=Missouri | C=1,278,851 | D=1,016,503 | E=1,016,515 | F=196,572 | G=2022
+r373: A=Montana | C=289,659 | D=243,475 | E=0 | F=0 | G=2022
+r374: A=Nebraska | C=374,783 | D=373,534 | E=373,492 | F=73,575 | G=2022
+r375: A=Nevada | C=923,168 | D=839,650 | E=698,726 | F=309,929 | G=2022
+r376: A=New Hampshire | C=256,087 | D=236,926 | E=236,926 | F=88,966 | G=2022
+r377: A=New Jersey | C=2,022,155 | D=1,950,681 | E=2,019,216 | F=741,398 | G=2022
+r378: A=New Mexico | C=984,008 | D=814,749 | E=814,749 | F=270,613 | G=2022
+r379: A=New York | C=7,589,766 | D=5,889,363 | E=5,640,784 | F=4,591,341 | G=2022
+r380: A=North Carolina | C=2,804,306 | D=2,245,044 | E=1,700,679 | F=0 | G=2022
+r381: A=North Dakota | C=133,631 | D=95,076 | E=36,865 | F=36,680 | G=2022
+r382: A=Northern Mariana Islands | G=2022
+r383: A=Ohio | C=3,425,876 | D=2,962,997 | E=2,962,985 | F=909,685 | G=2022
+r384: A=Oklahoma | C=1,273,948 | D=824,413 | E=713 | F=0 | G=2022
+r385: A=Oregon | C=1,393,623 | D=1,265,779 | E=1,265,779 | F=602,315 | G=2022
+r386: A=Pennsylvania | C=3,534,344 | D=3,484,439 | E=3,288,966 | F=1,297,110 | G=2022
+r387: A=Puerto Rico | C=1,597,058 | D=1,594,058 | E=1,594,058 | F=600,145 | G=2022
+r388: A=Rhode Island | C=357,304 | D=351,133 | E=300,893 | F=106,042 | G=2022
+r389: A=South Carolina | C=1,550,759 | D=1,060,312 | E=1,045,650 | F=0 | G=2022
+r390: A=South Dakota | C=149,096 | D=104,455 | E=0 | F=0 | G=2022
+r391: A=Tennessee | C=1,817,119 | D=1,697,632 | E=1,697,632 | F=0 | G=2022
+r392: A=Texas | C=5,543,480 | D=5,328,691 | E=5,295,360 | F=0 | G=2022
+r393: A=Utah | C=477,832 | D=449,492 | E=396,559 | F=83,116 | G=2022
+r394: A=Vermont | C=199,989 | D=134,347 | E=134,337 | F=57,962 | G=2022
+r395: A=Virgin Islands | G=2022
+r396: A=Virginia | C=1,978,005 | D=1,794,045 | E=1,794,045 | F=61,567 | G=2022
+r397: A=Washington | C=2,229,539 | D=1,894,623 | E=1,894,623 | F=810,527 | G=2022
+r398: A=West Virginia | C=660,068 | D=589,322 | E=521,017 | F=214,921 | G=2022
+r399: A=Wisconsin | C=1,593,772 | D=1,162,594 | E=1,106,248 | F=0 | G=2022
+r400: A=Wyoming | B=Total Medicaid Enrollment as of July 1, 2022, was taken from the July - September 2022 enr... | C=83,379 | D=0 | E=0 | F=0 | G=2022
+r401: A=TOTALS | B=-- | C=99,780,667 | D=85,047,388 | E=76,433,074 | F=24,265,907 | G=2023
+r402: A=Alabama | B=-- | C=1,352,426 | D=1,075,564 | E=183 | F=-- | G=2023
+r403: A=Alaska | B=-- | C=256,483 | D=-- | E=-- | F=-- | G=2023
+r404: A=American Samoa | B=-- | C=33,887 | D=-- | E=-- | F=-- | G=2023
+r405: A=Arizona | B=-- | C=2,297,677 | D=1,946,545 | E=1,819,113 | F=630,939 | G=2023
+r406: A=Arkansas | B=-- | C=1,023,415 | D=904,678 | E=54,612 | F=3,347 | G=2023
+r407: A=California | B=-- | C=15,627,380 | D=14,151,003 | E=13,903,828 | F=4,829,133 | G=2023
+r408: A=Colorado | B=While Colorado did not report a Comprehensive Managed Care program in their 2023 data subm... | C=1,688,331 | D=1,583,665 | E=4,110 | F=81,916 | G=2023
+r409: A=Connecticut | B=-- | C=1,162,357 | D=-- | E=-- | F=-- | G=2023
+r410: A=Delaware | B=-- | C=321,567 | D=285,832 | E=276,688 | F=93,046 | G=2023
+r411: A=District of Columbia | B=-- | C=311,457 | D=296,534 | E=268,142 | F=87,979 | G=2023
+r412: A=Florida | B=-- | C=5,427,530 | D=5,077,588 | E=4,172,789 | F=-- | G=2023
+r413: A=Georgia | B=-- | C=2,848,804 | D=2,513,329 | E=2,092,165 | F=-- | G=2023
+r414: A=Guam | B=-- | C=44,290 | D=-- | E=-- | F=-- | G=2023
+r415: A=Hawaii | B=-- | C=446,840 | D=446,739 | E=446,739 | F=176,928 | G=2023
+r416: A=Idaho | B=-- | C=376,448 | D=354,828 | E=23,067 | F=-- | G=2023
+r417: A=Illinois | B=-- | C=4,002,692 | D=2,978,426 | E=2,978,426 | F=757,036 | G=2023
+r418: A=Indiana | B=-- | C=2,158,978 | D=1,697,428 | E=1,697,428 | F=759,772 | G=2023
+r419: A=Iowa | B=-- | C=781,911 | D=739,334 | E=732,241 | F=226,452 | G=2023
+r420: A=Kansas | B=-- | C=525,820 | D=435,820 | E=435,820 | F=-- | G=2023
+r421: A=Kentucky | B=-- | C=1,642,210 | D=1,496,335 | E=1,496,335 | F=606,404 | G=2023
+r422: A=Louisiana | B=-- | C=2,034,265 | D=1,884,020 | E=1,731,040 | F=755,748 | G=2023
+r423: A=Maine | B=-- | C=423,137 | D=378,407 | E=-- | F=-- | G=2023
+r424: A=Maryland | B=-- | C=1,714,781 | D=1,597,815 | E=1,597,815 | F=444,119 | G=2023
+r425: A=Massachusetts | B=-- | C=2,352,340 | D=1,465,096 | E=1,067,460 | F=235,762 | G=2023
+r426: A=Michigan | B=-- | C=3,177,991 | D=3,173,889 | E=3,178,532 | F=816,498 | G=2023
+r427: A=Minnesota | B=-- | C=1,390,570 | D=1,222,946 | E=1,226,005 | F=302,917 | G=2023
+r428: A=Mississippi | B=-- | C=835,547 | D=394,680 | E=394,680 | F=-- | G=2023
+r429: A=Missouri | B=-- | C=1,495,869 | D=1,215,754 | E=1,215,804 | F=354,187 | G=2023
+r430: A=Montana | B=-- | C=249,265 | D=226,358 | E=-- | F=-- | G=2023
+r431: A=Nebraska | B=-- | C=401,247 | D=397,686 | E=397,626 | F=87,899 | G=2023
+r432: A=Nevada | B=-- | C=881,956 | D=664,497 | E=664,568 | F=297,658 | G=2023
+r433: A=New Hampshire | B=-- | C=213,224 | D=189,740 | E=189,740 | F=62,251 | G=2023
+r434: A=New Jersey | B=-- | C=2,136,245 | D=2,069,208 | E=2,070,497 | F=763,306 | G=2023
+r435: A=New Mexico | B=-- | C=955,289 | D=783,647 | E=783,647 | F=268,495 | G=2023
+r436: A=New York | B=-- | C=7,903,244 | D=6,013,326 | E=5,746,554 | F=5,091,884 | G=2023
+r437: A=North Carolina | B=-- | C=2,968,070 | D=2,430,308 | E=1,888,168 | F=-- | G=2023
+r438: A=North Dakota | B=-- | C=133,631 | D=109,102 | E=36,870 | F=36680 | G=2023
+r439: A=Northern Mariana Islands | B=-- | C=17,129 | D=-- | E=-- | F=-- | G=2023
+r440: A=Ohio | B=-- | C=3,424,183 | D=3,029,706 | E=3,081,390 | F=943,060 | G=2023
+r441: A=Oklahoma | B=-- | C=1,317,840 | D=861,464 | E=792 | F=0 | G=2023
+r442: A=Oregon | B=-- | C=1,466,163 | D=1,269,984 | E=1,380,126 | F=658,191 | G=2023
+r443: A=Pennsylvania | B=-- | C=3,577,205 | D=3,405,022 | E=3,320,534 | F=1,316,987 | G=2023
+r444: A=Puerto Rico | B=-- | C=1,571,315 | D=1,571,315 | E=1,571,315 | F=711,443 | G=2023
+r445: A=Rhode Island | B=-- | C=372,750 | D=369,121 | E=315,563 | F=111,275 | G=2023
+r446: A=South Carolina | B=-- | C=1,574,873 | D=1,014,964 | E=1,013,950 | F=-- | G=2023
+r447: A=South Dakota | B=-- | C=126,186 | D=112,123 | E=-- | F=-- | G=2023
+r448: A=Tennessee | B=Tennessee’s 2023 data submission indicated that they were unable to provide an unduplicate... | C=1,887,683 | D=1,771,460 | E=1,771,460 | F=-- | G=2023
+r449: A=Texas | B=-- | C=5,564,986 | D=5,413,456 | E=5,384,129 | F=-- | G=2023
+r450: A=Utah | B=-- | C=451,594 | D=429,003 | E=348,234 | F=76,141 | G=2023
+r451: A=Vermont | B=-- | C=187,921 | D=187,921 | E=187,921 | F=71,547 | G=2023
+r452: A=Virgin Islands | B=-- | C=36,868 | D=-- | E=-- | F=-- | G=2023
+r453: A=Virginia | B=-- | C=2,125,259 | D=1,865,411 | E=2,030,904 | F=679,941 | G=2023
+r454: A=Washington | B=-- | C=2,178,756 | D=1,831,646 | E=1,842,534 | F=1,722,928 | G=2023
+r455: A=West Virginia | B=-- | C=623,370 | D=547,982 | E=484,275 | F=204,038 | G=2023
+r456: A=Wisconsin | B=-- | C=1,588,211 | D=1,166,456 | E=1,109,255 | F=-- | G=2023
+r457: A=Wyoming | B=-- | C=91,201 | D=227 | E=-- | F=-- | G=2023
+r458: A=TOTALS | B=-- | C=86,916,019 | D=73,670,122 | E=67,932,939 | F=20,964,472 | G=2024
+r459: A=Alabama | B=-- | C=1,098,614 | D=837,805 | E=193 | F=-- | G=2024
+r460: A=Alaska | B=-- | C=236,414 | D=-- | E=-- | F=-- | G=2024
+r461: A=American Samoa | B=-- | C=33,746 | D=-- | E=-- | F=-- | G=2024
+r462: A=Arizona | B=-- | C=2,181,548 | D=1,843,297 | E=1,716,161 | F=582,025 | G=2024
+r463: A=Arkansas | B=-- | C=900,323 | D=803,185 | E=48,668 | F=1,772 | G=2024
+r464: A=California | B=-- | C=14,904,950 | D=13,978,531 | E=14,327,647 | F=4,723,570 | G=2024
+r465: A=Colorado | B=While Colorado did not report a Comprehensive Managed Care program in their 2024 data subm... | C=1,197,490 | D=1,079,583 | E=4,376 | F=46,404 | G=2024
+r466: A=Connecticut | B=-- | C=1,085,951 | D=-- | E=-- | F=-- | G=2024
+r467: A=Delaware | B=-- | C=259,168 | D=236,213 | E=219,537 | F=65,489 | G=2024
+r468: A=District of Columbia | B=-- | C=275,158 | D=264,158 | E=238,220 | F=71,863 | G=2024
+r469: A=Florida | B=-- | C=4,363,948 | D=3,897,852 | E=3,053,696 | F=-- | G=2024
+r470: A=Georgia | B=-- | C=2,314,875 | D=1,975,478 | E=1,594,095 | F=-- | G=2024
+r471: A=Guam | B=-- | C=34,824 | D=-- | E=-- | F=-- | G=2024
+r472: A=Hawaii | B=-- | C=432,222 | D=432,125 | E=432,125 | F=149,969 | G=2024
+r473: A=Idaho | B=-- | C=331,580 | D=308,110 | E=21,256 | F=-- | G=2024
+r474: A=Illinois | B=-- | C=3,418,634 | D=2,584,970 | E=2,584,970 | F=613,820 | G=2024
+r475: A=Indiana | B=-- | C=1,972,638 | D=1,609,664 | E=1,609,664 | F=684,170 | G=2024
+r476: A=Iowa | B=-- | C=649,899 | D=610,326 | E=604,696 | F=178,072 | G=2024
+r477: A=Kansas | B=-- | C=453,240 | D=359,577 | E=359,577 | F=-- | G=2024
+r478: A=Kentucky | B=-- | C=1,449,651 | D=1,303,955 | E=1,303,955 | F=462,342 | G=2024
+r479: A=Louisiana | B=-- | C=1,676,215 | D=1,533,577 | E=1,403,545 | F=543,115 | G=2024
+r480: A=Maine | B=-- | C=415,298 | D=366,314 | E=-- | F=-- | G=2024
+r481: A=Maryland | B=-- | C=1,762,462 | D=1,665,975 | E=1,665,975 | F=483,029 | G=2024
+r482: A=Massachusetts | B=-- | C=1,983,201 | D=1,225,762 | E=908,767 | F=224,383 | G=2024
+r483: A=Michigan | B=-- | C=2,416,518 | D=2,362,471 | E=2,367,522 | F=558,714 | G=2024
+r484: A=Minnesota | B=-- | C=1,204,793 | D=1,001,988 | E=1,003,639 | F=202,801 | G=2024
+r485: A=Mississippi | B=-- | C=645,050 | D=478,746 | E=478,746 | F=-- | G=2024
+r486: A=Missouri | B=-- | C=1,222,962 | D=1,021,856 | E=1,022,019 | F=326,915 | G=2024
+r487: A=Montana | B=-- | C=213,159 | D=174,914 | E=-- | F=-- | G=2024
+r488: A=Nebraska | B=-- | C=351,141 | D=350,451 | E=350,451 | F=74,233 | G=2024
+r489: A=Nevada | B=-- | C=824,507 | D=610,941 | E=613,298 | F=258,622 | G=2024
+r490: A=New Hampshire | B=-- | C=199,513 | D=181,676 | E=181,676 | F=58,490 | G=2024
+r491: A=New Jersey | B=-- | C=1,700,910 | D=1,555,225 | E=1,556,565 | F=523,338 | G=2024
+r492: A=New Mexico | B=-- | C=900,757 | D=735,622 | E=735,622 | F=262,087 | G=2024
+r493: A=New York | B=-- | C=6,964,926 | D=5,056,572 | E=4,760,911 | F=4,406,699 | G=2024
+r494: A=North Carolina | B=-- | C=3,057,965 | D=2,581,735 | E=2,420,088 | F=-- | G=2024
+r495: A=North Dakota | B=-- | C=105,070 | D=24,546 | E=24,546 | F=24,356 | G=2024
+r496: A=Northern Mariana Islands | B=-- | C=20,200 | D=-- | E=-- | F=-- | G=2024
+r497: A=Ohio | B=-- | C=3,018,792 | D=2,663,304 | E=2,719,479 | F=774,822 | G=2024
+r498: A=Oklahoma | B=-- | C=1,040,358 | D=751,924 | E=568,493 | F=-- | G=2024
+r499: A=Oregon | B=-- | C=1,340,084 | D=1,198,880 | E=1,312,713 | F=576,554 | G=2024
+r500: A=Pennsylvania | B=-- | C=2,967,715 | D=2,821,039 | E=2,746,730 | F=963,907 | G=2024
+r501: A=Puerto Rico | B=-- | C=1,400,933 | D=1,400,933 | E=1,400,933 | F=628,654 | G=2024
+r502: A=Rhode Island | B=-- | C=317,797 | D=314,175 | E=267,612 | F=83,172 | G=2024
+r503: A=South Carolina | B=-- | C=1,354,616 | D=814,123 | E=813,128 | F=-- | G=2024
+r504: A=South Dakota | B=-- | C=144,864 | D=106,872 | E=-- | F=-- | G=2024
+r505: A=Tennessee | B=Tennessee's 2024 data submission indicated that they were unable to provide an unduplicate... | C=1,526,625 | D=1,436,583 | E=1,436,583 | F=-- | G=2024
+r506: A=Texas | B=-- | C=4,141,972 | D=3,863,808 | E=3,843,890 | F=-- | G=2024
+r507: A=Utah | B=-- | C=331,012 | D=322,526 | E=260,258 | F=49,084 | G=2024
+r508: A=Vermont | B=-- | C=165,372 | D=165,372 | E=165,372 | F=59,359 | G=2024
+r509: A=Virgin Islands | B=-- | C=22,179 | D=-- | E=-- | F=-- | G=2024
+r510: A=Virginia | B=-- | C=1,953,730 | D=1,679,853 | E=1,812,107 | F=606,573 | G=2024
+r511: A=Washington | B=-- | C=1,984,868 | D=1,660,905 | E=1,669,580 | F=1,539,189 | G=2024
+r512: A=West Virginia | B=-- | C=533,405 | D=463,781 | E=407,316 | F=156,880 | G=2024
+r513: A=Wisconsin | B=-- | C=1,339,124 | D=952,642 | E=896,539 | F=-- | G=2024
+r514: A=Wyoming | B=-- | C=73,053 | D=202 | E=-- | F=-- | G=2024

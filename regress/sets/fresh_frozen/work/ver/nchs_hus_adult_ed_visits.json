@@ -1,0 +1,35 @@
+{
+ "id": "nchs_hus_adult_ed_visits",
+ "answers": [
+  {
+   "id": "nchs_hus_adult_ed_visits#1",
+   "answer": "37.7",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\nyear_row = df.iloc[4]\n# 2019 for 'One or more emergency department visits' is col AT (index 45)\nmedicaid_row = df[df[0].astype(str).str.strip().str.startswith('Medicaid')].index[0]\nresult = float(df.iloc[medicaid_row, 45])"
+  },
+  {
+   "id": "nchs_hus_adult_ed_visits#2",
+   "answer": "Female",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\n# Col CN (index 91) is 2019 for 'Two or more emergency department visits'\nmale_val = float(df[df[0].astype(str).str.strip() == 'Male'].iloc[0, 91])\nfemale_val = float(df[df[0].astype(str).str.strip() == 'Female'].iloc[0, 91])\nresult = 'Female' if female_val > male_val else 'Male'"
+  },
+  {
+   "id": "nchs_hus_adult_ed_visits#3",
+   "answer": "[\"South\", \"Northeast\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\nregions = ['Northeast', 'Midwest', 'South', 'West']\n# Col AT (index 45) is 2019 for 'One or more visits'\nvals = {}\nfor reg in regions:\n    row = df[df[0].astype(str).str.strip() == reg].index[0]\n    vals[reg] = float(df.iloc[row, 45])\n\nsorted_regions = sorted(vals.items(), key=lambda x: x[1], reverse=True)\nresult = [sorted_regions[0][0], sorted_regions[1][0]]"
+  },
+  {
+   "id": "nchs_hus_adult_ed_visits#4",
+   "answer": "1999",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\n# Crude row\ncrude_idx = df[df[0].astype(str).str.contains('crude', case=False, na=False)].index[0]\n\n# Years for 'One or more visits' are in row 4 (Excel row 5), cols 1 to 45 (step 2)\nyears = []\nrates = []\nfor col in range(1, 46, 2):\n    yr = str(df.iloc[4, col]).split('.')[0]\n    val = float(df.iloc[crude_idx, col])\n    years.append(yr)\n    rates.append(val)\n\nmin_idx = rates.index(min(rates))\nresult = years[min_idx]"
+  },
+  {
+   "id": "nchs_hus_adult_ed_visits#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\n# Col CN (index 91) is 2019 for 'Two or more emergency department visits'\nwithin_row = df[df[0].astype(str).str.strip() == 'Within MSA'].index[0]\noutside_row = df[df[0].astype(str).str.strip() == 'Outside MSA'].index[0]\nwithin_val = float(df.iloc[within_row, 91])\noutside_val = float(df.iloc[outside_row, 91])\nresult = 'yes' if outside_val > within_val else 'no'"
+  },
+  {
+   "id": "nchs_hus_adult_ed_visits#6",
+   "answer": "4.6",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_adult_ed_visits.xlsx', sheet_name='A', header=None)\n# Col CN (index 91) is 2019 for 'Two or more emergency department visits'\nr75 = df[df[0].astype(str).str.strip().str.startswith('75 years and over')].index[0]\nr65_74 = df[df[0].astype(str).str.strip().str.startswith('65\u201374 years')].index[0]\nval75 = float(df.iloc[r75, 91])\nval65_74 = float(df.iloc[r65_74, 91])\nresult = round(val75 - val65_74, 2)"
+  }
+ ]
+}

@@ -1,0 +1,60 @@
+{
+ "id": "nces_digest_public_school_enrollment_by_state",
+ "file": "nces_digest_public_school_enrollment_by_state.xlsx",
+ "questions": [
+  {
+   "question": "What was the total public elementary and secondary school enrollment in Texas in fall 2022?",
+   "sheet": "Digest 2023 Table 203.20",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "5519599",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\ncol = [c for c in df.columns if 'Fall 2022' in str(df.iloc[2, c])][0]\nrow = df[df[0].astype(str).str.strip() == 'Texas'].index[0]\nresult = int(df.iloc[row, col])",
+   "qid": "nces_digest_public_school_enrollment_by_state#1"
+  },
+  {
+   "question": "Between the Northeast and Midwest regions, which had higher total public school enrollment in fall 2022?",
+   "sheet": "Digest 2023 Table 203.20",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Midwest",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\ncol = [c for c in df.columns if 'Fall 2022' in str(df.iloc[2, c])][0]\nne = float(df.loc[df[0].astype(str).str.strip() == 'Northeast', col].values[0])\nmw = float(df.loc[df[0].astype(str).str.strip() == 'Midwest', col].values[0])\nresult = 'Midwest' if mw > ne else 'Northeast'",
+   "qid": "nces_digest_public_school_enrollment_by_state#2"
+  },
+  {
+   "question": "Which three states had the highest projected percentage increases in public school enrollment from 2022 to 2031?",
+   "sheet": "Digest 2023 Table 203.20",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Idaho\", \"North Dakota\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\nstart_idx = df[df[0].astype(str).str.strip() == 'State'].index[0] + 1\nend_idx = df[df[0].astype(str).str.contains('Bureau of Indian', na=False)].index[0]\nstates_df = df.iloc[start_idx:end_idx].copy()\ncol_z = [c for c in df.columns if 'Projected percent change' in str(df.iloc[1, c])][0]\nstates_df['pct'] = pd.to_numeric(states_df[col_z], errors='coerce')\nstates_df['name'] = states_df[0].astype(str).str.strip()\ntop3 = states_df.sort_values(by='pct', ascending=False).head(3)\nresult = top3['name'].tolist()",
+   "qid": "nces_digest_public_school_enrollment_by_state#3"
+  },
+  {
+   "question": "How many states, including the District of Columbia, had an increase in total public school enrollment between fall 2017 and fall 2022?",
+   "sheet": "Digest 2023 Table 203.20",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "16",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\nstart_idx = df[df[0].astype(str).str.strip() == 'State'].index[0] + 1\nend_idx = df[df[0].astype(str).str.contains('Bureau of Indian', na=False)].index[0]\nstates_df = df.iloc[start_idx:end_idx].copy()\ncol_t = [c for c in df.columns if 'Percent change in total enrollment, 2017 to 2022' in str(df.iloc[1, c])][0]\nstates_df['pct_change'] = pd.to_numeric(states_df[col_t], errors='coerce')\nresult = int((states_df['pct_change'] > 0).sum())",
+   "qid": "nces_digest_public_school_enrollment_by_state#4"
+  },
+  {
+   "question": "Did overall public elementary and secondary school enrollment in the United States decline from fall 2019 to fall 2020?",
+   "sheet": "Digest 2023 Table 203.20",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\ncol_2019 = [c for c in df.columns if 'Fall 2019' in str(df.iloc[2, c])][0]\ncol_2020 = [c for c in df.columns if 'Fall 2020' in str(df.iloc[2, c])][0]\nus_row = df[df[0].astype(str).str.strip() == 'United States'].index[0]\nval_2019 = float(df.iloc[us_row, col_2019])\nval_2020 = float(df.iloc[us_row, col_2020])\nresult = 'yes' if val_2020 < val_2019 else 'no'",
+   "qid": "nces_digest_public_school_enrollment_by_state#5"
+  },
+  {
+   "question": "What was the average public school enrollment across the four regions (Northeast, Midwest, South, and West) in fall 2022?",
+   "sheet": "Digest 2023 Table 203.20",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "12404616",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_public_school_enrollment_by_state.xlsx', sheet_name='Digest 2023 Table 203.20', header=None)\ncol_2022 = [c for c in df.columns if 'Fall 2022' in str(df.iloc[2, c])][0]\nregions = ['Northeast', 'Midwest', 'South', 'West']\nreg_df = df[df[0].astype(str).str.strip().isin(regions)]\nvals = pd.to_numeric(reg_df[col_2022])\nresult = int(vals.mean())",
+   "qid": "nces_digest_public_school_enrollment_by_state#6"
+  }
+ ]
+}

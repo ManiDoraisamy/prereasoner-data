@@ -1,0 +1,88 @@
+{
+ "id": "nyc_central_park_squirrel_census_2018",
+ "file": "nyc_central_park_squirrel_census_2018.csv",
+ "questions": [
+  {
+   "question": "How many squirrel sightings in the 2018 Central Park census took place during the morning observation shift?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "1347",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = int((df['Shift'] == 'AM').sum())",
+   "qid": "nyc_central_park_squirrel_census_2018#1",
+   "pass1": true,
+   "result": 1347,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which primary fur color was the second most frequently recorded for squirrels in the park?",
+   "sheet": "",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Cinnamon",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = str(df['Primary Fur Color'].value_counts().index[1])",
+   "qid": "nyc_central_park_squirrel_census_2018#2",
+   "pass1": true,
+   "result": "Cinnamon",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "On what calendar date was the greatest number of squirrel sightings logged during the census?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2018-10-13",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\ntop_date = str(df['Date'].value_counts().index[0])\nmonth, day, year = top_date[:2], top_date[2:4], top_date[4:]\nresult = f'{year}-{month}-{day}'",
+   "qid": "nyc_central_park_squirrel_census_2018#3",
+   "pass1": true,
+   "result": "2018-10-13",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Were more squirrels recorded foraging than eating across all observations?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = 'yes' if df['Foraging'].sum() > df['Eating'].sum() else 'no'",
+   "qid": "nyc_central_park_squirrel_census_2018#4",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three park hectares had the highest total numbers of squirrel sightings recorded?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"14D\", \"32E\", \"14E\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = df['Hectare'].value_counts().head(3).index.tolist()",
+   "qid": "nyc_central_park_squirrel_census_2018#5",
+   "pass1": true,
+   "result": [
+    "14D",
+    "32E",
+    "14E"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many more squirrels were observed running than chasing during the census?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "451",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_central_park_squirrel_census_2018.csv')\nresult = int(df['Running'].sum() - df['Chasing'].sum())",
+   "qid": "nyc_central_park_squirrel_census_2018#6",
+   "pass1": true,
+   "result": 451,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

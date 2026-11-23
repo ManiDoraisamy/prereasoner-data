@@ -1,0 +1,12 @@
+{
+ "file": "chicago_cta_daily_boardings.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 9374,
+   "cols": 5,
+   "shown_whole": false
+  }
+ ],
+ "chars": 5729
+}

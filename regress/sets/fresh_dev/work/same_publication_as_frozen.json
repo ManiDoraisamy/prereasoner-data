@@ -1,0 +1,23 @@
+{
+ "note": "dev-twin workbooks from a publication the frozen set also draws on (other tables of it): left out of development by default, so the frozen gate meets no publication's layout the engine was developed on",
+ "ids": [
+  "cms_program_stats_inpatient_hospital_2023",
+  "cms_program_stats_part_d_utilization_2023",
+  "fhwa_public_road_length_2023",
+  "fhwa_vehicle_miles_by_functional_system_2023",
+  "nces_digest_tuition_fees_room_board",
+  "nchs_hus2022_hypertension",
+  "nchs_hus_health_care_employment",
+  "nchs_hus_mammography_use"
+ ],
+ "files": [
+  "workbooks/cms_program_stats_inpatient_hospital_2023.xlsx",
+  "workbooks/cms_program_stats_part_d_utilization_2023.xlsx",
+  "workbooks/fhwa_public_road_length_2023.xlsx",
+  "workbooks/fhwa_vehicle_miles_by_functional_system_2023.xlsx",
+  "workbooks/nces_digest_tuition_fees_room_board.xlsx",
+  "workbooks/nchs_hus2022_hypertension.xlsx",
+  "workbooks/nchs_hus_health_care_employment.xlsx",
+  "workbooks/nchs_hus_mammography_use.xlsx"
+ ]
+}

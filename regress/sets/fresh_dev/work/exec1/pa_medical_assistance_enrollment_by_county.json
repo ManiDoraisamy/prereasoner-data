@@ -1,0 +1,84 @@
+{
+ "id": "pa_medical_assistance_enrollment_by_county",
+ "file": "pa_medical_assistance_enrollment_by_county.csv",
+ "questions": [
+  {
+   "question": "How many Medical Assistance individuals were enrolled in Allegheny County in October 2022?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "296307",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nrow = df[(df['County Name'] == 'Allegheny') & (df['Date'] == '10/2022')]\nresult = int(row['MA Individuals'].iloc[0])",
+   "qid": "pa_medical_assistance_enrollment_by_county#1",
+   "pass1": true,
+   "result": 296307,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Bucks and Carbon, which county had more children enrolled in Medical Assistance in March 2025?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Bucks",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nmarch_2025 = df[df['Date'] == '03/2025']\nbucks = march_2025[march_2025['County Name'] == 'Bucks']['MA Children'].iloc[0]\ncarbon = march_2025[march_2025['County Name'] == 'Carbon']['MA Children'].iloc[0]\nresult = 'Bucks' if bucks > carbon else 'Carbon'",
+   "qid": "pa_medical_assistance_enrollment_by_county#2",
+   "pass1": true,
+   "result": "Bucks",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did Allegheny County have over 250,000 Medical Assistance individuals enrolled in October 2022?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nval = df[(df['County Name'] == 'Allegheny') & (df['Date'] == '10/2022')]['MA Individuals'].iloc[0]\nresult = 'yes' if val > 250000 else 'no'",
+   "qid": "pa_medical_assistance_enrollment_by_county#3",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What is the earliest calendar year recorded in the dataset?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2003",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nresult = str(df['Calendar Year'].min())",
+   "qid": "pa_medical_assistance_enrollment_by_county#4",
+   "pass1": true,
+   "result": "2003",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In Carbon County, what was the difference between total Medical Assistance individuals and children enrolled in March 2025?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "8347",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nrow = df[(df['County Name'] == 'Carbon') & (df['Date'] == '03/2025')].iloc[0]\nresult = int(row['MA Individuals'] - row['MA Children'])",
+   "qid": "pa_medical_assistance_enrollment_by_county#5",
+   "pass1": true,
+   "result": 8347,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many monthly enrollment records are present for Adams County in the dataset?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "279",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nresult = int((df['County Name'] == 'Adams').sum())",
+   "qid": "pa_medical_assistance_enrollment_by_county#6",
+   "pass1": true,
+   "result": 279,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

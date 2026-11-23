@@ -1,0 +1,60 @@
+{
+ "id": "nchs_hus_health_care_employment",
+ "file": "nchs_hus_health_care_employment.xlsx",
+ "questions": [
+  {
+   "question": "What was the mean hourly wage for dental hygienists in 2020?",
+   "sheet": "A",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "37.53",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nrow = df[df[0].astype(str).str.strip().str.startswith('Dental hygienists')].index[0]\nresult = float(df.iloc[row, 14])",
+   "qid": "nchs_hus_health_care_employment#1"
+  },
+  {
+   "question": "Which health care support occupation had a higher average hourly wage in 2020: physical therapist assistants or occupational therapy assistants?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Occupational therapy assistants",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nota_row = df[df[0].astype(str).str.strip() == 'Occupational therapy assistants'].index[0]\npta_row = df[df[0].astype(str).str.strip() == 'Physical therapist assistants'].index[0]\nota_wage = float(df.iloc[ota_row, 14])\npta_wage = float(df.iloc[pta_row, 14])\nresult = df.iloc[ota_row, 0].strip() if ota_wage > pta_wage else df.iloc[pta_row, 0].strip()",
+   "qid": "nchs_hus_health_care_employment#2"
+  },
+  {
+   "question": "Which three health care support occupations had the highest mean hourly wages in 2020?",
+   "sheet": "A",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Occupational therapy assistants\", \"Physical therapist assistants\", \"Massage therapists\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nstart_idx = df[df[0].astype(str).str.strip() == 'Health care support occupations'].index[0] + 1\nend_idx = df[df[0].astype(str).str.contains('Category not applicable|NOTES:', na=False)].index[0]\nsupport_df = df.iloc[start_idx:end_idx].copy()\nsupport_df[14] = pd.to_numeric(support_df[14], errors='coerce')\ntop3 = support_df.sort_values(by=14, ascending=False).head(3)\nresult = [str(x).strip() for x in top3[0].tolist()]",
+   "qid": "nchs_hus_health_care_employment#3"
+  },
+  {
+   "question": "How many health care support occupations had an average hourly wage of at least $20 in 2020?",
+   "sheet": "A",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nstart_idx = df[df[0].astype(str).str.strip() == 'Health care support occupations'].index[0] + 1\nend_idx = df[df[0].astype(str).str.contains('Category not applicable|NOTES:', na=False)].index[0]\nsupport_df = df.iloc[start_idx:end_idx].copy()\nwages_2020 = pd.to_numeric(support_df[14], errors='coerce')\nresult = int((wages_2020 >= 20.0).sum())",
+   "qid": "nchs_hus_health_care_employment#4"
+  },
+  {
+   "question": "Did the number of employed registered nurses in the United States exceed 2.5 million in 2010?",
+   "sheet": "A",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nrn_row = df[df[0].astype(str).str.strip().str.startswith('Registered nurses')].index[0]\nemp_2010 = float(df.iloc[rn_row, 4])\nresult = 'yes' if emp_2010 > 2500000 else 'no'",
+   "qid": "nchs_hus_health_care_employment#5"
+  },
+  {
+   "question": "How much did the mean hourly wage for emergency medical technicians and paramedics increase between 2000 and 2020?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "7.52",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_health_care_employment.xlsx', sheet_name='A', header=None)\nrow = df[df[0].astype(str).str.strip().str.startswith('Emergency medical technicians and paramedics')].index[0]\nwage_2000 = float(df.iloc[row, 8])\nwage_2020 = float(df.iloc[row, 14])\nresult = round(wage_2020 - wage_2000, 2)",
+   "qid": "nchs_hus_health_care_employment#6"
+  }
+ ]
+}

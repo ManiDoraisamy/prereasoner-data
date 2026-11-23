@@ -1,0 +1,35 @@
+{
+ "id": "nydoh_hospital_acquired_infections",
+ "answers": [
+  {
+   "id": "nydoh_hospital_acquired_infections#1",
+   "answer": "8.75",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsub = df[\n    (df['Hospital Name'].str.strip() == 'White Plains Hospital Center') &\n    (df['Indicator Name'].str.strip() == 'SSI Colon') &\n    (df['Year'] == 2014)\n]\nresult = float(sub['Indicator Value'].iloc[0])"
+  },
+  {
+   "id": "nydoh_hospital_acquired_infections#2",
+   "answer": "2.81",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsub = df[\n    (df['Hospital Name'].str.strip() == 'Albany Medical Center Hospital') &\n    (df['Indicator Name'].str.strip() == 'CLABSI Cardiothoracic ICU') &\n    (df['Year'] == 2012)\n]\nresult = float(sub['Infections Predicted'].iloc[0])"
+  },
+  {
+   "id": "nydoh_hospital_acquired_infections#3",
+   "answer": "3",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsub = df[\n    (df['Hospital Name'].str.strip() == 'John T Mather Memorial Hospital of Port Jefferson New York Inc') &\n    (df['Indicator Name'].str.strip() == 'SSI Hip') &\n    (df['Year'] == 2010)\n]\nresult = int(sub['Infections Observed'].iloc[0])"
+  },
+  {
+   "id": "nydoh_hospital_acquired_infections#4",
+   "answer": "5131",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsub = df[\n    (df['Hospital Name'].str.strip() == 'New York State - All Hospitals') &\n    (df['Indicator Name'].str.strip() == 'CDI Hospital Onset') &\n    (df['Year'] == 2017)\n]\nresult = int(sub['Infections Observed'].iloc[0])"
+  },
+  {
+   "id": "nydoh_hospital_acquired_infections#5",
+   "answer": "2019",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nresult = str(df['Year'].value_counts().idxmax())"
+  },
+  {
+   "id": "nydoh_hospital_acquired_infections#6",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nydoh_hospital_acquired_infections.csv')\nsub = df[\n    (df['Hospital Name'].str.strip().str.upper() == 'RICHMOND UNIVERSITY MEDICAL CENTER') &\n    (df['Indicator Name'].str.strip() == 'CDI Hospital Onset') &\n    (df['Year'] == 2017)\n]\ncomp = sub['Comparison Results'].iloc[0]\nresult = 'yes' if 'Significantly higher' in str(comp) else 'no'"
+  }
+ ]
+}

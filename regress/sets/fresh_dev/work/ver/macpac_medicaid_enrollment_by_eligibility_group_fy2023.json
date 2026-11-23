@@ -1,0 +1,35 @@
+{
+ "id": "macpac_medicaid_enrollment_by_eligibility_group_fy2023",
+ "answers": [
+  {
+   "id": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#1",
+   "answer": "604.853",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\n\n# Row 4 (index 4) has column subheaders: Child, New adult group, Other adult, Disabled, Aged\n# Column 0 has State names\ndisabled_col = None\nfor col in range(df.shape[1]):\n    val = str(df.iloc[4, col])\n    if 'Disabled' in val:\n        disabled_col = col\n        break\n\npa_row = df[df[0].astype(str).str.strip().str.startswith('Pennsylvania')].index[0]\nresult = float(df.iloc[pa_row, disabled_col])"
+  },
+  {
+   "id": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#2",
+   "answer": "New York",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\n\nfl_row = df[df[0].astype(str).str.strip().str.startswith('Florida')].index[0]\nny_row = df[df[0].astype(str).str.strip().str.startswith('New York')].index[0]\n\nfl_total = float(df.iloc[fl_row, 1])\nny_total = float(df.iloc[ny_row, 1])\n\nresult = df.iloc[ny_row, 0] if ny_total > fl_total else df.iloc[fl_row, 0]"
+  },
+  {
+   "id": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\n\nchild_col = [c for c in range(df.shape[1]) if 'Child' in str(df.iloc[4, c])][0]\n\ntx_row = df[df[0].astype(str).str.strip().str.startswith('Texas')].index[0]\nca_row = df[df[0].astype(str).str.strip().str.startswith('California')].index[0]\n\ntx_child = float(df.iloc[tx_row, child_col])\nca_child = float(df.iloc[ca_row, child_col])\n\nresult = 'yes' if tx_child > ca_child else 'no'"
+  },
+  {
+   "id": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#4",
+   "answer": "10",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\n\nnew_adult_col = [c for c in range(df.shape[1]) if 'New adult group' in str(df.iloc[4, c])][0]\n\n# States are rows 6 to 56 (Excel rows 7 to 57)\nstates_df = df.iloc[6:57]\nzero_states = states_df[pd.to_numeric(states_df[new_adult_col], errors='coerce') == 0]\nresult = len(zero_states)"
+  },
+  {
+   "id": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#5",
+   "answer": "10088.593",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\n\nnew_adult_col = [c for c in range(df.shape[1]) if 'New adult group' in str(df.iloc[4, c])][0]\n\ntarget_states = ['California', 'New York', 'Pennsylvania']\ntotal = 0.0\nfor state in target_states:\n    row = df[df[0].astype(str).str.strip().str.startswith(state)].index[0]\n    total += float(df.iloc[row, new_adult_col])\n\nresult = round(total, 3)"
+  },
+  {
+   "id": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#6",
+   "answer": "[\"California5\", \"Florida\", \"New York\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\n\n# Total dually eligible enrollees is column H (index 7)\ndual_total_col = 7\n\n# States are rows 6 to 56\nstates_df = df.iloc[6:57].copy()\nstates_df['dual_total'] = pd.to_numeric(states_df[dual_total_col], errors='coerce')\n\n# Numbers are in thousands, so 1 million = 1000 thousand\nqualifying = states_df[states_df['dual_total'] > 1000]\nresult = qualifying[0].tolist()"
+  }
+ ]
+}

@@ -1,0 +1,96 @@
+{
+ "file": "hud_pit_veteran_counts_by_state.xlsx",
+ "sheets": [
+  {
+   "name": "Change",
+   "rows": 58,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "2024",
+   "rows": 60,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2023",
+   "rows": 60,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2022",
+   "rows": 60,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2021",
+   "rows": 60,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2020",
+   "rows": 60,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2019",
+   "rows": 60,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2018",
+   "rows": 60,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2017",
+   "rows": 60,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2016",
+   "rows": 60,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2015",
+   "rows": 58,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2014",
+   "rows": 58,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "2013",
+   "rows": 58,
+   "cols": 5,
+   "shown_whole": true
+  },
+  {
+   "name": "2012",
+   "rows": 58,
+   "cols": 5,
+   "shown_whole": true
+  },
+  {
+   "name": "2011",
+   "rows": 58,
+   "cols": 5,
+   "shown_whole": true
+  }
+ ],
+ "chars": 62181
+}

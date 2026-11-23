@@ -1,0 +1,60 @@
+{
+ "id": "nces_digest_tuition_fees_room_board",
+ "file": "nces_digest_tuition_fees_room_board.xlsx",
+ "questions": [
+  {
+   "question": "In the 2022-23 academic year, what was the total tuition, fees, room, and board in current dollars charged by 4-year public institutions?",
+   "sheet": "Digest 2023 Table 330.10",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "22389.14571",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_tuition_fees_room_board.xlsx', sheet_name='Digest 2023 Table 330.10', header=None)\npub_idx = df[df[0].astype(str).str.strip().str.lower() == 'public institutions'].index[0]\nnext_idx = df.loc[pub_idx + 1:][df.loc[pub_idx + 1:, 0].astype(str).str.contains('Private|Nonprofit|For-profit|NOTE', regex=True)].index[0]\npub_df = df.loc[pub_idx + 1:next_idx - 1]\nrow_2022 = pub_df[pub_df[0].astype(str).str.strip() == '2022-23']\nresult = float(row_2022.iloc[0, 2])",
+   "qid": "nces_digest_tuition_fees_room_board#1"
+  },
+  {
+   "question": "For the 2022-23 school year, did 4-year private nonprofit colleges have a higher average tuition and required fees than 4-year private for-profit colleges in current dollars?",
+   "sheet": "Digest 2023 Table 330.10",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_tuition_fees_room_board.xlsx', sheet_name='Digest 2023 Table 330.10', header=None)\nnonprofit_idx = df[df[0].astype(str).str.strip().str.lower() == 'nonprofit'].index[0]\nforprofit_idx = df[df[0].astype(str).str.strip().str.lower() == 'for-profit'].index[0]\n\nnonprofit_row = df.loc[nonprofit_idx:forprofit_idx][df.loc[nonprofit_idx:forprofit_idx, 0].astype(str).str.strip() == '2022-23']\nforprofit_row = df.loc[forprofit_idx:][df.loc[forprofit_idx:, 0].astype(str).str.strip() == '2022-23']\n\nnonprofit_val = float(nonprofit_row.iloc[0, 5])\nforprofit_val = float(forprofit_row.iloc[0, 5])\n\nresult = 'yes' if nonprofit_val > forprofit_val else 'no'",
+   "qid": "nces_digest_tuition_fees_room_board#2"
+  },
+  {
+   "question": "Across all institutions, in which academic year between 2015-16 and 2022-23 was the average total tuition, fees, room, and board in constant 2022-23 dollars the highest?",
+   "sheet": "Digest 2023 Table 330.10",
+   "kind": "date_period",
+   "answer_type": "name",
+   "answer": "2020-21",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_tuition_fees_room_board.xlsx', sheet_name='Digest 2023 Table 330.10', header=None)\nall_idx = df[df[0].astype(str).str.strip().str.lower() == 'all institutions'].index[0]\npub_idx = df[df[0].astype(str).str.strip().str.lower() == 'public institutions'].index[0]\nsub = df.loc[all_idx + 1:pub_idx - 1].copy()\nyears = ['2015-16', '2016-17', '2017-18', '2018-19', '2019-20', '2020-21', '2021-22', '2022-23']\nsub = sub[sub[0].astype(str).str.strip().isin(years)]\nsub[13] = pd.to_numeric(sub[13])\nmax_row = sub.loc[sub[13].idxmax()]\nresult = str(max_row[0]).strip()",
+   "qid": "nces_digest_tuition_fees_room_board#3"
+  },
+  {
+   "question": "From 2000-01 through 2022-23, how many academic years saw the constant 2022-23 dollar total tuition, fees, room, and board for 4-year programs across all institutions exceed $30,000?",
+   "sheet": "Digest 2023 Table 330.10",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "12",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_tuition_fees_room_board.xlsx', sheet_name='Digest 2023 Table 330.10', header=None)\nall_idx = df[df[0].astype(str).str.strip().str.lower() == 'all institutions'].index[0]\npub_idx = df[df[0].astype(str).str.strip().str.lower() == 'public institutions'].index[0]\nsub = df.loc[all_idx + 1:pub_idx - 1].copy()\nsub[0] = sub[0].astype(str).str.strip()\nstart_idx = sub[sub[0] == '2000-01'].index[0]\nend_idx = sub[sub[0] == '2022-23'].index[0]\nsub = sub.loc[start_idx:end_idx]\nsub[14] = pd.to_numeric(sub[14])\nresult = int((sub[14] > 30000).sum())",
+   "qid": "nces_digest_tuition_fees_room_board#4"
+  },
+  {
+   "question": "What was the average dormitory room cost in current dollars for 4-year public institutions over the five academic years from 2018-19 through 2022-23?",
+   "sheet": "Digest 2023 Table 330.10",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "6799.7597252",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_tuition_fees_room_board.xlsx', sheet_name='Digest 2023 Table 330.10', header=None)\npub_idx = df[df[0].astype(str).str.strip().str.lower() == 'public institutions'].index[0]\nnext_idx = df.loc[pub_idx + 1:][df.loc[pub_idx + 1:, 0].astype(str).str.contains('Private|Nonprofit|For-profit|NOTE', regex=True)].index[0]\nsub = df.loc[pub_idx + 1:next_idx - 1].copy()\nyears = ['2018-19', '2019-20', '2020-21', '2021-22', '2022-23']\nsub = sub[sub[0].astype(str).str.strip().isin(years)]\nresult = float(pd.to_numeric(sub[8]).mean())",
+   "qid": "nces_digest_tuition_fees_room_board#5"
+  },
+  {
+   "question": "Which 3 academic years between 2018-19 and 2022-23 had the highest average board rates in current dollars for 4-year public institutions?",
+   "sheet": "Digest 2023 Table 330.10",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"2020-21\", \"2021-22\", \"2022-23\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_tuition_fees_room_board.xlsx', sheet_name='Digest 2023 Table 330.10', header=None)\npub_idx = df[df[0].astype(str).str.strip().str.lower() == 'public institutions'].index[0]\nnext_idx = df.loc[pub_idx + 1:][df.loc[pub_idx + 1:, 0].astype(str).str.contains('Private|Nonprofit|For-profit|NOTE', regex=True)].index[0]\nsub = df.loc[pub_idx + 1:next_idx - 1].copy()\nyears = ['2018-19', '2019-20', '2020-21', '2021-22', '2022-23']\nsub = sub[sub[0].astype(str).str.strip().isin(years)]\nsub[11] = pd.to_numeric(sub[11])\ntop3 = sub.sort_values(by=11, ascending=False).head(3)\nresult = [str(y).strip() for y in top3[0].tolist()]",
+   "qid": "nces_digest_tuition_fees_room_board#6"
+  }
+ ]
+}

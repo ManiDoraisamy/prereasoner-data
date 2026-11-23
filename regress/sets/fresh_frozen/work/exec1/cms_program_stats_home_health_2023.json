@@ -1,0 +1,88 @@
+{
+ "id": "cms_program_stats_home_health_2023",
+ "file": "cms_program_stats_home_health_2023.xlsx",
+ "questions": [
+  {
+   "question": "What were the total home health program payments for disabled Original Medicare beneficiaries in calendar year 2023?",
+   "sheet": "MDCR HHA 1_CPS_07UHH",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1319291952",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 1_CPS_07UHH', header=None)\n# Look for Disabled Beneficiaries section and year 2023\n# Disabled beneficiaries section starts at row index 21 (r22), 2023 is at row index 27 (r28), column K (index 10)\ndisabled_idx = df[df[0].astype(str).str.strip() == 'Disabled Beneficiaries'].index[0]\nyear_row = df.iloc[disabled_idx:disabled_idx+10]\nyear_2023 = year_row[year_row[0].astype(str).str.strip() == '2023'].iloc[0]\nresult = int(year_2023[10])",
+   "qid": "cms_program_stats_home_health_2023#1",
+   "pass1": true,
+   "result": 1319291952,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2023, did female Original Medicare beneficiaries receive more total home health service visits than male beneficiaries?",
+   "sheet": "MDCR HHA 2_CPS_07UHH",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 2_CPS_07UHH', header=None)\nmale_visits = df[df[0].astype(str).str.strip() == 'Male'][3].values[0]\nfemale_visits = df[df[0].astype(str).str.strip() == 'Female'][3].values[0]\nresult = 'yes' if female_visits > male_visits else 'no'",
+   "qid": "cms_program_stats_home_health_2023#2",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which calendar year between 2018 and 2023 saw the lowest total home health program payments across all Original Medicare beneficiaries?",
+   "sheet": "MDCR HHA 1_CPS_07UHH",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2023",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 1_CPS_07UHH', header=None)\n# Rows 6 to 11 correspond to years 2018-2023 for All Beneficiaries\nsub_df = df.iloc[6:12, [0, 10]].copy()\nsub_df.columns = ['Year', 'Payments']\nsub_df['Payments'] = pd.to_numeric(sub_df['Payments'])\nmin_row = sub_df.loc[sub_df['Payments'].idxmin()]\nresult = str(int(min_row['Year']))",
+   "qid": "cms_program_stats_home_health_2023#3",
+   "pass1": true,
+   "result": "2023",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Among the 50 US states and DC, which three states had the highest total home health program payments in 2023?",
+   "sheet": "MDCR HHA 3_CPS_07UHH",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 3_CPS_07UHH', header=None)\n# States run from row index 8 (Alabama) to row index 58 (Wyoming)\nstates_df = df.iloc[8:59, [0, 10]].copy()\nstates_df.columns = ['State', 'Payments']\nstates_df['Payments'] = pd.to_numeric(states_df['Payments'])\ntop3 = states_df.sort_values(by='Payments', ascending=False).head(3)\nresult = top3['State'].tolist()",
+   "qid": "cms_program_stats_home_health_2023#4",
+   "pass1": true,
+   "result": [
+    "California",
+    "Texas",
+    "Florida"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2023, how many home health service visits were provided across all agencies specifically for physical therapy?",
+   "sheet": "MDCR HHA 4_CPS_07UHH",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "23327725",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 4_CPS_07UHH', header=None)\nall_agencies_idx = df[df[0].astype(str).str.strip() == 'All Agencies'].index[0]\nsub = df.iloc[all_agencies_idx:all_agencies_idx+8]\npt_row = sub[sub[0].astype(str).str.strip() == 'Physical Therapy'].iloc[0]\nresult = int(pt_row[2])",
+   "qid": "cms_program_stats_home_health_2023#5",
+   "pass1": true,
+   "result": 23327725,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many Original Medicare beneficiaries had 50 or more home health service visits in calendar year 2023?",
+   "sheet": "MDCR HHA 6_CPS_07UHH",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "319885",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 6_CPS_07UHH', header=None)\n# Under Number of Service Visits: '50-99' and '100 or More'\nrow_50_99 = df[df[0].astype(str).str.strip() == '50-99'].iloc[0][1]\nrow_100_plus = df[df[0].astype(str).str.strip() == '100 or More'].iloc[0][1]\nresult = int(row_50_99) + int(row_100_plus)",
+   "qid": "cms_program_stats_home_health_2023#6",
+   "pass1": true,
+   "result": 319885,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

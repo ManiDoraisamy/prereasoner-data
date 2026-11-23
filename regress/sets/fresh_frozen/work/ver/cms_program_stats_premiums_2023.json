@@ -1,0 +1,35 @@
+{
+ "id": "cms_program_stats_premiums_2023",
+ "answers": [
+  {
+   "id": "cms_program_stats_premiums_2023#1",
+   "answer": "3898888074",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 1_CPS_04PRM', header=None)\n# Look for calendar year 2021\nyear_col = 0\nstd_amount_col = None\nfor col_idx in range(df.shape[1]):\n    cell_val = str(df.iloc[2, col_idx])\n    if 'Standard Base Premium Amount' in cell_val:\n        std_amount_col = col_idx\n        break\n\nrow_2021 = df[df[0].astype(str).str.startswith('2021')].index[0]\nresult = int(df.iloc[row_2021, std_amount_col])"
+  },
+  {
+   "id": "cms_program_stats_premiums_2023#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 2_CPS_04PRM', header=None)\n\n# Find Penalty Addition Number of Beneficiaries column\npenalty_benes_col = None\nfor c in range(df.shape[1]):\n    if 'Penalty Addition Number of Beneficiaries' in str(df.iloc[3, c]):\n        penalty_benes_col = c\n        break\n\nmale_row = df[df[0].astype(str).str.strip() == 'Male'].index[0]\nfemale_row = df[df[0].astype(str).str.strip() == 'Female'].index[0]\n\nmale_val = int(df.iloc[male_row, penalty_benes_col])\nfemale_val = int(df.iloc[female_row, penalty_benes_col])\n\nresult = 'yes' if female_val > male_val else 'no'"
+  },
+  {
+   "id": "cms_program_stats_premiums_2023#3",
+   "answer": "2018",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 4_CPS_04PRM', header=None)\n\n# Identify Total Part B Premium Amount column\ntotal_col = None\nfor c in range(df.shape[1]):\n    if 'Total Part B Premium Amount' in str(df.iloc[2, c]):\n        total_col = c\n        break\n\n# Data rows are 2018 to 2023\ndata = []\nfor r in range(4, 11):\n    val_year = str(df.iloc[r, 0]).strip()\n    if val_year.isdigit():\n        amount = float(df.iloc[r, total_col])\n        data.append((val_year, amount))\n\ndata.sort(key=lambda x: x[1])\nresult = data[0][0]"
+  },
+  {
+   "id": "cms_program_stats_premiums_2023#4",
+   "answer": "Non-Hispanic White",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 5_CPS_04PRM', header=None)\n\nirmaa_benes_col = None\nfor c in range(df.shape[1]):\n    if 'IRMAA Addition Number of Beneficiaries' in str(df.iloc[3, c]):\n        irmaa_benes_col = c\n        break\n\nrace_start = df[df[0].astype(str).str.strip() == 'Race'].index[0]\nmme_start = df[df[0].astype(str).str.strip().str.startswith('Medicare-Medicaid Enrollment')].index[0]\n\nrace_rows = df.iloc[race_start + 1 : mme_start]\nrace_data = []\nfor idx, row in race_rows.iterrows():\n    label = str(row[0]).strip()\n    if label and label != 'nan' and label != 'BLANK':\n        try:\n            val = float(str(row[irmaa_benes_col]).replace(',', ''))\n            race_data.append((label, val))\n        except ValueError:\n            pass\n\nrace_data.sort(key=lambda x: x[1], reverse=True)\nresult = race_data[0][0]"
+  },
+  {
+   "id": "cms_program_stats_premiums_2023#5",
+   "answer": "[\"California\", \"New York\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 9_CPS_04PRM', header=None)\n\ntotal_benes_col = None\nfor c in range(df.shape[1]):\n    if 'Total Part D Premium Number of Beneficiaries' in str(df.iloc[2, c]):\n        total_benes_col = c\n        break\n\n# Rows between Alabama and Wyoming are the 50 states plus DC\nstart_idx = df[df[0].astype(str).str.strip() == 'Alabama'].index[0]\nend_idx = df[df[0].astype(str).str.strip() == 'Wyoming'].index[0]\n\nstate_data = []\nfor r in range(start_idx, end_idx + 1):\n    state = str(df.iloc[r, 0]).strip()\n    val = float(df.iloc[r, total_benes_col])\n    state_data.append((state, val))\n\nstate_data.sort(key=lambda x: x[1], reverse=True)\nresult = [s[0] for s in state_data[:3]]"
+  },
+  {
+   "id": "cms_program_stats_premiums_2023#6",
+   "answer": "8514105",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_premiums_2023.xlsx', sheet_name='MDCR PREMIUMS 8_CPS_04PRM', header=None)\n\ntotal_col = None\nfor c in range(df.shape[1]):\n    if 'Total Part D Premium Number of Beneficiaries' in str(df.iloc[3, c]):\n        total_col = c\n        break\n\ntarget_brackets = ['65-74 Years', '75-84 Years', '85-94 Years', '95 Years and Over']\ncounts = []\nfor b in target_brackets:\n    row_idx = df[df[0].astype(str).str.strip() == b].index[0]\n    counts.append(float(df.iloc[row_idx, total_col]))\n\nresult = sum(counts) / len(counts)\nif result.is_integer():\n    result = int(result)"
+  }
+ ]
+}

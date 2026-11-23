@@ -1,0 +1,12 @@
+{
+ "file": "nys_mta_daily_ridership.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 1776,
+   "cols": 15,
+   "shown_whole": false
+  }
+ ],
+ "chars": 16515
+}

@@ -1,0 +1,60 @@
+{
+ "id": "ers_foodborne_illness_cost_by_pathogen",
+ "file": "ers_foodborne_illness_cost_by_pathogen.xlsx",
+ "questions": [
+  {
+   "question": "What is the estimated mean total cost in millions of 2023 dollars for nontyphoidal Salmonella infections?",
+   "sheet": "MeanTotalAndPerCaseCosts",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "17127",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\ndata = df.iloc[2:33]\nrow = data[data[1].str.contains('Salmonella spp., nontyphoidal', na=False)]\nresult = float(row[3].values[0])",
+   "qid": "ers_foodborne_illness_cost_by_pathogen#1"
+  },
+  {
+   "question": "Which specific pathogen has the highest mean per-case cost?",
+   "sheet": "MeanTotalAndPerCaseCosts",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Vibrio vulnificus",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\ndata = df.iloc[2:33].copy()\ndata[4] = pd.to_numeric(data[4])\nresult = data.loc[data[4].idxmax(), 1]",
+   "qid": "ers_foodborne_illness_cost_by_pathogen#2"
+  },
+  {
+   "question": "How many individual bacterial pathogens are tracked in the table?",
+   "sheet": "MeanTotalAndPerCaseCosts",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "21",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\ndata = df.iloc[2:33]\nresult = int((data[0] == 'Bacteria').sum())",
+   "qid": "ers_foodborne_illness_cost_by_pathogen#3"
+  },
+  {
+   "question": "What are the three foodborne pathogens with the greatest mean total cost in millions of dollars?",
+   "sheet": "MeanTotalAndPerCaseCosts",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Salmonella spp., nontyphoidal\", \"Campylobacter spp.\", \"Toxoplasma gondii (total)\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\ndata = df.iloc[2:33].copy()\ndata[3] = pd.to_numeric(data[3])\nresult = data.sort_values(by=3, ascending=False).head(3)[1].tolist()",
+   "qid": "ers_foodborne_illness_cost_by_pathogen#4"
+  },
+  {
+   "question": "Does Campylobacter spp. cause more average annual cases than non-typhoidal Salmonella?",
+   "sheet": "MeanTotalAndPerCaseCosts",
+   "kind": "comparison",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\ndata = df.iloc[2:33]\ncamp = float(data[data[1].str.contains('Campylobacter spp.', na=False)][2].values[0])\nsalm = float(data[data[1].str.contains('Salmonella spp., nontyphoidal', na=False)][2].values[0])\nresult = 'yes' if camp > salm else 'no'",
+   "qid": "ers_foodborne_illness_cost_by_pathogen#5"
+  },
+  {
+   "question": "What is the combined mean total cost in millions of 2023 dollars for all listed parasitic pathogens?",
+   "sheet": "MeanTotalAndPerCaseCosts",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "5852.0",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\ndata = df.iloc[2:33].copy()\nparasites = data[data[0] == 'Parasites']\nresult = round(float(pd.to_numeric(parasites[3]).sum()), 1)",
+   "qid": "ers_foodborne_illness_cost_by_pathogen#6"
+  }
+ ]
+}

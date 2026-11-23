@@ -1,0 +1,35 @@
+{
+ "id": "irs_data_book_gross_collections_by_state_fy2023",
+ "answers": [
+  {
+   "id": "irs_data_book_gross_collections_by_state_fy2023#1",
+   "answer": "4524095",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_data_book_gross_collections_by_state_fy2023.xlsx', sheet_name='Table 5', header=None)\n# Find California row and Estate tax column (column J is index 9)\nstate_col = 0\nestate_col = 9\ncal_row = df[df[state_col] == 'California'].index[0]\nresult = int(df.iat[cal_row, estate_col])"
+  },
+  {
+   "id": "irs_data_book_gross_collections_by_state_fy2023#2",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_data_book_gross_collections_by_state_fy2023.xlsx', sheet_name='Table 5', header=None)\ntx_val = df.loc[df[0] == 'Texas', 1].values[0]\nny_val = df.loc[df[0] == 'New York', 1].values[0]\nresult = 'Texas' if tx_val > ny_val else 'New York'"
+  },
+  {
+   "id": "irs_data_book_gross_collections_by_state_fy2023#3",
+   "answer": "[\"California\", \"New York\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_data_book_gross_collections_by_state_fy2023.xlsx', sheet_name='Table 5', header=None)\n# States and DC are in rows 6 to 56 (Excel rows 7 to 57)\nstates_df = df.iloc[6:57].copy()\nstates_df[2] = pd.to_numeric(states_df[2])\ntop3 = states_df.sort_values(by=2, ascending=False).head(3)[0].tolist()\nresult = top3"
+  },
+  {
+   "id": "irs_data_book_gross_collections_by_state_fy2023#4",
+   "answer": "16",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_data_book_gross_collections_by_state_fy2023.xlsx', sheet_name='Table 5', header=None)\nstates_df = df.iloc[6:57].copy()\nstates_df[1] = pd.to_numeric(states_df[1])\nresult = int((states_df[1] > 100000000).sum())"
+  },
+  {
+   "id": "irs_data_book_gross_collections_by_state_fy2023#5",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_data_book_gross_collections_by_state_fy2023.xlsx', sheet_name='Table 5', header=None)\nfl_excise = df.loc[df[0] == 'Florida', 11].values[0]\nca_excise = df.loc[df[0] == 'California', 11].values[0]\nresult = 'yes' if fl_excise > ca_excise else 'no'"
+  },
+  {
+   "id": "irs_data_book_gross_collections_by_state_fy2023#6",
+   "answer": "68638284",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('irs_data_book_gross_collections_by_state_fy2023.xlsx', sheet_name='Table 5', header=None)\nny_biz = df.loc[df[0] == 'New York', 2].values[0]\nnj_biz = df.loc[df[0] == 'New Jersey', 2].values[0]\nresult = int(ny_biz + nj_biz)"
+  }
+ ]
+}

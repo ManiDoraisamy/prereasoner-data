@@ -1,0 +1,88 @@
+{
+ "id": "epa_air_quality_statistics_by_city_2025",
+ "file": "epa_air_quality_statistics_by_city_2025.xlsx",
+ "questions": [
+  {
+   "question": "What was the 2020 Census population for the Albuquerque, NM metropolitan area?",
+   "sheet": "AQ Stats by City 2025",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "916528",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = df.iloc[header_row]\ndata = df.iloc[header_row + 1:].copy()\n\npop_col = [c for c in data.columns if 'Population' in str(c)][0]\nrow = data[data.iloc[:, 0] == 'Albuquerque, NM']\nresult = int(row[pop_col].values[0])",
+   "qid": "epa_air_quality_statistics_by_city_2025#1",
+   "pass1": true,
+   "result": 916528,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Austin-Round Rock-Georgetown, TX and Dallas-Fort Worth-Arlington, TX, which area recorded a higher 8-hour ozone concentration in 2025?",
+   "sheet": "AQ Stats by City 2025",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Dallas-Fort Worth-Arlington, TX",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = df.iloc[header_row]\ndata = df.iloc[header_row + 1:].copy()\n\ncbsa_col = data.columns[0]\no3_col = [c for c in data.columns if 'Ozone' in str(c)][0]\n\nc1 = 'Austin-Round Rock-Georgetown, TX'\nc2 = 'Dallas-Fort Worth-Arlington, TX'\n\nv1 = float(data[data[cbsa_col] == c1][o3_col].values[0])\nv2 = float(data[data[cbsa_col] == c2][o3_col].values[0])\n\nresult = c1 if v1 > v2 else c2",
+   "qid": "epa_air_quality_statistics_by_city_2025#2",
+   "pass1": true,
+   "result": "Dallas-Fort Worth-Arlington, TX",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many statistical areas in the 2025 summary had a 2020 Census population of 5,000,000 or greater?",
+   "sheet": "AQ Stats by City 2025",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "9",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = df.iloc[header_row]\ndata = df.iloc[header_row + 1:].copy()\n\npop_col = [c for c in data.columns if 'Population' in str(c)][0]\npop = pd.to_numeric(data[pop_col], errors='coerce')\nresult = int((pop >= 5000000).sum())",
+   "qid": "epa_air_quality_statistics_by_city_2025#3",
+   "pass1": true,
+   "result": 9,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three statistical areas recorded the highest 24-hour PM10 concentrations in 2025?",
+   "sheet": "AQ Stats by City 2025",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"El Paso, TX\", \"Las Cruces, NM\", \"Phoenix-Mesa-Chandler, AZ\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = df.iloc[header_row]\ndata = df.iloc[header_row + 1:].copy()\n\ncbsa_col = data.columns[0]\npm10_col = [c for c in data.columns if 'PM10' in str(c)][0]\n\ndata['pm10_val'] = pd.to_numeric(data[pm10_col], errors='coerce')\ntop3 = data.dropna(subset=['pm10_val']).sort_values('pm10_val', ascending=False).head(3)\nresult = top3[cbsa_col].tolist()",
+   "qid": "epa_air_quality_statistics_by_city_2025#4",
+   "pass1": true,
+   "result": [
+    "El Paso, TX",
+    "Las Cruces, NM",
+    "Phoenix-Mesa-Chandler, AZ"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the total 2020 Census population across all statistical areas in Puerto Rico listed in the report?",
+   "sheet": "AQ Stats by City 2025",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "2679948",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = df.iloc[header_row]\ndata = df.iloc[header_row + 1:].copy()\n\ncbsa_col = data.columns[0]\npop_col = [c for c in data.columns if 'Population' in str(c)][0]\n\npr_data = data[data[cbsa_col].astype(str).str.endswith(', PR')].copy()\nresult = int(pd.to_numeric(pr_data[pop_col], errors='coerce').sum())",
+   "qid": "epa_air_quality_statistics_by_city_2025#5",
+   "pass1": true,
+   "result": 2679948,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did any statistical area report a weighted annual mean sulfur dioxide (SO2) level of 10 ppb or higher in 2025?",
+   "sheet": "AQ Stats by City 2025",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = df.iloc[header_row]\ndata = df.iloc[header_row + 1:].copy()\n\nso2_col = [c for c in data.columns if 'SO2' in str(c) and 'Wtd AM' in str(c)][0]\nso2_vals = pd.to_numeric(data[so2_col], errors='coerce')\nresult = 'yes' if (so2_vals >= 10).any() else 'no'",
+   "qid": "epa_air_quality_statistics_by_city_2025#6",
+   "pass1": true,
+   "result": "no",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

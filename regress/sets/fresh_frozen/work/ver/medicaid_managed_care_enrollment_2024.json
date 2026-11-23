@@ -1,0 +1,35 @@
+{
+ "id": "medicaid_managed_care_enrollment_2024",
+ "answers": [
+  {
+   "id": "medicaid_managed_care_enrollment_2024#1",
+   "answer": "14904950",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\nrow = df[(df['State'] == 'California') & (df['Year'] == 2024)]\nval_str = row['Total Medicaid Enrollees'].values[0]\nresult = int(val_str.replace(',', '').strip())"
+  },
+  {
+   "id": "medicaid_managed_care_enrollment_2024#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\ndf_2024 = df[df['Year'] == 2024]\n\ntx_val = int(df_2024[df_2024['State'] == 'Texas']['Medicaid Enrollment in Comprehensive Managed Care'].values[0].replace(',', ''))\nfl_val = int(df_2024[df_2024['State'] == 'Florida']['Medicaid Enrollment in Comprehensive Managed Care'].values[0].replace(',', ''))\n\nresult = 'yes' if tx_val > fl_val else 'no'"
+  },
+  {
+   "id": "medicaid_managed_care_enrollment_2024#3",
+   "answer": "[\"California\", \"New York\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\ndf_2024 = df[(df['Year'] == 2024) & (~df['State'].str.contains('TOTAL', case=False, na=False))].copy()\n\ndef parse_num(x):\n    if pd.isna(x) or str(x).strip() in ['--', '', '-']:\n        return 0\n    return int(str(x).replace(',', '').strip())\n\ndf_2024['comp_mc'] = df_2024['Medicaid Enrollment in Comprehensive Managed Care'].apply(parse_num)\ntop3 = df_2024.sort_values(by='comp_mc', ascending=False).head(3)\nresult = top3['State'].tolist()"
+  },
+  {
+   "id": "medicaid_managed_care_enrollment_2024#4",
+   "answer": "2023",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\ntotals = df[df['State'].str.contains('TOTAL', case=False, na=False)].copy()\ntotals['total_num'] = totals['Total Medicaid Enrollees'].str.replace(',', '').astype(int)\nbest_row = totals.sort_values(by='total_num', ascending=False).iloc[0]\nresult = str(best_row['Year'])"
+  },
+  {
+   "id": "medicaid_managed_care_enrollment_2024#5",
+   "answer": "3",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\ndf_2023 = df[(df['Year'] == 2023) & (~df['State'].str.contains('TOTAL', case=False, na=False))].copy()\n\ndef parse_num(x):\n    if pd.isna(x) or str(x).strip() in ['--', '', '-']:\n        return 0\n    return int(str(x).replace(',', '').strip())\n\ndf_2023['enrollees'] = df_2023['Total Medicaid Enrollees'].apply(parse_num)\nresult = int((df_2023['enrollees'] > 5000000).sum())"
+  },
+  {
+   "id": "medicaid_managed_care_enrollment_2024#6",
+   "answer": "California",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_managed_care_enrollment_2024.csv')\ndf_2024 = df[(df['Year'] == 2024) & (~df['State'].str.contains('TOTAL', case=False, na=False))].copy()\n\ndef parse_num(x):\n    if pd.isna(x) or str(x).strip() in ['--', '', '-']:\n        return 0\n    return int(str(x).replace(',', '').strip())\n\ndf_2024['newly_eligible'] = df_2024['Medicaid Newly Eligible Adults Enrolled in Comprehensive MCOs'].apply(parse_num)\ntop_state = df_2024.sort_values(by='newly_eligible', ascending=False).iloc[0]\nresult = top_state['State']"
+  }
+ ]
+}

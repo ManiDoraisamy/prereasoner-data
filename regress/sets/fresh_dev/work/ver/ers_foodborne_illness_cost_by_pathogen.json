@@ -1,0 +1,35 @@
+{
+ "id": "ers_foodborne_illness_cost_by_pathogen",
+ "answers": [
+  {
+   "id": "ers_foodborne_illness_cost_by_pathogen#3",
+   "answer": "21",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=1)\nbacteria = df[df['Pathogen classification'] == 'Bacteria']\nresult = int(len(bacteria))"
+  },
+  {
+   "id": "ers_foodborne_illness_cost_by_pathogen#6",
+   "answer": "5852",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=1)\nparasites = df[df['Pathogen classification'] == 'Parasites']\nresult = float(round(parasites['Mean total cost (millions)'].sum(), 2))"
+  },
+  {
+   "id": "ers_foodborne_illness_cost_by_pathogen#1",
+   "answer": "17127",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Pathogen classification').any(), axis=1)].index[0]\ndf.columns = [str(col).strip() for col in df.iloc[header_idx]]\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\nsalmonella_row = df[df['Pathogen'].astype(str).str.contains('nontyphoidal', case=False)].iloc[0]\nresult = float(salmonella_row['Mean total cost (millions)'])\nif result.is_integer():\n    result = int(result)"
+  },
+  {
+   "id": "ers_foodborne_illness_cost_by_pathogen#2",
+   "answer": "Vibrio vulnificus",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Pathogen classification').any(), axis=1)].index[0]\ndf.columns = [str(col).strip() for col in df.iloc[header_idx]]\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\npathogens = df[df['Pathogen classification'].isin(['Bacteria', 'Parasites', 'Viruses'])].copy()\npathogens['Mean per-case cost'] = pd.to_numeric(pathogens['Mean per-case cost'])\nresult = pathogens.sort_values(by='Mean per-case cost', ascending=False).iloc[0]['Pathogen']"
+  },
+  {
+   "id": "ers_foodborne_illness_cost_by_pathogen#4",
+   "answer": "[\"Salmonella spp., nontyphoidal\", \"Campylobacter spp.\", \"Toxoplasma gondii (total)\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Pathogen classification').any(), axis=1)].index[0]\ndf.columns = [str(col).strip() for col in df.iloc[header_idx]]\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\npathogens = df[df['Pathogen classification'].isin(['Bacteria', 'Parasites', 'Viruses'])].copy()\npathogens['Mean total cost (millions)'] = pd.to_numeric(pathogens['Mean total cost (millions)'])\nresult = pathogens.sort_values(by='Mean total cost (millions)', ascending=False).head(3)['Pathogen'].tolist()"
+  },
+  {
+   "id": "ers_foodborne_illness_cost_by_pathogen#5",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_foodborne_illness_cost_by_pathogen.xlsx', sheet_name='MeanTotalAndPerCaseCosts', header=None)\nheader_idx = df[df.apply(lambda r: r.astype(str).str.contains('Pathogen classification').any(), axis=1)].index[0]\ndf.columns = [str(col).strip() for col in df.iloc[header_idx]]\ndf = df.iloc[header_idx + 1:].reset_index(drop=True)\n\ncampy_cases = pd.to_numeric(df[df['Pathogen'].astype(str).str.contains('Campylobacter', case=False)]['Mean number of cases']).iloc[0]\nsalm_cases = pd.to_numeric(df[df['Pathogen'].astype(str).str.contains('nontyphoidal', case=False)]['Mean number of cases']).iloc[0]\nresult = 'yes' if campy_cases > salm_cases else 'no'"
+  }
+ ]
+}

@@ -1,0 +1,95 @@
+{
+ "dataset": "customer-orders",
+ "kind": "world+fx",
+ "uploads": [
+  {
+   "name": "orders",
+   "columns": [
+    "order ID",
+    "customer",
+    "city",
+    "tier",
+    "ordered",
+    "currency",
+    "amount"
+   ],
+   "rows": 23
+  }
+ ],
+ "normalized": [
+  {
+   "name": "orders",
+   "upload": "orders",
+   "columns": [
+    "order ID",
+    "customer",
+    "city",
+    "tier",
+    "ordered",
+    "currency",
+    "amount"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [
+  {
+   "upload": "orders",
+   "table": "orders",
+   "column": "city",
+   "column_index": 2,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "orders connected to knowledgebase",
+   "bridged": true,
+   "cells": 7,
+   "cells_matched": 7
+  }
+ ],
+ "entity_columns": [],
+ "conversions": [
+  {
+   "upload": "orders",
+   "table": "orders",
+   "currency_column": "currency",
+   "currency_index": 5,
+   "date_column": null,
+   "date_index": null,
+   "measures": [
+    {
+     "column": "amount",
+     "column_index": 6
+    }
+   ],
+   "rate_columns": [
+    "rate_to_aud",
+    "rate_to_cad",
+    "rate_to_chf",
+    "rate_to_cny",
+    "rate_to_eur",
+    "rate_to_gbp",
+    "rate_to_inr",
+    "rate_to_jpy",
+    "rate_to_usd"
+   ],
+   "as_of": "2026-11-18",
+   "days": 1
+  }
+ ],
+ "knowledgebase_tables": {
+  "Cities": 47,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 47,
+  "country": 209,
+  "exchange_rate": 30,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 5.9
+}

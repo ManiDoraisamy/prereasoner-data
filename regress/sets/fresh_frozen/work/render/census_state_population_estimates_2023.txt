@@ -1,0 +1,73 @@
+FILE census_state_population_estimates_2023.xlsx (Excel workbook) with 1 sheet(s): ["NST-EST2023-POP"]
+
+### Sheet "NST-EST2023-POP": 68 rows x 6 columns (Excel rows 1..68, columns A..F)
+merged cells: A2:F2, A63:F63, C3:F3, A68:F68, A66:F66, A1:F1, A3:A4, B3:B4, A67:F67, A64:F64, A65:F65
+(whole sheet shown; Excel row numbers)
+r1: A=table with row headers in column A and column headers in rows 3 through 4. (leading dots i...
+r2: A=Annual Estimates of the Resident Population for the United States, Regions, States, Distri...
+r3: A=Geographic Area | B=April 1, 2020 Estimates Base | C=Population Estimate (as of July 1)
+r4: C=2020 | D=2021 | E=2022 | F=2023
+r5: A=United States | B=331464948 | C=331526933 | D=332048977 | E=333271411 | F=334914895
+r6: A=Northeast | B=57614141 | C=57430477 | D=57243423 | E=57026847 | F=56983517
+r7: A=Midwest | B=68987296 | C=68969794 | D=68850246 | E=68783028 | F=68909283
+r8: A=South | B=126268529 | C=126465281 | D=127353282 | E=128702030 | F=130125290
+r9: A=West | B=78594982 | C=78661381 | D=78602026 | E=78759506 | F=78896805
+r10: A=.Alabama | B=5024294 | C=5031864 | D=5050380 | E=5073903 | F=5108468
+r11: A=.Alaska | B=733374 | C=732964 | D=734923 | E=733276 | F=733406
+r12: A=.Arizona | B=7157902 | C=7186683 | D=7272487 | E=7365684 | F=7431344
+r13: A=.Arkansas | B=3011490 | C=3014348 | D=3028443 | E=3046404 | F=3067732
+r14: A=.California | B=39538212 | C=39503200 | D=39145060 | E=39040616 | F=38965193
+r15: A=.Colorado | B=5773707 | C=5785219 | D=5811596 | E=5841039 | F=5877610
+r16: A=.Connecticut | B=3605912 | C=3577586 | D=3603691 | E=3608706 | F=3617176
+r17: A=.Delaware | B=989946 | C=991862 | D=1004881 | E=1019459 | F=1031890
+r18: A=.District of Columbia | B=689548 | C=670839 | D=669037 | E=670949 | F=678972
+r19: A=.Florida | B=21538216 | C=21591299 | D=21830708 | E=22245521 | F=22610726
+r20: A=.Georgia | B=10713771 | C=10732390 | D=10790385 | E=10913150 | F=11029227
+r21: A=.Hawaii | B=1455274 | C=1451181 | D=1446745 | E=1439399 | F=1435138
+r22: A=.Idaho | B=1839117 | C=1849339 | D=1904537 | E=1938996 | F=1964726
+r23: A=.Illinois | B=12813469 | C=12790357 | D=12690341 | E=12582515 | F=12549689
+r24: A=.Indiana | B=6785442 | C=6789098 | D=6813798 | E=6832274 | F=6862199
+r25: A=.Iowa | B=3190427 | C=3190904 | D=3197944 | E=3199693 | F=3207004
+r26: A=.Kansas | B=2937835 | C=2938124 | D=2937946 | E=2936716 | F=2940546
+r27: A=.Kentucky | B=4506297 | C=4508155 | D=4507600 | E=4511563 | F=4526154
+r28: A=.Louisiana | B=4657785 | C=4652022 | D=4627047 | E=4588023 | F=4573749
+r29: A=.Maine | B=1363177 | C=1364517 | D=1378787 | E=1389338 | F=1395722
+r30: A=.Maryland | B=6177253 | C=6173689 | D=6175045 | E=6163981 | F=6180253
+r31: A=.Massachusetts | B=7032933 | C=6997713 | D=6991951 | E=6982740 | F=7001399
+r32: A=.Michigan | B=10077674 | C=10070627 | D=10038117 | E=10033281 | F=10037261
+r33: A=.Minnesota | B=5706804 | C=5710578 | D=5717968 | E=5714300 | F=5737915
+r34: A=.Mississippi | B=2961306 | C=2958409 | D=2949582 | E=2938928 | F=2939690
+r35: A=.Missouri | B=6154889 | C=6154426 | D=6170393 | E=6177168 | F=6196156
+r36: A=.Montana | B=1084244 | C=1087211 | D=1106366 | E=1122878 | F=1132812
+r37: A=.Nebraska | B=1961965 | C=1963273 | D=1964253 | E=1968060 | F=1978379
+r38: A=.Nevada | B=3104617 | C=3115840 | D=3146632 | E=3177421 | F=3194176
+r39: A=.New Hampshire | B=1377524 | C=1378702 | D=1387494 | E=1399003 | F=1402054
+r40: A=.New Jersey | B=9289039 | C=9272392 | D=9269175 | E=9260817 | F=9290841
+r41: A=.New Mexico | B=2117525 | C=2118488 | D=2116950 | E=2113476 | F=2114371
+r42: A=.New York | B=20202320 | C=20104710 | D=19854526 | E=19673200 | F=19571216
+r43: A=.North Carolina | B=10439459 | C=10453812 | D=10567100 | E=10695965 | F=10835491
+r44: A=.North Dakota | B=779079 | C=779563 | D=777982 | E=778912 | F=783926
+r45: A=.Ohio | B=11799331 | C=11798292 | D=11765227 | E=11759697 | F=11785935
+r46: A=.Oklahoma | B=3959411 | C=3965234 | D=3991634 | E=4019271 | F=4053824
+r47: A=.Oregon | B=4237279 | C=4245044 | D=4256465 | E=4239379 | F=4233358
+r48: A=.Pennsylvania | B=13002788 | C=12995477 | D=13013614 | E=12972091 | F=12961683
+r49: A=.Rhode Island | B=1097371 | C=1096444 | D=1097092 | E=1093842 | F=1095962
+r50: A=.South Carolina | B=5118422 | C=5132151 | D=5193848 | E=5282955 | F=5373555
+r51: A=.South Dakota | B=886668 | C=887852 | D=896299 | E=909869 | F=919318
+r52: A=.Tennessee | B=6910786 | C=6926091 | D=6963709 | E=7048976 | F=7126489
+r53: A=.Texas | B=29145459 | C=29234361 | D=29561286 | E=30029848 | F=30503301
+r54: A=.Utah | B=3271614 | C=3283982 | D=3339284 | E=3381236 | F=3417734
+r55: A=.Vermont | B=643077 | C=642936 | D=647093 | E=647110 | F=647464
+r56: A=.Virginia | B=8631373 | C=8637193 | D=8657348 | E=8679099 | F=8715698
+r57: A=.Washington | B=7705267 | C=7724566 | D=7741433 | E=7784477 | F=7812880
+r58: A=.West Virginia | B=1793713 | C=1791562 | D=1785249 | E=1774035 | F=1770071
+r59: A=.Wisconsin | B=5893713 | C=5896700 | D=5879978 | E=5890543 | F=5910955
+r60: A=.Wyoming | B=576850 | C=577664 | D=579548 | E=581629 | F=584057
+r61: (blank)
+r62: A=.Puerto Rico | B=3285874 | C=3281557 | D=3262693 | E=3220113 | F=3205691
+r63: A=Vintage 2023 data products are associated with Data Management System projects P-6000042, ...
+r64: A=Note: The estimates are developed from a base that integrates the 2020 Census, Vintage 202...
+r65: A=Suggested Citation:
+r66: A=Annual Estimates of the Resident Population for the United States, Regions, States, Distri...
+r67: A=Source: U.S. Census Bureau, Population Division
+r68: A=Release Date: December 2023

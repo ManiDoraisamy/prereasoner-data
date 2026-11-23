@@ -1,0 +1,84 @@
+{
+ "id": "cdc_vsrr_quarterly_mortality_estimates",
+ "file": "cdc_vsrr_quarterly_mortality_estimates.csv",
+ "questions": [
+  {
+   "question": "What was the nationwide age-adjusted death rate for Alzheimer disease during the 12-month period ending in the first quarter of 2023?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "27.9",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nfiltered = df[\n    (df['Year and Quarter'] == '2023 Q1') &\n    (df['Time Period'] == '12 months ending with quarter') &\n    (df['Cause of Death'] == 'Alzheimer disease') &\n    (df['Rate Type'] == 'Age-adjusted')\n]\nresult = float(filtered['Overall Rate'].iloc[0])",
+   "qid": "cdc_vsrr_quarterly_mortality_estimates#1",
+   "pass1": true,
+   "result": 27.9,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In the single 3-month period of 2023 Q1, was the nationwide age-adjusted mortality rate from cancer higher for males or for females?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Rate Sex Male",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nfiltered = df[\n    (df['Year and Quarter'] == '2023 Q1') &\n    (df['Time Period'] == '3-month period') &\n    (df['Cause of Death'] == 'Cancer') &\n    (df['Rate Type'] == 'Age-adjusted')\n].iloc[0]\n\nresult = 'Rate Sex Male' if filtered['Rate Sex Male'] > filtered['Rate Sex Female'] else 'Rate Sex Female'",
+   "qid": "cdc_vsrr_quarterly_mortality_estimates#2",
+   "pass1": true,
+   "result": "Rate Sex Male",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Across the entire dataset, how many distinct causes of death are tracked?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "21",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nresult = int(df['Cause of Death'].nunique())",
+   "qid": "cdc_vsrr_quarterly_mortality_estimates#3",
+   "pass1": true,
+   "result": 21,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In the 12-month period ending in 2023 Q1, did West Virginia have an age-adjusted overall death rate exceeding 1,000 deaths per 100,000 across all causes?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nfiltered = df[\n    (df['Year and Quarter'] == '2023 Q1') &\n    (df['Time Period'] == '12 months ending with quarter') &\n    (df['Cause of Death'] == 'All causes') &\n    (df['Rate Type'] == 'Age-adjusted')\n]\nrate = filtered['Rate West Virginia'].iloc[0]\nresult = 'yes' if rate > 1000 else 'no'",
+   "qid": "cdc_vsrr_quarterly_mortality_estimates#4",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "During the single 3-month period of 2023 Q1, what was the average crude death rate from firearm-related injuries across the three youngest age groups: ages 1-4, ages 5-14, and ages 15-24?",
+   "sheet": "",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "7.6",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nfiltered = df[\n    (df['Year and Quarter'] == '2023 Q1') &\n    (df['Time Period'] == '3-month period') &\n    (df['Cause of Death'] == 'Firearm-related injury') &\n    (df['Rate Type'] == 'Crude')\n].iloc[0]\n\nrates = [filtered['Rate Age 1-4'], filtered['Rate Age 5-14'], filtered['Rate Age 15-24']]\nresult = round(sum(rates) / len(rates), 1)",
+   "qid": "cdc_vsrr_quarterly_mortality_estimates#5",
+   "pass1": true,
+   "result": 7.6,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states had the highest age-adjusted drug overdose mortality rates during the 12 months ending in 2023 Q1?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Rate West Virginia\", \"Rate District of Columbia\", \"Rate Delaware\"]",
+   "program": "import pandas as pd\nimport json\n\ndf = pd.read_csv('cdc_vsrr_quarterly_mortality_estimates.csv')\nfiltered = df[\n    (df['Year and Quarter'] == '2023 Q1') &\n    (df['Time Period'] == '12 months ending with quarter') &\n    (df['Cause of Death'] == 'Drug overdose') &\n    (df['Rate Type'] == 'Age-adjusted')\n]\n\nstate_cols = [c for c in df.columns if c.startswith('Rate ') and c not in ['Rate Sex Female', 'Rate Sex Male', 'Rate 65-74'] and not c.startswith('Rate Age')]\nstate_series = filtered[state_cols].iloc[0]\ntop3 = state_series.nlargest(3).index.tolist()\nresult = json.dumps(top3)",
+   "qid": "cdc_vsrr_quarterly_mortality_estimates#6",
+   "pass1": false,
+   "result": null,
+   "error": "TypeError: Cannot use method 'nlargest' with dtype object",
+   "reject1": "program failed"
+  }
+ ]
+}

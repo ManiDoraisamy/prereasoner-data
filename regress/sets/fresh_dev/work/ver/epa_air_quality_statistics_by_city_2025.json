@@ -1,0 +1,35 @@
+{
+ "id": "epa_air_quality_statistics_by_city_2025",
+ "answers": [
+  {
+   "id": "epa_air_quality_statistics_by_city_2025#1",
+   "answer": "916528",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndata = df.iloc[header_idx + 1:].copy()\ndata = data[data['Core Based Statistical Area (CBSA)'].notna()]\ndata = data[~data['Core Based Statistical Area (CBSA)'].astype(str).str.contains('\u00b5g/m3|ppb|ppm|CO -|Lead -|NO2|Ozone|PM10|PM2.5|SO2|IN -|ND -', na=False)]\n\nrow = data[data['Core Based Statistical Area (CBSA)'].astype(str).str.startswith('Albuquerque')]\nresult = int(row['Population (2020 Census)'].values[0])"
+  },
+  {
+   "id": "epa_air_quality_statistics_by_city_2025#2",
+   "answer": "Dallas-Fort Worth-Arlington, TX",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndata = df.iloc[header_idx + 1:].copy()\n\nozone_col = [c for c in data.columns if 'Ozone' in c][0]\ncity_col = [c for c in data.columns if 'Core Based Statistical Area' in c][0]\n\ntargets = ['Austin-Round Rock-Georgetown, TX', 'Dallas-Fort Worth-Arlington, TX']\nsubset = data[data[city_col].isin(targets)].copy()\nsubset[ozone_col] = pd.to_numeric(subset[ozone_col], errors='coerce')\nresult = subset.sort_values(by=ozone_col, ascending=False).iloc[0][city_col]"
+  },
+  {
+   "id": "epa_air_quality_statistics_by_city_2025#3",
+   "answer": "9",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndata = df.iloc[header_idx + 1:].copy()\n\npop_col = [c for c in data.columns if 'Population' in c][0]\ncity_col = [c for c in data.columns if 'Core Based Statistical Area' in c][0]\n\ndata = data[data[city_col].notna()]\ndata = data[~data[city_col].astype(str).str.contains('\u00b5g/m3|ppb|ppm|CO -|Lead -|NO2|Ozone|PM10|PM2.5|SO2|IN -|ND -', na=False)]\npop_numeric = pd.to_numeric(data[pop_col], errors='coerce')\nresult = int((pop_numeric >= 5000000).sum())"
+  },
+  {
+   "id": "epa_air_quality_statistics_by_city_2025#4",
+   "answer": "[\"El Paso, TX\", \"Las Cruces, NM\", \"Phoenix-Mesa-Chandler, AZ\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndata = df.iloc[header_idx + 1:].copy()\n\npm10_col = [c for c in data.columns if 'PM10' in c][0]\ncity_col = [c for c in data.columns if 'Core Based Statistical Area' in c][0]\n\ndata = data[data[city_col].notna()]\ndata = data[~data[city_col].astype(str).str.contains('\u00b5g/m3|ppb|ppm|CO -|Lead -|NO2|Ozone|PM10|PM2.5|SO2|IN -|ND -', na=False)]\ndata[pm10_col] = pd.to_numeric(data[pm10_col], errors='coerce')\ntop3 = data.sort_values(by=pm10_col, ascending=False).head(3)\nresult = top3[city_col].tolist()"
+  },
+  {
+   "id": "epa_air_quality_statistics_by_city_2025#5",
+   "answer": "2679948",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndata = df.iloc[header_idx + 1:].copy()\n\npop_col = [c for c in data.columns if 'Population' in c][0]\ncity_col = [c for c in data.columns if 'Core Based Statistical Area' in c][0]\n\npr_data = data[data[city_col].astype(str).str.endswith(', PR')].copy()\npr_data[pop_col] = pd.to_numeric(pr_data[pop_col], errors='coerce')\nresult = int(pr_data[pop_col].sum())"
+  },
+  {
+   "id": "epa_air_quality_statistics_by_city_2025#6",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('epa_air_quality_statistics_by_city_2025.xlsx', sheet_name='AQ Stats by City 2025', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('Core Based Statistical Area', na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndata = df.iloc[header_idx + 1:].copy()\n\nso2_am_col = [c for c in data.columns if 'SO2' in c and 'Wtd' in c][0]\ncity_col = [c for c in data.columns if 'Core Based Statistical Area' in c][0]\n\ndata = data[data[city_col].notna()]\ndata = data[~data[city_col].astype(str).str.contains('\u00b5g/m3|ppb|ppm|CO -|Lead -|NO2|Ozone|PM10|PM2.5|SO2|IN -|ND -', na=False)]\nvals = pd.to_numeric(data[so2_am_col], errors='coerce')\nresult = 'yes' if (vals >= 10).any() else 'no'"
+  }
+ ]
+}

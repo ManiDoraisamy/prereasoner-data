@@ -1,0 +1,35 @@
+{
+ "id": "ers_food_expenditure_series_nominal",
+ "answers": [
+  {
+   "id": "ers_food_expenditure_series_nominal#1",
+   "answer": "860098.13",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=1)\nyear_col = [c for c in df.columns if 'Year' in str(c)][0]\nfah_col = [c for c in df.columns if 'Total food-at-home expenditures' in str(c)][0]\n\ndf[year_col] = pd.to_numeric(df[year_col], errors='coerce')\nrow_2020 = df[df[year_col] == 2020]\nresult = float(row_2020[fah_col].values[0])"
+  },
+  {
+   "id": "ers_food_expenditure_series_nominal#2",
+   "answer": "113810.31",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=1)\nyear_col = [c for c in df.columns if 'Year' in str(c)][0]\nfafh_col = [c for c in df.columns if 'Total food-away-from-home expenditures' in str(c)][0]\nfah_col = [c for c in df.columns if 'Total food-at-home expenditures' in str(c)][0]\n\ndf[year_col] = pd.to_numeric(df[year_col], errors='coerce')\nrow_2021 = df[df[year_col] == 2021]\nresult = float(row_2021[fafh_col].values[0] - row_2021[fah_col].values[0])"
+  },
+  {
+   "id": "ers_food_expenditure_series_nominal#3",
+   "answer": "2018",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=1)\nyear_col = [c for c in df.columns if 'Year' in str(c)][0]\nfafh_col = [c for c in df.columns if 'Total food-away-from-home expenditures' in str(c)][0]\n\ndf[year_col] = pd.to_numeric(df[year_col], errors='coerce')\ndf[fafh_col] = pd.to_numeric(df[fafh_col], errors='coerce')\n\nsurpassed = df[df[fafh_col] > 1000000].sort_values(by=year_col)\nresult = str(int(surpassed.iloc[0][year_col]))"
+  },
+  {
+   "id": "ers_food_expenditure_series_nominal#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=1)\nyear_col = [c for c in df.columns if 'Year' in str(c)][0]\nalc_col = [c for c in df.columns if 'Alcohol sales at eating and drinking places' in str(c)][0]\n\ndf[year_col] = pd.to_numeric(df[year_col], errors='coerce')\ndf[alc_col] = pd.to_numeric(df[alc_col], errors='coerce')\n\nval_2019 = df[df[year_col] == 2019][alc_col].values[0]\nval_2020 = df[df[year_col] == 2020][alc_col].values[0]\nresult = 'yes' if val_2020 < val_2019 else 'no'"
+  },
+  {
+   "id": "ers_food_expenditure_series_nominal#5",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=1)\nyear_col = [c for c in df.columns if 'Year' in str(c)][0]\nalc_afh_col = [c for c in df.columns if 'Total alcohol-away-from-home sales' in str(c)][0]\n\ndf[year_col] = pd.to_numeric(df[year_col], errors='coerce')\ndf[alc_afh_col] = pd.to_numeric(df[alc_afh_col], errors='coerce')\n\nfiltered = df[(df[year_col] >= 1997) & (df[year_col] <= 2025)]\nresult = int((filtered[alc_afh_col] > 100000).sum())"
+  },
+  {
+   "id": "ers_food_expenditure_series_nominal#6",
+   "answer": "[\"2023\", \"2024\", \"2025\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_expenditure_series_nominal.xlsx', sheet_name='Nominal expenditures', header=1)\nyear_col = [c for c in df.columns if 'Year' in str(c)][0]\nfsr_col = [c for c in df.columns if 'Food sales at full-service restaurants' in str(c)][0]\n\ndf[year_col] = pd.to_numeric(df[year_col], errors='coerce')\ndf[fsr_col] = pd.to_numeric(df[fsr_col], errors='coerce')\n\ntop3 = df.dropna(subset=[year_col, fsr_col]).nlargest(3, fsr_col)\nresult = [str(int(y)) for y in top3[year_col].tolist()]"
+  }
+ ]
+}

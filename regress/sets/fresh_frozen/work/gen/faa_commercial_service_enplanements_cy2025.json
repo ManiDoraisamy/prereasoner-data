@@ -1,0 +1,60 @@
+{
+ "id": "faa_commercial_service_enplanements_cy2025",
+ "file": "faa_commercial_service_enplanements_cy2025.xlsx",
+ "questions": [
+  {
+   "question": "How many passenger enplanements were recorded at Denver International Airport in calendar year 2025?",
+   "sheet": "ChangeinRevenuePassengerEnplan ",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "39976695",
+   "program": "import pandas as pd; df = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan '); df.columns = [str(c).strip() for c in df.columns]; result = int(df.loc[df['Airport Name'].str.strip() == 'Denver International', 'CY 25 Enplanements'].values[0])",
+   "qid": "faa_commercial_service_enplanements_cy2025#1"
+  },
+  {
+   "question": "Which airport recorded more passenger boardings in calendar year 2025, Los Angeles International or Chicago O'Hare International?",
+   "sheet": "ChangeinRevenuePassengerEnplan ",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Chicago O'Hare International",
+   "program": "import pandas as pd; df = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan '); df.columns = [str(c).strip() for c in df.columns]; sub = df[df['Airport Name'].isin(['Los Angeles International', \"Chicago O'Hare International\"])]; result = str(sub.sort_values(by='CY 25 Enplanements', ascending=False)['Airport Name'].iloc[0])",
+   "qid": "faa_commercial_service_enplanements_cy2025#2"
+  },
+  {
+   "question": "What are the three commercial airports in Texas with the highest number of passenger boardings in calendar year 2025?",
+   "sheet": "ChangeinRevenuePassengerEnplan ",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Dallas-Fort Worth International\", \"George Bush Intcntl/Houston\", \"Austin-Bergstrom International\"]",
+   "program": "import pandas as pd; df = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan '); df.columns = [str(c).strip() for c in df.columns]; tx = df[(df['ST'] == 'TX') & pd.to_numeric(df['Rank'], errors='coerce').notna()]; result = tx.sort_values(by='CY 25 Enplanements', ascending=False).head(3)['Airport Name'].tolist()",
+   "qid": "faa_commercial_service_enplanements_cy2025#3"
+  },
+  {
+   "question": "How many airports designated as large hubs are located in Florida?",
+   "sheet": "ChangeinRevenuePassengerEnplan ",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "4",
+   "program": "import pandas as pd; df = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan '); df.columns = [str(c).strip() for c in df.columns]; result = int(len(df[(df['ST'] == 'FL') & (df['Hub'] == 'L')]))",
+   "qid": "faa_commercial_service_enplanements_cy2025#4"
+  },
+  {
+   "question": "What was the total number of calendar year 2025 passenger enplanements across all large hub airports in California?",
+   "sheet": "ChangeinRevenuePassengerEnplan ",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "75424837",
+   "program": "import pandas as pd; df = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan '); df.columns = [str(c).strip() for c in df.columns]; result = int(df[(df['ST'] == 'CA') & (df['Hub'] == 'L')]['CY 25 Enplanements'].sum())",
+   "qid": "faa_commercial_service_enplanements_cy2025#5"
+  },
+  {
+   "question": "Did Hartsfield/Jackson Atlanta International experience an increase in passenger boardings from calendar year 2024 to 2025?",
+   "sheet": "ChangeinRevenuePassengerEnplan ",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd; df = pd.read_excel('faa_commercial_service_enplanements_cy2025.xlsx', sheet_name='ChangeinRevenuePassengerEnplan '); df.columns = [str(c).strip() for c in df.columns]; row = df[df['Airport Name'].str.contains('Atlanta International', na=False)].iloc[0]; result = 'yes' if row['CY 25 Enplanements'] > row['CY 24 Enplanements'] else 'no'",
+   "qid": "faa_commercial_service_enplanements_cy2025#6"
+  }
+ ]
+}

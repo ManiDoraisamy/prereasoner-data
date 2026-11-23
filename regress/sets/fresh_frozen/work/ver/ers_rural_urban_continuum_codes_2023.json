@@ -1,0 +1,35 @@
+{
+ "id": "ers_rural_urban_continuum_codes_2023",
+ "answers": [
+  {
+   "id": "ers_rural_urban_continuum_codes_2023#1",
+   "answer": "231767",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Rural-urban Continuum Code 2023')\nresult = int(df[(df['State'] == 'AL') & (df['County_Name'] == 'Baldwin County')]['Population_2020'].iloc[0])"
+  },
+  {
+   "id": "ers_rural_urban_continuum_codes_2023#2",
+   "answer": "483",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Rural-urban Continuum Code 2023')\nresult = int((df['RUCC_2023'] == 1).sum())"
+  },
+  {
+   "id": "ers_rural_urban_continuum_codes_2023#3",
+   "answer": "Henry County",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Documentation', header=None)\nva_df = df.iloc[26:35, [1, 3]].copy()\nva_df.columns = ['City', 'County']\nresult = str(va_df[va_df['City'].str.strip() == 'Martinsville City']['County'].iloc[0]).strip()"
+  },
+  {
+   "id": "ers_rural_urban_continuum_codes_2023#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Rural-urban Continuum Code 2023')\ncount_9 = (df['RUCC_2023'] == 9).sum()\ncount_1 = (df['RUCC_2023'] == 1).sum()\nresult = 'yes' if count_9 > count_1 else 'no'"
+  },
+  {
+   "id": "ers_rural_urban_continuum_codes_2023#5",
+   "answer": "[\"Buena Vista City\", \"Lexington City\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Documentation', header=None)\nva_df = df.iloc[26:35, [1, 3]].copy()\nva_df.columns = ['City', 'County']\nresult = va_df[va_df['County'].str.strip() == 'Rockbridge County']['City'].str.strip().tolist()"
+  },
+  {
+   "id": "ers_rural_urban_continuum_codes_2023#6",
+   "answer": "87146",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_rural_urban_continuum_codes_2023.xlsx', sheet_name='Rural-urban Continuum Code 2023')\nresult = int(df[df['State'] == 'VI']['Population_2020'].sum())"
+  }
+ ]
+}

@@ -1,0 +1,35 @@
+{
+ "id": "census_state_lottery_finances_2022",
+ "answers": [
+  {
+   "id": "census_state_lottery_finances_2022#1",
+   "answer": "6245455",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_lottery_finances_2022.xlsx', sheet_name='22Lottery', header=None)\nfl_row = df[df[0] == 'Florida']\nval = fl_row.iloc[0, 2]\nresult = int(str(val).replace(',', '').strip())"
+  },
+  {
+   "id": "census_state_lottery_finances_2022#2",
+   "answer": "[\"California\", \"Florida\", \"New York\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_lottery_finances_2022.xlsx', sheet_name='22Lottery', header=None)\n# State rows start after 'United States' and end before 'Note:'\nus_idx = df[df[0] == 'United States'].index[0]\nnote_idx = df[df[0].astype(str).str.startswith('Note:')].index[0]\n\nstates_df = df.iloc[us_idx + 1:note_idx].dropna(subset=[0]).copy()\nstates_df = states_df[~states_df[1].isin(['-', None])]\nstates_df['sales'] = states_df[1].astype(str).str.replace(',', '').astype(float)\n\ntop_3 = states_df.sort_values(by='sales', ascending=False).head(3)[0].tolist()\nresult = top_3"
+  },
+  {
+   "id": "census_state_lottery_finances_2022#3",
+   "answer": "5",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_lottery_finances_2022.xlsx', sheet_name='22Lottery', header=None)\nus_idx = df[df[0] == 'United States'].index[0]\nnote_idx = df[df[0].astype(str).str.startswith('Note:')].index[0]\n\nstates_df = df.iloc[us_idx + 1:note_idx].dropna(subset=[0])\nno_lottery = states_df[states_df[1].astype(str).str.strip() == '-']\nresult = len(no_lottery)"
+  },
+  {
+   "id": "census_state_lottery_finances_2022#4",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_lottery_finances_2022.xlsx', sheet_name='22Lottery', header=None)\nca_admin = float(str(df[df[0] == 'California'].iloc[0, 3]).replace(',', ''))\ntx_admin = float(str(df[df[0] == 'Texas'].iloc[0, 3]).replace(',', ''))\nresult = 'Texas' if tx_admin > ca_admin else 'California'"
+  },
+  {
+   "id": "census_state_lottery_finances_2022#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_lottery_finances_2022.xlsx', sheet_name='22Lottery', header=None)\nny_proceeds = float(str(df[df[0] == 'New York'].iloc[0, 4]).replace(',', ''))\n# Units in thousand dollars, so 3 billion dollars is 3,000,000 thousand dollars\nresult = 'yes' if ny_proceeds > 3000000 else 'no'"
+  },
+  {
+   "id": "census_state_lottery_finances_2022#6",
+   "answer": "3831800",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_lottery_finances_2022.xlsx', sheet_name='22Lottery', header=None)\ntarget_states = ['California', 'Oregon', 'Washington']\nsub_df = df[df[0].isin(target_states)]\nresult = int(sub_df[4].astype(str).str.replace(',', '').astype(float).sum())"
+  }
+ ]
+}

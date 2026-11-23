@@ -1,0 +1,60 @@
+{
+ "id": "fhwa_motor_fuel_use_2022",
+ "file": "fhwa_motor_fuel_use_2022.xlsx",
+ "questions": [
+  {
+   "question": "In 2022, how many thousands of gallons of special fuel were used for private and commercial highway purposes in Texas?",
+   "sheet": "MF-21",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "6096520",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\ntx_row = df[df[0].astype(str).str.strip().str.startswith('Texas')].iloc[0]\nresult = int(tx_row[12])",
+   "qid": "fhwa_motor_fuel_use_2022#1"
+  },
+  {
+   "question": "Which three states had the highest total motor-fuel consumption across all categories in 2022?",
+   "sheet": "MF-21",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Texas\", \"California\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\nstates = df.iloc[8:59].copy()\nstates[17] = pd.to_numeric(states[17])\ntop3 = states.sort_values(by=17, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()",
+   "qid": "fhwa_motor_fuel_use_2022#2"
+  },
+  {
+   "question": "Between New York and Florida, which state had a larger volume of combined gasoline and gasohol highway use in 2022?",
+   "sheet": "MF-21",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Florida",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\nstates = df.iloc[8:59].copy()\nny_val = float(states[states[0].astype(str).str.strip() == 'New York'][5].values[0])\nfl_val = float(states[states[0].astype(str).str.strip() == 'Florida'][5].values[0])\nresult = 'New York' if ny_val > fl_val else 'Florida'",
+   "qid": "fhwa_motor_fuel_use_2022#3"
+  },
+  {
+   "question": "How many states (including the District of Columbia) experienced positive year-over-year percentage growth in total highway fuel use in 2022?",
+   "sheet": "MF-21",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "14",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\nstates = df.iloc[8:59].copy()\npct_change = pd.to_numeric(states[14])\nresult = int((pct_change > 0).sum())",
+   "qid": "fhwa_motor_fuel_use_2022#4"
+  },
+  {
+   "question": "What was the total non-highway use of gasoline and gasohol, in thousands of gallons, across all states that reported negative evaporation and handling losses in 2022?",
+   "sheet": "MF-21",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "1055421",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\nstates = df.iloc[8:59].copy()\nlosses = pd.to_numeric(states[10])\nnon_highway = pd.to_numeric(states[8])\nresult = int(non_highway[losses < 0].sum())",
+   "qid": "fhwa_motor_fuel_use_2022#5"
+  },
+  {
+   "question": "In 2022, did Texas consume more total motor fuel across all uses than California?",
+   "sheet": "MF-21",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_motor_fuel_use_2022.xlsx', sheet_name='MF-21', header=None)\nstates = df.iloc[8:59].copy()\ntx_total = float(states[states[0].astype(str).str.strip() == 'Texas'][17].values[0])\nca_total = float(states[states[0].astype(str).str.strip() == 'California'][17].values[0])\nresult = 'yes' if tx_total > ca_total else 'no'",
+   "qid": "fhwa_motor_fuel_use_2022#6"
+  }
+ ]
+}

@@ -1,0 +1,60 @@
+{
+ "id": "nchs_hus_overdose_mortality",
+ "file": "nchs_hus_overdose_mortality.xlsx",
+ "questions": [
+  {
+   "question": "What was the age-adjusted death rate per 100,000 for all drug overdoses among all people in 1999?",
+   "sheet": "A",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "6.1",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_overdose_mortality.xlsx', sheet_name='A', header=None)\n# Row 7 is 'All ages, age adjusted\\2' under 'All people' (row 6)\n# Column B is index 1 (year 1999)\nval = df.iloc[6, 1]\nresult = float(val)",
+   "qid": "nchs_hus_overdose_mortality#1"
+  },
+  {
+   "question": "In 2017, was the age-adjusted overdose death rate for any opioid higher in males than in females?",
+   "sheet": "A",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_overdose_mortality.xlsx', sheet_name='A', header=None)\n# Opioid section starts at row 67\n# Opioid Male age-adjusted row is row 82 (index 81)\n# Opioid Female age-adjusted row is row 94 (index 93)\n# Year 2017 is column T (index 19)\nmale_rate = float(df.iloc[81, 19])\nfemale_rate = float(df.iloc[93, 19])\nresult = 'yes' if male_rate > female_rate else 'no'",
+   "qid": "nchs_hus_overdose_mortality#2"
+  },
+  {
+   "question": "In 2017, which age group had the highest overdose death rate involving synthetic opioids other than methadone?",
+   "sheet": "A",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "25\u201334 years",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_overdose_mortality.xlsx', sheet_name='A', header=None)\n# Synthetic opioids start around row 256\n# Age rows for All people: rows 261 to 269 (indices 260 to 268)\n# Year 2017 is column T (index 19)\nage_rows = df.iloc[260:269, [0, 19]].dropna()\nage_rows = age_rows[pd.to_numeric(age_rows[19], errors='coerce').notnull()].copy()\nage_rows[19] = pd.to_numeric(age_rows[19])\nmax_row = age_rows.loc[age_rows[19].idxmax()]\nresult = str(max_row[0]).strip()",
+   "qid": "nchs_hus_overdose_mortality#3"
+  },
+  {
+   "question": "What is the difference between the 2017 and 1999 age-adjusted death rates per 100,000 for heroin overdose across all individuals?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "4.2",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_overdose_mortality.xlsx', sheet_name='A', header=None)\n# Heroin section: row 322 (index 321) is 'All ages, age adjusted\\2'\n# 1999 is col B (index 1), 2017 is col T (index 19)\nval_1999 = float(df.iloc[321, 1])\nval_2017 = float(df.iloc[321, 19])\nresult = round(val_2017 - val_1999, 1)",
+   "qid": "nchs_hus_overdose_mortality#4"
+  },
+  {
+   "question": "In what year did the crude overdose death rate involving methadone across all people reach its highest value?",
+   "sheet": "A",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2006",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_overdose_mortality.xlsx', sheet_name='A', header=None)\n# Methadone section crude rate: row 197 (index 196)\n# Years 1999-2017 are in columns 1 to 19 (header row 5, index 4)\nyears = [str(int(df.iloc[4, c])) for c in range(1, 20)]\nrates = [float(df.iloc[196, c]) for c in range(1, 20)]\ns = pd.Series(rates, index=years)\nresult = s.idxmax()",
+   "qid": "nchs_hus_overdose_mortality#5"
+  },
+  {
+   "question": "Which three age groups had the highest death rates from natural or semisynthetic opioid overdoses in 2017?",
+   "sheet": "A",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"45\u201354 years\", \"35\u201344 years\", \"55\u201364 years\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_overdose_mortality.xlsx', sheet_name='A', header=None)\n# Natural or semisynthetic opioids section: rows 135 to 143 (indices 134 to 142) for age groups\n# 2017 is col T (index 19)\nage_data = df.iloc[134:143, [0, 19]].copy()\nage_data.columns = ['age_group', 'rate']\nage_data['rate'] = pd.to_numeric(age_data['rate'], errors='coerce')\ntop3 = age_data.sort_values(by='rate', ascending=False).head(3)\nresult = [str(x).strip() for x in top3['age_group'].tolist()]",
+   "qid": "nchs_hus_overdose_mortality#6"
+  }
+ ]
+}

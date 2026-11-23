@@ -1,0 +1,60 @@
+{
+ "id": "census_monthly_retail_trade_sales",
+ "file": "census_monthly_retail_trade_sales.xlsx",
+ "questions": [
+  {
+   "question": "What were the unadjusted total retail and food services sales in millions of dollars for the full year 2025?",
+   "sheet": "2025",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "8350933",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_monthly_retail_trade_sales.xlsx', sheet_name='2025', header=None)\n# Look for 'Retail and food services sales, total' under NOT ADJUSTED\nmask = df[1].astype(str).str.strip() == 'Retail and food services sales, total'\nrow_idx = df[mask].index[0]\n# Total column is column O (index 14)\nresult = int(df.iloc[row_idx, 14])",
+   "qid": "census_monthly_retail_trade_sales#1"
+  },
+  {
+   "question": "In 2024, did unadjusted sales at grocery stores exceed 850,000 million dollars for the entire year?",
+   "sheet": "2024",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_monthly_retail_trade_sales.xlsx', sheet_name='2024', header=None)\nmask = (df[0].astype(str).str.strip() == '4451') & (df[1].astype(str).str.strip() == 'Grocery stores')\nval = float(df.loc[mask, 14].values[0])\nresult = 'yes' if val > 850000 else 'no'",
+   "qid": "census_monthly_retail_trade_sales#2"
+  },
+  {
+   "question": "Between furniture stores and electronics stores, which business type had higher unadjusted total annual sales in 2023?",
+   "sheet": "2023",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Furniture stores",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_monthly_retail_trade_sales.xlsx', sheet_name='2023', header=None)\nfurn = float(df.loc[df[0].astype(str).str.strip() == '4421', 14].values[0])\nelec = float(df.loc[df[0].astype(str).str.strip() == '443142', 14].values[0])\nresult = 'Furniture stores' if furn > elec else 'Electronics stores'",
+   "qid": "census_monthly_retail_trade_sales#3"
+  },
+  {
+   "question": "In 2020, which month recorded the lowest unadjusted sales for food services and drinking places?",
+   "sheet": "2020",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2020-04",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_monthly_retail_trade_sales.xlsx', sheet_name='2020', header=None)\nrow = df[(df[0].astype(str).str.strip() == '722') & (df[1].astype(str).str.strip() == 'Food services and drinking places')].iloc[0]\nmonths = ['2020-01', '2020-02', '2020-03', '2020-04', '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10', '2020-11', '2020-12']\nsales = [float(row[c]) for c in range(2, 14)]\ns = pd.Series(sales, index=months)\nresult = str(s.idxmin())",
+   "qid": "census_monthly_retail_trade_sales#4"
+  },
+  {
+   "question": "What was the average monthly seasonally adjusted total retail and food services sales in millions of dollars across all twelve months of 2022?",
+   "sheet": "2022",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "658931.5",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_monthly_retail_trade_sales.xlsx', sheet_name='2022', header=None)\n# Row 72 in Excel is row index 71: ADJUSTED Retail and food services sales, total\nadjusted_row = df[df[1].astype(str).str.strip() == 'Retail and food services sales, total'].iloc[1]\nvals = [float(adjusted_row[c]) for c in range(2, 14)]\nresult = float(sum(vals) / len(vals))",
+   "qid": "census_monthly_retail_trade_sales#5"
+  },
+  {
+   "question": "How much higher were unadjusted sales at new car dealers than used car dealers in millions of dollars for the full year 2021?",
+   "sheet": "2021",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "983570",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_monthly_retail_trade_sales.xlsx', sheet_name='2021', header=None)\nnew_car = float(df.loc[df[0].astype(str).str.strip() == '44111', 14].values[0])\nused_car = float(df.loc[df[0].astype(str).str.strip() == '44112', 14].values[0])\nresult = int(new_car - used_car)",
+   "qid": "census_monthly_retail_trade_sales#6"
+  }
+ ]
+}

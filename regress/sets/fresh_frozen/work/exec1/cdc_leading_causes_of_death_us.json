@@ -1,0 +1,87 @@
+{
+ "id": "cdc_leading_causes_of_death_us",
+ "file": "cdc_leading_causes_of_death_us.csv",
+ "questions": [
+  {
+   "question": "How many deaths from unintentional injuries were reported in California in 2017?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "13840",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nresult = int(df[(df['Year'] == 2017) & (df['State'] == 'California') & (df['Cause Name'] == 'Unintentional injuries')]['Deaths'].iloc[0])",
+   "qid": "cdc_leading_causes_of_death_us#1",
+   "pass1": true,
+   "result": 13840,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2017, which state experienced a higher age-adjusted death rate from unintentional injuries, California or Florida?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Florida",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nsub = df[(df['Year'] == 2017) & (df['State'].isin(['California', 'Florida'])) & (df['Cause Name'] == 'Unintentional injuries')]\nresult = sub.sort_values(by='Age-adjusted Death Rate', ascending=False).iloc[0]['State']",
+   "qid": "cdc_leading_causes_of_death_us#2",
+   "pass1": true,
+   "result": "Florida",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did nationwide deaths from kidney disease exceed 35,000 in 1999?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\ndeaths = int(df[(df['Year'] == 1999) & (df['State'] == 'United States') & (df['Cause Name'] == 'Kidney disease')]['Deaths'].iloc[0])\nresult = 'yes' if deaths > 35000 else 'no'",
+   "qid": "cdc_leading_causes_of_death_us#3",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the combined number of unintentional injury deaths in Alaska and Hawaii in 2017?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "1021",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nresult = int(df[(df['Year'] == 2017) & (df['Cause Name'] == 'Unintentional injuries') & (df['State'].isin(['Alaska', 'Hawaii']))]['Deaths'].sum())",
+   "qid": "cdc_leading_causes_of_death_us#4",
+   "pass1": true,
+   "result": 1021,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Among California, Florida, and New York, which two states had the highest number of deaths from unintentional injuries in 2017?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nsub = df[(df['Year'] == 2017) & (df['Cause Name'] == 'Unintentional injuries') & (df['State'].isin(['California', 'Florida', 'New York']))]\nresult = sub.sort_values(by='Deaths', ascending=False)['State'].head(2).tolist()",
+   "qid": "cdc_leading_causes_of_death_us#5",
+   "pass1": true,
+   "result": [
+    "California",
+    "Florida"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the average age-adjusted death rate from unintentional injuries in 2017 across Delaware and Maryland?",
+   "sheet": "",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "49.4",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_leading_causes_of_death_us.csv')\nsub = df[(df['Year'] == 2017) & (df['Cause Name'] == 'Unintentional injuries') & (df['State'].isin(['Delaware', 'Maryland']))]\nresult = round(float(sub['Age-adjusted Death Rate'].mean()), 1)",
+   "qid": "cdc_leading_causes_of_death_us#6",
+   "pass1": true,
+   "result": 49.4,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

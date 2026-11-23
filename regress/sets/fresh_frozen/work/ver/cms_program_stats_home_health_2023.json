@@ -1,0 +1,35 @@
+{
+ "id": "cms_program_stats_home_health_2023",
+ "answers": [
+  {
+   "id": "cms_program_stats_home_health_2023#1",
+   "answer": "1319291952",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 1_CPS_07UHH', header=None)\n# Row 22 is Disabled Beneficiaries, row 28 is 2023\n# Find the row for Disabled Beneficiaries and then 2023 under it\ndisabled_idx = df[df[0].astype(str).str.contains('Disabled Beneficiaries', case=False, na=False)].index[0]\nyear_row = df.iloc[disabled_idx:].loc[df.iloc[disabled_idx:, 0].astype(str).str.strip().isin(['2023', '2023.0'])].iloc[0]\n# Total Program Payments is column K (index 10)\nresult = int(year_row[10])"
+  },
+  {
+   "id": "cms_program_stats_home_health_2023#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 2_CPS_07UHH', header=None)\nmale_row = df[df[0].astype(str).str.strip() == 'Male'].iloc[0]\nfemale_row = df[df[0].astype(str).str.strip() == 'Female'].iloc[0]\n# Column D (index 3) is Total Service Visits\nmale_visits = float(male_row[3])\nfemale_visits = float(female_row[3])\nresult = 'yes' if female_visits > male_visits else 'no'"
+  },
+  {
+   "id": "cms_program_stats_home_health_2023#3",
+   "answer": "2023",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 1_CPS_07UHH', header=None)\n# Rows 7 to 12 correspond to All Beneficiaries 2018-2023\nall_bene_idx = df[df[0].astype(str).str.contains('All Beneficiaries', case=False, na=False)].index[0]\nyears_df = df.iloc[all_bene_idx + 1: all_bene_idx + 7].copy()\nyears_df[0] = years_df[0].astype(str).str.replace(r'\\.0$', '', regex=True).str.strip()\nyears_df[10] = pd.to_numeric(years_df[10])\nmin_row = years_df.loc[years_df[10].idxmin()]\nresult = str(min_row[0])"
+  },
+  {
+   "id": "cms_program_stats_home_health_2023#4",
+   "answer": "[\"California\", \"Texas\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 3_CPS_07UHH', header=None)\n# States run from Alabama (row 9, index 8) to Wyoming (row 59, index 58)\nalabama_idx = df[df[0].astype(str).str.strip() == 'Alabama'].index[0]\nwyoming_idx = df[df[0].astype(str).str.strip() == 'Wyoming'].index[0]\nstates_df = df.iloc[alabama_idx: wyoming_idx + 1].copy()\nstates_df[10] = pd.to_numeric(states_df[10])\ntop3 = states_df.sort_values(by=10, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()"
+  },
+  {
+   "id": "cms_program_stats_home_health_2023#5",
+   "answer": "23327725",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 4_CPS_07UHH', header=None)\nall_agencies_idx = df[df[0].astype(str).str.strip() == 'All Agencies'].index[0]\n# Look within All Agencies section for Physical Therapy\nsubset = df.iloc[all_agencies_idx: all_agencies_idx + 10]\npt_row = subset[subset[0].astype(str).str.strip() == 'Physical Therapy'].iloc[0]\n# Total Service Visits is column C (index 2)\nresult = int(pt_row[2])"
+  },
+  {
+   "id": "cms_program_stats_home_health_2023#6",
+   "answer": "319885",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_home_health_2023.xlsx', sheet_name='MDCR HHA 6_CPS_07UHH', header=None)\nrow_50_99 = df[df[0].astype(str).str.strip() == '50-99'].iloc[0]\nrow_100_plus = df[df[0].astype(str).str.strip() == '100 or More'].iloc[0]\n# Column B (index 1) is Total Persons With Utilization\nresult = int(row_50_99[1]) + int(row_100_plus[1])"
+  }
+ ]
+}

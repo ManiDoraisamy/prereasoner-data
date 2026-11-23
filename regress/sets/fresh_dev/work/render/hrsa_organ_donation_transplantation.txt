@@ -1,0 +1,888 @@
+FILE hrsa_organ_donation_transplantation.xlsx (Excel workbook) with 12 sheet(s): ["READ ME FIRST", "Overview - National", "Overview - State", "Donor Demographics", "OPO - POTR", "OPO Service Area by County", "Waitlist-Candidate Registration", "Waitlist - OTC Transplant Rate", "Waitlist - OTC Removal Reasons", "Recipient Demographics", "OTC Transplants by Demographics", "OTC Outcome Measures"]
+
+### Sheet "READ ME FIRST": 43 rows x 5 columns (Excel rows 1..43, columns A..E)
+merged cells: C40:F40, C31:F31, B2:C2, C39:F39, C35:F35, C43:F43, C34:F34, B4:D4, C38:F38, C30:F30, C33:F33, C32:F32, C41:F41, C42:F42, C37:F37, B6:D6, C36:F36
+(whole sheet shown; Excel row numbers)
+r1: (blank)
+r2: B=READ ME FIRST
+r3: (blank)
+r4: B=External data sources that may provide useful information and context for these dashboards...
+r5: (blank)
+r6: B=Please see the “About this Dashboard/FAQs” document on the dashboard website for key infor...
+r7: (blank)
+r8: (blank)
+r9: (blank)
+r10: B=Important information about the data in this PUF:
+r11: (blank)
+r12: B=Public Use File (PUF) Tab | C=Corresponding Dashboard Component | D=Date Range for Data | E=Last Refresh Date\n\n(note: data subject to change based on future data submission or corr...
+r13: B=Overview - National | C=Overview: National Level Data | D=January 1, 2019 - March 31, 2024 | E=July 15, 2024
+r14: B=Overview - State | C=Overview: State Level Data | D=January 1, 2019 - March 31, 2024 | E=July 15, 2024
+r15: B=Donor Demographics | C=Organ Donation: Organ Donor Demographics | D=January 1, 2019 - March 31, 2024 | E=July 15, 2024
+r16: B=OPO - POTR | C=Organ Donation: Organ Procurement Organization Details | D=January 1, 2019 - March 31, 2024 | E=July 15, 2024
+r17: B=OPO Service Area by County | C=Organ Donation: Organ Procurement Organization Details | D=January 1, 2019 - March 31, 2024 | E=July 15, 2024
+r18: B=Waitlist - Candidate Registration | C=Transplant Waitlist: Waitlist Candidates/Registrations | D=January 1, 2019 - March 31, 2024 | E=July 15, 2024
+r19: B=Waitlist - OTC Transplant Rate | C=Transplant Waitlist: Waitlist Outcomes | D=January 1, 2016 - March 31, 2021 | E=July 15, 2024
+r20: B=Waitlist - OTC Removal Reasons | C=Transplant Waitlist: Waitlist Outcomes | D=January 1, 2019 - March 31, 2024 | E=July 15, 2024
+r21: B=Recipient Demographics | C=Organ Transplantation: Organ Transplant Recipient Demographics | D=January 1, 2019 - March 31, 2024 | E=July 15, 2024
+r22: B=OTC Transplants by Demographics | C=Organ Transplantation: Transplants by Transplant Center | D=January 1, 2019 - March 31, 2024 | E=July 15, 2024
+r23: B=OTC Outcome Measures | C=Organ Transplantation: Organ Transplant Center Outcomes | D=January 1, 2019 - March 31, 2023 | E=July 15, 2024
+r24: (blank)
+r25: (blank)
+r26: (blank)
+r27: B=Important considerations and limitations for the data in this PUF:
+r28: B=(please see the more detailed information in the “About this Dashboard/FAQs” document on t...
+r29: (blank)
+r30: B=Topic | C=Key considerations and limitations
+r31: B=Interpretation of data in the dashboard/PUF | C=Working with data to understand complex health organizations, such as those involved with ...
+r32: B=Data suppression | C=To protect the confidentiality of individuals in the dataset.  The data contains informati...
+r33: B=National-level and state-level overview data | C=The numbers on the "Overview" tab of the dashboard represent individuals who interact with...
+r34: B=Calculation and interpretation of the Procured Organ Transplant Rate | C=The Procured Organ Transplant Rate or Organ Utilization Rate is defined by the following f...
+r35: B=Health insurance status | C=Health insurance status is only known for living donors.
+r36: B=Waitlist candidates and registrations | C=A waitlist candidate is an individual person on the organ transplant waiting list.  A cand...
+r37: B=Waitlist removal reasons | C=There are many reasons an individual may be removed from the organ transplant waiting list...
+r38: B=Organ transplantation rates | C=The transplant rates provide information on the percent of individuals on the organ transp...
+r39: B=Organ Procurement Organization location | C=The state abbreviations represent where a given OPO headquarters or transplant center is l...
+r40: B=Organ Transplant Center data | C=The current version of the dashboard shows data from the past 5 years.  If an organ transp...
+r41: B=Organ Transplant Center outcome measures | C=Some outcome measures, such as graft or patient survival for transplant centers, can be bl...
+r42: B=Counts for organ transplant recipients | C=The demographic data are categorized as "distinct" recipients since some people receive mo...
+r43: B=Partial data on the current calendar year | C=Only partial year data is ever available in the midst of the current calendar year.  The l...
+
+### Sheet "Overview - National": 43 rows x 11 columns (Excel rows 1..43, columns A..K)
+(whole sheet shown; Excel row numbers)
+r1: A=Year | B=Organ | C=Number of deceased organ donors recovered | D=Number of living organ donors recovered | E=Number of candidates added | F=Number of registrations added | G=Number of deceased donor organ transplant recipients | H=Number of living donor organ transplant recipients | I=Last Refresh Date | J=Date Range for Data - Start | K=Date Range for Data - End
+r2: A=2021 | B=Heart | C=3900 | D=. | E=4948 | F=5008 | G=3806 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r3: A=2021 | B=Kidney | C=13215 | D=5971 | E=40081 | F=42130 | G=18684 | H=5969 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r4: A=2021 | B=Kidney-Pancreas | C=. | D=. | E=1434 | F=1488 | G=820 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r5: A=2021 | B=Liver | C=9541 | D=569 | E=13439 | F=13833 | G=8547 | H=569 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r6: A=2021 | B=Lung | C=2631 | D=. | E=3064 | F=3091 | G=2520 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r7: A=2021 | B=Pancreas | C=1318 | D=. | E=433 | F=450 | G=140 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r8: A=2021 | B=All | C=13862 | D=6542 | E=60466 | F=66000 | G=33229 | H=6538 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r9: A=2022 | B=Heart | C=4223 | D=. | E=5023 | F=5072 | G=4105 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r10: A=2022 | B=Kidney | C=14227 | D=5863 | E=42221 | F=44442 | G=19621 | H=5862 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r11: A=2022 | B=Kidney-Pancreas | C=. | D=. | E=1441 | F=1488 | G=810 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r12: A=2022 | B=Liver | C=9812 | D=603 | E=13179 | F=13608 | G=8807 | H=603 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r13: A=2022 | B=Lung | C=2852 | D=. | E=3104 | F=3131 | G=2684 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r14: A=2022 | B=Pancreas | C=1311 | D=. | E=399 | F=425 | G=106 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r15: A=2022 | B=All | C=14904 | D=6467 | E=62506 | F=68166 | G=34762 | H=6463 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r16: A=2023 | B=Heart | C=4664 | D=. | E=5653 | F=5724 | G=4532 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r17: A=2023 | B=Kidney | C=15471 | D=6290 | E=44560 | F=47003 | G=21034 | H=6284 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r18: A=2023 | B=Kidney-Pancreas | C=. | D=. | E=1520 | F=1585 | G=812 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r19: A=2023 | B=Liver | C=10969 | D=658 | E=14180 | F=14659 | G=9863 | H=658 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r20: A=2023 | B=Lung | C=3276 | D=. | E=3328 | F=3351 | G=3018 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r21: A=2023 | B=Pancreas | C=1222 | D=. | E=433 | F=473 | G=101 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r22: A=2023 | B=All | C=16336 | D=6955 | E=66599 | F=72795 | G=37898 | H=6940 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r23: A=2024 | B=Heart | C=4711 | D=. | E=5896 | F=5967 | G=4565 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r24: A=2024 | B=Kidney | C=15937 | D=6419 | E=47171 | F=49635 | G=21327 | H=6417 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r25: A=2024 | B=Kidney-Pancreas | C=. | D=. | E=1603 | F=1666 | G=733 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r26: A=2024 | B=Liver | C=12171 | D=604 | E=15025 | F=15396 | G=10707 | H=604 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r27: A=2024 | B=Lung | C=3697 | D=. | E=3710 | F=3725 | G=3332 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r28: A=2024 | B=Pancreas | C=1162 | D=. | E=441 | F=464 | G=113 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r29: A=2024 | B=All | C=16989 | D=7031 | E=70631 | F=76853 | G=39398 | H=7019 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r30: A=2025 | B=Heart | C=4753 | D=. | E=6029 | F=6082 | G=4579 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r31: A=2025 | B=Kidney | C=15274 | D=6522 | E=50190 | F=53231 | G=21040 | H=6519 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r32: A=2025 | B=Kidney-Pancreas | C=. | D=. | E=1620 | F=1688 | G=804 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r33: A=2025 | B=Liver | C=13117 | D=707 | E=15778 | F=16175 | G=11447 | H=708 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r34: A=2025 | B=Lung | C=3977 | D=. | E=3918 | F=3941 | G=3484 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r35: A=2025 | B=Pancreas | C=1260 | D=. | E=384 | F=409 | G=107 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r36: A=2025 | B=All | C=16553 | D=7237 | E=74579 | F=81526 | G=39975 | H=7226 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r37: A=2026 | B=Heart | C=1104 | D=. | E=1493 | F=1497 | G=1053 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r38: A=2026 | B=Kidney | C=3740 | D=1703 | E=12277 | F=12598 | G=5195 | H=1701 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r39: A=2026 | B=Kidney-Pancreas | C=. | D=. | E=363 | F=367 | G=172 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r40: A=2026 | B=Liver | C=3483 | D=205 | E=4042 | F=4078 | G=3027 | H=203 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r41: A=2026 | B=Lung | C=1024 | D=. | E=932 | F=936 | G=854 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r42: A=2026 | B=Pancreas | C=273 | D=. | E=89 | F=91 | G=21 | H=. | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+r43: A=2026 | B=All | C=4167 | D=1911 | E=18512 | F=19567 | G=9992 | H=1902 | I=October 23, 2026 | J=January 1, 2021 | K=March 31, 2026
+
+### Sheet "Overview - State": 7867 rows x 9 columns (Excel rows 1..7867, columns A..I)
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=statistics | B=Year | C=State of Residence Name | D=State of Residence Code | E=Organ | F=counts | G=Last Refresh Date | H=Date Range for Data - Start | I=Date Range for Data - End
+r2: A=Deceased Organ Donors | B=2021 | C=Alabama | D=AL | E=All | F=262 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r3: A=Deceased Organ Donors | B=2021 | C=Alabama | D=AL | E=Heart | F=76 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r4: A=Deceased Organ Donors | B=2021 | C=Alabama | D=AL | E=Kidney | F=242 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r5: A=Deceased Organ Donors | B=2021 | C=Alabama | D=AL | E=Liver | F=196 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r6: A=Deceased Organ Donors | B=2021 | C=Alabama | D=AL | E=Lung | F=50 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7: A=Deceased Organ Donors | B=2021 | C=Alabama | D=AL | E=Pancreas | F=30 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r8: A=Deceased Organ Donors | B=2021 | C=Alaska | D=AK | E=All | F=36 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r9: A=Deceased Organ Donors | B=2021 | C=Alaska | D=AK | E=Heart | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r10: A=Deceased Organ Donors | B=2021 | C=Alaska | D=AK | E=Kidney | F=36 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r11: A=Deceased Organ Donors | B=2021 | C=Alaska | D=AK | E=Liver | F=24 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r12: A=Deceased Organ Donors | B=2021 | C=Alaska | D=AK | E=Lung | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r13: A=Deceased Organ Donors | B=2021 | C=Alaska | D=AK | E=Pancreas | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r14: A=Deceased Organ Donors | B=2021 | C=All | D=All | E=All | F=13862 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r15: A=Deceased Organ Donors | B=2021 | C=All | D=All | E=Heart | F=3900 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r16: A=Deceased Organ Donors | B=2021 | C=All | D=All | E=Kidney | F=13215 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r17: A=Deceased Organ Donors | B=2021 | C=All | D=All | E=Liver | F=9541 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r18: A=Deceased Organ Donors | B=2021 | C=All | D=All | E=Lung | F=2631 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r19: A=Deceased Organ Donors | B=2021 | C=All | D=All | E=Pancreas | F=1318 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r20: A=Deceased Organ Donors | B=2021 | C=Arizona | D=AZ | E=All | F=322 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r21: A=Deceased Organ Donors | B=2021 | C=Arizona | D=AZ | E=Heart | F=98 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r22: A=Deceased Organ Donors | B=2021 | C=Arizona | D=AZ | E=Kidney | F=313 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r23: A=Deceased Organ Donors | B=2021 | C=Arizona | D=AZ | E=Liver | F=245 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r24: A=Deceased Organ Donors | B=2021 | C=Arizona | D=AZ | E=Lung | F=63 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r25: A=Deceased Organ Donors | B=2021 | C=Arizona | D=AZ | E=Pancreas | F=32 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r26: A=Deceased Organ Donors | B=2021 | C=Arkansas | D=AR | E=All | F=127 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r27: A=Deceased Organ Donors | B=2021 | C=Arkansas | D=AR | E=Heart | F=38 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r28: A=Deceased Organ Donors | B=2021 | C=Arkansas | D=AR | E=Kidney | F=119 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r29: A=Deceased Organ Donors | B=2021 | C=Arkansas | D=AR | E=Liver | F=99 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r30: A=Deceased Organ Donors | B=2021 | C=Arkansas | D=AR | E=Lung | F=22 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r31: A=Deceased Organ Donors | B=2021 | C=Arkansas | D=AR | E=Pancreas | F=17 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r32: A=Deceased Organ Donors | B=2021 | C=California | D=CA | E=All | F=1268 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r33: A=Deceased Organ Donors | B=2021 | C=California | D=CA | E=Heart | F=371 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r34: A=Deceased Organ Donors | B=2021 | C=California | D=CA | E=Kidney | F=1203 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r35: A=Deceased Organ Donors | B=2021 | C=California | D=CA | E=Liver | F=911 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+... sampled rows:
+r1186: A=Deceased Organ Donors | B=2024 | C=Mississippi | D=MS | E=Kidney | F=143 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r1462: A=Deceased Organ Donors | B=2025 | C=Illinois | D=IL | E=Kidney | F=543 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r1510: A=Deceased Organ Donors | B=2025 | C=Massachusetts | D=MA | E=Kidney | F=274 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r1909: A=Deceased Organ Donors | B=2026 | C=New Jersey | D=NJ | E=Pancreas | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r2486: A=Living Organ Donors | B=2023 | C=Nevada | D=NV | E=All | F=28 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r2650: A=Living Organ Donors | B=2024 | C=Missouri | D=MO | E=Liver | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r2716: A=Living Organ Donors | B=2024 | C=Utah | D=UT | E=Liver | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r2722: A=Living Organ Donors | B=2024 | C=Virgin Islands | D=VI | E=Liver | F=0 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r2918: A=Living Organ Donors | B=2026 | C=Arizona | D=AZ | E=All | F=31 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r3092: A=Waitlist Candidates | B=2021 | C=Alaska | D=AK | E=Lung | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r3333: A=Waitlist Candidates | B=2021 | C=North Dakota | D=ND | E=Heart | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r3704: A=Waitlist Candidates | B=2022 | C=New Jersey | D=NJ | E=Heart | F=136 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r3896: A=Waitlist Candidates | B=2023 | C=All | D=All | E=Liver | F=14180 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r4390: A=Waitlist Candidates | B=2024 | C=Indiana | D=IN | E=Heart | F=132 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r4404: A=Waitlist Candidates | B=2024 | C=Kansas | D=KS | E=Heart | F=55 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r4503: A=Waitlist Candidates | B=2024 | C=New Jersey | D=NJ | E=Kidney | F=1511 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r4620: A=Waitlist Candidates | B=2024 | C=Utah | D=UT | E=All | F=605 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r4675: A=Waitlist Candidates | B=2024 | C=Wyoming | D=WY | E=Pancreas | F=0 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r4897: A=Waitlist Candidates | B=2025 | C=New Hampshire | D=NH | E=Liver | F=88 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r5316: A=Waitlist Candidates | B=2026 | C=New York | D=NY | E=Kidney-Pancreas | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r5452: A=Waitlist Candidates | B=2026 | C=Washington | D=WA | E=Pancreas | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r5770: A=Transplant Recipients | B=2021 | C=Pennsylvania | D=PA | E=Kidney | F=846 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r5916: A=Transplant Recipients | B=2022 | C=Colorado | D=CO | E=Heart | F=69 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r5968: A=Transplant Recipients | B=2022 | C=Hawaii | D=HI | E=Liver | F=24 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r5994: A=Transplant Recipients | B=2022 | C=Iowa | D=IA | E=Kidney | F=214 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r6015: A=Transplant Recipients | B=2022 | C=Louisiana | D=LA | E=Kidney | F=355 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r6636: A=Transplant Recipients | B=2023 | C=Virginia | D=VA | E=All | F=1400 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r6908: A=Transplant Recipients | B=2024 | C=New Mexico | D=NM | E=Pancreas | F=0 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7793: A=Transplant Recipients | B=2026 | C=South Dakota | D=SD | E=Kidney | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7825: A=Transplant Recipients | B=2026 | C=Vermont | D=VT | E=Pancreas | F=0 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+... last rows:
+r7860: A=Transplant Recipients | B=2026 | C=Wisconsin | D=WI | E=Pancreas | F=0 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7861: A=Transplant Recipients | B=2026 | C=Wyoming | D=WY | E=All | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7862: A=Transplant Recipients | B=2026 | C=Wyoming | D=WY | E=Heart | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7863: A=Transplant Recipients | B=2026 | C=Wyoming | D=WY | E=Kidney | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7864: A=Transplant Recipients | B=2026 | C=Wyoming | D=WY | E=Kidney-Pancreas | F=0 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7865: A=Transplant Recipients | B=2026 | C=Wyoming | D=WY | E=Liver | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7866: A=Transplant Recipients | B=2026 | C=Wyoming | D=WY | E=Lung | F=Suppressed | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+r7867: A=Transplant Recipients | B=2026 | C=Wyoming | D=WY | E=Pancreas | F=0 | G=October 23, 2026 | H=January 1, 2021 | I=March 31, 2026
+... column profiles (data rows below Excel row 1):
+  A [statistics]: {"non_empty": 7866, "distinct": 4, "value_counts": {"Transplant Recipients": 2394, "Waitlist Candidates": 2394, "Deceased Organ Donors": 2052, "Living Organ Donors": 1026}}
+  B [Year]: {"non_empty": 7866, "distinct": 6, "value_counts": {"2021": 1311, "2022": 1311, "2023": 1311, "2024": 1311, "2025": 1311, "2026": 1311}}
+  C [State of Residence Name]: {"non_empty": 7866, "distinct": 57, "top_values": {"Alabama": 138, "Alaska": 138, "All": 138, "Arizona": 138, "Arkansas": 138, "California": 138}}
+  D [State of Residence Code]: {"non_empty": 7866, "distinct": 57, "top_values": {"AK": 138, "AL": 138, "AR": 138, "AZ": 138, "All": 138, "CA": 138}}
+  E [Organ]: {"non_empty": 7866, "distinct": 7, "value_counts": {"All": 1368, "Kidney": 1368, "Liver": 1368, "Heart": 1026, "Lung": 1026, "Pancreas": 1026, "Kidney-Pancreas": 684}}
+  F [counts]: {"non_empty": 7866, "distinct": 1127, "top_values": {"Suppressed": 2010, "0": 586, "18": 78, "16": 73, "17": 71, "19": 71}}
+  G [Last Refresh Date]: {"non_empty": 7866, "distinct": 1, "value_counts": {"October 23, 2026": 7866}}
+  H [Date Range for Data - Start]: {"non_empty": 7866, "distinct": 1, "value_counts": {"January 1, 2021": 7866}}
+  I [Date Range for Data - End]: {"non_empty": 7866, "distinct": 1, "value_counts": {"March 31, 2026": 7866}}
+
+### Sheet "Donor Demographics": 78 rows x 7 columns (Excel rows 1..78, columns A..G)
+(whole sheet shown; Excel row numbers)
+r1: A=Category | B=Donor Type Filter | C=Level | D=Donor Count | E=Last Refresh Date | F=Date Range for Data - Start | G=Date Range for Data - End
+r2: A=0 - Total | B=Grand Total | C=Total | D=118954 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r3: A=1 - Donor Type | B=Deceased Donor | C=Deceased Donor | D=82811 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r4: A=1 - Donor Type | B=Living Donor | C=Living Donor | D=36143 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r5: A=2 - Insurance | B=Living Donor | C=Insured | D=33341 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r6: A=2 - Insurance | B=Living Donor | C=Uninsured | D=2188 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r7: A=2 - Insurance | B=Living Donor | C=Unknown | D=614 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r8: A=3 - Year | B=All | C=2021 | D=20404 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r9: A=3 - Year | B=All | C=2022 | D=21371 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r10: A=3 - Year | B=All | C=2023 | D=23291 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r11: A=3 - Year | B=All | C=2024 | D=24020 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r12: A=3 - Year | B=All | C=2025 | D=23790 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r13: A=3 - Year | B=All | C=2026 | D=6078 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r14: A=3 - Year | B=Deceased Donor | C=2021 | D=13862 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r15: A=3 - Year | B=Deceased Donor | C=2022 | D=14904 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r16: A=3 - Year | B=Deceased Donor | C=2023 | D=16336 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r17: A=3 - Year | B=Deceased Donor | C=2024 | D=16989 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r18: A=3 - Year | B=Deceased Donor | C=2025 | D=16553 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r19: A=3 - Year | B=Deceased Donor | C=2026 | D=4167 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r20: A=3 - Year | B=Living Donor | C=2021 | D=6542 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r21: A=3 - Year | B=Living Donor | C=2022 | D=6467 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r22: A=3 - Year | B=Living Donor | C=2023 | D=6955 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r23: A=3 - Year | B=Living Donor | C=2024 | D=7031 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r24: A=3 - Year | B=Living Donor | C=2025 | D=7237 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r25: A=3 - Year | B=Living Donor | C=2026 | D=1911 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r26: A=4 - Sex | B=All | C=Female | D=54730 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r27: A=4 - Sex | B=All | C=Male | D=64224 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r28: A=4 - Sex | B=Deceased Donor | C=Female | D=31702 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r29: A=4 - Sex | B=Deceased Donor | C=Male | D=51109 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r30: A=4 - Sex | B=Living Donor | C=Female | D=23028 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r31: A=4 - Sex | B=Living Donor | C=Male | D=13115 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r32: A=5 - Race/Ethnicity | B=All | C=Amer Ind/Alaska Native, Non-Hispanic | D=811 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r33: A=5 - Race/Ethnicity | B=All | C=Asian, Non-Hispanic | D=3712 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r34: A=5 - Race/Ethnicity | B=All | C=Black, Non-Hispanic | D=15146 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r35: A=5 - Race/Ethnicity | B=All | C=Hispanic/Latino | D=18117 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r36: A=5 - Race/Ethnicity | B=All | C=Multiracial, Non-Hispanic | D=700 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r37: A=5 - Race/Ethnicity | B=All | C=Native Hawaiian/other Pacific Islander, Non-Hispanic | D=319 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r38: A=5 - Race/Ethnicity | B=All | C=Unknown | D=653 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r39: A=5 - Race/Ethnicity | B=All | C=White, Non-Hispanic | D=79496 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r40: A=5 - Race/Ethnicity | B=Deceased Donor | C=Amer Ind/Alaska Native, Non-Hispanic | D=673 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r41: A=5 - Race/Ethnicity | B=Deceased Donor | C=Asian, Non-Hispanic | D=2102 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r42: A=5 - Race/Ethnicity | B=Deceased Donor | C=Black, Non-Hispanic | D=12619 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r43: A=5 - Race/Ethnicity | B=Deceased Donor | C=Hispanic/Latino | D=12081 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r44: A=5 - Race/Ethnicity | B=Deceased Donor | C=Multiracial, Non-Hispanic | D=269 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r45: A=5 - Race/Ethnicity | B=Deceased Donor | C=Native Hawaiian/other Pacific Islander, Non-Hispanic | D=254 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r46: A=5 - Race/Ethnicity | B=Deceased Donor | C=Unknown | D=394 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r47: A=5 - Race/Ethnicity | B=Deceased Donor | C=White, Non-Hispanic | D=54419 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r48: A=5 - Race/Ethnicity | B=Living Donor | C=Amer Ind/Alaska Native, Non-Hispanic | D=138 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r49: A=5 - Race/Ethnicity | B=Living Donor | C=Asian, Non-Hispanic | D=1610 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r50: A=5 - Race/Ethnicity | B=Living Donor | C=Black, Non-Hispanic | D=2527 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r51: A=5 - Race/Ethnicity | B=Living Donor | C=Hispanic/Latino | D=6036 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r52: A=5 - Race/Ethnicity | B=Living Donor | C=Multiracial, Non-Hispanic | D=431 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r53: A=5 - Race/Ethnicity | B=Living Donor | C=Native Hawaiian/other Pacific Islander, Non-Hispanic | D=65 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r54: A=5 - Race/Ethnicity | B=Living Donor | C=Unknown | D=259 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r55: A=5 - Race/Ethnicity | B=Living Donor | C=White, Non-Hispanic | D=25077 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r56: A=6 - Age Group | B=All | C=0-10 | D=2242 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r57: A=6 - Age Group | B=All | C=11-20 | D=4962 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r58: A=6 - Age Group | B=All | C=21-30 | D=14957 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r59: A=6 - Age Group | B=All | C=31-40 | D=23742 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r60: A=6 - Age Group | B=All | C=41-50 | D=25699 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r61: A=6 - Age Group | B=All | C=51-60 | D=26310 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r62: A=6 - Age Group | B=All | C=61+ | D=21033 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r63: A=6 - Age Group | B=All | C=Not Reported | D=9 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r64: A=6 - Age Group | B=Deceased Donor | C=0-10 | D=2241 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r65: A=6 - Age Group | B=Deceased Donor | C=11-20 | D=4654 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r66: A=6 - Age Group | B=Deceased Donor | C=21-30 | D=9640 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r67: A=6 - Age Group | B=Deceased Donor | C=31-40 | D=14521 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r68: A=6 - Age Group | B=Deceased Donor | C=41-50 | D=16249 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r69: A=6 - Age Group | B=Deceased Donor | C=51-60 | D=18831 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r70: A=6 - Age Group | B=Deceased Donor | C=61+ | D=16675 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r71: A=6 - Age Group | B=Living Donor | C=0-10 | D=Suppressed | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r72: A=6 - Age Group | B=Living Donor | C=11-20 | D=Suppressed | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r73: A=6 - Age Group | B=Living Donor | C=21-30 | D=5317 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r74: A=6 - Age Group | B=Living Donor | C=31-40 | D=9221 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r75: A=6 - Age Group | B=Living Donor | C=41-50 | D=9450 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r76: A=6 - Age Group | B=Living Donor | C=51-60 | D=7479 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r77: A=6 - Age Group | B=Living Donor | C=61+ | D=4358 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r78: A=6 - Age Group | B=Living Donor | C=Not Reported | D=9 | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+
+### Sheet "OPO - POTR": 1695 rows x 7 columns (Excel rows 1..1695, columns A..G)
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=OPO Name (State) | B=Year | C=Organ | D=Procured Organ Transplant Rate | E=Last Refresh Date | F=Date Range for Data - Start | G=Date Range for Data - End
+r2: A=Average of All OPOs | B=2021 | C=Heart | D=99.2% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r3: A=Average of All OPOs | B=2021 | C=Kidney | D=75.7% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r4: A=Average of All OPOs | B=2021 | C=Liver | D=91.4% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r5: A=Average of All OPOs | B=2021 | C=Lung | D=92.5% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r6: A=Average of All OPOs | B=2021 | C=Pancreas | D=74.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r7: A=Average of All OPOs | B=2022 | C=Heart | D=98.6% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r8: A=Average of All OPOs | B=2022 | C=Kidney | D=73.4% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r9: A=Average of All OPOs | B=2022 | C=Liver | D=91.7% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r10: A=Average of All OPOs | B=2022 | C=Lung | D=90.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r11: A=Average of All OPOs | B=2022 | C=Pancreas | D=74.6% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r12: A=Average of All OPOs | B=2023 | C=Heart | D=98.6% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r13: A=Average of All OPOs | B=2023 | C=Kidney | D=72.3% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r14: A=Average of All OPOs | B=2023 | C=Liver | D=91.6% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r15: A=Average of All OPOs | B=2023 | C=Lung | D=90.8% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r16: A=Average of All OPOs | B=2023 | C=Pancreas | D=78.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r17: A=Average of All OPOs | B=2024 | C=Heart | D=98.1% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r18: A=Average of All OPOs | B=2024 | C=Kidney | D=71.1% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r19: A=Average of All OPOs | B=2024 | C=Liver | D=89.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r20: A=Average of All OPOs | B=2024 | C=Lung | D=88.6% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r21: A=Average of All OPOs | B=2024 | C=Pancreas | D=76.5% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r22: A=Average of All OPOs | B=2025 | C=Heart | D=97.7% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r23: A=Average of All OPOs | B=2025 | C=Kidney | D=73.2% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r24: A=Average of All OPOs | B=2025 | C=Liver | D=89.4% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r25: A=Average of All OPOs | B=2025 | C=Lung | D=86.7% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r26: A=Average of All OPOs | B=2025 | C=Pancreas | D=77.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r27: A=Average of All OPOs | B=2026 | C=Heart | D=96.7% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r28: A=Average of All OPOs | B=2026 | C=Kidney | D=74.1% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r29: A=Average of All OPOs | B=2026 | C=Liver | D=88.4% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r30: A=Average of All OPOs | B=2026 | C=Lung | D=79.6% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r31: A=Average of All OPOs | B=2026 | C=Pancreas | D=61.1% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r32: A=Center for Donation and Transplant (NY) | B=2021 | C=Heart | D=100.0% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r33: A=Center for Donation and Transplant (NY) | B=2021 | C=Kidney | D=73.5% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r34: A=Center for Donation and Transplant (NY) | B=2021 | C=Liver | D=92.5% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r35: A=Center for Donation and Transplant (NY) | B=2021 | C=Lung | D=92.6% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+... sampled rows:
+r323: A=Gift of Life Michigan (MI) | B=2025 | C=Kidney | D=66.7% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r392: A=Infinite Legacy (MD) | B=2021 | C=Heart | D=98.4% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r404: A=Infinite Legacy (MD) | B=2023 | C=Liver | D=92.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r492: A=Legacy of Life Hawaii (HI) | B=2023 | C=Kidney | D=86.8% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r504: A=Legacy of Life Hawaii (HI) | B=2026 | C=Kidney | D=66.7% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r648: A=LifeLink of Georgia (GA) | B=2021 | C=Kidney | D=71.1% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r689: A=LifeLink of Puerto Rico (PR) | B=2023 | C=Liver | D=95.3% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r706: A=LifeLink of Puerto Rico (PR) | B=2026 | C=Pancreas | D=Suppressed | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r707: A=LifeNet Health (VA) | B=2021 | C=Heart | D=98.1% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r756: A=LifeQuest Organ Recovery Services (FL) | B=2024 | C=Pancreas | D=71.4% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r800: A=LifeShare Transplant Donor Services of Oklahoma (OK) | B=2021 | C=Lung | D=81.5% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r856: A=LifeSource Upper Midwest Organ Procurement Organization (MN) | B=2026 | C=Pancreas | D=Suppressed | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r860: A=Lifebanc (OH) | B=2021 | C=Lung | D=89.0% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r953: A=Live On Nebraska (NE) | B=2022 | C=Kidney | D=74.0% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1001: A=LiveOnNY (NY) | B=2025 | C=Pancreas | D=77.4% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1124: A=Midwest Transplant Network (KS) | B=2026 | C=Liver | D=91.2% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1128: A=Mississippi Organ Recovery Agency (MS) | B=2021 | C=Kidney | D=87.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1152: A=Mississippi Organ Recovery Agency (MS) | B=2026 | C=Heart | D=Suppressed | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1182: A=Network for Hope (KY) | B=2026 | C=Heart | D=95.5% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1195: A=Nevada Donor Network (NV) | B=2022 | C=Lung | D=94.7% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1251: A=New Jersey Organ and Tissue Sharing Network OPO (NJ) | B=2021 | C=Pancreas | D=64.5% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1356: A=OurLegacy (FL) | B=2024 | C=Pancreas | D=90.5% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1390: A=Pacific Northwest Transplant Bank/Cascade Life Alliance (OR) | B=2025 | C=Lung | D=92.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1469: A=Southern Legacy of Life (AR) | B=2023 | C=Liver | D=84.6% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1506: A=Southwest Transplant Alliance (TX) | B=2024 | C=Pancreas | D=86.0% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1519: A=Tennessee Donor Services (TN) | B=2021 | C=Liver | D=97.1% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1525: A=Tennessee Donor Services (TN) | B=2022 | C=Lung | D=95.0% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1528: A=Tennessee Donor Services (TN) | B=2023 | C=Kidney | D=74.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1530: A=Tennessee Donor Services (TN) | B=2023 | C=Lung | D=95.3% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1686: A=We Are Sharing Hope SC (SC) | B=2025 | C=Heart | D=98.1% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+... last rows:
+r1688: A=We Are Sharing Hope SC (SC) | B=2025 | C=Liver | D=83.9% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1689: A=We Are Sharing Hope SC (SC) | B=2025 | C=Lung | D=79.4% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1690: A=We Are Sharing Hope SC (SC) | B=2025 | C=Pancreas | D=76.5% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1691: A=We Are Sharing Hope SC (SC) | B=2026 | C=Heart | D=93.8% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1692: A=We Are Sharing Hope SC (SC) | B=2026 | C=Kidney | D=70.1% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1693: A=We Are Sharing Hope SC (SC) | B=2026 | C=Liver | D=86.7% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1694: A=We Are Sharing Hope SC (SC) | B=2026 | C=Lung | D=86.0% | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+r1695: A=We Are Sharing Hope SC (SC) | B=2026 | C=Pancreas | D=Suppressed | E=October 23, 2026 | F=January 1, 2021 | G=March 31, 2026
+... column profiles (data rows below Excel row 1):
+  A [OPO Name (State)]: {"non_empty": 1694, "distinct": 57, "top_values": {"Average of All OPOs": 30, "Center for Donation and Transplant (NY)": 30, "Center for Organ Recovery and Education (PA)": 30, "Donor Alliance (CO)": 30, "Donor Network West (CA)": 30, "Donor Network of Arizona (AZ)": 30}}
+  B [Year]: {"non_empty": 1694, "numeric": 1694, "min": "2021", "max": "2026", "sum": "3427785", "distinct": 6, "value_counts": {"2021": 285, "2024": 285, "2022": 284, "2023": 283, "2025": 279, "2026": 278}}
+  C [Organ]: {"non_empty": 1694, "distinct": 5, "value_counts": {"Heart": 340, "Kidney": 340, "Liver": 340, "Lung": 337, "Pancreas": 337}}
+  D [Procured Organ Transplant Rate]: {"non_empty": 1694, "distinct": 376, "top_values": {"100.0%": 163, "Suppressed": 127, "98.6%": 15, "92.6%": 13, "71.4%": 12, "80.0%": 12}}
+  E [Last Refresh Date]: {"non_empty": 1694, "distinct": 1, "value_counts": {"October 23, 2026": 1694}}
+  F [Date Range for Data - Start]: {"non_empty": 1694, "distinct": 1, "value_counts": {"January 1, 2021": 1694}}
+  G [Date Range for Data - End]: {"non_empty": 1694, "distinct": 1, "value_counts": {"March 31, 2026": 1694}}
+
+### Sheet "OPO Service Area by County": 3275 rows x 8 columns (Excel rows 1..3275, columns A..H)
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=OPO Name (State) | B=County FIPS | C=FIPS State Name | D=FIPS County Name | E=Service Area Overlap with | F=Last Refresh Date | G=Date Range for Data - Start | H=Date Range for Data - End
+r2: A=Legacy of Hope (AL) | B=01027 | C=Alabama | D=Clay County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3: A=Legacy of Hope (AL) | B=01115 | C=Alabama | D=St. Clair County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r4: A=Legacy of Hope (AL) | B=01089 | C=Alabama | D=Madison County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r5: A=Legacy of Hope (AL) | B=01129 | C=Alabama | D=Washington County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r6: A=Legacy of Hope (AL) | B=01021 | C=Alabama | D=Chilton County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r7: A=Legacy of Hope (AL) | B=01095 | C=Alabama | D=Marshall County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r8: A=Legacy of Hope (AL) | B=01015 | C=Alabama | D=Calhoun County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r9: A=Legacy of Hope (AL) | B=01057 | C=Alabama | D=Fayette County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r10: A=Legacy of Hope (AL) | B=01107 | C=Alabama | D=Pickens County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r11: A=Legacy of Hope (AL) | B=01093 | C=Alabama | D=Marion County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r12: A=Legacy of Hope (AL) | B=01079 | C=Alabama | D=Lawrence County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r13: A=Legacy of Hope (AL) | B=01125 | C=Alabama | D=Tuscaloosa County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r14: A=Legacy of Hope (AL) | B=01111 | C=Alabama | D=Randolph County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r15: A=Legacy of Hope (AL) | B=01011 | C=Alabama | D=Bullock County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r16: A=Legacy of Hope (AL) | B=01055 | C=Alabama | D=Etowah County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r17: A=Legacy of Hope (AL) | B=01069 | C=Alabama | D=Houston County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r18: A=Legacy of Hope (AL) | B=01117 | C=Alabama | D=Shelby County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r19: A=Legacy of Hope (AL) | B=01001 | C=Alabama | D=Autauga County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r20: A=Legacy of Hope (AL) | B=01033 | C=Alabama | D=Colbert County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r21: A=Legacy of Hope (AL) | B=01061 | C=Alabama | D=Geneva County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r22: A=Legacy of Hope (AL) | B=01103 | C=Alabama | D=Morgan County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r23: A=Legacy of Hope (AL) | B=01031 | C=Alabama | D=Coffee County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r24: A=Legacy of Hope (AL) | B=01083 | C=Alabama | D=Limestone County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r25: A=Legacy of Hope (AL) | B=01043 | C=Alabama | D=Cullman County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r26: A=Legacy of Hope (AL) | B=01041 | C=Alabama | D=Crenshaw County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r27: A=Legacy of Hope (AL) | B=01113 | C=Alabama | D=Russell County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r28: A=Legacy of Hope (AL) | B=01017 | C=Alabama | D=Chambers County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r29: A=Legacy of Hope (AL) | B=01035 | C=Alabama | D=Conecuh County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r30: A=Legacy of Hope (AL) | B=01047 | C=Alabama | D=Dallas County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r31: A=Legacy of Hope (AL) | B=01023 | C=Alabama | D=Choctaw County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r32: A=Legacy of Hope (AL) | B=01071 | C=Alabama | D=Jackson County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r33: A=Legacy of Hope (AL) | B=01081 | C=Alabama | D=Lee County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r34: A=Legacy of Hope (AL) | B=01091 | C=Alabama | D=Marengo County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r35: A=Legacy of Hope (AL) | B=01029 | C=Alabama | D=Cleburne County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+... sampled rows:
+r611: A=Iowa Donor Network (IA) | B=19021 | C=Iowa | D=Buena Vista County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r749: A=Indiana Donor Network (IN) | B=18075 | C=Indiana | D=Jay County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r751: A=Indiana Donor Network (IN) | B=18073 | C=Indiana | D=Jasper County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r773: A=Indiana Donor Network (IN) | B=18021 | C=Indiana | D=Clay County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r948: A=Louisiana Organ Procurement Agency (LA) | B=22015 | C=Louisiana | D=Bossier Parish | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r972: A=Louisiana Organ Procurement Agency (LA) | B=22031 | C=Louisiana | D=De Soto Parish | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1261: A=LifeSource Upper Midwest Organ Procurement Organization (MN) | B=27051 | C=Minnesota | D=Grant County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1343: A=LifeSource Upper Midwest Organ Procurement Organization (MN) | B=27039 | C=Minnesota | D=Dodge County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1376: A=Mid-America Transplant Services (MO) | B=29201 | C=Missouri | D=Scott County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1379: A=Mid-America Transplant Services (MO) | B=29181 | C=Missouri | D=Ripley County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1477: A=Mississippi Organ Recovery Agency (MS) | B=28091 | C=Mississippi | D=Marion County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1564: A=Midwest Transplant Network (KS) | B=20069 | C=Kansas | D=Gray County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1677: A=Midwest Transplant Network (KS) | B=29007 | C=Missouri | D=Audrain County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1684: A=Midwest Transplant Network (KS) | B=29051 | C=Missouri | D=Cole County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1870: A=Live On Nebraska (NE) | B=31025 | C=Nebraska | D=Cass County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r1966: A=Center for Donation and Transplant (NY) | B=36027 | C=New York | D=Dutchess County | E=LiveOnNY | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2213: A=Pacific Northwest Transplant Bank/Cascade Life Alliance (OR) | B=41071 | C=Oregon | D=Yamhill County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2220: A=Pacific Northwest Transplant Bank/Cascade Life Alliance (OR) | B=16015 | C=Idaho | D=Boise County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2269: A=Gift of Life Donor Program (PA) | B=42113 | C=Pennsylvania | D=Sullivan County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2328: A=Center for Organ Recovery and Education (PA) | B=54043 | C=West Virginia | D=Lincoln County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2355: A=Center for Organ Recovery and Education (PA) | B=42083 | C=Pennsylvania | D=McKean County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2466: A=We Are Sharing Hope SC (SC) | B=45079 | C=South Carolina | D=Richland County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2676: A=LifeGift Organ Donation Center (TX) | B=48341 | C=Texas | D=Moore County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2744: A=LifeGift Organ Donation Center (TX) | B=48015 | C=Texas | D=Austin County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2903: A=DonorConnect (UT) | B=49049 | C=Utah | D=Utah County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r2976: A=LifeNet Health (VA) | B=51640 | C=Virginia | D=Galax City | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3002: A=LifeNet Health (VA) | B=51155 | C=Virginia | D=Pulaski County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3015: A=LifeNet Health (VA) | B=51119 | C=Virginia | D=Middlesex County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3020: A=LifeNet Health (VA) | B=51109 | C=Virginia | D=Louisa County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3025: A=LifeNet Health (VA) | B=51093 | C=Virginia | D=Isle of Wight County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+... last rows:
+r3268: A=UW Health Organ and Tissue Donation (WI) | B=17201 | C=Illinois | D=Winnebago County | E=Gift of Hope Organ & Tissue Donor Network | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3269: A=UW Health Organ and Tissue Donation (WI) | B=27055 | C=Minnesota | D=Houston County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3270: A=UW Health Organ and Tissue Donation (WI) | B=26131 | C=Michigan | D=Ontonagon County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3271: A=UW Health Organ and Tissue Donation (WI) | B=26109 | C=Michigan | D=Menominee County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3272: A=UW Health Organ and Tissue Donation (WI) | B=26103 | C=Michigan | D=Marquette County | E=Gift of Life Michigan | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3273: A=UW Health Organ and Tissue Donation (WI) | B=26083 | C=Michigan | D=Keweenaw County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3274: A=UW Health Organ and Tissue Donation (WI) | B=26041 | C=Michigan | D=Delta County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+r3275: A=UW Health Organ and Tissue Donation (WI) | B=26003 | C=Michigan | D=Alger County | E=N/A | F=October 23, 2026 | G=January 1, 2021 | H=March 31, 2026
+... column profiles (data rows below Excel row 1):
+  A [OPO Name (State)]: {"non_empty": 3274, "distinct": 56, "top_values": {"LifeSource Upper Midwest Organ Procurement Organization (MN)": 208, "Midwest Transplant Network (KS)": 169, "LifeLink of Georgia (GA)": 158, "LifeCenter Northwest (WA)": 133, "Network for Hope (KY)": 121, "LifeNet Health (VA)": 112}}
+  B [County FIPS]: {"non_empty": 3274, "distinct": 3225, "top_values": {"04015": 2, "05063": 2, "06095": 2, "06097": 2, "12085": 2, "13047": 2}}
+  C [FIPS State Name]: {"non_empty": 3274, "distinct": 53, "top_values": {"Texas": 255, "Georgia": 161, "Virginia": 138, "Kentucky": 122, "Missouri": 115, "Kansas": 105}}
+  D [FIPS County Name]: {"non_empty": 3274, "distinct": 1960, "top_values": {"Washington County": 30, "Jefferson County": 26, "Franklin County": 25, "Jackson County": 23, "Lincoln County": 23, "Clay County": 19}}
+  E [Service Area Overlap with]: {"non_empty": 3274, "distinct": 38, "top_values": {"N/A": 3176, "Center for Organ Recovery and Education": 8, "LifeNet Health": 8, "Donor Network West": 6, "Infinite Legacy": 6, "Lifeline of Ohio": 6}}
+  F [Last Refresh Date]: {"non_empty": 3274, "distinct": 1, "value_counts": {"October 23, 2026": 3274}}
+  G [Date Range for Data - Start]: {"non_empty": 3274, "distinct": 1, "value_counts": {"January 1, 2021": 3274}}
+  H [Date Range for Data - End]: {"non_empty": 3274, "distinct": 1, "value_counts": {"March 31, 2026": 3274}}
+
+### Sheet "Waitlist-Candidate Registration": 85 rows x 27 columns (Excel rows 1..85, columns A..AA)
+(whole sheet shown; Excel row numbers)
+r1: A=Candidate/Registration | B=Year of Addition | C=Organ Type | D=Total | E=Sex: Female | F=Sex: Male | G=Race: White, Non-Hispanic | H=Race: Black, Non-Hispanic | I=Race: Asian, Non-Hispanic | J=Race: Hispanic/Latino | K=Race: Amer Ind/Alaska Native, Non-Hispanic | L=Race: Native Hawaiian/other Pacific Islander, Non-Hispanic | M=Race: Multiracial, Non-Hispanic | N=Primary Payment: Medicare Advantage | O=Primary Payment: Medicare FFS | P=Primary Payment: Medicaid & CHIP | Q=Primary Payment: Other | R=Primary Payment: Private | S=Age Group: Pediatric | T=Age Group: 18-30 | U=Age Group: 31-40 | V=Age Group: 41-50 | W=Age Group: 51-60 | X=Age Group: 61+ | Y=Last Refresh Date | Z=Date Range for Data - Start | AA=Date Range for Data - End
+r2: A=Candidates | B=2021 | C=All | D=60466 | E=22790 | F=37689 | G=30286 | H=14261 | I=3893 | J=10978 | K=502 | L=244 | M=471 | N=9149 | O=14300 | P=8586 | Q=2522 | R=26988 | S=2419 | T=3486 | U=7271 | V=10877 | W=16479 | X=19977 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r3: A=Candidates | B=2021 | C=Heart | D=4948 | E=1420 | F=3528 | G=2789 | H=1236 | I=200 | J=638 | K=Suppressed | L=Suppressed | M=44 | N=694 | O=653 | P=1067 | Q=253 | R=2292 | S=689 | T=334 | U=439 | V=650 | W=1347 | X=1492 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r4: A=Candidates | B=2021 | C=Kidney | D=40081 | E=15196 | F=24888 | G=16781 | H=11821 | I=3058 | J=7656 | K=328 | L=210 | M=323 | N=6508 | O=11318 | P=4603 | Q=1399 | R=16810 | S=1079 | T=2514 | U=5113 | V=7771 | W=10727 | X=12907 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r5: A=Candidates | B=2021 | C=Kidney-Pancreas | D=1434 | E=585 | F=849 | G=647 | H=433 | I=74 | J=260 | K=Suppressed | L=Suppressed | M=Suppressed | N=168 | O=363 | P=218 | Q=31 | R=662 | S=Suppressed | T=140 | U=527 | V=453 | W=278 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r6: A=Candidates | B=2021 | C=Liver | D=13439 | E=5260 | F=8180 | G=9276 | H=982 | I=561 | J=2389 | K=133 | L=19 | M=93 | N=1394 | O=1739 | P=2709 | Q=761 | R=6896 | S=648 | T=535 | U=1376 | V=2172 | W=4036 | X=4676 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r7: A=Candidates | B=2021 | C=Lung | D=3064 | E=1216 | F=1848 | G=2140 | H=310 | I=132 | J=450 | K=17 | L=Suppressed | M=Suppressed | N=621 | O=637 | P=312 | Q=141 | R=1362 | S=42 | T=86 | U=194 | V=307 | W=827 | X=1608 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r8: A=Candidates | B=2021 | C=Pancreas | D=433 | E=182 | F=251 | G=261 | H=73 | I=Suppressed | J=76 | K=Suppressed | L=0 | M=Suppressed | N=Suppressed | O=101 | P=86 | Q=Suppressed | R=199 | S=29 | T=43 | U=153 | V=113 | W=78 | X=17 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r9: A=Candidates | B=2022 | C=All | D=62506 | E=23669 | F=38849 | G=30230 | H=14959 | I=4194 | J=12034 | K=504 | L=253 | M=509 | N=9950 | O=14396 | P=9067 | Q=2800 | R=27409 | S=2485 | T=3609 | U=7167 | V=11036 | W=16890 | X=21376 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r10: A=Candidates | B=2022 | C=Heart | D=5023 | E=1448 | F=3575 | G=2773 | H=1330 | I=181 | J=651 | K=23 | L=27 | M=40 | N=847 | O=632 | P=1019 | Q=230 | R=2305 | S=686 | T=334 | U=460 | V=743 | W=1277 | X=1523 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r11: A=Candidates | B=2022 | C=Kidney | D=42221 | E=16102 | F=26123 | G=17017 | H=12451 | I=3342 | J=8603 | K=340 | L=209 | M=364 | N=7068 | O=11391 | P=5116 | Q=1812 | R=17430 | S=1084 | T=2615 | U=5098 | V=7888 | W=11418 | X=14161 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r12: A=Candidates | B=2022 | C=Kidney-Pancreas | D=1441 | E=631 | F=810 | G=564 | H=495 | I=72 | J=284 | K=Suppressed | L=Suppressed | M=Suppressed | N=215 | O=324 | P=223 | Q=31 | R=658 | S=Suppressed | T=162 | U=513 | V=402 | W=324 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r13: A=Candidates | B=2022 | C=Liver | D=13179 | E=5156 | F=8025 | G=8981 | H=883 | I=557 | J=2515 | K=143 | L=22 | M=90 | N=1386 | O=1682 | P=2759 | Q=665 | R=6736 | S=712 | T=517 | U=1277 | V=2180 | W=3889 | X=4613 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r14: A=Candidates | B=2022 | C=Lung | D=3104 | E=1242 | F=1862 | G=2170 | H=313 | I=144 | J=450 | K=Suppressed | L=Suppressed | M=Suppressed | N=687 | O=705 | P=306 | Q=135 | R=1277 | S=42 | T=105 | U=165 | V=296 | W=743 | X=1754 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r15: A=Candidates | B=2022 | C=Pancreas | D=399 | E=189 | F=210 | G=227 | H=93 | I=Suppressed | J=61 | K=Suppressed | L=Suppressed | M=Suppressed | N=36 | O=84 | P=72 | Q=17 | R=196 | S=Suppressed | T=56 | U=122 | V=96 | W=81 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r16: A=Candidates | B=2023 | C=All | D=66599 | E=25461 | F=41144 | G=31935 | H=15990 | I=4041 | J=13144 | K=573 | L=280 | M=592 | N=11601 | O=14186 | P=9936 | Q=2824 | R=29276 | S=2560 | T=3809 | U=7664 | V=11601 | W=18203 | X=22818 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r17: A=Candidates | B=2023 | C=Heart | D=5653 | E=1621 | F=4032 | G=3112 | H=1471 | I=198 | J=739 | K=35 | L=16 | M=50 | N=873 | O=758 | P=1120 | Q=275 | R=2645 | S=723 | T=390 | U=515 | V=791 | W=1558 | X=1678 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r18: A=Candidates | B=2023 | C=Kidney | D=44560 | E=17055 | F=27507 | G=17687 | H=13282 | I=3232 | J=9354 | K=369 | L=225 | M=422 | N=8441 | O=11116 | P=5479 | Q=1751 | R=18427 | S=1163 | T=2693 | U=5373 | V=8119 | W=12179 | X=15071 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r19: A=Candidates | B=2023 | C=Kidney-Pancreas | D=1520 | E=672 | F=848 | G=623 | H=486 | I=73 | J=298 | K=17 | L=Suppressed | M=Suppressed | N=208 | O=300 | P=258 | Q=44 | R=723 | S=Suppressed | T=156 | U=552 | V=490 | W=281 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r20: A=Candidates | B=2023 | C=Liver | D=14180 | E=5718 | F=8463 | G=9550 | H=992 | I=553 | J=2723 | K=160 | L=32 | M=105 | N=1600 | O=1627 | P=3158 | Q=704 | R=7152 | S=672 | T=585 | U=1423 | V=2404 | W=4170 | X=4935 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r21: A=Candidates | B=2023 | C=Lung | D=3328 | E=1420 | F=1908 | G=2351 | H=336 | I=103 | J=476 | K=Suppressed | L=Suppressed | M=19 | N=798 | O=738 | P=296 | Q=142 | R=1362 | S=38 | T=111 | U=161 | V=311 | W=783 | X=1924 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r22: A=Candidates | B=2023 | C=Pancreas | D=433 | E=216 | F=217 | G=217 | H=107 | I=21 | J=77 | K=Suppressed | L=Suppressed | M=Suppressed | N=63 | O=65 | P=78 | Q=19 | R=217 | S=31 | T=42 | U=138 | V=115 | W=90 | X=17 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r23: A=Candidates | B=2024 | C=All | D=70631 | E=27131 | F=43507 | G=32469 | H=16910 | I=4329 | J=14435 | K=600 | L=297 | M=653 | N=13354 | O=14215 | P=10002 | Q=2987 | R=31432 | S=2645 | T=3728 | U=8195 | V=12521 | W=18762 | X=24857 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r24: A=Candidates | B=2024 | C=Heart | D=5896 | E=1664 | F=4232 | G=3046 | H=1540 | I=234 | J=842 | K=30 | L=27 | M=41 | N=1005 | O=713 | P=1199 | Q=270 | R=2732 | S=701 | T=347 | U=519 | V=862 | W=1593 | X=1875 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r25: A=Candidates | B=2024 | C=Kidney | D=47171 | E=18064 | F=29111 | G=18066 | H=14084 | I=3438 | J=10112 | K=380 | L=242 | M=483 | N=9613 | O=11117 | P=5502 | Q=1861 | R=19856 | S=1216 | T=2680 | U=5646 | V=8715 | W=12584 | X=16381 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r26: A=Candidates | B=2024 | C=Kidney-Pancreas | D=1603 | E=667 | F=936 | G=590 | H=497 | I=73 | J=374 | K=Suppressed | L=Suppressed | M=Suppressed | N=271 | O=299 | P=254 | Q=43 | R=749 | S=Suppressed | T=162 | U=615 | V=480 | W=314 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r27: A=Candidates | B=2024 | C=Liver | D=15025 | E=6312 | F=8713 | G=9661 | H=983 | I=578 | J=3064 | K=180 | L=30 | M=105 | N=1904 | O=1650 | P=3049 | Q=754 | R=7724 | S=732 | T=574 | U=1653 | V=2673 | W=4239 | X=5160 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r28: A=Candidates | B=2024 | C=Lung | D=3710 | E=1514 | F=2196 | G=2439 | H=402 | I=133 | J=571 | K=24 | L=Suppressed | M=Suppressed | N=924 | O=783 | P=361 | Q=152 | R=1495 | S=38 | T=111 | U=188 | V=335 | W=828 | X=2210 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r29: A=Candidates | B=2024 | C=Pancreas | D=441 | E=201 | F=240 | G=223 | H=90 | I=16 | J=96 | K=Suppressed | L=Suppressed | M=Suppressed | N=71 | O=55 | P=84 | Q=17 | R=219 | S=Suppressed | T=44 | U=138 | V=131 | W=74 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r30: A=Candidates | B=2025 | C=All | D=74579 | E=28803 | F=45788 | G=33637 | H=17968 | I=4771 | J=15443 | K=626 | L=387 | M=625 | N=14917 | O=14472 | P=10405 | Q=3382 | R=32994 | S=2552 | T=3949 | U=8771 | V=13199 | W=19694 | X=26486 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r31: A=Candidates | B=2025 | C=Heart | D=6029 | E=1722 | F=4307 | G=3043 | H=1586 | I=239 | J=821 | K=34 | L=37 | M=57 | N=1187 | O=660 | P=1135 | Q=325 | R=2736 | S=647 | T=330 | U=509 | V=878 | W=1634 | X=2034 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r32: A=Candidates | B=2025 | C=Kidney | D=50190 | E=19317 | F=30881 | G=18605 | H=15086 | I=3759 | J=11051 | K=384 | L=309 | M=462 | N=10770 | O=11512 | P=5760 | Q=2081 | R=21010 | S=1196 | T=2893 | U=6118 | V=9254 | W=13342 | X=17432 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r33: A=Candidates | B=2025 | C=Kidney-Pancreas | D=1620 | E=656 | F=964 | G=580 | H=538 | I=85 | J=344 | K=Suppressed | L=Suppressed | M=21 | N=278 | O=306 | P=246 | Q=67 | R=743 | S=Suppressed | T=188 | U=599 | V=516 | W=278 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r34: A=Candidates | B=2025 | C=Liver | D=15778 | E=6693 | F=9087 | G=10196 | H=1041 | I=656 | J=3164 | K=210 | L=33 | M=85 | N=2099 | O=1568 | P=3276 | Q=828 | R=8084 | S=701 | T=591 | U=1793 | V=2827 | W=4422 | X=5451 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r35: A=Candidates | B=2025 | C=Lung | D=3918 | E=1537 | F=2381 | G=2568 | H=442 | I=162 | J=606 | K=Suppressed | L=Suppressed | M=Suppressed | N=998 | O=815 | P=385 | Q=190 | R=1538 | S=38 | T=94 | U=209 | V=322 | W=856 | X=2400 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r36: A=Candidates | B=2025 | C=Pancreas | D=384 | E=178 | F=206 | G=189 | H=84 | I=22 | J=77 | K=Suppressed | L=0 | M=Suppressed | N=54 | O=40 | P=88 | Q=18 | R=190 | S=Suppressed | T=47 | U=132 | V=98 | W=65 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r37: A=Candidates | B=2026 | C=All | D=18512 | E=7137 | F=11377 | G=8364 | H=4445 | I=1192 | J=3742 | K=150 | L=108 | M=168 | N=3672 | O=3649 | P=2510 | Q=853 | R=8019 | S=602 | T=939 | U=2150 | V=3384 | W=4819 | X=6620 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r38: A=Candidates | B=2026 | C=Heart | D=1493 | E=432 | F=1061 | G=768 | H=391 | I=64 | J=182 | K=Suppressed | L=Suppressed | M=22 | N=263 | O=205 | P=276 | Q=67 | R=683 | S=168 | T=83 | U=118 | V=215 | W=377 | X=532 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r39: A=Candidates | B=2026 | C=Kidney | D=12277 | E=4726 | F=7552 | G=4478 | H=3727 | I=929 | J=2648 | K=93 | L=89 | M=118 | N=2650 | O=2897 | P=1346 | Q=513 | R=4960 | S=256 | T=687 | U=1457 | V=2339 | W=3248 | X=4291 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r40: A=Candidates | B=2026 | C=Kidney-Pancreas | D=363 | E=154 | F=209 | G=136 | H=115 | I=25 | J=73 | K=Suppressed | L=Suppressed | M=Suppressed | N=52 | O=67 | P=Suppressed | Q=Suppressed | R=187 | S=Suppressed | T=29 | U=152 | V=108 | W=65 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r41: A=Candidates | B=2026 | C=Liver | D=4042 | E=1661 | F=2381 | G=2639 | H=235 | I=179 | J=798 | K=49 | L=Suppressed | M=Suppressed | N=540 | O=379 | P=838 | Q=249 | R=2042 | S=180 | T=150 | U=475 | V=752 | W=1080 | X=1406 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r42: A=Candidates | B=2026 | C=Lung | D=932 | E=373 | F=559 | G=613 | H=104 | I=34 | J=150 | K=Suppressed | L=Suppressed | M=Suppressed | N=260 | O=179 | P=84 | Q=37 | R=373 | S=Suppressed | T=Suppressed | U=32 | V=82 | W=200 | X=587 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r43: A=Candidates | B=2026 | C=Pancreas | D=89 | E=51 | F=38 | G=46 | H=21 | I=Suppressed | J=Suppressed | K=0 | L=0 | M=Suppressed | N=Suppressed | O=Suppressed | P=Suppressed | Q=Suppressed | R=47 | S=Suppressed | T=Suppressed | U=30 | V=21 | W=18 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r44: A=Registrations | B=2021 | C=All | D=66000 | E=24827 | F=41173 | G=33136 | H=15541 | I=4213 | J=11824 | K=539 | L=260 | M=487 | N=9530 | O=15287 | P=9075 | Q=2662 | R=29446 | S=2523 | T=3807 | U=8204 | V=11998 | W=17981 | X=21487 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r45: A=Registrations | B=2021 | C=Heart | D=5008 | E=1440 | F=3568 | G=2822 | H=1250 | I=203 | J=644 | K=Suppressed | L=Suppressed | M=44 | N=695 | O=657 | P=1075 | Q=255 | R=2326 | S=698 | T=338 | U=446 | V=655 | W=1365 | X=1506 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r46: A=Registrations | B=2021 | C=Kidney | D=42130 | E=15946 | F=26184 | G=17671 | H=12447 | I=3205 | J=7926 | K=334 | L=220 | M=327 | N=6596 | O=11734 | P=4633 | Q=1447 | R=17720 | S=1087 | T=2641 | U=5428 | V=8207 | W=11256 | X=13511 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r47: A=Registrations | B=2021 | C=Kidney-Pancreas | D=1488 | E=609 | F=879 | G=676 | H=446 | I=78 | J=265 | K=Suppressed | L=Suppressed | M=Suppressed | N=168 | O=378 | P=220 | Q=31 | R=691 | S=Suppressed | T=150 | U=546 | V=475 | W=281 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r48: A=Registrations | B=2021 | C=Liver | D=13833 | E=5412 | F=8421 | G=9538 | H=1010 | I=577 | J=2458 | K=138 | L=19 | M=93 | N=1407 | O=1774 | P=2747 | Q=780 | R=7125 | S=666 | T=548 | U=1424 | V=2232 | W=4165 | X=4798 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r49: A=Registrations | B=2021 | C=Lung | D=3091 | E=1229 | F=1862 | G=2156 | H=314 | I=135 | J=453 | K=17 | L=Suppressed | M=Suppressed | N=621 | O=638 | P=313 | Q=141 | R=1378 | S=42 | T=87 | U=198 | V=311 | W=835 | X=1618 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r50: A=Registrations | B=2021 | C=Pancreas | D=450 | E=191 | F=259 | G=273 | H=74 | I=Suppressed | J=78 | K=Suppressed | L=0 | M=Suppressed | N=Suppressed | O=106 | P=87 | Q=Suppressed | R=206 | S=29 | T=43 | U=162 | V=118 | W=79 | X=19 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r51: A=Registrations | B=2022 | C=All | D=68166 | E=25815 | F=42351 | G=32991 | H=16340 | I=4517 | J=12974 | K=544 | L=270 | M=526 | N=10350 | O=15364 | P=9605 | Q=2985 | R=29862 | S=2618 | T=3973 | U=8024 | V=12181 | W=18466 | X=22904 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r52: A=Registrations | B=2022 | C=Heart | D=5072 | E=1466 | F=3606 | G=2807 | H=1338 | I=183 | J=654 | K=23 | L=27 | M=40 | N=849 | O=637 | P=1031 | Q=233 | R=2322 | S=698 | T=340 | U=461 | V=750 | W=1288 | X=1535 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r53: A=Registrations | B=2022 | C=Kidney | D=44442 | E=16946 | F=27496 | G=17881 | H=13173 | I=3531 | J=8930 | K=347 | L=212 | M=366 | N=7163 | O=11862 | P=5159 | Q=1882 | R=18376 | S=1099 | T=2760 | U=5414 | V=8344 | W=12016 | X=14809 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r54: A=Registrations | B=2022 | C=Kidney-Pancreas | D=1488 | E=657 | F=831 | G=580 | H=507 | I=74 | J=294 | K=Suppressed | L=Suppressed | M=Suppressed | N=218 | O=329 | P=224 | Q=31 | R=686 | S=Suppressed | T=170 | U=534 | V=413 | W=330 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r55: A=Registrations | B=2022 | C=Liver | D=13608 | E=5288 | F=8320 | G=9288 | H=910 | I=571 | J=2579 | K=145 | L=22 | M=91 | N=1395 | O=1743 | P=2807 | Q=685 | R=6978 | S=742 | T=539 | U=1315 | V=2266 | W=4002 | X=4744 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r56: A=Registrations | B=2022 | C=Lung | D=3131 | E=1255 | F=1876 | G=2191 | H=316 | I=145 | J=452 | K=Suppressed | L=Suppressed | M=Suppressed | N=688 | O=707 | P=308 | Q=136 | R=1292 | S=42 | T=106 | U=171 | V=301 | W=745 | X=1766 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r57: A=Registrations | B=2022 | C=Pancreas | D=425 | E=203 | F=222 | G=244 | H=96 | I=Suppressed | J=65 | K=Suppressed | L=Suppressed | M=Suppressed | N=37 | O=86 | P=76 | Q=18 | R=208 | S=Suppressed | T=58 | U=129 | V=107 | W=85 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r58: A=Registrations | B=2023 | C=All | D=72795 | E=27902 | F=44893 | G=34906 | H=17616 | I=4353 | J=14119 | K=618 | L=290 | M=630 | N=12160 | O=15123 | P=10514 | Q=3070 | R=31928 | S=2686 | T=4183 | U=8534 | V=12820 | W=19972 | X=24600 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r59: A=Registrations | B=2023 | C=Heart | D=5724 | E=1638 | F=4086 | G=3147 | H=1490 | I=203 | J=746 | K=36 | L=16 | M=51 | N=877 | O=762 | P=1130 | Q=280 | R=2675 | S=733 | T=392 | U=518 | V=801 | W=1578 | X=1702 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r60: A=Registrations | B=2023 | C=Kidney | D=47003 | E=17980 | F=29023 | G=18638 | H=14145 | I=3386 | J=9682 | K=381 | L=229 | M=431 | N=8587 | O=11557 | P=5532 | Q=1859 | R=19468 | S=1176 | T=2861 | U=5657 | V=8600 | W=12901 | X=15808 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r61: A=Registrations | B=2023 | C=Kidney-Pancreas | D=1585 | E=706 | F=879 | G=650 | H=511 | I=73 | J=309 | K=17 | L=Suppressed | M=Suppressed | N=211 | O=314 | P=258 | Q=45 | R=757 | S=Suppressed | T=166 | U=579 | V=507 | W=291 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r62: A=Registrations | B=2023 | C=Liver | D=14659 | E=5910 | F=8749 | G=9864 | H=1018 | I=567 | J=2815 | K=166 | L=32 | M=107 | N=1622 | O=1678 | P=3216 | Q=723 | R=7420 | S=705 | T=606 | U=1462 | V=2476 | W=4317 | X=5093 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r63: A=Registrations | B=2023 | C=Lung | D=3351 | E=1428 | F=1923 | G=2369 | H=337 | I=103 | J=480 | K=Suppressed | L=Suppressed | M=19 | N=799 | O=745 | P=297 | Q=143 | R=1367 | S=38 | T=114 | U=162 | V=311 | W=786 | X=1940 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r64: A=Registrations | B=2023 | C=Pancreas | D=473 | E=240 | F=233 | G=238 | H=115 | I=21 | J=87 | K=Suppressed | L=Suppressed | M=Suppressed | N=64 | O=67 | P=81 | Q=20 | R=241 | S=32 | T=44 | U=156 | V=125 | W=99 | X=17 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r65: A=Registrations | B=2024 | C=All | D=76853 | E=29501 | F=47352 | G=35299 | H=18525 | I=4715 | J=15411 | K=650 | L=316 | M=686 | N=14084 | O=15010 | P=10565 | Q=3229 | R=33965 | S=2784 | T=4083 | U=9181 | V=13803 | W=20439 | X=26563 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r66: A=Registrations | B=2024 | C=Heart | D=5967 | E=1689 | F=4278 | G=3084 | H=1560 | I=235 | J=848 | K=31 | L=27 | M=41 | N=1012 | O=717 | P=1210 | Q=272 | R=2756 | S=712 | T=350 | U=523 | V=875 | W=1606 | X=1901 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r67: A=Registrations | B=2024 | C=Kidney | D=49635 | E=18920 | F=30715 | G=19011 | H=14942 | I=3658 | J=10396 | K=389 | L=246 | M=488 | N=9865 | O=11479 | P=5555 | Q=1973 | R=20763 | S=1230 | T=2816 | U=5989 | V=9207 | W=13264 | X=17129 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r68: A=Registrations | B=2024 | C=Kidney-Pancreas | D=1666 | E=697 | F=969 | G=618 | H=517 | I=77 | J=382 | K=Suppressed | L=Suppressed | M=Suppressed | N=279 | O=305 | P=255 | Q=43 | R=784 | S=Suppressed | T=168 | U=641 | V=494 | W=327 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r69: A=Registrations | B=2024 | C=Liver | D=15396 | E=6464 | F=8932 | G=9895 | H=1013 | I=595 | J=3113 | K=184 | L=32 | M=108 | N=1930 | O=1668 | P=3097 | Q=772 | R=7929 | S=759 | T=592 | U=1695 | V=2749 | W=4338 | X=5263 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r70: A=Registrations | B=2024 | C=Lung | D=3725 | E=1518 | F=2207 | G=2451 | H=402 | I=133 | J=574 | K=24 | L=Suppressed | M=Suppressed | N=926 | O=784 | P=362 | Q=152 | R=1501 | S=38 | T=111 | U=189 | V=335 | W=829 | X=2223 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r71: A=Registrations | B=2024 | C=Pancreas | D=464 | E=213 | F=251 | G=240 | H=91 | I=17 | J=98 | K=Suppressed | L=Suppressed | M=Suppressed | N=72 | O=57 | P=86 | Q=17 | R=232 | S=39 | T=46 | U=144 | V=143 | W=75 | X=17 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r72: A=Registrations | B=2025 | C=All | D=81526 | E=31419 | F=50107 | G=36660 | H=19922 | I=5166 | J=16527 | K=671 | L=398 | M=654 | N=15701 | O=15404 | P=11011 | Q=3680 | R=35730 | S=2663 | T=4342 | U=9867 | V=14664 | W=21572 | X=28418 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r73: A=Registrations | B=2025 | C=Heart | D=6082 | E=1740 | F=4342 | G=3069 | H=1605 | I=241 | J=825 | K=34 | L=37 | M=57 | N=1191 | O=662 | P=1138 | Q=327 | R=2764 | S=648 | T=331 | U=511 | V=891 | W=1651 | X=2050 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r74: A=Registrations | B=2025 | C=Kidney | D=53231 | E=20417 | F=32814 | G=19749 | H=16154 | I=3979 | J=11431 | K=390 | L=313 | M=470 | N=11046 | O=11978 | P=5823 | Q=2222 | R=22162 | S=1206 | T=3070 | U=6542 | V=9898 | W=14185 | X=18330 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r75: A=Registrations | B=2025 | C=Kidney-Pancreas | D=1688 | E=679 | F=1009 | G=607 | H=565 | I=88 | J=352 | K=Suppressed | L=Suppressed | M=21 | N=282 | O=318 | P=248 | Q=68 | R=772 | S=Suppressed | T=198 | U=635 | V=532 | W=281 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r76: A=Registrations | B=2025 | C=Liver | D=16175 | E=6846 | F=9329 | G=10454 | H=1066 | I=670 | J=3224 | K=212 | L=33 | M=86 | N=2127 | O=1585 | P=3325 | Q=852 | R=8286 | S=735 | T=600 | U=1824 | V=2911 | W=4531 | X=5574 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r77: A=Registrations | B=2025 | C=Lung | D=3941 | E=1547 | F=2394 | G=2582 | H=444 | I=163 | J=610 | K=Suppressed | L=Suppressed | M=Suppressed | N=1000 | O=819 | P=385 | Q=192 | R=1545 | S=38 | T=94 | U=211 | V=325 | W=858 | X=2415 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r78: A=Registrations | B=2025 | C=Pancreas | D=409 | E=190 | F=219 | G=199 | H=88 | I=25 | J=85 | K=Suppressed | L=0 | M=Suppressed | N=55 | O=42 | P=92 | Q=19 | R=201 | S=Suppressed | T=49 | U=144 | V=107 | W=66 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r79: A=Registrations | B=2026 | C=All | D=19567 | E=7535 | F=12032 | G=8838 | H=4720 | I=1256 | J=3903 | K=157 | L=113 | M=176 | N=3829 | O=3797 | P=2611 | Q=901 | R=8429 | S=624 | T=1007 | U=2316 | V=3609 | W=5098 | X=6913 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r80: A=Registrations | B=2026 | C=Heart | D=1497 | E=434 | F=1063 | G=772 | H=391 | I=64 | J=182 | K=Suppressed | L=Suppressed | M=22 | N=264 | O=206 | P=276 | Q=67 | R=684 | S=168 | T=83 | U=118 | V=215 | W=378 | X=535 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r81: A=Registrations | B=2026 | C=Kidney | D=12598 | E=4846 | F=7752 | G=4598 | H=3851 | I=947 | J=2684 | K=95 | L=90 | M=118 | N=2694 | O=2951 | P=1352 | Q=526 | R=5075 | S=257 | T=709 | U=1504 | V=2422 | W=3346 | X=4360 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r82: A=Registrations | B=2026 | C=Kidney-Pancreas | D=367 | E=157 | F=210 | G=139 | H=115 | I=25 | J=73 | K=Suppressed | L=Suppressed | M=Suppressed | N=52 | O=67 | P=Suppressed | Q=Suppressed | R=189 | S=Suppressed | T=29 | U=153 | V=111 | W=65 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r83: A=Registrations | B=2026 | C=Liver | D=4078 | E=1671 | F=2407 | G=2666 | H=236 | I=180 | J=801 | K=49 | L=Suppressed | M=Suppressed | N=545 | O=379 | P=840 | Q=254 | R=2060 | S=183 | T=154 | U=477 | V=758 | W=1091 | X=1415 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r84: A=Registrations | B=2026 | C=Lung | D=936 | E=374 | F=562 | G=617 | H=104 | I=34 | J=150 | K=Suppressed | L=Suppressed | M=Suppressed | N=261 | O=180 | P=84 | Q=38 | R=373 | S=Suppressed | T=Suppressed | U=32 | V=82 | W=200 | X=591 | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+r85: A=Registrations | B=2026 | C=Pancreas | D=91 | E=53 | F=38 | G=46 | H=23 | I=Suppressed | J=Suppressed | K=0 | L=0 | M=Suppressed | N=Suppressed | O=Suppressed | P=Suppressed | Q=Suppressed | R=48 | S=Suppressed | T=Suppressed | U=32 | V=21 | W=18 | X=Suppressed | Y=October 23, 2026 | Z=January 1, 2021 | AA=March 31, 2026
+
+### Sheet "Waitlist - OTC Transplant Rate": 1126 rows x 9 columns (Excel rows 1..1126, columns A..I)
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Transplant Center (State) | B=Organ Type | C=Percent of Deceased Donor Transplant with 30 Days | D=Percent of Deceased Donor Transplant with 1 Year | E=Percent of Deceased Donor Transplant with 2 Years | F=Percent of Deceased Donor Transplant with 3 Years | G=Last Refresh Date | H=Date Range for Data - Start | I=Date Range for Data - End
+r2: A=Abbott Northwestern Hospital (MN) | B=Heart | C=33.8% | D=78.4% | E=82.4% | F=85.1% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r3: A=Abbott Northwestern Hospital (MN) | B=Kidney | C=1.6% | D=10.4% | E=17.2% | F=24.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r4: A=Abbott Northwestern Hospital (MN) | B=All | C=9.0% | D=25.9% | E=32.1% | F=38.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r5: A=AdventHealth Orlando (FL) | B=Heart | C=46.1% | D=82.4% | E=84.5% | F=85.8% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r6: A=AdventHealth Orlando (FL) | B=Kidney | C=9.0% | D=27.5% | E=35.1% | F=40.4% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r7: A=AdventHealth Orlando (FL) | B=Kidney-Pancreas | C=25.0% | D=67.3% | E=76.9% | F=78.8% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r8: A=AdventHealth Orlando (FL) | B=Liver | C=36.0% | D=68.5% | E=73.2% | F=74.8% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r9: A=AdventHealth Orlando (FL) | B=Lung | C=57.4% | D=85.2% | E=87.0% | F=87.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r10: A=AdventHealth Orlando (FL) | B=Pancreas | C=Suppressed | D=Suppressed | E=Suppressed | F=Suppressed | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r11: A=AdventHealth Orlando (FL) | B=All | C=23.3% | D=48.7% | E=54.5% | F=58.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r12: A=AdventHealth Porter (CO) | B=Kidney | C=3.0% | D=12.7% | E=18.8% | F=21.7% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r13: A=AdventHealth Porter (CO) | B=Kidney-Pancreas | C=Suppressed | D=Suppressed | E=Suppressed | F=Suppressed | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r14: A=AdventHealth Porter (CO) | B=Liver | C=17.5% | D=31.7% | E=34.9% | F=38.1% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r15: A=AdventHealth Porter (CO) | B=All | C=4.6% | D=14.9% | E=20.6% | F=23.6% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r16: A=Advocate Christ Medical Center (IL) | B=Heart | C=18.0% | D=38.5% | E=49.5% | F=51.5% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r17: A=Advocate Christ Medical Center (IL) | B=Kidney | C=2.6% | D=7.9% | E=11.8% | F=17.5% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r18: A=Advocate Christ Medical Center (IL) | B=Lung | C=23.1% | D=61.5% | E=61.5% | F=61.5% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r19: A=Advocate Christ Medical Center (IL) | B=All | C=7.9% | D=18.7% | E=24.8% | F=29.2% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r20: A=Albany Medical Center Hospital (NY) | B=Kidney | C=4.0% | D=20.9% | E=29.9% | F=36.6% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r21: A=Albany Medical Center Hospital (NY) | B=Kidney-Pancreas | C=Suppressed | D=Suppressed | E=Suppressed | F=Suppressed | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r22: A=Albany Medical Center Hospital (NY) | B=Pancreas | C=Suppressed | D=Suppressed | E=Suppressed | F=Suppressed | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r23: A=Albany Medical Center Hospital (NY) | B=All | C=4.2% | D=20.8% | E=30.2% | F=36.8% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r24: A=Albert Einstein Medical Center (PA) | B=Kidney | C=3.3% | D=13.1% | E=21.5% | F=26.1% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r25: A=Albert Einstein Medical Center (PA) | B=Kidney-Pancreas | C=2.3% | D=18.2% | E=22.7% | F=25.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r26: A=Albert Einstein Medical Center (PA) | B=Liver | C=41.2% | D=55.7% | E=59.0% | F=59.9% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r27: A=Albert Einstein Medical Center (PA) | B=Pancreas | C=Suppressed | D=Suppressed | E=Suppressed | F=Suppressed | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r28: A=Albert Einstein Medical Center (PA) | B=All | C=17.5% | D=29.2% | E=35.5% | F=38.7% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r29: A=Allegheny General Hospital (PA) | B=Heart | C=33.3% | D=69.4% | E=74.1% | F=76.2% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r30: A=Allegheny General Hospital (PA) | B=Kidney | C=7.8% | D=24.9% | E=35.7% | F=44.2% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r31: A=Allegheny General Hospital (PA) | B=Kidney-Pancreas | C=6.7% | D=53.3% | E=66.7% | F=66.7% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r32: A=Allegheny General Hospital (PA) | B=Liver | C=42.6% | D=68.3% | E=71.3% | F=71.9% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r33: A=Allegheny General Hospital (PA) | B=Pancreas | C=0.0% | D=5.6% | E=5.6% | F=5.6% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r34: A=Allegheny General Hospital (PA) | B=All | C=20.0% | D=41.9% | E=49.8% | F=55.2% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r35: A=Ann & Robert H. Lurie Children's Hospital of Chicago (IL) | B=Heart | C=14.8% | D=71.4% | E=75.8% | F=76.9% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+... sampled rows:
+r140: A=Cardinal Glennon Children's Hospital (MO) | B=Heart | C=9.1% | D=36.4% | E=36.4% | F=45.5% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r171: A=Children's Hospital Los Angeles (CA) | B=Liver | C=15.7% | D=47.8% | E=50.4% | F=50.9% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r184: A=Children's Hospital of Michigan (MI) | B=All | C=12.8% | D=64.1% | E=67.9% | F=71.8% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r203: A=Children's Mercy Hospital (MO) | B=All | C=15.2% | D=40.2% | E=48.5% | F=52.9% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r323: A=Hospital of the University of Pennsylvania (PA) | B=Kidney-Pancreas | C=2.6% | D=19.4% | E=36.1% | F=43.9% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r350: A=Integris Baptist Medical Center (OK) | B=Heart | C=26.6% | D=65.3% | E=70.2% | F=75.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r368: A=Jackson Memorial Hospital University of Miami School of Medicine (FL) | B=Lung | C=40.4% | D=77.6% | E=81.6% | F=81.6% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r392: A=Keck Hospital of USC (CA) | B=Liver | C=27.1% | D=44.1% | E=50.0% | F=51.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r393: A=Keck Hospital of USC (CA) | B=Lung | C=16.7% | D=57.1% | E=65.5% | F=68.5% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r404: A=Las Palmas Medical Center (TX) | B=All | C=5.2% | D=17.3% | E=23.6% | F=31.1% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r415: A=Loma Linda University Medical Center (CA) | B=Heart | C=27.5% | D=68.1% | E=71.9% | F=73.8% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r457: A=Mayo Clinic Hospital Arizona (AZ) | B=Liver | C=39.8% | D=80.8% | E=84.3% | F=85.1% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r458: A=Mayo Clinic Hospital Arizona (AZ) | B=Pancreas | C=9.1% | D=36.4% | E=36.4% | F=36.4% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r492: A=Medstar Georgetown Transplant Institute (DC) | B=Kidney | C=4.3% | D=16.5% | E=24.4% | F=30.9% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r504: A=Memorial Regional Hospital (FL) | B=Heart | C=12.4% | D=49.5% | E=56.2% | F=59.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r577: A=New York-Presbyterian Hospital/Weill Cornell Medical Center (NY) | B=All | C=6.5% | D=18.4% | E=24.4% | F=28.1% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r648: A=Pinnacle Health System at Harrisburg Hospital (PA) | B=All | C=1.1% | D=8.8% | E=13.9% | F=19.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r663: A=Providence Sacred Heart Medical Center & Children's Hospital (WA) | B=Kidney | C=2.9% | D=18.2% | E=26.8% | F=36.5% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r689: A=Rush University Medical Center (IL) | B=Kidney-Pancreas | C=1.8% | D=32.7% | E=47.3% | F=56.4% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r706: A=Saint Thomas Hospital (TN) | B=Kidney | C=9.1% | D=33.0% | E=48.0% | F=54.3% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r707: A=Saint Thomas Hospital (TN) | B=All | C=18.4% | D=41.8% | E=54.6% | F=60.0% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r756: A=St. Louis Children's Hospital at Washington University Medical Center (MO) | B=Liver | C=34.7% | D=84.2% | E=86.1% | F=86.1% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r800: A=Temple University Hospital (PA) | B=Liver | C=21.2% | D=34.8% | E=35.6% | F=35.6% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r829: A=The Nebraska Medical Center (NE) | B=Kidney-Pancreas | C=15.4% | D=53.8% | E=53.8% | F=53.8% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r856: A=UAMS Medical Center (AR) | B=Liver | C=24.6% | D=64.8% | E=70.5% | F=70.8% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r860: A=UCSF Medical Center at Mission Bay (CA) | B=Liver | C=19.4% | D=58.1% | E=59.7% | F=59.7% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r953: A=University of Cincinnati  Medical Center (OH) | B=Heart | C=13.1% | D=44.3% | E=50.8% | F=52.5% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1001: A=University of Michigan Medical Center (MI) | B=Liver | C=26.4% | D=63.2% | E=68.9% | F=69.6% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1023: A=University of North Carolina Hospitals (NC) | B=Lung | C=30.6% | D=84.7% | E=87.8% | F=87.8% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1053: A=University of Virginia Health Sciences Center (VA) | B=Liver | C=28.6% | D=59.0% | E=63.9% | F=64.6% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+... last rows:
+r1119: A=Willis-Knighton Medical Center (LA) | B=Kidney-Pancreas | C=16.2% | D=60.6% | E=67.7% | F=68.7% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1120: A=Willis-Knighton Medical Center (LA) | B=Liver | C=17.3% | D=41.7% | E=47.5% | F=48.9% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1121: A=Willis-Knighton Medical Center (LA) | B=Pancreas | C=18.2% | D=36.4% | E=36.4% | F=36.4% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1122: A=Willis-Knighton Medical Center (LA) | B=All | C=6.2% | D=21.5% | E=27.4% | F=30.7% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1123: A=Yale New Haven Hospital (CT) | B=Heart | C=29.6% | D=62.0% | E=71.2% | F=72.6% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1124: A=Yale New Haven Hospital (CT) | B=Kidney | C=2.9% | D=14.0% | E=20.0% | F=24.5% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1125: A=Yale New Haven Hospital (CT) | B=Liver | C=12.6% | D=28.4% | E=32.8% | F=35.5% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+r1126: A=Yale New Haven Hospital (CT) | B=All | C=8.8% | D=24.0% | E=30.2% | F=33.9% | G=October 23, 2026 | H=January 1, 2018 | I=March 31, 2023
+... column profiles (data rows below Excel row 1):
+  A [Transplant Center (State)]: {"non_empty": 1125, "distinct": 262, "top_values": {"AdventHealth Orlando (FL)": 7, "Banner University Medical Center-Tucson (AZ)": 7, "Barnes-Jewish Hospital (MO)": 7, "Baylor University Medical Center (TX)": 7, "Cedars-Sinai Medical Center (CA)": 7, "Children's Hospital Medical Center (OH)": 7}}
+  B [Organ Type]: {"non_empty": 1125, "distinct": 7, "value_counts": {"All": 262, "Kidney": 247, "Liver": 149, "Heart": 148, "Kidney-Pancreas": 129, "Pancreas": 117, "Lung": 73}}
+  C [Percent of Deceased Donor Transplant with 30 Days]: {"non_empty": 1125, "distinct": 373, "top_values": {"Suppressed": 88, "0.0%": 61, "1.5%": 13, "3.4%": 12, "2.5%": 9, "7.1%": 9}}
+  D [Percent of Deceased Donor Transplant with 1 Year]: {"non_empty": 1125, "distinct": 549, "top_values": {"Suppressed": 88, "0.0%": 13, "17.3%": 8, "10.6%": 7, "5.6%": 7, "50.0%": 7}}
+  E [Percent of Deceased Donor Transplant with 2 Years]: {"non_empty": 1125, "distinct": 568, "top_values": {"Suppressed": 88, "67.4%": 8, "20.0%": 7, "25.0%": 7, "50.0%": 7, "15.4%": 6}}
+  F [Percent of Deceased Donor Transplant with 3 Years]: {"non_empty": 1125, "distinct": 562, "top_values": {"Suppressed": 88, "50.0%": 8, "25.0%": 7, "66.7%": 7, "19.8%": 6, "28.8%": 6}}
+  G [Last Refresh Date]: {"non_empty": 1125, "distinct": 1, "value_counts": {"October 23, 2026": 1125}}
+  H [Date Range for Data - Start]: {"non_empty": 1125, "distinct": 1, "value_counts": {"January 1, 2018": 1125}}
+  I [Date Range for Data - End]: {"non_empty": 1125, "distinct": 1, "value_counts": {"March 31, 2023": 1125}}
+
+### Sheet "Waitlist - OTC Removal Reasons": 866 rows x 13 columns (Excel rows 1..866, columns A..M)
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Transplant Center (State) | B=Organ Type | C=Transferred to Another Center | D=Received Living Donor Transplant | E=Received Deceased Donor Transplant | F=Died | G=Received Transplant Elsewhere | H=Too sick for Transplant | I=Recovered without Transplant | J=Other Reasons | K=Last Refresh Date | L=Date Range for Data - Start | M=Date Range for Data - End
+r2: A=Abbott Northwestern Hospital (MN) | B=Heart | C=0 | D=0 | E=69 | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r3: A=Abbott Northwestern Hospital (MN) | B=Kidney | C=77 | D=30 | E=110 | F=25 | G=Suppressed | H=31 | I=Suppressed | J=25 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r4: A=AdventHealth Orlando (FL) | B=Heart | C=Suppressed | D=0 | E=245 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=19 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r5: A=AdventHealth Orlando (FL) | B=Kidney | C=Suppressed | D=129 | E=525 | F=119 | G=215 | H=119 | I=Suppressed | J=92 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r6: A=AdventHealth Orlando (FL) | B=Kidney-Pancreas | C=0 | D=0 | E=46 | F=0 | G=Suppressed | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r7: A=AdventHealth Orlando (FL) | B=Liver | C=Suppressed | D=Suppressed | E=408 | F=35 | G=Suppressed | H=Suppressed | I=23 | J=36 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r8: A=AdventHealth Orlando (FL) | B=Lung | C=Suppressed | D=0 | E=103 | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r9: A=AdventHealth Orlando (FL) | B=Pancreas | C=0 | D=0 | E=Suppressed | F=0 | G=0 | H=0 | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r10: A=AdventHealth Porter (CO) | B=Kidney | C=26 | D=244 | E=262 | F=54 | G=24 | H=74 | I=Suppressed | J=101 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r11: A=AdventHealth Porter (CO) | B=Liver | C=Suppressed | D=0 | E=64 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=18 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r12: A=Advocate Christ Medical Center (IL) | B=Heart | C=Suppressed | D=0 | E=135 | F=Suppressed | G=0 | H=18 | I=Suppressed | J=26 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r13: A=Advocate Christ Medical Center (IL) | B=Kidney | C=27 | D=28 | E=138 | F=65 | G=75 | H=61 | I=Suppressed | J=30 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r14: A=Albany Medical Center Hospital (NY) | B=Kidney | C=37 | D=23 | E=160 | F=34 | G=50 | H=26 | I=0 | J=26 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r15: A=Albany Medical Center Hospital (NY) | B=Kidney-Pancreas | C=Suppressed | D=0 | E=Suppressed | F=Suppressed | G=0 | H=0 | I=0 | J=0 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r16: A=Albany Medical Center Hospital (NY) | B=Pancreas | C=Suppressed | D=0 | E=Suppressed | F=0 | G=0 | H=0 | I=0 | J=0 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r17: A=Albert Einstein Medical Center (PA) | B=Kidney | C=19 | D=22 | E=334 | F=187 | G=135 | H=207 | I=Suppressed | J=184 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r18: A=Albert Einstein Medical Center (PA) | B=Kidney-Pancreas | C=0 | D=0 | E=Suppressed | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r19: A=Albert Einstein Medical Center (PA) | B=Liver | C=Suppressed | D=0 | E=363 | F=67 | G=Suppressed | H=67 | I=35 | J=42 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r20: A=Albert Einstein Medical Center (PA) | B=Pancreas | C=0 | D=0 | E=Suppressed | F=0 | G=Suppressed | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r21: A=Allegheny General Hospital (PA) | B=Heart | C=0 | D=0 | E=113 | F=0 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r22: A=Allegheny General Hospital (PA) | B=Kidney | C=Suppressed | D=119 | E=388 | F=58 | G=34 | H=80 | I=Suppressed | J=55 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r23: A=Allegheny General Hospital (PA) | B=Kidney-Pancreas | C=Suppressed | D=0 | E=Suppressed | F=0 | G=0 | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r24: A=Allegheny General Hospital (PA) | B=Liver | C=0 | D=Suppressed | E=292 | F=16 | G=Suppressed | H=Suppressed | I=Suppressed | J=20 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r25: A=Allegheny General Hospital (PA) | B=Pancreas | C=Suppressed | D=0 | E=Suppressed | F=0 | G=0 | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r26: A=Ann & Robert H. Lurie Children's Hospital of Chicago (IL) | B=Heart | C=Suppressed | D=0 | E=118 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r27: A=Ann & Robert H. Lurie Children's Hospital of Chicago (IL) | B=Kidney | C=Suppressed | D=58 | E=108 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r28: A=Ann & Robert H. Lurie Children's Hospital of Chicago (IL) | B=Liver | C=0 | D=Suppressed | E=57 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r29: A=Arkansas Children's Hospital (AR) | B=Heart | C=0 | D=0 | E=30 | F=0 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r30: A=Arkansas Children's Hospital (AR) | B=Kidney | C=Suppressed | D=Suppressed | E=25 | F=0 | G=Suppressed | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r31: A=Ascension Sacred Heart Pensacola (FL) | B=Kidney | C=Suppressed | D=Suppressed | E=122 | F=44 | G=76 | H=62 | I=0 | J=64 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r32: A=Ascension St. John Hospital (MI) | B=Kidney | C=Suppressed | D=22 | E=132 | F=16 | G=16 | H=80 | I=Suppressed | J=52 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r33: A=Ascension St. Vincent Hospital (IN) | B=Heart | C=Suppressed | D=0 | E=147 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=17 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r34: A=Ascension St. Vincent Hospital (IN) | B=Kidney | C=Suppressed | D=69 | E=329 | F=54 | G=61 | H=121 | I=Suppressed | J=62 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r35: A=Aurora St. Luke's Medical Center (WI) | B=Heart | C=Suppressed | D=0 | E=127 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+... sampled rows:
+r179: A=Dell Seton Medical Center at The University of Texas at Austin (TX) | B=Kidney-Pancreas | C=0 | D=0 | E=Suppressed | F=0 | G=0 | H=0 | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r214: A=George Washington University Hospital (DC) | B=Pancreas | C=0 | D=0 | E=0 | F=0 | G=0 | H=0 | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r220: A=Harbor UCLA Medical Center (CA) | B=Kidney | C=Suppressed | D=Suppressed | E=209 | F=109 | G=22 | H=Suppressed | I=0 | J=40 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r264: A=Intermountain Medical Center (UT) | B=Kidney-Pancreas | C=Suppressed | D=0 | E=26 | F=0 | G=0 | H=0 | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r270: A=Jackson Memorial Hospital University of Miami School of Medicine (FL) | B=Liver | C=Suppressed | D=0 | E=738 | F=75 | G=Suppressed | H=64 | I=31 | J=96 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r342: A=Mayo Clinic Hospital Arizona (AZ) | B=Liver | C=Suppressed | D=0 | E=1449 | F=20 | G=17 | H=62 | I=78 | J=63 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r362: A=Medical City Fort Worth (TX) | B=Kidney | C=Suppressed | D=106 | E=478 | F=16 | G=83 | H=53 | I=Suppressed | J=61 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r371: A=Medstar Georgetown Transplant Institute (DC) | B=Kidney | C=24 | D=382 | E=1179 | F=158 | G=178 | H=152 | I=19 | J=313 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r396: A=Methodist Specialty and Transplant Hospital (TX) | B=Pancreas | C=0 | D=0 | E=Suppressed | F=Suppressed | G=Suppressed | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r418: A=NY Presbyterian Hospital/Columbia Univ. Medical Center (NY) | B=Kidney-Pancreas | C=Suppressed | D=Suppressed | E=33 | F=Suppressed | G=0 | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r446: A=North Shore University Hospital/Northwell Health (NY) | B=Liver | C=Suppressed | D=Suppressed | E=493 | F=23 | G=Suppressed | H=29 | I=27 | J=22 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r448: A=Northwestern Memorial Hospital (IL) | B=Heart | C=Suppressed | D=0 | E=189 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=33 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r494: A=Presbyterian Hospital (NM) | B=Kidney | C=Suppressed | D=47 | E=165 | F=74 | G=29 | H=65 | I=Suppressed | J=88 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r518: A=Riverside Community Hospital (CA) - Inactive | B=Kidney | C=Suppressed | D=Suppressed | E=35 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=30 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r580: A=Stanford Health Care (CA) | B=Lung | C=0 | D=0 | E=342 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=72 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r582: A=State University of New York Upstate Medical University (NY) | B=Kidney | C=22 | D=110 | E=330 | F=71 | G=Suppressed | H=111 | I=Suppressed | J=128 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r594: A=Swedish Medical Center (WA) | B=Kidney-Pancreas | C=0 | D=0 | E=Suppressed | F=Suppressed | G=Suppressed | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r609: A=Texas Children's Hospital (TX) | B=Kidney | C=Suppressed | D=49 | E=153 | F=Suppressed | G=Suppressed | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r614: A=The Christ Hospital (OH) | B=Kidney | C=Suppressed | D=157 | E=186 | F=20 | G=21 | H=50 | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r615: A=The Cleveland Clinic Foundation (OH) | B=Heart | C=Suppressed | D=0 | E=370 | F=40 | G=Suppressed | H=51 | I=19 | J=69 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r643: A=Tulane Medical Center (LA) | B=Kidney | C=Suppressed | D=153 | E=544 | F=116 | G=59 | H=214 | I=Suppressed | J=173 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r696: A=University of Alabama Hospital (AL) | B=Pancreas | C=0 | D=0 | E=0 | F=0 | G=Suppressed | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r713: A=University of California at Los Angeles Medical Center (CA) | B=Kidney | C=79 | D=592 | E=1441 | F=331 | G=295 | H=405 | I=48 | J=271 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r737: A=University of Illinois Medical Center (IL) | B=Liver | C=0 | D=21 | E=270 | F=18 | G=0 | H=19 | I=30 | J=33 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r752: A=University of Kentucky Medical Center (KY) | B=Kidney-Pancreas | C=Suppressed | D=0 | E=Suppressed | F=Suppressed | G=Suppressed | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r771: A=University of Minnesota Medical Center, Fairview (MN) | B=Lung | C=0 | D=0 | E=255 | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r777: A=University of Missouri Hospital and Clinics (MO) | B=Kidney | C=Suppressed | D=21 | E=47 | F=Suppressed | G=37 | H=43 | I=0 | J=26 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r780: A=University of North Carolina Hospitals (NC) | B=Kidney-Pancreas | C=0 | D=Suppressed | E=Suppressed | F=Suppressed | G=Suppressed | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r782: A=University of North Carolina Hospitals (NC) | B=Lung | C=Suppressed | D=0 | E=52 | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r783: A=University of North Carolina Hospitals (NC) | B=Pancreas | C=0 | D=0 | E=0 | F=0 | G=0 | H=Suppressed | I=0 | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+... last rows:
+r859: A=Willis-Knighton Medical Center (LA) | B=Kidney | C=Suppressed | D=36 | E=262 | F=87 | G=112 | H=22 | I=Suppressed | J=248 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r860: A=Willis-Knighton Medical Center (LA) | B=Kidney-Pancreas | C=0 | D=0 | E=51 | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=22 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r861: A=Willis-Knighton Medical Center (LA) | B=Liver | C=0 | D=0 | E=58 | F=18 | G=Suppressed | H=20 | I=Suppressed | J=37 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r862: A=Willis-Knighton Medical Center (LA) | B=Pancreas | C=0 | D=0 | E=0 | F=0 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r863: A=Yale New Haven Hospital (CT) | B=Heart | C=Suppressed | D=0 | E=161 | F=Suppressed | G=Suppressed | H=Suppressed | I=20 | J=16 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r864: A=Yale New Haven Hospital (CT) | B=Kidney | C=23 | D=182 | E=445 | F=134 | G=213 | H=109 | I=Suppressed | J=85 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r865: A=Yale New Haven Hospital (CT) | B=Kidney-Pancreas | C=0 | D=0 | E=0 | F=Suppressed | G=0 | H=0 | I=0 | J=0 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+r866: A=Yale New Haven Hospital (CT) | B=Liver | C=Suppressed | D=Suppressed | E=141 | F=59 | G=26 | H=32 | I=22 | J=61 | K=October 23, 2026 | L=January 1, 2021 | M=March 31, 2026
+... column profiles (data rows below Excel row 1):
+  A [Transplant Center (State)]: {"non_empty": 865, "distinct": 257, "top_values": {"AdventHealth Orlando (FL)": 6, "Banner University Medical Center-Tucson (AZ)": 6, "Barnes-Jewish Hospital (MO)": 6, "Baylor University Medical Center (TX)": 6, "Cedars-Sinai Medical Center (CA)": 6, "Children's Hospital Medical Center (OH)": 6}}
+  B [Organ Type]: {"non_empty": 865, "distinct": 6, "value_counts": {"Kidney": 243, "Heart": 152, "Liver": 152, "Kidney-Pancreas": 129, "Pancreas": 113, "Lung": 76}}
+  C [Transferred to Another Center]: {"non_empty": 865, "distinct": 40, "top_values": {"Suppressed": 483, "0": 305, "21": 6, "17": 5, "16": 4, "19": 4}}
+  D [Received Living Donor Transplant]: {"non_empty": 865, "distinct": 162, "top_values": {"0": 516, "Suppressed": 99, "23": 9, "22": 8, "21": 5, "31": 5}}
+  E [Received Deceased Donor Transplant]: {"non_empty": 865, "distinct": 400, "top_values": {"Suppressed": 161, "0": 34, "25": 7, "33": 7, "58": 7, "110": 6}}
+  F [Died]: {"non_empty": 865, "distinct": 138, "top_values": {"Suppressed": 425, "0": 141, "16": 10, "23": 8, "28": 7, "20": 6}}
+  G [Received Transplant Elsewhere]: {"non_empty": 865, "distinct": 126, "top_values": {"Suppressed": 379, "0": 278, "18": 7, "20": 7, "19": 6, "24": 6}}
+  H [Too sick for Transplant]: {"non_empty": 865, "distinct": 159, "top_values": {"Suppressed": 407, "0": 126, "19": 11, "18": 9, "16": 8, "22": 8}}
+  I [Recovered without Transplant]: {"non_empty": 865, "distinct": 71, "top_values": {"Suppressed": 443, "0": 266, "19": 9, "17": 8, "20": 8, "24": 7}}
+  J [Other Reasons]: {"non_empty": 865, "distinct": 173, "top_values": {"Suppressed": 398, "0": 50, "17": 17, "16": 12, "18": 12, "25": 11}}
+  K [Last Refresh Date]: {"non_empty": 865, "distinct": 1, "value_counts": {"October 23, 2026": 865}}
+  L [Date Range for Data - Start]: {"non_empty": 865, "distinct": 1, "value_counts": {"January 1, 2021": 865}}
+  M [Date Range for Data - End]: {"non_empty": 865, "distinct": 1, "value_counts": {"March 31, 2026": 865}}
+
+### Sheet "Recipient Demographics": 67 rows x 28 columns (Excel rows 1..67, columns A..AB)
+(whole sheet shown; Excel row numbers)
+r1: A=Transplant Year | B=Donor Type | C=Organ Transplanted | D=Total Distinct Recipients | E=Male Distinct Recipients | F=Female Distinct Recipients | G=Distinct Recipients with Age Not Reported | H=Pediatric Distinct Recipients | I=Age 18-30 Distinct Recipients | J=Age 31-40 Distinct Recipients | K=Age 41-50 Distinct Recipients | L=Age 51-60 Distinct Recipients | M=Age 61+ Distinct Recipients | N=White Distinct Recipients | O=Black Distinct Recipients | P=Hispanic Distinct Recipients | Q=Asian Distinct Recipients | R=American Indian Distinct Recipients | S=Native Hawaiian Distinct Recipients | T=Multiracial Distinct Recipients | U=Distinct Recipients with Medicare Advantage Payment Source | V=Distinct Recipients with Private Insurance Payment Source | W=Distinct Recipients with Medicare FFS Payment Source | X=Distinct Recipients with Medicaid and CHIP Payment Source | Y=Distinct Recipients with Other Insurance Payment Sources | Z=Last Refresh Date | AA=Date Range for Data - Start | AB=Date Range for Data - End
+r2: A=2021 | B=Deceased Donor | C=Heart | D=3806 | E=2735 | F=1071 | G=2 | H=486 | I=244 | J=313 | K=498 | L=1072 | M=1191 | N=2211 | O=926 | P=451 | Q=160 | R=16 | S=Suppressed | T=31 | U=646 | V=1684 | W=551 | X=771 | Y=154 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r3: A=2021 | B=Deceased Donor | C=Kidney | D=18684 | E=11303 | F=7381 | G=0 | H=585 | I=1200 | J=2389 | K=3398 | L=4799 | M=6313 | N=6668 | O=6293 | P=3921 | Q=1397 | R=146 | S=109 | T=150 | U=3764 | V=4594 | W=8237 | X=1634 | Y=455 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r4: A=2021 | B=Deceased Donor | C=Kidney-Pancreas | D=820 | E=503 | F=317 | G=0 | H=Suppressed | I=69 | J=272 | K=276 | L=180 | M=Suppressed | N=363 | O=263 | P=140 | Q=44 | R=Suppressed | S=Suppressed | T=Suppressed | U=137 | V=306 | W=293 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r5: A=2021 | B=Deceased Donor | C=Liver | D=8547 | E=5349 | F=3198 | G=0 | H=414 | I=320 | J=878 | K=1414 | L=2568 | M=2953 | N=5921 | O=654 | P=1440 | Q=364 | R=98 | S=Suppressed | T=56 | U=896 | V=4334 | W=1305 | X=1662 | Y=350 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r6: A=2021 | B=Deceased Donor | C=Lung | D=2520 | E=1612 | F=908 | G=0 | H=23 | I=77 | J=149 | K=227 | L=653 | M=1391 | N=1776 | O=253 | P=359 | Q=97 | R=18 | S=Suppressed | T=Suppressed | U=612 | V=1049 | W=505 | X=244 | Y=110 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r7: A=2021 | B=Deceased Donor | C=Pancreas | D=140 | E=65 | F=75 | G=0 | H=20 | I=Suppressed | J=37 | K=38 | L=24 | M=Suppressed | N=103 | O=19 | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=Suppressed | U=Suppressed | V=81 | W=20 | X=21 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r8: A=2021 | B=Deceased Donor | C=All Transplanted Organ Types | D=33229 | E=20742 | F=12487 | G=2 | H=1482 | I=1877 | J=3933 | K=5649 | L=8896 | M=11390 | N=16282 | O=8186 | P=6098 | Q=2009 | R=273 | S=132 | T=249 | U=5856 | V=11496 | W=10638 | X=4196 | Y=1043 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r9: A=2021 | B=Living Donor | C=Kidney | D=5969 | E=3742 | F=2227 | G=0 | H=234 | I=620 | J=917 | K=1135 | L=1385 | M=1678 | N=3706 | O=777 | P=1023 | Q=369 | R=35 | S=Suppressed | T=45 | U=656 | V=3329 | W=1541 | X=324 | Y=119 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r10: A=2021 | B=Living Donor | C=Liver | D=569 | E=271 | F=298 | G=0 | H=77 | I=41 | J=66 | K=81 | L=125 | M=179 | N=416 | O=31 | P=101 | Q=16 | R=Suppressed | S=0 | T=Suppressed | U=49 | V=339 | W=79 | X=80 | Y=22 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r11: A=2021 | B=Living Donor | C=All Transplanted Organ Types | D=6538 | E=4013 | F=2525 | G=0 | H=311 | I=661 | J=983 | K=1216 | L=1510 | M=1857 | N=4122 | O=808 | P=1124 | Q=385 | R=38 | S=Suppressed | T=47 | U=705 | V=3668 | W=1620 | X=404 | Y=141 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r12: A=2021 | B=All Donors | C=All Transplanted Organ Types | D=39748 | E=24746 | F=15002 | G=2 | H=1791 | I=2536 | J=4910 | K=6861 | L=10403 | M=13245 | N=20394 | O=8990 | P=7219 | Q=2392 | R=311 | S=146 | T=296 | U=6560 | V=15151 | W=12256 | X=4597 | Y=1184 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r13: A=2022 | B=Deceased Donor | C=Heart | D=4105 | E=2926 | F=1179 | G=0 | H=490 | I=296 | J=383 | K=570 | L=1069 | M=1297 | N=2266 | O=1076 | P=536 | Q=158 | R=16 | S=23 | T=30 | U=655 | V=1832 | W=600 | X=834 | Y=184 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r14: A=2022 | B=Deceased Donor | C=Kidney | D=19621 | E=11901 | F=7720 | G=0 | H=500 | I=1117 | J=2376 | K=3533 | L=5118 | M=6977 | N=6911 | O=6615 | P=4106 | Q=1579 | R=154 | S=86 | T=170 | U=4119 | V=5096 | W=8159 | X=1742 | Y=505 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r15: A=2022 | B=Deceased Donor | C=Kidney-Pancreas | D=810 | E=486 | F=324 | G=0 | H=Suppressed | I=65 | J=302 | K=251 | L=174 | M=Suppressed | N=327 | O=266 | P=162 | Q=40 | R=Suppressed | S=Suppressed | T=Suppressed | U=139 | V=336 | W=261 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r16: A=2022 | B=Deceased Donor | C=Liver | D=8807 | E=5502 | F=3305 | G=0 | H=429 | I=343 | J=883 | K=1497 | L=2618 | M=3037 | N=6031 | O=613 | P=1627 | Q=377 | R=92 | S=Suppressed | T=57 | U=939 | V=4429 | W=1319 | X=1744 | Y=376 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r17: A=2022 | B=Deceased Donor | C=Lung | D=2684 | E=1670 | F=1014 | G=0 | H=18 | I=74 | J=129 | K=236 | L=628 | M=1599 | N=1914 | O=242 | P=389 | Q=116 | R=Suppressed | S=Suppressed | T=Suppressed | U=632 | V=1084 | W=642 | X=233 | Y=93 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r18: A=2022 | B=Deceased Donor | C=Pancreas | D=106 | E=53 | F=53 | G=0 | H=Suppressed | I=Suppressed | J=27 | K=32 | L=19 | M=Suppressed | N=74 | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=Suppressed | T=0 | U=Suppressed | V=50 | W=20 | X=20 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r19: A=2022 | B=Deceased Donor | C=All Transplanted Organ Types | D=34762 | E=21624 | F=13138 | G=0 | H=1416 | I=1853 | J=3979 | K=5908 | L=9191 | M=12415 | N=16722 | O=8573 | P=6609 | Q=2210 | R=271 | S=114 | T=263 | U=6277 | V=12239 | W=10708 | X=4419 | Y=1119 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r20: A=2022 | B=Living Donor | C=Kidney | D=5862 | E=3634 | F=2228 | G=0 | H=202 | I=601 | J=805 | K=1159 | L=1345 | M=1750 | N=3605 | O=745 | P=1029 | Q=400 | R=32 | S=Suppressed | T=39 | U=695 | V=3184 | W=1477 | X=360 | Y=146 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r21: A=2022 | B=Living Donor | C=Liver | D=603 | E=312 | F=291 | G=0 | H=87 | I=50 | J=46 | K=93 | L=141 | M=186 | N=447 | O=27 | P=99 | Q=21 | R=Suppressed | S=Suppressed | T=Suppressed | U=65 | V=362 | W=81 | X=76 | Y=19 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r22: A=2022 | B=Living Donor | C=All Transplanted Organ Types | D=6463 | E=3944 | F=2519 | G=0 | H=289 | I=651 | J=851 | K=1251 | L=1486 | M=1935 | N=4051 | O=772 | P=1127 | Q=421 | R=34 | S=Suppressed | T=44 | U=759 | V=3545 | W=1558 | X=436 | Y=165 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r23: A=2022 | B=All Donors | C=All Transplanted Organ Types | D=41199 | E=25552 | F=15647 | G=0 | H=1705 | I=2499 | J=4829 | K=7155 | L=10669 | M=14342 | N=20751 | O=9344 | P=7734 | Q=2630 | R=305 | S=128 | T=307 | U=7034 | V=15766 | W=12263 | X=4853 | Y=1283 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r24: A=2023 | B=Deceased Donor | C=Heart | D=4532 | E=3203 | F=1329 | G=0 | H=505 | I=329 | J=404 | K=641 | L=1230 | M=1423 | N=2565 | O=1126 | P=579 | Q=165 | R=35 | S=17 | T=32 | U=751 | V=2068 | W=665 | X=846 | Y=202 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r25: A=2023 | B=Deceased Donor | C=Kidney | D=21034 | E=12605 | F=8429 | G=0 | H=548 | I=1102 | J=2362 | K=3548 | L=5499 | M=7975 | N=7076 | O=7604 | P=4252 | Q=1618 | R=184 | S=99 | T=194 | U=4800 | V=5593 | W=8146 | X=1853 | Y=642 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r26: A=2023 | B=Deceased Donor | C=Kidney-Pancreas | D=812 | E=479 | F=333 | G=0 | H=Suppressed | I=73 | J=293 | K=249 | L=170 | M=Suppressed | N=317 | O=279 | P=165 | Q=34 | R=Suppressed | S=Suppressed | T=Suppressed | U=155 | V=305 | W=228 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r27: A=2023 | B=Deceased Donor | C=Liver | D=9863 | E=6036 | F=3827 | G=0 | H=449 | I=381 | J=989 | K=1709 | L=2905 | M=3430 | N=6739 | O=716 | P=1802 | Q=389 | R=92 | S=19 | T=68 | U=1196 | V=4911 | W=1277 | X=2071 | Y=408 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r28: A=2023 | B=Deceased Donor | C=Lung | D=3018 | E=1712 | F=1306 | G=0 | H=30 | I=83 | J=159 | K=297 | L=717 | M=1732 | N=2153 | O=288 | P=435 | Q=94 | R=Suppressed | S=Suppressed | T=Suppressed | U=606 | V=1219 | W=783 | X=280 | Y=130 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r29: A=2023 | B=Deceased Donor | C=Pancreas | D=101 | E=52 | F=49 | G=0 | H=20 | I=Suppressed | J=26 | K=20 | L=20 | M=Suppressed | N=71 | O=16 | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=Suppressed | U=Suppressed | V=57 | W=Suppressed | X=18 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r30: A=2023 | B=Deceased Donor | C=All Transplanted Organ Types | D=37898 | E=23169 | F=14729 | G=0 | H=1501 | I=1925 | J=4120 | K=6232 | L=10103 | M=14017 | N=18063 | O=9767 | P=6993 | Q=2242 | R=316 | S=143 | T=305 | U=7218 | V=13553 | W=10846 | X=4936 | Y=1345 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r31: A=2023 | B=Living Donor | C=Kidney | D=6284 | E=3948 | F=2336 | G=0 | H=239 | I=648 | J=844 | K=1178 | L=1516 | M=1859 | N=3847 | O=722 | P=1154 | Q=439 | R=33 | S=28 | T=58 | U=823 | V=3408 | W=1490 | X=415 | Y=148 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r32: A=2023 | B=Living Donor | C=Liver | D=658 | E=334 | F=324 | G=0 | H=78 | I=52 | J=75 | K=85 | L=158 | M=210 | N=488 | O=39 | P=96 | Q=27 | R=Suppressed | S=Suppressed | T=Suppressed | U=74 | V=358 | W=69 | X=120 | Y=37 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r33: A=2023 | B=Living Donor | C=All Transplanted Organ Types | D=6940 | E=4281 | F=2659 | G=0 | H=317 | I=700 | J=919 | K=1263 | L=1673 | M=2068 | N=4333 | O=761 | P=1250 | Q=466 | R=34 | S=29 | T=62 | U=897 | V=3765 | W=1558 | X=535 | Y=185 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r34: A=2023 | B=All Donors | C=All Transplanted Organ Types | D=44815 | E=27437 | F=17378 | G=0 | H=1816 | I=2624 | J=5036 | K=7490 | L=11767 | M=16082 | N=22376 | O=10526 | P=8242 | Q=2708 | R=350 | S=172 | T=367 | U=8111 | V=17306 | W=12402 | X=5467 | Y=1529 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r35: A=2024 | B=Deceased Donor | C=Heart | D=4565 | E=3280 | F=1285 | G=0 | H=487 | I=293 | J=375 | K=653 | L=1215 | M=1542 | N=2429 | O=1167 | P=635 | Q=166 | R=16 | S=18 | T=34 | U=767 | V=2071 | W=631 | X=892 | Y=204 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r36: A=2024 | B=Deceased Donor | C=Kidney | D=21327 | E=12670 | F=8657 | G=0 | H=595 | I=1043 | J=2265 | K=3418 | L=5461 | M=8545 | N=7098 | O=7647 | P=4393 | Q=1617 | R=164 | S=117 | T=197 | U=5563 | V=5762 | W=7380 | X=1993 | Y=629 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r37: A=2024 | B=Deceased Donor | C=Kidney-Pancreas | D=733 | E=421 | F=312 | G=0 | H=Suppressed | I=55 | J=280 | K=247 | L=133 | M=Suppressed | N=281 | O=245 | P=155 | Q=31 | R=Suppressed | S=Suppressed | T=Suppressed | U=167 | V=276 | W=196 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r38: A=2024 | B=Deceased Donor | C=Liver | D=10707 | E=6391 | F=4316 | G=0 | H=455 | I=374 | J=1184 | K=1883 | L=3060 | M=3751 | N=7019 | O=690 | P=2083 | Q=395 | R=152 | S=25 | T=75 | U=1371 | V=5371 | W=1433 | X=2087 | Y=445 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r39: A=2024 | B=Deceased Donor | C=Lung | D=3332 | E=1981 | F=1351 | G=0 | H=26 | I=80 | J=167 | K=286 | L=762 | M=2011 | N=2254 | O=342 | P=490 | Q=112 | R=17 | S=Suppressed | T=Suppressed | U=751 | V=1326 | W=821 | X=295 | Y=139 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r40: A=2024 | B=Deceased Donor | C=Pancreas | D=113 | E=65 | F=48 | G=0 | H=21 | I=Suppressed | J=19 | K=37 | L=17 | M=Suppressed | N=69 | O=Suppressed | P=25 | Q=Suppressed | R=0 | S=0 | T=Suppressed | U=20 | V=54 | W=Suppressed | X=20 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r41: A=2024 | B=Deceased Donor | C=All Transplanted Organ Types | D=39398 | E=23967 | F=15431 | G=0 | H=1541 | I=1793 | J=4180 | K=6299 | L=10248 | M=15337 | N=18392 | O=9855 | P=7522 | Q=2256 | R=346 | S=158 | T=317 | U=8382 | V=14275 | W=10200 | X=5143 | Y=1398 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r42: A=2024 | B=Living Donor | C=Kidney | D=6417 | E=4089 | F=2328 | G=0 | H=231 | I=661 | J=931 | K=1175 | L=1507 | M=1912 | N=3858 | O=807 | P=1148 | Q=458 | R=32 | S=22 | T=54 | U=889 | V=3512 | W=1445 | X=413 | Y=158 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r43: A=2024 | B=Living Donor | C=Liver | D=604 | E=260 | F=344 | G=0 | H=111 | I=33 | J=61 | K=93 | L=135 | M=171 | N=430 | O=32 | P=106 | Q=17 | R=Suppressed | S=Suppressed | T=Suppressed | U=74 | V=333 | W=70 | X=100 | Y=27 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r44: A=2024 | B=Living Donor | C=All Transplanted Organ Types | D=7019 | E=4348 | F=2671 | G=0 | H=340 | I=694 | J=992 | K=1268 | L=1642 | M=2083 | N=4286 | O=839 | P=1254 | Q=475 | R=33 | S=23 | T=57 | U=963 | V=3843 | W=1515 | X=513 | Y=185 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r45: A=2024 | B=All Donors | C=All Transplanted Organ Types | D=46390 | E=28297 | F=18093 | G=0 | H=1874 | I=2486 | J=5170 | K=7560 | L=11884 | M=17416 | N=22659 | O=10692 | P=8772 | Q=2730 | R=379 | S=181 | T=374 | U=9344 | V=18098 | W=11714 | X=5652 | Y=1582 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r46: A=2025 | B=Deceased Donor | C=Heart | D=4579 | E=3245 | F=1334 | G=0 | H=461 | I=264 | J=393 | K=643 | L=1196 | M=1622 | N=2377 | O=1147 | P=601 | Q=191 | R=26 | S=29 | T=34 | U=837 | V=2014 | W=621 | X=863 | Y=244 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r47: A=2025 | B=Deceased Donor | C=Kidney | D=21040 | E=12480 | F=8560 | G=0 | H=534 | I=1017 | J=2255 | K=3376 | L=5399 | M=8459 | N=6836 | O=7441 | P=4498 | Q=1607 | R=156 | S=126 | T=191 | U=5885 | V=5529 | W=6898 | X=2044 | Y=684 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r48: A=2025 | B=Deceased Donor | C=Kidney-Pancreas | D=804 | E=492 | F=312 | G=0 | H=Suppressed | I=64 | J=296 | K=254 | L=168 | M=Suppressed | N=286 | O=303 | P=151 | Q=42 | R=Suppressed | S=Suppressed | T=Suppressed | U=216 | V=296 | W=196 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r49: A=2025 | B=Deceased Donor | C=Liver | D=11447 | E=6737 | F=4710 | G=0 | H=464 | I=415 | J=1266 | K=2057 | L=3205 | M=4040 | N=7539 | O=783 | P=2150 | Q=441 | R=140 | S=28 | T=67 | U=1555 | V=5739 | W=1418 | X=2304 | Y=431 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r50: A=2025 | B=Deceased Donor | C=Lung | D=3484 | E=2145 | F=1339 | G=0 | H=30 | I=80 | J=174 | K=277 | L=769 | M=2154 | N=2315 | O=363 | P=522 | Q=149 | R=16 | S=Suppressed | T=18 | U=818 | V=1307 | W=850 | X=341 | Y=168 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r51: A=2025 | B=Deceased Donor | C=Pancreas | D=107 | E=58 | F=49 | G=0 | H=17 | I=Suppressed | J=29 | K=26 | L=24 | M=Suppressed | N=71 | O=Suppressed | P=24 | Q=Suppressed | R=0 | S=0 | T=0 | U=20 | V=50 | W=Suppressed | X=23 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r52: A=2025 | B=Deceased Donor | C=All Transplanted Organ Types | D=39975 | E=24234 | F=15741 | G=0 | H=1462 | I=1788 | J=4284 | K=6391 | L=10312 | M=15738 | N=18606 | O=9783 | P=7676 | Q=2363 | R=325 | S=185 | T=306 | U=9035 | V=14336 | W=9718 | X=5405 | Y=1481 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r53: A=2025 | B=Living Donor | C=Kidney | D=6519 | E=4146 | F=2373 | G=0 | H=225 | I=629 | J=951 | K=1226 | L=1483 | M=2005 | N=3966 | O=743 | P=1198 | Q=418 | R=32 | S=21 | T=61 | U=997 | V=3460 | W=1517 | X=378 | Y=167 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r54: A=2025 | B=Living Donor | C=Liver | D=708 | E=350 | F=358 | G=0 | H=104 | I=41 | J=71 | K=114 | L=178 | M=200 | N=528 | O=27 | P=111 | Q=22 | R=Suppressed | S=Suppressed | T=Suppressed | U=84 | V=424 | W=62 | X=108 | Y=30 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r55: A=2025 | B=Living Donor | C=All Transplanted Organ Types | D=7226 | E=4496 | F=2730 | G=0 | H=329 | I=670 | J=1022 | K=1340 | L=1660 | M=2205 | N=4493 | O=770 | P=1309 | Q=440 | R=33 | S=23 | T=63 | U=1081 | V=3884 | W=1579 | X=485 | Y=197 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r56: A=2025 | B=All Donors | C=All Transplanted Organ Types | D=47181 | E=28718 | F=18463 | G=0 | H=1789 | I=2458 | J=5303 | K=7730 | L=11962 | M=17939 | N=23085 | O=10553 | P=8981 | Q=2803 | R=358 | S=208 | T=369 | U=10114 | V=18208 | W=11295 | X=5887 | Y=1677 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r57: A=2026 | B=Deceased Donor | C=Heart | D=1053 | E=754 | F=299 | G=0 | H=79 | I=64 | J=81 | K=149 | L=282 | M=398 | N=547 | O=260 | P=145 | Q=39 | R=Suppressed | S=Suppressed | T=Suppressed | U=190 | V=475 | W=147 | X=186 | Y=55 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r58: A=2026 | B=Deceased Donor | C=Kidney | D=5195 | E=3081 | F=2114 | G=0 | H=121 | I=201 | J=523 | K=826 | L=1334 | M=2190 | N=1637 | O=1918 | P=1089 | Q=385 | R=41 | S=23 | T=55 | U=1553 | V=1249 | W=1652 | X=544 | Y=197 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r59: A=2026 | B=Deceased Donor | C=Kidney-Pancreas | D=172 | E=97 | F=75 | G=0 | H=Suppressed | I=19 | J=63 | K=52 | L=35 | M=Suppressed | N=59 | O=62 | P=39 | Q=Suppressed | R=0 | S=Suppressed | T=0 | U=36 | V=67 | W=48 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r60: A=2026 | B=Deceased Donor | C=Liver | D=3027 | E=1775 | F=1252 | G=0 | H=93 | I=83 | J=371 | K=570 | L=827 | M=1083 | N=2045 | O=173 | P=519 | Q=138 | R=39 | S=Suppressed | T=16 | U=389 | V=1526 | W=416 | X=564 | Y=132 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r61: A=2026 | B=Deceased Donor | C=Lung | D=854 | E=509 | F=345 | G=0 | H=Suppressed | I=Suppressed | J=35 | K=69 | L=181 | M=544 | N=551 | O=100 | P=153 | Q=23 | R=Suppressed | S=Suppressed | T=Suppressed | U=190 | V=315 | W=221 | X=94 | Y=34 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r62: A=2026 | B=Deceased Donor | C=Pancreas | D=21 | E=Suppressed | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=Suppressed | N=Suppressed | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=Suppressed | V=Suppressed | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r63: A=2026 | B=Deceased Donor | C=All Transplanted Organ Types | D=9992 | E=6026 | F=3966 | G=0 | H=291 | I=377 | J=1056 | K=1615 | L=2562 | M=4091 | N=4694 | O=2452 | P=1885 | Q=568 | R=84 | S=41 | T=79 | U=2293 | V=3530 | W=2415 | X=1343 | Y=411 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r64: A=2026 | B=Living Donor | C=Kidney | D=1701 | E=1063 | F=638 | G=0 | H=47 | I=158 | J=223 | K=337 | L=387 | M=549 | N=999 | O=203 | P=332 | Q=103 | R=Suppressed | S=Suppressed | T=20 | U=277 | V=890 | W=383 | X=97 | Y=54 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r65: A=2026 | B=Living Donor | C=Liver | D=203 | E=101 | F=102 | G=0 | H=37 | I=Suppressed | J=27 | K=Suppressed | L=43 | M=56 | N=140 | O=Suppressed | P=38 | Q=Suppressed | R=Suppressed | S=Suppressed | T=0 | U=Suppressed | V=112 | W=23 | X=34 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r66: A=2026 | B=Living Donor | C=All Transplanted Organ Types | D=1902 | E=1164 | F=738 | G=0 | H=84 | I=172 | J=250 | K=362 | L=429 | M=605 | N=1138 | O=209 | P=369 | Q=114 | R=Suppressed | S=Suppressed | T=20 | U=297 | V=1001 | W=406 | X=130 | Y=68 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r67: A=2026 | B=All Donors | C=All Transplanted Organ Types | D=11888 | E=7188 | F=4700 | G=0 | H=375 | I=549 | J=1306 | K=1974 | L=2990 | M=4694 | N=5829 | O=2660 | P=2253 | Q=681 | R=94 | S=46 | T=99 | U=2590 | V=4526 | W=2820 | X=1473 | Y=479 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+
+### Sheet "OTC Transplants by Demographics": 1904 rows x 28 columns (Excel rows 1..1904, columns A..AB)
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=OTC_Name_State | B=Donor Type | C=Organ Transplanted | D=Total Transplants | E=Transplants with Male Recipients | F=Transplants with Female Recipients | G=Pediatric Transplants | H=Transplants with Recipients Age 18-30 | I=Transplants with Recipients Age 31-40 | J=Transplants with Recipients Age 41-50 | K=Transplants with Recipients Age 51-60 | L=Transplants with Recipients Age 61+ | M=Transplants with Recipients Age Not Reported | N=White Recipient Transplants | O=Black Recipient Transplants | P=Hispanic Recipient Transplants | Q=Asian Recipient Transplants | R=American Indian Recipient Transplants | S=Native Hawaiian Recipient Transplants | T=Multiracial Recipient Transplants | U=Transplants with Private Insurance | V=Transplants with Medicare FFS | W=Transplants with Medicare Advantage | X=Transplants with Medicaid or CHIP | Y=Transplants with Other Insurance Sources | Z=Last Refresh Date | AA=Date Range for Data - Start | AB=Date Range for Data - End
+r2: A=Children's of Alabama (AL) | B=All Donors | C=All Transplanted Organ Types | D=126 | E=77 | F=49 | G=124 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=73 | O=43 | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=43 | V=17 | W=0 | X=66 | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r3: A=Children's of Alabama (AL) | B=Deceased Donor | C=All Transplanted Organ Types | D=108 | E=67 | F=41 | G=107 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=56 | O=42 | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=31 | V=16 | W=0 | X=61 | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r4: A=Children's of Alabama (AL) | B=Deceased Donor | C=Heart | D=31 | E=Suppressed | F=Suppressed | G=31 | H=0 | I=0 | J=0 | K=0 | L=0 | M=0 | N=19 | O=Suppressed | P=Suppressed | Q=0 | R=0 | S=0 | T=0 | U=Suppressed | V=Suppressed | W=Suppressed | X=19 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r5: A=Children's of Alabama (AL) | B=Deceased Donor | C=Kidney | D=61 | E=39 | F=22 | G=60 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=28 | O=29 | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=16 | W=Suppressed | X=32 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r6: A=Children's of Alabama (AL) | B=Deceased Donor | C=Liver | D=16 | E=Suppressed | F=Suppressed | G=16 | H=0 | I=0 | J=0 | K=0 | L=0 | M=0 | N=Suppressed | O=Suppressed | P=Suppressed | Q=0 | R=0 | S=0 | T=0 | U=Suppressed | V=0 | W=0 | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r7: A=Children's of Alabama (AL) | B=Living Donor | C=All Transplanted Organ Types | D=18 | E=Suppressed | F=Suppressed | G=17 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=17 | O=Suppressed | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=Suppressed | W=0 | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r8: A=Children's of Alabama (AL) | B=Living Donor | C=Kidney | D=18 | E=Suppressed | F=Suppressed | G=17 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=17 | O=Suppressed | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=Suppressed | W=0 | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r9: A=(All Centers) | B=All Donors | C=All Transplanted Organ Types | D=239586 | E=147199 | F=92387 | G=9651 | H=13515 | I=27268 | J=40142 | K=62208 | L=86800 | M=2 | N=119933 | O=54173 | P=44693 | Q=14333 | R=1876 | S=915 | T=1857 | U=92680 | V=64323 | W=45224 | X=29311 | Y=8048 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r10: A=(All Centers) | B=Deceased Donor | C=All Transplanted Organ Types | D=203472 | E=124940 | F=78532 | G=7975 | H=9966 | I=22250 | J=33432 | K=53804 | L=76043 | M=2 | N=97491 | O=50012 | P=38255 | Q=12032 | R=1694 | S=807 | T=1564 | U=72956 | V=56085 | W=40520 | X=26804 | Y=7107 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r11: A=(All Centers) | B=Deceased Donor | C=Heart | D=22690 | E=16169 | F=6521 | G=2510 | H=1495 | I=1953 | J=3162 | K=6077 | L=7491 | M=2 | N=12426 | O=5711 | P=2952 | Q=884 | R=116 | S=107 | T=165 | U=10173 | V=3220 | W=3852 | X=4399 | Y=1046 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r12: A=(All Centers) | B=Deceased Donor | C=Kidney | D=106966 | E=64081 | F=42885 | G=2884 | H=5687 | I=12177 | J=18110 | K=27632 | L=40476 | M=0 | N=36250 | O=37538 | P=22278 | Q=8204 | R=845 | S=561 | T=957 | U=27844 | V=40495 | W=25698 | X=9816 | Y=3113 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r13: A=(All Centers) | B=Deceased Donor | C=Kidney-Pancreas | D=4151 | E=2478 | F=1673 | G=Suppressed | H=345 | I=1506 | J=1329 | K=860 | L=Suppressed | M=0 | N=1633 | O=1418 | P=812 | Q=199 | R=28 | S=18 | T=26 | U=1586 | V=1222 | W=850 | X=416 | Y=77 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r14: A=(All Centers) | B=Deceased Donor | C=Liver | D=53144 | E=32258 | F=20886 | G=2343 | H=1962 | I=5649 | J=9277 | K=15409 | L=18504 | M=0 | N=35789 | O=3681 | P=9767 | Q=2135 | R=623 | S=106 | T=340 | U=26725 | V=7241 | W=6425 | X=10578 | Y=2175 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r15: A=(All Centers) | B=Deceased Donor | C=Lung | D=15926 | E=9646 | F=6280 | G=132 | H=417 | I=819 | J=1393 | K=3717 | L=9448 | M=0 | N=10986 | O=1590 | P=2356 | Q=592 | R=82 | S=Suppressed | T=Suppressed | U=6319 | V=3828 | W=3613 | X=1490 | Y=676 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r16: A=(All Centers) | B=Deceased Donor | C=Pancreas | D=595 | E=308 | F=287 | G=93 | H=60 | I=146 | J=161 | K=109 | L=26 | M=0 | N=407 | O=74 | P=90 | Q=18 | R=0 | S=Suppressed | T=Suppressed | U=309 | V=79 | W=82 | X=105 | Y=20 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r17: A=(All Centers) | B=Living Donor | C=All Transplanted Organ Types | D=36114 | E=22259 | F=13855 | G=1676 | H=3549 | I=5018 | J=6710 | K=8404 | L=10757 | M=0 | N=22442 | O=4161 | P=6438 | Q=2301 | R=182 | S=108 | T=293 | U=19724 | V=8238 | W=4704 | X=2507 | Y=941 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r18: A=(All Centers) | B=Living Donor | C=Kidney | D=32768 | E=20631 | F=12137 | G=1181 | H=3318 | I=4672 | J=6218 | K=7624 | L=9755 | M=0 | N=19992 | O=3999 | P=5887 | Q=2187 | R=173 | S=101 | T=277 | U=17795 | V=7854 | W=4338 | X=1989 | Y=792 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r19: A=(All Centers) | B=Living Donor | C=Liver | D=3346 | E=1628 | F=1718 | G=495 | H=231 | I=346 | J=492 | K=780 | L=1002 | M=0 | N=2450 | O=162 | P=551 | Q=114 | R=Suppressed | S=Suppressed | T=16 | U=1929 | V=384 | W=366 | X=518 | Y=149 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r20: A=University of Alabama Hospital (AL) | B=All Donors | C=All Transplanted Organ Types | D=2283 | E=1342 | F=941 | G=Suppressed | H=Suppressed | I=293 | J=469 | K=673 | L=703 | M=0 | N=1214 | O=973 | P=63 | Q=24 | R=Suppressed | S=Suppressed | T=Suppressed | U=922 | V=1143 | W=143 | X=58 | Y=17 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r21: A=University of Alabama Hospital (AL) | B=Deceased Donor | C=All Transplanted Organ Types | D=2008 | E=1171 | F=837 | G=Suppressed | H=Suppressed | I=256 | J=413 | K=612 | L=617 | M=0 | N=997 | O=925 | P=54 | Q=23 | R=Suppressed | S=Suppressed | T=Suppressed | U=783 | V=1019 | W=132 | X=57 | Y=17 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r22: A=University of Alabama Hospital (AL) | B=Deceased Donor | C=Heart | D=121 | E=87 | F=34 | G=Suppressed | H=Suppressed | I=18 | J=34 | K=40 | L=19 | M=0 | N=57 | O=58 | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=86 | V=Suppressed | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r23: A=University of Alabama Hospital (AL) | B=Deceased Donor | C=Kidney | D=1130 | E=627 | F=503 | G=0 | H=74 | I=148 | J=234 | K=339 | L=335 | M=0 | N=313 | O=765 | P=33 | Q=Suppressed | R=Suppressed | S=0 | T=0 | U=218 | V=857 | W=40 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r24: A=University of Alabama Hospital (AL) | B=Deceased Donor | C=Kidney-Pancreas | D=36 | E=Suppressed | F=Suppressed | G=0 | H=Suppressed | I=23 | J=Suppressed | K=Suppressed | L=0 | M=0 | N=Suppressed | O=26 | P=0 | Q=Suppressed | R=0 | S=0 | T=0 | U=Suppressed | V=22 | W=Suppressed | X=0 | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r25: A=University of Alabama Hospital (AL) | B=Deceased Donor | C=Liver | D=588 | E=354 | F=234 | G=Suppressed | H=Suppressed | I=59 | J=122 | K=179 | L=213 | M=0 | N=522 | O=45 | P=Suppressed | Q=Suppressed | R=Suppressed | S=0 | T=0 | U=391 | V=94 | W=61 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r26: A=University of Alabama Hospital (AL) | B=Deceased Donor | C=Lung | D=133 | E=82 | F=51 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=51 | L=50 | M=0 | N=96 | O=31 | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=77 | V=31 | W=16 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r27: A=University of Alabama Hospital (AL) | B=Living Donor | C=All Transplanted Organ Types | D=275 | E=171 | F=104 | G=0 | H=35 | I=37 | J=56 | K=61 | L=86 | M=0 | N=217 | O=48 | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=139 | V=124 | W=Suppressed | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r28: A=University of Alabama Hospital (AL) | B=Living Donor | C=Kidney | D=274 | E=171 | F=103 | G=0 | H=35 | I=36 | J=56 | K=61 | L=86 | M=0 | N=216 | O=48 | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=139 | V=123 | W=Suppressed | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r29: A=University of Alabama Hospital (AL) | B=Living Donor | C=Liver | D=Suppressed | E=Suppressed | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=Suppressed | O=Suppressed | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=Suppressed | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r30: A=Birmingham VA Medical Center (AL) - Inactive | B=All Donors | C=All Transplanted Organ Types | D=21 | E=Suppressed | F=Suppressed | G=0 | H=0 | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=Suppressed | O=20 | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=0 | V=0 | W=0 | X=0 | Y=21 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r31: A=Birmingham VA Medical Center (AL) - Inactive | B=Deceased Donor | C=All Transplanted Organ Types | D=21 | E=Suppressed | F=Suppressed | G=0 | H=0 | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=Suppressed | O=20 | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=0 | V=0 | W=0 | X=0 | Y=21 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r32: A=Birmingham VA Medical Center (AL) - Inactive | B=Deceased Donor | C=Kidney | D=21 | E=Suppressed | F=Suppressed | G=0 | H=0 | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=Suppressed | O=20 | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=0 | V=0 | W=0 | X=0 | Y=21 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r33: A=Baptist Medical Center (AR) | B=All Donors | C=All Transplanted Organ Types | D=62 | E=39 | F=23 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=25 | L=17 | M=0 | N=31 | O=26 | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=Suppressed | V=33 | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r34: A=Baptist Medical Center (AR) | B=Deceased Donor | C=All Transplanted Organ Types | D=62 | E=39 | F=23 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=25 | L=17 | M=0 | N=31 | O=26 | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=Suppressed | V=33 | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r35: A=Baptist Medical Center (AR) | B=Deceased Donor | C=Heart | D=62 | E=39 | F=23 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=25 | L=17 | M=0 | N=31 | O=26 | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=Suppressed | V=33 | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+... sampled rows:
+r323: A=George Washington University Hospital (DC) | B=Living Donor | C=Kidney | D=67 | E=43 | F=24 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=23 | M=0 | N=Suppressed | O=38 | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=Suppressed | U=31 | V=28 | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r392: A=Largo Medical Center (FL) | B=Deceased Donor | C=Heart | D=120 | E=99 | F=21 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=37 | L=61 | M=0 | N=74 | O=26 | P=Suppressed | Q=Suppressed | R=Suppressed | S=0 | T=0 | U=47 | V=23 | W=30 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r404: A=Memorial Regional Hospital (FL) | B=Living Donor | C=Kidney | D=146 | E=90 | F=56 | G=Suppressed | H=Suppressed | I=18 | J=28 | K=24 | L=48 | M=0 | N=51 | O=33 | P=53 | Q=Suppressed | R=Suppressed | S=0 | T=Suppressed | U=64 | V=40 | W=27 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r504: A=Advocate Christ Medical Center (IL) | B=All Donors | C=All Transplanted Organ Types | D=301 | E=208 | F=93 | G=Suppressed | H=Suppressed | I=34 | J=39 | K=93 | L=113 | M=0 | N=95 | O=155 | P=40 | Q=Suppressed | R=0 | S=Suppressed | T=0 | U=90 | V=67 | W=83 | X=61 | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r648: A=Ochsner Foundation Hospital (LA) | B=Deceased Donor | C=Kidney | D=777 | E=429 | F=348 | G=0 | H=52 | I=102 | J=156 | K=198 | L=269 | M=0 | N=210 | O=524 | P=22 | Q=18 | R=Suppressed | S=Suppressed | T=Suppressed | U=162 | V=302 | W=272 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r689: A=Boston Medical Center (MA) | B=Deceased Donor | C=Kidney | D=149 | E=95 | F=54 | G=Suppressed | H=Suppressed | I=26 | J=26 | K=36 | L=56 | M=0 | N=19 | O=57 | P=56 | Q=16 | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=0 | W=59 | X=76 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r706: A=Lahey Clinic Medical Center (MA) | B=Living Donor | C=Kidney | D=97 | E=72 | F=25 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=30 | L=41 | M=0 | N=79 | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=Suppressed | U=51 | V=35 | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r707: A=Lahey Clinic Medical Center (MA) | B=Living Donor | C=Liver | D=52 | E=33 | F=19 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=16 | L=21 | M=0 | N=49 | O=Suppressed | P=Suppressed | Q=0 | R=0 | S=0 | T=0 | U=30 | V=Suppressed | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r756: A=University of Maryland Medical System (MD) | B=Deceased Donor | C=Kidney | D=603 | E=350 | F=253 | G=Suppressed | H=Suppressed | I=62 | J=108 | K=182 | L=235 | M=0 | N=166 | O=390 | P=27 | Q=19 | R=Suppressed | S=Suppressed | T=Suppressed | U=167 | V=268 | W=107 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r800: A=Harper University Hospital Detroit Medical Center (MI) - Inactive | B=Deceased Donor | C=Kidney | D=Suppressed | E=Suppressed | F=Suppressed | G=0 | H=0 | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=Suppressed | O=Suppressed | P=0 | Q=0 | R=0 | S=0 | T=Suppressed | U=0 | V=Suppressed | W=Suppressed | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r856: A=University of Minnesota Medical Center, Fairview (MN) | B=Deceased Donor | C=Liver | D=662 | E=378 | F=284 | G=65 | H=20 | I=76 | J=124 | K=205 | L=172 | M=0 | N=508 | O=48 | P=36 | Q=35 | R=21 | S=Suppressed | T=Suppressed | U=379 | V=22 | W=98 | X=135 | Y=28 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r860: A=University of Minnesota Medical Center, Fairview (MN) | B=Living Donor | C=Kidney | D=451 | E=274 | F=177 | G=31 | H=45 | I=58 | J=61 | K=80 | L=176 | M=0 | N=353 | O=34 | P=17 | Q=42 | R=Suppressed | S=Suppressed | T=Suppressed | U=253 | V=93 | W=Suppressed | X=50 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r953: A=Duke University Hospital (NC) | B=Living Donor | C=All Transplanted Organ Types | D=322 | E=193 | F=129 | G=23 | H=33 | I=46 | J=50 | K=91 | L=79 | M=0 | N=215 | O=67 | P=22 | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=190 | V=76 | W=29 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1001: A=Mary Hitchcock Memorial Hospital (NH) | B=Living Donor | C=Kidney | D=63 | E=43 | F=20 | G=Suppressed | H=Suppressed | I=Suppressed | J=Suppressed | K=17 | L=16 | M=0 | N=57 | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=Suppressed | U=32 | V=20 | W=Suppressed | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1124: A=Mount Sinai Medical Center (NY) | B=Deceased Donor | C=Pancreas | D=19 | E=Suppressed | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=Suppressed | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=Suppressed | V=Suppressed | W=Suppressed | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1128: A=North Shore University Hospital/Northwell Health (NY) | B=All Donors | C=All Transplanted Organ Types | D=1642 | E=1041 | F=601 | G=0 | H=75 | I=150 | J=258 | K=422 | L=737 | M=0 | N=641 | O=396 | P=307 | Q=268 | R=0 | S=Suppressed | T=Suppressed | U=527 | V=430 | W=Suppressed | X=474 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1152: A=NYU Langone Health (NY) | B=All Donors | C=All Transplanted Organ Types | D=3002 | E=1962 | F=1040 | G=76 | H=155 | I=292 | J=448 | K=826 | L=1205 | M=0 | N=1248 | O=729 | P=568 | Q=401 | R=Suppressed | S=Suppressed | T=Suppressed | U=1357 | V=784 | W=Suppressed | X=473 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1182: A=The Cleveland Clinic Foundation (OH) | B=All Donors | C=All Transplanted Organ Types | D=4066 | E=2502 | F=1564 | G=75 | H=163 | I=350 | J=586 | K=1070 | L=1822 | M=0 | N=3088 | O=721 | P=141 | Q=81 | R=Suppressed | S=Suppressed | T=18 | U=1582 | V=924 | W=985 | X=479 | Y=96 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1195: A=Nationwide Children's Hospital (OH) | B=Deceased Donor | C=Heart | D=48 | E=30 | F=18 | G=40 | H=Suppressed | I=Suppressed | J=Suppressed | K=0 | L=0 | M=0 | N=34 | O=Suppressed | P=Suppressed | Q=0 | R=0 | S=0 | T=Suppressed | U=16 | V=0 | W=0 | X=32 | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1251: A=University Hospitals of Cleveland (OH) | B=Deceased Donor | C=Lung | D=60 | E=34 | F=26 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=17 | L=39 | M=0 | N=51 | O=Suppressed | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=Suppressed | W=32 | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1356: A=Penn State Milton S Hershey Medical Center (PA) | B=Living Donor | C=Kidney | D=23 | E=Suppressed | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=0 | K=Suppressed | L=Suppressed | M=0 | N=20 | O=Suppressed | P=Suppressed | Q=0 | R=0 | S=0 | T=0 | U=17 | V=Suppressed | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1390: A=University of Pittsburgh Medical Center (PA) | B=Living Donor | C=Liver | D=406 | E=236 | F=170 | G=Suppressed | H=Suppressed | I=45 | J=67 | K=104 | L=157 | M=0 | N=387 | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=221 | V=Suppressed | W=110 | X=42 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1469: A=Medical University of South Carolina (SC) | B=Deceased Donor | C=Lung | D=87 | E=65 | F=22 | G=Suppressed | H=Suppressed | I=Suppressed | J=Suppressed | K=23 | L=54 | M=0 | N=69 | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=29 | V=30 | W=18 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1506: A=Le Bonheur Children's Medical Center (TN) | B=Deceased Donor | C=Liver | D=Suppressed | E=Suppressed | F=Suppressed | G=Suppressed | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=Suppressed | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=0 | U=Suppressed | V=0 | W=0 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1519: A=Saint Thomas Hospital (TN) | B=Deceased Donor | C=All Transplanted Organ Types | D=861 | E=524 | F=337 | G=0 | H=27 | I=74 | J=143 | K=238 | L=379 | M=0 | N=462 | O=331 | P=42 | Q=20 | R=Suppressed | S=Suppressed | T=Suppressed | U=338 | V=418 | W=79 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1525: A=University of Tennessee Medical Center at Knoxville (TN) | B=Deceased Donor | C=All Transplanted Organ Types | D=277 | E=182 | F=95 | G=0 | H=17 | I=41 | J=52 | K=68 | L=99 | M=0 | N=168 | O=40 | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=51 | U=47 | V=110 | W=106 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1530: A=Vanderbilt University Medical Center (TN) | B=Deceased Donor | C=All Transplanted Organ Types | D=3723 | E=2356 | F=1367 | G=200 | H=156 | I=358 | J=638 | K=1007 | L=1364 | M=0 | N=2447 | O=1026 | P=140 | Q=62 | R=Suppressed | S=Suppressed | T=Suppressed | U=1511 | V=861 | W=685 | X=297 | Y=369 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1686: A=UT Southwestern Medical Center/William P. Clements Jr. University Hospital (TX) | B=Deceased Donor | C=Heart | D=262 | E=190 | F=72 | G=0 | H=31 | I=21 | J=53 | K=79 | L=78 | M=0 | N=126 | O=91 | P=36 | Q=Suppressed | R=0 | S=Suppressed | T=0 | U=105 | V=48 | W=56 | X=25 | Y=28 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1700: A=Scott and White Memorial Hospital (TX) | B=Living Donor | C=Kidney | D=77 | E=44 | F=33 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=24 | L=22 | M=0 | N=37 | O=Suppressed | P=24 | Q=Suppressed | R=Suppressed | S=Suppressed | T=0 | U=33 | V=32 | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1754: A=Primary Children's Hospital (UT) | B=All Donors | C=All Transplanted Organ Types | D=204 | E=110 | F=94 | G=192 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=132 | O=Suppressed | P=39 | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=122 | V=Suppressed | W=Suppressed | X=79 | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+... last rows:
+r1897: A=Charleston Area Medical Center (WV) | B=Living Donor | C=All Transplanted Organ Types | D=23 | E=Suppressed | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=20 | O=Suppressed | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=Suppressed | W=0 | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1898: A=Charleston Area Medical Center (WV) | B=Living Donor | C=Kidney | D=23 | E=Suppressed | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=20 | O=Suppressed | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=Suppressed | W=0 | X=Suppressed | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1899: A=West Virginia University Hospitals Inc. (WV) | B=All Donors | C=All Transplanted Organ Types | D=117 | E=76 | F=41 | G=0 | H=Suppressed | I=Suppressed | J=21 | K=39 | L=36 | M=0 | N=97 | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=Suppressed | U=37 | V=19 | W=43 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1900: A=West Virginia University Hospitals Inc. (WV) | B=Deceased Donor | C=All Transplanted Organ Types | D=113 | E=74 | F=39 | G=0 | H=Suppressed | I=Suppressed | J=20 | K=38 | L=36 | M=0 | N=93 | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=Suppressed | U=35 | V=19 | W=41 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1901: A=West Virginia University Hospitals Inc. (WV) | B=Deceased Donor | C=Heart | D=42 | E=Suppressed | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=Suppressed | M=0 | N=36 | O=Suppressed | P=0 | Q=Suppressed | R=0 | S=0 | T=0 | U=16 | V=Suppressed | W=Suppressed | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1902: A=West Virginia University Hospitals Inc. (WV) | B=Deceased Donor | C=Kidney | D=71 | E=43 | F=28 | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=23 | L=23 | M=0 | N=57 | O=Suppressed | P=Suppressed | Q=Suppressed | R=0 | S=0 | T=Suppressed | U=19 | V=16 | W=31 | X=Suppressed | Y=Suppressed | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1903: A=West Virginia University Hospitals Inc. (WV) | B=Living Donor | C=All Transplanted Organ Types | D=Suppressed | E=Suppressed | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=0 | M=0 | N=Suppressed | O=Suppressed | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=0 | W=Suppressed | X=0 | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+r1904: A=West Virginia University Hospitals Inc. (WV) | B=Living Donor | C=Kidney | D=Suppressed | E=Suppressed | F=Suppressed | G=0 | H=Suppressed | I=Suppressed | J=Suppressed | K=Suppressed | L=0 | M=0 | N=Suppressed | O=Suppressed | P=Suppressed | Q=Suppressed | R=Suppressed | S=Suppressed | T=Suppressed | U=Suppressed | V=0 | W=Suppressed | X=0 | Y=0 | Z=October 23, 2026 | AA=January 1, 2021 | AB=March 31, 2026
+... column profiles (data rows below Excel row 1):
+  A [OTC_Name_State]: {"non_empty": 1903, "distinct": 257, "top_values": {"(All Centers)": 11, "AdventHealth Orlando (FL)": 11, "Barnes-Jewish Hospital (MO)": 11, "Baylor University Medical Center (TX)": 11, "Children's Hospital Medical Center (OH)": 11, "Duke University Hospital (NC)": 11}}
+  B [Donor Type]: {"non_empty": 1903, "distinct": 3, "value_counts": {"Deceased Donor": 1094, "Living Donor": 552, "All Donors": 257}}
+  C [Organ Transplanted]: {"non_empty": 1903, "distinct": 7, "value_counts": {"All Transplanted Organ Types": 748, "Kidney": 476, "Liver": 235, "Heart": 153, "Kidney-Pancreas": 125, "Pancreas": 89, "Lung": 77}}
+  D [Total Transplants]: {"non_empty": 1903, "distinct": 735, "top_values": {"Suppressed": 276, "23": 22, "21": 17, "58": 17, "18": 15, "31": 15}}
+  E [Transplants with Male Recipients]: {"non_empty": 1903, "distinct": 598, "top_values": {"Suppressed": 537, "38": 13, "61": 12, "62": 12, "39": 11, "63": 11}}
+  F [Transplants with Female Recipients]: {"non_empty": 1903, "distinct": 483, "top_values": {"Suppressed": 537, "26": 24, "22": 21, "18": 20, "24": 19, "21": 18}}
+  G [Pediatric Transplants]: {"non_empty": 1903, "distinct": 146, "top_values": {"0": 886, "Suppressed": 626, "16": 14, "18": 14, "23": 13, "20": 11}}
+  H [Transplants with Recipients Age 18-30]: {"non_empty": 1903, "distinct": 135, "top_values": {"Suppressed": 1201, "0": 150, "18": 24, "17": 22, "19": 20, "21": 19}}
+  I [Transplants with Recipients Age 31-40]: {"non_empty": 1903, "distinct": 245, "top_values": {"Suppressed": 839, "0": 116, "19": 38, "16": 22, "18": 22, "21": 22}}
+  J [Transplants with Recipients Age 41-50]: {"non_empty": 1903, "distinct": 304, "top_values": {"Suppressed": 741, "0": 107, "19": 28, "21": 23, "20": 21, "18": 19}}
+  K [Transplants with Recipients Age 51-60]: {"non_empty": 1903, "distinct": 398, "top_values": {"Suppressed": 600, "0": 147, "25": 22, "20": 19, "19": 17, "21": 15}}
+  L [Transplants with Recipients Age 61+]: {"non_empty": 1903, "distinct": 476, "top_values": {"Suppressed": 478, "0": 232, "28": 19, "19": 17, "29": 16, "23": 15}}
+  M [Transplants with Recipients Age Not Reported]: {"non_empty": 1903, "distinct": 3, "value_counts": {"0": 1894, "1": 6, "2": 3}}
+  N [White Recipient Transplants]: {"non_empty": 1903, "distinct": 538, "top_values": {"Suppressed": 430, "19": 27, "0": 24, "17": 19, "24": 19, "32": 19}}
+  O [Black Recipient Transplants]: {"non_empty": 1903, "distinct": 356, "top_values": {"Suppressed": 807, "0": 118, "26": 21, "16": 20, "17": 18, "19": 18}}
+  P [Hispanic Recipient Transplants]: {"non_empty": 1903, "distinct": 302, "top_values": {"Suppressed": 847, "0": 118, "17": 26, "19": 22, "18": 20, "38": 20}}
+  Q [Asian Recipient Transplants]: {"non_empty": 1903, "distinct": 172, "top_values": {"Suppressed": 1049, "0": 309, "17": 23, "18": 19, "20": 19, "16": 18}}
+  R [American Indian Recipient Transplants]: {"non_empty": 1903, "distinct": 52, "top_values": {"Suppressed": 967, "0": 850, "21": 6, "26": 6, "17": 5, "23": 5}}
+  S [Native Hawaiian Recipient Transplants]: {"non_empty": 1903, "distinct": 33, "top_values": {"0": 1054, "Suppressed": 807, "20": 4, "26": 4, "24": 2, "31": 2}}
+  T [Multiracial Recipient Transplants]: {"non_empty": 1903, "distinct": 41, "top_values": {"Suppressed": 1097, "0": 720, "16": 8, "20": 6, "21": 6, "24": 5}}
+  U [Transplants with Private Insurance]: {"non_empty": 1903, "distinct": 477, "top_values": {"Suppressed": 520, "0": 59, "16": 25, "19": 21, "24": 17, "43": 17}}
+  V [Transplants with Medicare FFS]: {"non_empty": 1903, "distinct": 392, "top_values": {"Suppressed": 671, "0": 194, "16": 21, "23": 19, "22": 18, "17": 17}}
+  W [Transplants with Medicare Advantage]: {"non_empty": 1903, "distinct": 323, "top_values": {"Suppressed": 802, "0": 240, "45": 21, "16": 18, "19": 18, "21": 18}}
+  X [Transplants with Medicaid or CHIP]: {"non_empty": 1903, "distinct": 254, "top_values": {"Suppressed": 1029, "0": 180, "18": 15, "20": 15, "24": 15, "16": 13}}
+  Y [Transplants with Other Insurance Sources]: {"non_empty": 1903, "distinct": 115, "top_values": {"Suppressed": 1165, "0": 427, "17": 17, "16": 15, "28": 12, "18": 10}}
+  Z [Last Refresh Date]: {"non_empty": 1903, "distinct": 1, "value_counts": {"October 23, 2026": 1903}}
+  AA [Date Range for Data - Start]: {"non_empty": 1903, "distinct": 1, "value_counts": {"January 1, 2021": 1903}}
+  AB [Date Range for Data - End]: {"non_empty": 1903, "distinct": 1, "value_counts": {"March 31, 2026": 1903}}
+
+### Sheet "OTC Outcome Measures": 1126 rows x 10 columns (Excel rows 1..1126, columns A..J)
+(not shown in detail: do NOT ask about this sheet)
+r1: A=OTC_Name_State | B=Type | C=Organ Transplanted | D=Percent of Transplants with Functioning Graft at 30 Days | E=Percent of Transplants with Functioning Graft at 1 year | F=Percent of Patients Alive at 30 Days | G=Percent of Patients Alive at 1 Year | H=Last Refresh Date | I=Date Range for Data - Start | J=Date Range for Data - End
+r2: A=Children's of Alabama (AL) | B=Deceased Donor  - Heart | C=Heart | D=100.00% | E=95.65% | F=100.00% | G=95.65% | H=October 23, 2026 | I=January 1, 2021 | J=March 31, 2025
+r3: A=Children's of Alabama (AL) | B=Deceased Donor  - Kidney | C=Kidney | D=100.00% | E=95.24% | F=100.00% | G=100.00% | H=October 23, 2026 | I=January 1, 2021 | J=March 31, 2025
+r4: A=Children's of Alabama (AL) | B=Deceased Donor  - Liver | C=Liver | D=92.86% | E=85.71% | F=92.86% | G=85.71% | H=October 23, 2026 | I=January 1, 2021 | J=March 31, 2025

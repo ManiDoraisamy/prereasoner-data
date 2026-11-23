@@ -1,0 +1,35 @@
+{
+ "id": "seattle_fremont_bridge_bicycle_counter",
+ "answers": [
+  {
+   "id": "seattle_fremont_bridge_bicycle_counter#1",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\nwest_col = 'Fremont Bridge Sidewalks, south of N 34th St Cyclist West Sidewalk'\neast_col = 'Fremont Bridge Sidewalks, south of N 34th St Cyclist East Sidewalk'\nresult = 'yes' if df[west_col].sum() > df[east_col].sum() else 'no'"
+  },
+  {
+   "id": "seattle_fremont_bridge_bicycle_counter#2",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\ntotal_col = 'Fremont Bridge Sidewalks, south of N 34th St Total'\nresult = 'yes' if (df[total_col] >= 1100).any() else 'no'"
+  },
+  {
+   "id": "seattle_fremont_bridge_bicycle_counter#3",
+   "answer": "13421194",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\ntotal_col = 'Fremont Bridge Sidewalks, south of N 34th St Total'\nresult = int(df[total_col].sum())"
+  },
+  {
+   "id": "seattle_fremont_bridge_bicycle_counter#4",
+   "answer": "1422814",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\nwest_col = 'Fremont Bridge Sidewalks, south of N 34th St Cyclist West Sidewalk'\neast_col = 'Fremont Bridge Sidewalks, south of N 34th St Cyclist East Sidewalk'\nresult = int(df[west_col].sum() - df[east_col].sum())"
+  },
+  {
+   "id": "seattle_fremont_bridge_bicycle_counter#5",
+   "answer": "30",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\ntotal_col = 'Fremont Bridge Sidewalks, south of N 34th St Total'\nresult = int(df[total_col].isna().sum())"
+  },
+  {
+   "id": "seattle_fremont_bridge_bicycle_counter#6",
+   "answer": "393",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('seattle_fremont_bridge_bicycle_counter.csv')\neast_col = 'Fremont Bridge Sidewalks, south of N 34th St Cyclist East Sidewalk'\nrow = df[df['Date'].str.startswith('10/02/2012 05:00:00 PM')]\nresult = int(row[east_col].iloc[0])"
+  }
+ ]
+}

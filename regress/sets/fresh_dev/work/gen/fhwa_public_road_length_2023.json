@@ -1,0 +1,60 @@
+{
+ "id": "fhwa_public_road_length_2023",
+ "file": "fhwa_public_road_length_2023.xlsx",
+ "questions": [
+  {
+   "question": "What was the total public road length in miles for California in 2023 across both rural and urban areas?",
+   "sheet": "A",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "177333.604",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\nrow = df[df[0].astype(str).str.strip() == 'California']\nresult = float(row.iloc[0, 17])",
+   "qid": "fhwa_public_road_length_2023#1"
+  },
+  {
+   "question": "Which three states had the longest total rural public road mileage in 2023?",
+   "sheet": "A",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Texas\", \"Kansas\", \"Minnesota\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\nstates_df = df.iloc[14:65].copy()\nstates_df = states_df[states_df[0].astype(str).str.strip() != 'District of Columbia']\nstates_df[8] = pd.to_numeric(states_df[8])\ntop3 = states_df.sort_values(by=8, ascending=False).head(3)\nresult = top3[0].str.strip().tolist()",
+   "qid": "fhwa_public_road_length_2023#2"
+  },
+  {
+   "question": "Between New York and Florida, which state had more urban interstate mileage in 2023?",
+   "sheet": "A",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "New York",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\nny_val = float(df[df[0].astype(str).str.strip() == 'New York'].iloc[0, 9])\nfl_val = float(df[df[0].astype(str).str.strip() == 'Florida'].iloc[0, 9])\nresult = 'New York' if ny_val > fl_val else 'Florida'",
+   "qid": "fhwa_public_road_length_2023#3"
+  },
+  {
+   "question": "How many states (excluding the District of Columbia and Puerto Rico) had more than 100,000 total public road miles in 2023?",
+   "sheet": "A",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "17",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\nstates_df = df.iloc[14:65].copy()\nstates_df = states_df[states_df[0].astype(str).str.strip() != 'District of Columbia']\nstates_df[17] = pd.to_numeric(states_df[17])\nresult = int((states_df[17] > 100000).sum())",
+   "qid": "fhwa_public_road_length_2023#4"
+  },
+  {
+   "question": "In 2023, did Texas have more miles of urban local roads than rural local roads?",
+   "sheet": "A",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\ntx = df[df[0].astype(str).str.strip() == 'Texas'].iloc[0]\nrural_local = float(tx[7])\nurban_local = float(tx[15])\nresult = 'yes' if urban_local > rural_local else 'no'",
+   "qid": "fhwa_public_road_length_2023#5"
+  },
+  {
+   "question": "What was the combined total public road length in miles for the six New England states (Connecticut, Maine, Massachusetts, New Hampshire, Rhode Island, and Vermont) in 2023?",
+   "sheet": "A",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "118193.131",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('fhwa_public_road_length_2023.xlsx', sheet_name='A', header=None)\nne_states = ['Connecticut', 'Maine', 'Massachusetts', 'New Hampshire', 'Rhode Island', 'Vermont']\nsubset = df[df[0].astype(str).str.strip().isin(ne_states)]\nresult = float(pd.to_numeric(subset[17]).sum())",
+   "qid": "fhwa_public_road_length_2023#6"
+  }
+ ]
+}

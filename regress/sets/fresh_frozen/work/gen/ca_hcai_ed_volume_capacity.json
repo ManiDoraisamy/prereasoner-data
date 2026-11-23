@@ -1,0 +1,60 @@
+{
+ "id": "ca_hcai_ed_volume_capacity",
+ "file": "ca_hcai_ed_volume_capacity.xlsx",
+ "questions": [
+  {
+   "question": "In 2022, how many active COVID-19 emergency department diagnoses were reported by Sutter Amador Hospital?",
+   "sheet": "ED_COMBINE_AL",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1392",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nmatch = df[(df['FacilityName2'] == 'Sutter Amador Hospital') & (df['year'] == 2022) & (df['Category'] == 'Active COVID-19')]\nresult = int(match['EDDXCount'].iloc[0])",
+   "qid": "ca_hcai_ed_volume_capacity#1"
+  },
+  {
+   "question": "Between John Muir Medical Center \u2013 Walnut Creek Campus and John Muir Medical Center \u2013 Concord Campus, which facility recorded more emergency department diagnoses for active COVID-19 in 2022?",
+   "sheet": "ED_COMBINE_AL",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "John Muir Medical Center \u2013 Concord Campus",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nfacilities = ['John Muir Medical Center \u2013 Walnut Creek Campus', 'John Muir Medical Center \u2013 Concord Campus']\nsub = df[(df['FacilityName2'].isin(facilities)) & (df['year'] == 2022) & (df['Category'] == 'Active COVID-19')]\nresult = sub.sort_values(by='EDDXCount', ascending=False)['FacilityName2'].iloc[0]",
+   "qid": "ca_hcai_ed_volume_capacity#2"
+  },
+  {
+   "question": "According to the 2022 records, is Valley Children's Hospital designated as operating within a primary care shortage area?",
+   "sheet": "ED_COMBINE_AL",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nval = df[(df['FacilityName2'] == \"Valley Children's Hospital\") & (df['year'] == 2022)]['PrimaryCareShortageArea'].iloc[0]\nresult = 'yes' if str(val).strip().lower() == 'yes' else 'no'",
+   "qid": "ca_hcai_ed_volume_capacity#3"
+  },
+  {
+   "question": "Which reporting year has the highest number of emergency department facility records in the dataset?",
+   "sheet": "ED_COMBINE_AL",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2022",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nresult = str(df['year'].value_counts().idxmax())",
+   "qid": "ca_hcai_ed_volume_capacity#4"
+  },
+  {
+   "question": "How many facility records in the dataset carry an urban-rural designation of Frontier?",
+   "sheet": "ED_COMBINE_AL",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "386",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nresult = int((df['UrbanRuralDesi'] == 'Frontier').sum())",
+   "qid": "ca_hcai_ed_volume_capacity#5"
+  },
+  {
+   "question": "What are the three hospital ownership categories documented in the emergency department dataset?",
+   "sheet": "ED_COMBINE_AL",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Nonprofit\", \"Investor Owned\", \"Government\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_ed_volume_capacity.xlsx', sheet_name='ED_COMBINE_AL')\nresult = df['HospitalOwnership'].value_counts().index.tolist()",
+   "qid": "ca_hcai_ed_volume_capacity#6"
+  }
+ ]
+}

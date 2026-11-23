@@ -1,0 +1,60 @@
+{
+ "id": "ca_cdph_health_care_personnel_flu_vaccination",
+ "file": "ca_cdph_health_care_personnel_flu_vaccination.xlsx",
+ "questions": [
+  {
+   "question": "What overall percentage of healthcare personnel were vaccinated against the flu at Alameda Hospital during the 2025-26 season?",
+   "sheet": "HCP_FLU_BY_HOSP_CNTY",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "81",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nrow = df[df['Facility_Name'] == 'ALAMEDA HOSPITAL']\nresult = int(row['HCP_Percent_Vaccinated'].iloc[0])",
+   "qid": "ca_cdph_health_care_personnel_flu_vaccination#1"
+  },
+  {
+   "question": "How many hospitals in this dataset were classified as Critical Access facilities?",
+   "sheet": "HCP_FLU_BY_HOSP_CNTY",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "38",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nresult = int((df['Hospital_Type'] == 'Critical Access').sum())",
+   "qid": "ca_cdph_health_care_personnel_flu_vaccination#2"
+  },
+  {
+   "question": "Which facility reported more total healthcare workers vaccinated during the 2025-26 influenza season, UCSF Medical Center or Keck Hospital of USC?",
+   "sheet": "HCP_FLU_BY_HOSP_CNTY",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "UCSF MEDICAL CENTER",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nucsf = df[df['Facility_Name'] == 'UCSF MEDICAL CENTER']['HCP_Total_Number_Vaccinated'].iloc[0]\nkeck = df[df['Facility_Name'] == 'KECK HOSPITAL OF USC']['HCP_Total_Number_Vaccinated'].iloc[0]\nresult = 'UCSF MEDICAL CENTER' if ucsf > keck else 'KECK HOSPITAL OF USC'",
+   "qid": "ca_cdph_health_care_personnel_flu_vaccination#3"
+  },
+  {
+   "question": "Did Rady Children's Hospital - San Diego achieve at least a 90% overall healthcare personnel vaccination rate in the 2025-26 season?",
+   "sheet": "HCP_FLU_BY_HOSP_CNTY",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nval = df[df['Facility_Name'] == \"RADY CHILDREN'S HOSPITAL - SAN DIEGO\"]['HCP_Percent_Vaccinated'].iloc[0]\nresult = 'yes' if val >= 90 else 'no'",
+   "qid": "ca_cdph_health_care_personnel_flu_vaccination#4"
+  },
+  {
+   "question": "Across all reporting facilities in California for the 2025-26 season, what was the total number of healthcare personnel vaccinated against influenza?",
+   "sheet": "HCP_FLU_BY_HOSP_CNTY",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "714459",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nresult = int(df['HCP_Total_Number_Vaccinated'].sum())",
+   "qid": "ca_cdph_health_care_personnel_flu_vaccination#5"
+  },
+  {
+   "question": "Which county has the highest count of listed healthcare facilities in the report?",
+   "sheet": "HCP_FLU_BY_HOSP_CNTY",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "Los Angeles",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_cdph_health_care_personnel_flu_vaccination.xlsx', sheet_name='HCP_FLU_BY_HOSP_CNTY')\nresult = str(df['County'].value_counts().index[0])",
+   "qid": "ca_cdph_health_care_personnel_flu_vaccination#6"
+  }
+ ]
+}

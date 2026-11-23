@@ -1,0 +1,18 @@
+{
+ "file": "ers_rural_urban_continuum_codes_2023.xlsx",
+ "sheets": [
+  {
+   "name": "Rural-urban Continuum Code 2023",
+   "rows": 3236,
+   "cols": 6,
+   "shown_whole": false
+  },
+  {
+   "name": "Documentation",
+   "rows": 40,
+   "cols": 4,
+   "shown_whole": true
+  }
+ ],
+ "chars": 14253
+}

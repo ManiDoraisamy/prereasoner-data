@@ -1,0 +1,84 @@
+FILE nys_state_park_annual_attendance.csv (CSV). pandas.read_csv gives 5499 data rows x 5 columns.
+Columns and pandas dtypes: Year (int64); OPRHP Region (str); County (str); Facility (str); Attendance (int64)
+(sheet too large to show whole; r1 is the CSV header line; r2 is pandas index 0; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Year | B=OPRHP Region | C=County | D=Facility | E=Attendance
+r2: A=2025 | B=Allegany | C=Cattaraugus | D=Allegany Quaker Area | E=812860
+r3: A=2025 | B=Allegany | C=Cattaraugus | D=Allegany Red House Area | E=782080
+r4: A=2025 | B=Allegany | C=Chautauqua | D=Barcelona Lighthouse | E=28789
+r5: A=2025 | B=Allegany | C=Chautauqua | D=Lake Erie St Pk | E=87869
+r6: A=2025 | B=Allegany | C=Chautauqua | D=Long Point Marina | E=150118
+r7: A=2025 | B=Allegany | C=Chautauqua | D=Midway State Park | E=110792
+r8: A=2025 | B=Allegany | C=Chautauqua | D=Sunset Bay MarinePark | E=26970
+r9: A=2025 | B=Central | C=Broome | D=Chenango Valley St Pk | E=291783
+r10: A=2025 | B=Central | C=Broome/Delaware | D=Oquaga State Park | E=73548
+r11: A=2025 | B=Central | C=Chenango | D=Bowman Lake St Pk | E=60299
+r12: A=2025 | B=Central | C=Chenango | D=Hunts Pond State Park | E=0
+r13: A=2025 | B=Central | C=Herkimer | D=Herkimer Home | E=59917
+r14: A=2025 | B=Central | C=Madison | D=Chittenango Fls St Pk | E=157464
+r15: A=2025 | B=Central | C=Madison | D=Lorenzo | E=34236
+r16: A=2025 | B=Central | C=Madison | D=Old Erie Canal | E=188647
+r17: A=2025 | B=Central | C=Oneida | D=Delta Lake St Pk | E=320499
+r18: A=2025 | B=Central | C=Oneida | D=Oriskany Battlefield | E=5266
+r19: A=2025 | B=Central | C=Oneida | D=Pixley Falls State Park | E=144943
+r20: A=2025 | B=Central | C=Oneida | D=Steuben Memorial | E=1505
+r21: A=2025 | B=Central | C=Oneida | D=Verona Beach State Park | E=225994
+r22: A=2025 | B=Central | C=Onondaga | D=Clark Reservation | E=147738
+r23: A=2025 | B=Central | C=Onondaga | D=Green Lakes State Park | E=1961135
+r24: A=2025 | B=Central | C=Onondaga | D=State Park at the Fair *1 | E=925989
+r25: A=2025 | B=Central | C=Oswego | D=Battle Isl Golf Course | E=47302
+r26: A=2025 | B=Central | C=Oswego | D=Fort Ontario | E=114426
+r27: A=2025 | B=Central | C=Oswego | D=Mexico Point Boat Launch | E=20274
+r28: A=2025 | B=Central | C=Oswego | D=Pine Grove Boatlaunch | E=15489
+r29: A=2025 | B=Central | C=Oswego | D=Sandy Island Beach | E=26913
+r30: A=2025 | B=Central | C=Oswego | D=Selkirk Shores | E=86166
+r31: A=2025 | B=Central | C=Otsego | D=Betty And Wilbur Davis State Park | E=7474
+r32: A=2025 | B=Central | C=Otsego | D=Canadarago Boat Lnch | E=17182
+r33: A=2025 | B=Central | C=Otsego | D=Gilbert Lake St Pk | E=206342
+r34: A=2025 | B=Central | C=Otsego | D=Glimmerglass State Park | E=208723
+r35: A=2025 | B=Finger Lakes | C=Cayuga | D=Fair Haven St Pk | E=376011
+... sampled rows:
+r1186: A=2021 | B=Taconic | C=Dutchess | D=Rudd Pond | E=27281
+r1295: A=2020 | B=Genesee | C=Livingston/Wyoming | D=Letchworth State Park | E=966430
+r1365: A=2020 | B=Palisades | C=Orange | D=Goosepond Mountain | E=12007
+r1462: A=2020 | B=Thousand Islands | C=Jefferson | D=Wehle State Park | E=93048
+r1466: A=2020 | B=Thousand Islands | C=St Lawrence | D=Black Lk Boat Launch | E=22505
+r1510: A=2019 | B=Finger Lakes | C=Cayuga | D=Fillmore Glen St Pk | E=111272
+r1721: A=2018 | B=Allegany | C=Cattaraugus | D=Allegany Quaker Area | E=797641
+r1861: A=2018 | B=Palisades | C=Orange/Rockland | D=Harriman Hiker Trail | E=126330
+r1909: A=2018 | B=Taconic | C=Dutchess | D=Mills Norrie St Pk | E=167795
+r2486: A=2015 | B=Finger Lakes | C=Wayne | D=Canadaigua Btlau Ontrio | E=36761
+r2650: A=2015 | B=Thousand Islands | C=Jefferson | D=Rock Island | E=7209
+r2716: A=2014 | B=Finger Lakes | C=Steuben | D=Pinnacle Golf | E=6055
+r2722: A=2014 | B=Finger Lakes | C=Tompkins | D=Taughannock Falls St Pk | E=434090
+r2918: A=2013 | B=Central | C=Oneida | D=Delta Lake St Pk | E=221627
+r3092: A=2013 | B=Taconic | C=Columbia/Dutchess | D=Rudd Pond | E=17140
+r3318: A=2012 | B=Saratoga | C=Saratoga | D=Peebles Island | E=95345
+r3333: A=2012 | B=Taconic | C=Dutchess/Putnam | D=Hudson Highlands | E=211767
+r3704: A=2010 | B=Long Island | C=Suffolk | D=Napeague State Park | E=98180
+r3896: A=2009 | B=Finger Lakes | C=Steuben | D=Pinnacle Golf | E=24145
+r4106: A=2008 | B=Central | C=Oswego | D=Battle Isl Golf Course | E=31416
+r4390: A=2007 | B=Genesee | C=Orleans | D=Oak Orchard Boat Launch | E=10924
+r4404: A=2007 | B=Long Island | C=Suffolk | D=Captree St Pk | E=1270892
+r4472: A=2007 | B=Palisades | C=Rockland | D=Palisades | E=4048
+r4503: A=2007 | B=Saratoga | C=Schoharie | D=Minekill | E=68614
+r4620: A=2006 | B=Genesee | C=Monroe | D=Braddock Bay | E=26486
+r4662: A=2006 | B=New York City | C=New York | D=Riverbank State Park | E=1758524
+r4675: A=2006 | B=Niagara | C=Niagara | D=Devils Hole | E=144114
+r4897: A=2005 | B=New York City | C=New York | D=Riverbank Rollr-Ice Rnks | E=286136
+r5316: A=2003 | B=Finger Lakes | C=Tompkins | D=Finger Lakes Admin. | E=1
+r5452: A=2003 | B=Taconic | C=Columbia/Dutchess | D=Rudd Pond | E=16277
+... last rows:
+r5493: A=2003 | B=Thousand Islands | C=St Lawrence | D=Cedar Island River Park | E=2799
+r5494: A=2003 | B=Thousand Islands | C=St Lawrence | D=Coles Creek | E=119915
+r5495: A=2003 | B=Thousand Islands | C=St Lawrence | D=Eel Weir St Park | E=4788
+r5496: A=2003 | B=Thousand Islands | C=St Lawrence | D=Higley Flow St Park | E=33650
+r5497: A=2003 | B=Thousand Islands | C=St Lawrence | D=Jacques Cartier St Pk | E=27884
+r5498: A=2003 | B=Thousand Islands | C=St Lawrence | D=Robert Moses St Pk - Thousand Islands | E=260797
+r5499: A=2003 | B=Thousand Islands | C=St Lawrence | D=St Lawrence Golf Course | E=18226
+r5500: A=2003 | B=Thousand Islands | C=St Lawrence | D=Wilson Hill Boat Launch | E=15289
+... column profiles (data rows below Excel row 1):
+  A [Year]: {"non_empty": 5499, "numeric": 5499, "min": "2003", "max": "2025", "sum": "11075531", "distinct": 23, "value_counts": {"2021": 246, "2022": 246, "2023": 246, "2024": 246, "2025": 246, "2019": 245, "2020": 244, "2015": 239, "2016": 239, "2003": 236, "2004": 236, "2005": 236, "2006": 236, "2007": 236, "2008": 236, "2009": 236, "2010": 236, "2011": 236, "2012": 236, "2013": 236, "2014": 236, "2017": 235, "2018": 235}}
+  B [OPRHP Region]: {"non_empty": 5499, "distinct": 12, "value_counts": {"Thousand Islands": 797, "Palisades": 770, "Long Island": 690, "Finger Lakes": 642, "Central": 596, "Taconic": 429, "Niagara": 414, "Saratoga": 322, "Genesee": 274, "New York City": 220, "Saratoga/Capital": 210, "Allegany": 135}}
+  C [County]: {"non_empty": 5493, "distinct": 74, "top_values": {"Suffolk": 545, "Jefferson": 443, "Rockland": 258, "Niagara": 253, "Orange": 249, "St Lawrence": 216}}
+  D [Facility]: {"non_empty": 5499, "distinct": 263, "top_values": {"Allan Treman Marina": 23, "Allegany Quaker Area": 23, "Allegany Red House Area": 23, "Anthony Wayne": 23, "Appalachian Trail": 23, "Artpark": 23}}
+  E [Attendance]: {"non_empty": 5499, "numeric": 5499, "min": "0", "max": "9596491", "sum": "1532389753", "distinct": 5144, "top_values": {"0": 291, "8514": 3, "8588": 3, "1": 2, "10988": 2, "11752": 2}}

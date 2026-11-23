@@ -1,0 +1,88 @@
+{
+ "id": "macpac_medicaid_enrollment_by_eligibility_group_fy2023",
+ "file": "macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx",
+ "questions": [
+  {
+   "question": "In FY 2023, how many Medicaid enrollees qualified on the basis of disability in Pennsylvania, in thousands?",
+   "sheet": "Exhibit 14",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "604.853",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\ndisabled_col = None\nfor c in df.columns:\n    if 'Disabled' in str(df.iloc[4, c]):\n        disabled_col = c\n        break\npa_row = None\nfor r in range(len(df)):\n    if str(df.iloc[r, 0]).strip().startswith('Pennsylvania'):\n        pa_row = r\n        break\nresult = float(df.iloc[pa_row, disabled_col])",
+   "qid": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#1",
+   "pass1": true,
+   "result": 604.853,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Florida and New York, which state had a larger total Medicaid enrollment in FY 2023?",
+   "sheet": "Exhibit 14",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "New York",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\nfl_val, ny_val = None, None\nfl_name, ny_name = None, None\nfor r in range(6, 57):\n    state_name = str(df.iloc[r, 0]).strip()\n    if state_name.startswith('Florida'):\n        fl_val = float(df.iloc[r, 1])\n        fl_name = state_name\n    elif state_name.startswith('New York'):\n        ny_val = float(df.iloc[r, 1])\n        ny_name = state_name\nresult = ny_name if ny_val > fl_val else fl_name",
+   "qid": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#2",
+   "pass1": true,
+   "result": "New York",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did Texas report more child Medicaid enrollees than California in FY 2023?",
+   "sheet": "Exhibit 14",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\ntx_child, ca_child = None, None\nfor r in range(6, 57):\n    name = str(df.iloc[r, 0]).strip()\n    if name.startswith('Texas'):\n        tx_child = float(df.iloc[r, 2])\n    elif name.startswith('California'):\n        ca_child = float(df.iloc[r, 2])\nresult = 'yes' if tx_child > ca_child else 'no'",
+   "qid": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#3",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many states reported an enrollment of zero for the new adult group in FY 2023?",
+   "sheet": "Exhibit 14",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "10",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\ncount = 0\nfor r in range(6, 57):\n    val = float(df.iloc[r, 3])\n    if val == 0:\n        count += 1\nresult = count",
+   "qid": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#4",
+   "pass1": true,
+   "result": 10,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the combined FY 2023 Medicaid enrollment in thousands for the new adult expansion group across California, New York, and Pennsylvania?",
+   "sheet": "Exhibit 14",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "10088.593",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\ntarget_states = ['California', 'New York', 'Pennsylvania']\ntotal = 0.0\nfor r in range(6, 57):\n    state_cell = str(df.iloc[r, 0]).strip()\n    for s in target_states:\n        if state_cell.startswith(s):\n            total += float(df.iloc[r, 3])\nresult = round(total, 3)",
+   "qid": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#5",
+   "pass1": true,
+   "result": 10088.593,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three states each had more than one million total dually eligible Medicaid enrollees in FY 2023?",
+   "sheet": "Exhibit 14",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California5\", \"Florida\", \"New York\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_enrollment_by_eligibility_group_fy2023.xlsx', sheet_name='Exhibit 14', header=None)\nstates_over_1m = []\nfor r in range(6, 57):\n    dual_total = float(df.iloc[r, 7])\n    if dual_total > 1000:\n        states_over_1m.append(str(df.iloc[r, 0]).strip())\nresult = sorted(states_over_1m)",
+   "qid": "macpac_medicaid_enrollment_by_eligibility_group_fy2023#6",
+   "pass1": true,
+   "result": [
+    "California5",
+    "Florida",
+    "New York"
+   ],
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

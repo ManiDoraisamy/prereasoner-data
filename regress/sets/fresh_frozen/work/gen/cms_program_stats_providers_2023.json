@@ -1,0 +1,115 @@
+{
+ "id": "cms_program_stats_providers_2023",
+ "file": "cms_program_stats_providers_2023.xlsx",
+ "questions": [
+  {
+   "question": "How many Medicare-certified hospice facilities were operating nationwide in 2023?",
+   "sheet": "MDCR PROVIDERS 1_CPS_19PRV",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "7122",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 1_CPS_19PRV', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Type of Facility', na=False)].index[0]\nyears = [str(val).strip() for val in df.iloc[header_row]]\ncol_2023 = years.index('2023')\n\nhospice_row = df[df.iloc[:, 0].astype(str).str.strip() == 'Hospices'].index[0]\nresult = int(df.iloc[hospice_row, col_2023])",
+   "qid": "cms_program_stats_providers_2023#1"
+  },
+  {
+   "question": "In calendar year 2023, did Florida have more Medicare-certified short stay hospital beds than California?",
+   "sheet": "MDCR PROVIDERS 4_CPS_19PRV",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 4_CPS_19PRV', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Provider State', na=False)].index[0]\ncols = [str(val).strip() for val in df.iloc[header_row]]\nshort_stay_bed_col = [i for i, c in enumerate(cols) if 'Short Stay Hospital Beds' in c and 'Per 1,000' not in c][0]\n\nfl_beds = float(df[df.iloc[:, 0].astype(str).str.strip() == 'Florida'].iloc[0, short_stay_bed_col])\nca_beds = float(df[df.iloc[:, 0].astype(str).str.strip() == 'California'].iloc[0, short_stay_bed_col])\n\nresult = 'yes' if fl_beds > ca_beds else 'no'",
+   "qid": "cms_program_stats_providers_2023#2"
+  },
+  {
+   "question": "Which three states had the highest number of Medicare-certified ambulatory surgical centers in 2023?",
+   "sheet": "MDCR PROVIDERS 5_CPS_19PRV",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"California\", \"Florida\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 5_CPS_19PRV', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Provider State', na=False)].index[0]\ncols = [str(val).strip() for val in df.iloc[header_row]]\nasc_col = cols.index('Ambulatory Surgical Centers')\n\nstart_idx = header_row + 1\nend_idx = df[df.iloc[:, 0].astype(str).str.contains('Territories', na=False)].index[0]\nstate_df = df.iloc[start_idx:end_idx].copy()\nstate_df = state_df[~state_df.iloc[:, 0].astype(str).str.strip().isin(['All Areas', 'United States', 'BLANK', ''])]\nstate_df['asc'] = pd.to_numeric(state_df.iloc[:, asc_col], errors='coerce')\ntop3 = state_df.sort_values(by='asc', ascending=False).head(3)\nresult = top3.iloc[:, 0].str.strip().tolist()",
+   "qid": "cms_program_stats_providers_2023#3"
+  },
+  {
+   "question": "How many states had zero Critical Access Hospitals in 2023 according to the state-level provider tables?",
+   "sheet": "MDCR PROVIDERS 4_CPS_19PRV",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "6",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 4_CPS_19PRV', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Provider State', na=False)].index[0]\ncols = [str(val).strip() for val in df.iloc[header_row]]\ncah_col = cols.index('Critical Access Hospitals')\n\nstart_idx = header_row + 1\nend_idx = df[df.iloc[:, 0].astype(str).str.contains('Territories', na=False)].index[0]\nstate_df = df.iloc[start_idx:end_idx].copy()\nstate_df = state_df[~state_df.iloc[:, 0].astype(str).str.strip().isin(['All Areas', 'United States', 'BLANK', ''])]\nstate_df['cah'] = pd.to_numeric(state_df.iloc[:, cah_col], errors='coerce')\n# Exclude District of Columbia if focusing strictly on 50 states, or check if DC is included in rows\n# The table lists 50 states + District of Columbia (51 rows). DC has 0, CT has 0, DE has 0, MD has 0, NJ has 0, RI has 0 (total 6 in that section)\nresult = int((state_df['cah'] == 0).sum())",
+   "qid": "cms_program_stats_providers_2023#4"
+  },
+  {
+   "question": "What was the net change in the number of Medicare nurse practitioners between 2019 and 2023?",
+   "sheet": "MDCR PROVIDERS 6_CPS_19PRV",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "64190",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 6_CPS_19PRV', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Specialty', na=False)].index[0]\nyears = [str(val).strip() for val in df.iloc[header_row]]\ncol_2019 = years.index('2019')\ncol_2023 = years.index('2023')\n\nnp_row = df[df.iloc[:, 0].astype(str).str.strip() == 'Nurse Practitioner'].index[0]\nnp_2019 = float(df.iloc[np_row, col_2019])\nnp_2023 = float(df.iloc[np_row, col_2023])\n\nresult = int(np_2023 - np_2019)",
+   "qid": "cms_program_stats_providers_2023#5"
+  },
+  {
+   "question": "Between 2018 and 2023, in which calendar year did the total count of Medicare-certified hospitals peak?",
+   "sheet": "MDCR PROVIDERS 1_CPS_19PRV",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2021",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 1_CPS_19PRV', header=None)\nheader_row = df[df.iloc[:, 0].astype(str).str.contains('Type of Facility', na=False)].index[0]\nyears = [str(val).strip() for val in df.iloc[header_row][1:]]\n\ntotal_hosp_row = df[df.iloc[:, 0].astype(str).str.strip() == 'Total Hospitals'].index[0]\ncounts = [float(df.iloc[total_hosp_row, i]) for i in range(1, 1 + len(years))]\nmax_year = years[counts.index(max(counts))]\nresult = str(max_year)",
+   "qid": "cms_program_stats_providers_2023#6"
+  },
+  {
+   "question": "What was the total number of Medicare-certified skilled nursing facility beds across all areas in 2023?",
+   "sheet": "MDCR PROVIDERS 2_CPS_19PRV",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1550360",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 2_CPS_19PRV', header=None)\n\n# Find row for Skilled Nursing Facilities then the 'Number of beds' row under it\nsnf_idx = df[df[0].astype(str).str.strip().str.startswith('Skilled Nursing Facilities')].index[0]\nbeds_idx = snf_idx + 1\n# Column G is index 6, which corresponds to 2023\nresult = int(df.iloc[beds_idx, 6])",
+   "qid": "cms_program_stats_providers_2023#7"
+  },
+  {
+   "question": "Across all 50 states and D.C., how many states had at least 1,000 Medicare-certified rural health clinics in 2023?",
+   "sheet": "MDCR PROVIDERS 5_CPS_19PRV",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "0",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 5_CPS_19PRV', header=None)\n\n# State rows run from Alabama (index 7, row 8) to Wyoming (index 57, row 58)\nstates_df = df.iloc[7:58]\n# Column H is index 7, which corresponds to Rural Health Clinics\nrhc_counts = pd.to_numeric(states_df[7], errors='coerce')\nresult = int((rhc_counts >= 1000).sum())",
+   "qid": "cms_program_stats_providers_2023#8"
+  },
+  {
+   "question": "Which type of non-profit skilled nursing facility control category had the largest number of certified facilities in 2023: church-related, corporation, or other?",
+   "sheet": "MDCR PROVIDERS 3_CPS_19PRV",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Non Profit - Corporation",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 3_CPS_19PRV', header=None)\n\ncategories = ['Non Profit - Church Related', 'Non Profit - Corporation', 'Non Profit - Other']\nsubset = df[df[0].astype(str).str.strip().isin(categories)]\n# 2023 is column 6\nbest_row = subset.loc[pd.to_numeric(subset[6]).idxmax()]\nresult = str(best_row[0]).strip()",
+   "qid": "cms_program_stats_providers_2023#9"
+  },
+  {
+   "question": "Which five physician specialties had the highest number of Medicare non-institutional practitioners in 2023?",
+   "sheet": "MDCR PROVIDERS 6_CPS_19PRV",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Internal Medicine\", \"Family Practice\", \"Emergency Medicine\", \"Anesthesiology\", \"Obstetrics & Gynecology\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 6_CPS_19PRV', header=None)\n\n# All Physician Specialties starts around row 8 and goes until Non-Physician Practitioners at row 80\n# Rows 9 to 78 contain physician specialties and section subheaders\nphys_df = df.iloc[8:78].copy()\n# Drop section headers (which have NaN in column 5 / 2023 count)\nphys_df[5] = pd.to_numeric(phys_df[5], errors='coerce')\nphys_df = phys_df.dropna(subset=[5])\n\ntop5 = phys_df.sort_values(by=5, ascending=False).head(5)\nresult = [str(x).strip() for x in top5[0].tolist()]",
+   "qid": "cms_program_stats_providers_2023#10"
+  },
+  {
+   "question": "What was the total number of organ procurement organizations in the United States in 2023?",
+   "sheet": "MDCR PROVIDERS 1_CPS_19PRV",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "56",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 1_CPS_19PRV', header=None)\n\nrow = df[df[0].astype(str).str.strip().str.startswith('Organ Procurement Organizations')]\nresult = int(row.iloc[0, 6])",
+   "qid": "cms_program_stats_providers_2023#11"
+  },
+  {
+   "question": "Between Texas and New York, which state had a greater number of Medicare non-institutional providers in 2023?",
+   "sheet": "MDCR PROVIDERS 7_CPS_19PRV",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Texas",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_providers_2023.xlsx', sheet_name='MDCR PROVIDERS 7_CPS_19PRV', header=None)\n\nsubset = df[df[0].astype(str).str.strip().isin(['Texas', 'New York'])]\n# 2023 is column 5\nbest_row = subset.loc[pd.to_numeric(subset[5]).idxmax()]\nresult = str(best_row[0]).strip()",
+   "qid": "cms_program_stats_providers_2023#12"
+  }
+ ],
+ "rounds": 2
+}

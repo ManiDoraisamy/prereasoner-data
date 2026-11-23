@@ -1,0 +1,12 @@
+{
+ "file": "irs_soi_individual_returns_by_state_us.xlsx",
+ "sheets": [
+  {
+   "name": "Sheet1",
+   "rows": 197,
+   "cols": 12,
+   "shown_whole": true
+  }
+ ],
+ "chars": 29031
+}

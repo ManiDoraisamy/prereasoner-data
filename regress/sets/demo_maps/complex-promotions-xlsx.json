@@ -1,0 +1,193 @@
+{
+ "dataset": "complex-promotions-xlsx",
+ "kind": "own-rows",
+ "uploads": [
+  {
+   "name": "customers",
+   "columns": [
+    "customer_id",
+    "customer_name",
+    "city"
+   ],
+   "rows": 4
+  },
+  {
+   "name": "order_items",
+   "columns": [
+    "order_item_id",
+    "order_id",
+    "product_id",
+    "quantity",
+    "unit_price",
+    "line_total"
+   ],
+   "rows": 9
+  },
+  {
+   "name": "orders",
+   "columns": [
+    "order_id",
+    "customer_id",
+    "order_date"
+   ],
+   "rows": 5
+  },
+  {
+   "name": "products",
+   "columns": [
+    "product_id",
+    "product_name",
+    "category"
+   ],
+   "rows": 4
+  }
+ ],
+ "normalized": [
+  {
+   "name": "customers",
+   "upload": "customers",
+   "columns": [
+    "customer_id",
+    "customer_name",
+    "city"
+   ]
+  },
+  {
+   "name": "order_items",
+   "upload": "order_items",
+   "columns": [
+    "order_item_id",
+    "order_id",
+    "product_id",
+    "quantity",
+    "unit_price",
+    "line_total"
+   ]
+  },
+  {
+   "name": "orders",
+   "upload": "orders",
+   "columns": [
+    "order_id",
+    "customer_id",
+    "order_date"
+   ]
+  },
+  {
+   "name": "products",
+   "upload": "products",
+   "columns": [
+    "product_id",
+    "product_name",
+    "category"
+   ]
+  }
+ ],
+ "links_between_uploads": [
+  {
+   "from_table": "order_items",
+   "from_col": "order_id",
+   "to_table": "orders",
+   "to_col": "order_id",
+   "conf": 1.0,
+   "inclusion": 1.0
+  },
+  {
+   "from_table": "order_items",
+   "from_col": "product_id",
+   "to_table": "products",
+   "to_col": "product_id",
+   "conf": 1.0,
+   "inclusion": 1.0
+  },
+  {
+   "from_table": "orders",
+   "from_col": "customer_id",
+   "to_table": "customers",
+   "to_col": "customer_id",
+   "conf": 1.0,
+   "inclusion": 1.0
+  }
+ ],
+ "routes": [
+  {
+   "upload": "customers",
+   "table": "customers",
+   "column": "city",
+   "column_index": 2,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "customers connected to knowledgebase",
+   "bridged": true,
+   "cells": 4,
+   "cells_matched": 4
+  }
+ ],
+ "entity_columns": [
+  {
+   "upload": "customers",
+   "table": "customers",
+   "column": "city",
+   "column_index": 2,
+   "label": "film",
+   "type_qid": "Q11424",
+   "cells": 4,
+   "cells_matched_exactly": 2,
+   "routed_as_place": true,
+   "bridged": false,
+   "cells_matched": 0,
+   "has_country": false
+  },
+  {
+   "upload": "customers",
+   "table": "customers",
+   "column": "customer_name",
+   "column_index": 1,
+   "label": "musical group",
+   "type_qid": "Q215380",
+   "cells": 4,
+   "cells_matched_exactly": 3,
+   "routed_as_place": false,
+   "bridged": true,
+   "cells_matched": 3,
+   "has_country": false,
+   "bridge": "customers connected to knowledgebase",
+   "entity_table": "musical group"
+  },
+  {
+   "upload": "products",
+   "table": "products",
+   "column": "category",
+   "column_index": 2,
+   "label": "musical group",
+   "type_qid": "Q215380",
+   "cells": 4,
+   "cells_matched_exactly": 2,
+   "routed_as_place": false,
+   "bridged": true,
+   "cells_matched": 2,
+   "has_country": false,
+   "bridge": "products connected to knowledgebase",
+   "entity_table": "musical group"
+  }
+ ],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 33,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 33,
+  "country": 209,
+  "exchange_rate": 0,
+  "film": 2,
+  "musical group": 5,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 0.5
+}

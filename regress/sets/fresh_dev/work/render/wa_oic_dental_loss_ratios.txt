@@ -1,0 +1,92 @@
+FILE wa_oic_dental_loss_ratios.csv (CSV). pandas.read_csv gives 958 data rows x 13 columns.
+Columns and pandas dtypes: Company Name (str); NAIC Code (int64); Domicile State (str); Business Type (str); Year (int64); Dental Premiums (float64); Dental Payments (float64); Dental Members (int64); Dental Member Months (int64); Dental Loss Ratio (int64); Average Amount of Premiums per Member per Month (float64); Previous Year Average Amount of Premiums per Member per Month (float64); Percentage Change in Average Premium per Member per Month from Previous Year (float64)
+(sheet too large to show whole; r1 is the CSV header line; r2 is pandas index 0; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Company Name | B=NAIC Code | C=Domicile State | D=Business Type | E=Year | F=Dental Premiums | G=Dental Payments | H=Dental Members | I=Dental Member Months | J=Dental Loss Ratio | K=Average Amount of Premiums per Member per Month | L=Previous Year Average Amount of Premiums per Member per Month | M=Percentage Change in Average Premium per Member per Month from Previous Year
+r2: A=4 Ever Life Insurance Company | B=80985 | C=IL | D=L | E=2015 | F=1240092 | G=1240092 | H=556973 | I=6755924 | J=100 | K=0.18
+r3: A=ACE AMERICAN INSURANCE COMPANY | B=22667 | C=PA | D=P | E=2015 | F=66868778 | G=30410116 | H=407257 | I=3866500 | J=45 | K=17.29
+r4: A=AETNA LIFE INSURANCE COMPANY | B=60054 | C=CT | D=L | E=2015 | F=1621956792 | G=1243379723 | H=3675656 | I=44447752 | J=77 | K=36.49
+r5: A=American Family Life Assurance Company of Columbus (AFLAC) | B=60380 | C=NE | D=L | E=2015 | F=170063010 | G=70892379 | H=536658 | I=6060104 | J=42 | K=28.06
+r6: A=American Fidelity Assurance Company | B=60410 | C=OK | D=L | E=2015 | F=131259 | G=32489 | H=399 | I=6097 | J=25 | K=21.53
+r7: A=American General Life Insurance Company | B=60488 | C=TX | D=L | E=2015 | F=10618285 | G=5338377 | H=28124 | I=337488 | J=50 | K=31.46
+r8: A=American Heritage Life Insurance Company | B=60534 | C=FL | D=L | E=2015 | F=1243838 | G=485505 | H=18670 | I=288258 | J=39 | K=4.32
+r9: A=American National Life Insurance Company of Texas | B=71773 | C=TX | D=L | E=2015 | F=12225412 | G=7064993 | H=44056 | I=508788 | J=58 | K=24.03
+r10: A=AMERICAN PUBLIC LIFE INS CO | B=60801 | C=OK | D=L | E=2015 | F=2705445 | G=1479865 | H=10978 | I=39627 | J=55 | K=68.27
+r11: A=AMERICAN REPUBLIC INSURANCE COMPANY | B=60836 | C=IA | D=L | E=2015 | F=4478874 | G=3122295 | H=6785 | I=79681 | J=70 | K=56.21
+r12: A=Ameritas Life Insurance Corp. | B=61301 | C=NE | D=L | E=2015 | F=519040364 | G=355590992 | H=813328 | I=9759936 | J=69 | K=53.18
+r13: A=ASSURITY LIFE INSURANCE COMPANY | B=71439 | C=NE | D=L | E=2015 | F=1213428 | G=946260 | H=3958 | I=46566 | J=78 | K=26.06
+r14: A=ASURIS NORTHWEST HEALTH | B=47350 | C=WA | D=X | E=2015 | F=683713 | G=476877 | H=1569 | I=18912 | J=70 | K=36.15
+r15: A=AXA Equitable Life Insurance Company | B=62944 | C=NY | D=L | E=2015 | F=100200 | G=96707 | H=380 | I=2280 | J=97 | K=43.95
+r16: A=AXIS Insurance Company | B=37273 | C=IL | D=P | E=2015 | F=318675 | G=157864 | H=1655 | I=19614 | J=50 | K=16.25
+r17: A=BCS Insurance Company | B=38245 | C=OH | D=P | E=2015 | F=13554046 | G=2044408 | H=60443 | I=384432 | J=15 | K=35.26
+r18: A=Best Life and Health Insurance Company | B=90638 | C=TX | D=L | E=2015 | F=33856462 | G=20365745 | H=72356 | I=868272 | J=60 | K=38.99
+r19: A=Boston Mutual Life Insurance Company | B=61476 | C=MA | D=L | E=2015 | F=124432 | G=75395 | H=1139 | I=13668 | J=61 | K=9.1
+r20: A=Central United Life Insurance Company | B=61883 | C=AR | D=L | E=2015 | F=1260136 | G=279789 | H=9017 | I=51475 | J=22 | K=24.48
+r21: A=CIGNA HEALTH AND LIFE INSURANCE COMPANY | B=67369 | C=CT | D=L | E=2015 | F=1163696257 | G=963362269 | H=3368236 | I=39075149 | J=83 | K=29.78
+r22: A=COLONIAL LIFE & ACCIDENT INSURANCE COMPANY | B=62049 | C=SC | D=L | E=2015 | F=430066 | G=237461 | H=2338 | I=14028 | J=55 | K=30.66
+r23: A=Colorado Bankers Life Insurance Company | B=84786 | C=NC | D=L | E=2015 | F=343423 | G=121250 | H=794 | I=9528 | J=35 | K=36.04
+r24: A=Companion Life Insurance Company | B=77828 | C=SC | D=L | E=2015 | F=97936968 | G=62425974 | H=288287 | I=3382266 | J=64 | K=28.96
+r25: A=CONNECTICUT GENERAL LIFE INSURANCE COMPANY | B=62308 | C=CT | D=L | E=2015 | F=18827719 | G=13061056 | H=44575 | I=632004 | J=69 | K=29.79
+r26: A=CONSTITUTION LIFE INSURANCE COMPANY | B=62359 | C=TX | D=L | E=2015 | F=646253 | G=301866 | H=1791 | I=23358 | J=47 | K=27.67
+r27: A=Continental American Insurance Company | B=71730 | C=NE | D=L | E=2015 | F=849797 | G=98271 | H=3290 | I=37440 | J=12 | K=22.7
+r28: A=CONTINENTAL GENERAL INSURANCE COMPANY | B=71404 | C=TX | D=L | E=2015 | F=675167 | G=428899 | H=1929 | I=24220 | J=64 | K=27.88
+r29: A=DEARBORN NATIONAL  LIFE INSURANCE COMPANY | B=71129 | C=IL | D=L | E=2015 | F=26010136 | G=16527256 | H=107533 | I=1290396 | J=64 | K=20.16
+r30: A=Delaware American Life Insurance Company | B=62634 | C=DE | D=L | E=2015 | F=3490818 | G=973095 | H=16289 | I=195471 | J=28 | K=17.86
+r31: A=Delta Dental of Washington | B=47341 | C=WA | D=X | E=2015 | F=464180270 | G=393256639 | H=1001661 | I=11741083 | J=85 | K=39.53
+r32: A=Dental Health Services, Inc. | B=47490 | C=WA | D=X | E=2015 | F=11397699 | G=5043564 | H=31915 | I=376302 | J=44 | K=30.29
+r33: A=DENTEGRA INSURANCE COMPANY | B=73474 | C=DE | D=L | E=2015 | F=169700699 | G=106086719 | H=294620 | I=3513993 | J=63 | K=48.29
+r34: A=DSM USA Insurance Company, Inc. | B=67636 | C=TX | D=L | E=2015 | F=932170 | G=371639 | H=760 | I=36179 | J=40 | K=25.77
+r35: A=FAMILY LIFE INSURANCE COMPANY | B=63053 | C=TX | D=L | E=2015 | F=58294 | G=49897 | H=189 | I=1714 | J=86 | K=34.01
+... sampled rows:
+r179: A=STANDARD SECURITY LIFE INSURANCE COMPANY OF NEW YORK | B=69078 | C=NY | D=L | E=2016 | F=1817164 | G=889298 | H=3472 | I=47573 | J=49 | K=38.2 | L=36.18 | M=0.06
+r214: A=Ameritas Life Insurance Corp. | B=61301 | C=NE | D=L | E=2017 | F=600047454 | G=394199168 | H=923111 | I=11077332 | J=66 | K=54.17 | L=54.28 | M=0
+r220: A=BEST LIFE & HEALTH INSURANCE COMPANY | B=90638 | C=TX | D=L | E=2017 | F=35697432 | G=22041024 | H=98088 | I=1177056 | J=62 | K=30.33 | L=31.12 | M=-0.03
+r270: A=PRINCIPAL LIFE INSURANCE COMPANY | B=61271 | C=IA | D=L | E=2017 | F=707059430 | G=455339602 | H=1853449 | I=21477528 | J=64 | K=32.92 | L=32.84 | M=0
+r342: A=Guarantee Trust Life Insurance Company | B=64211 | C=IL | D=L | E=2018 | F=8727 | G=4157 | H=20 | I=238 | J=48 | K=36.67 | L=0
+r362: A=MUTUAL OF OMAHA INSURANCE COMPANY | B=71412 | C=NE | D=L | E=2018 | F=3805053 | G=1661734 | H=15297 | I=94539 | J=44 | K=40.25 | L=33.25 | M=0.21
+r371: A=PHYSICIANS MUTUAL INSURANCE COMPANY | B=80578 | C=NE | D=L | E=2018 | F=108794815 | G=61104216 | H=252437 | I=2929248 | J=56 | K=37.14 | L=35.57 | M=0.04
+r396: A=UNICARE Life & Health Insurance Company | B=80314 | C=IN | D=L | E=2018 | F=2703340 | G=1361227 | H=7720 | I=99491 | J=50 | K=27.17 | L=29.22 | M=-0.07
+r418: A=ASURIS NORTHWEST HEALTH | B=47350 | C=WA | D=X | E=2019 | F=364524 | G=277667 | H=790 | I=9450 | J=76 | K=38.57 | L=40.64 | M=-0.05
+r446: A=HumanaDental Insurance Company | B=70580 | C=WI | D=L | E=2019 | F=124776257 | G=76567524 | H=304162 | I=3961175 | J=61 | K=31.5 | L=30.78 | M=0.02
+r448: A=Jackson National Life Insurance Company | B=65056 | C=MI | D=L | E=2019 | F=16427 | G=10873 | H=46 | I=582 | J=66 | K=28.23 | L=28.58 | M=-0.01
+r494: A=TRANSAMERICA PREMIER LIFE INSURANCE COMPANY | B=66281 | C=IA | D=L | E=2019 | F=8604 | G=0 | H=29 | I=352 | J=0 | K=24.44 | L=25.97 | M=-0.06
+r518: A=ASSURITY LIFE INSURANCE COMPANY | B=71439 | C=NE | D=L | E=2020 | F=1302613 | G=881694 | H=96 | I=1512 | J=68 | K=861.52 | L=625.2 | M=0.38
+r580: A=Reliance Standard Life Insurance Company | B=68381 | C=IL | D=L | E=2020 | F=64012107 | G=35620283 | H=167185 | I=2006220 | J=56 | K=31.91 | L=33.13 | M=-0.04
+r582: A=SECURIAN LIFE INSURANCE COMPANY | B=93742 | C=MN | D=L | E=2020 | F=3151 | G=-5877 | H=0 | I=135 | J=-187 | K=23.34 | L=34 | M=-0.31
+r594: A=TRANSAMERICA LIFE INSURANCE COMPANY | B=86231 | C=IA | D=L | E=2020 | F=8972590 | G=-3709838 | H=20987 | I=314916 | J=-41 | K=28.49 | L=23.5 | M=0.21
+r609: A=American National Life Insurance Company of Texas | B=71773 | C=TX | D=L | E=2021 | F=17931432 | G=10281038 | H=60457 | I=740548 | J=57 | K=24.21 | L=22.89 | M=0.06
+r615: A=ASURIS NORTHWEST HEALTH | B=47350 | C=WA | D=X | E=2021 | F=413051 | G=257231 | H=816 | I=9926 | J=62 | K=41.61 | L=38.78 | M=0.07
+r643: A=John Alden Life Insurance Company | B=65080 | C=AZ | D=L | E=2021 | F=22818 | G=9343 | H=80 | I=1005 | J=41 | K=22.7 | L=23.31 | M=-0.03
+r696: A=Willamette Dental of Washington Inc. | B=47050 | C=WA | D=X | E=2021 | F=69771721 | G=63249175 | H=135360 | I=1651172 | J=91 | K=42.26 | L=41.07 | M=0.03
+r713: A=CONNECTICUT GENERAL LIFE INSURANCE COMPANY | B=62308 | C=CT | D=L | E=2022 | F=1967522 | G=1266728 | H=4376 | I=57791 | J=64 | K=34.05 | L=30.91 | M=0.1
+r752: A=Philadelphia American Life Insurance Company | B=67784 | C=TX | D=L | E=2022 | F=3942499 | G=1781885 | H=17780 | I=186329 | J=45 | K=21.16 | L=18.54 | M=0.14
+r771: A=The Manhattan Life Insurance Company | B=65870 | C=NY | D=L | E=2022 | F=24851 | G=16225 | H=51 | I=612 | J=65 | K=40.61 | L=417.48 | M=-0.9
+r777: A=UNIFIED LIFE INSURANCE COMPANY | B=11121 | C=TX | D=L | E=2022 | F=79085 | G=54674 | H=58 | I=724 | J=69 | K=109.23 | L=82.84 | M=0.32
+r780: A=UNION SECURITY INSURANCE COMPANY | B=70408 | C=KS | D=L | E=2022 | F=293556 | G=281427 | H=1994 | I=25500 | J=96 | K=11.51 | L=4.43 | M=1.6
+r782: A=United National Life Insurance Company of America | B=92703 | C=IL | D=L | E=2022 | F=2196943 | G=1057717 | H=2220 | I=26422 | J=48 | K=83.15
+r783: A=UNITED OF OMAHA LIFE INSURANCE COMPANY | B=69868 | C=NE | D=L | E=2022 | F=149965218 | G=111193997 | H=454659 | I=5455908 | J=74 | K=27.49 | L=26.57 | M=0.03
+r861: A=THE PAUL REVERE LIFE INSURANCE COMPANY | B=67598 | C=MA | D=L | E=2023 | F=1950018 | G=747786 | H=3149 | I=35454 | J=38 | K=55 | L=51.82 | M=0.06
+r868: A=UNION LABOR LIFE INSURANCE COMPANY | B=69744 | C=MD | D=L | E=2023 | F=130461 | G=59333 | H=995 | I=9855 | J=45 | K=13.24 | L=16.49 | M=-0.2
+r895: A=Delta Dental of Washington | B=47341 | C=WA | D=X | E=2024 | F=492612307 | G=396986238 | H=965401 | I=11528390 | J=81 | K=42.73 | L=42.67 | M=0
+... last rows:
+r952: A=Unimerica Insurance Company | B=91529 | C=WI | D=L | E=2024 | F=1070928 | G=767503 | H=3483 | I=44096 | J=72 | K=24.29 | L=27.76 | M=-0.13
+r953: A=UNION SECURITY INSURANCE COMPANY | B=70408 | C=IA | D=L | E=2024 | F=175535 | G=266068 | H=50 | I=10828 | J=152 | K=16.21 | L=7.5 | M=1.16
+r954: A=United Concordia Insurance Company | B=85766 | C=AZ | D=L | E=2024 | F=717274802 | G=778677050 | H=1860345 | I=22277863 | J=109 | K=32.2 | L=31.85 | M=0.01
+r955: A=United National Life Insurance Company of America | B=92703 | C=NE | D=L | E=2024 | F=2689002 | G=1295511 | H=5292 | I=62978 | J=48 | K=42.7 | L=44.56 | M=-0.04
+r956: A=UNITED OF OMAHA LIFE INSURANCE COMPANY | B=69868 | C=NE | D=L | E=2024 | F=237502757 | G=184256477 | H=677092 | I=7598910 | J=78 | K=31.25 | L=28.46 | M=0.1
+r957: A=UNITED STATES BRANCH OF THE SUN LIFE ASSURANCE COMPANY OF CANADA | B=80802 | C=MI | D=L | E=2024 | F=370330476 | G=275019754 | H=1358477 | I=15497728 | J=74 | K=23.9 | L=27.13 | M=-0.12
+r958: A=UnitedHealthcare Insurance Company | B=79413 | C=CT | D=L | E=2024 | F=1481785518 | G=1196359105 | H=3971832 | I=48926944 | J=81 | K=30.29 | L=30.03 | M=0.01
+r959: A=Willamette Dental of Washington Inc. | B=47050 | C=WA | D=X | E=2024 | F=68907412 | G=62792908 | H=129754 | I=1565606 | J=91 | K=44.01 | L=41.33 | M=0.07
+... column profiles (data rows below Excel row 1):
+  A [Company Name]: {"non_empty": 958, "distinct": 131, "top_values": {"AETNA LIFE INSURANCE COMPANY": 10, "ASSURITY LIFE INSURANCE COMPANY": 10, "ASURIS NORTHWEST HEALTH": 10, "AXIS Insurance Company": 10, "American Family Life Assurance Company of Columbus (AFLAC)": 10, "American Heritage Life Insurance Company": 10}}
+  B [NAIC Code]: {"non_empty": 958, "numeric": 958, "min": "11121", "max": "98205", "sum": "62635828", "distinct": 118, "top_values": {"11121": 10, "12239": 10, "26581": 10, "37273": 10, "38245": 10, "47050": 10}}
+  C [Domicile State]: {"non_empty": 958, "distinct": 30, "value_counts": {"TX": 126, "WA": 92, "NE": 80, "NY": 70, "IL": 63, "WI": 57, "IA": 46, "OR": 45, "CT": 42, "IN": 39, "DE": 30, "OK": 28, "MI": 26, "OH": 24, "AZ": 22, "MO": 20, "SC": 20, "KS": 16, "LA": 16, "MA": 15, "TN": 11, "FL": 10, "ID": 10, "PA": 10, "MD": 9, "AR": 7, "ME": 7, "MN": 6, "NC": 6, "GA": 5}}
+  D [Business Type]: {"non_empty": 958, "distinct": 3, "value_counts": {"L": 799, "X": 110, "P": 49}}
+  E [Year]: {"non_empty": 958, "numeric": 958, "min": "2015", "max": "2024", "sum": "1934511", "distinct": 10, "value_counts": {"2015": 102, "2017": 102, "2016": 101, "2018": 101, "2019": 101, "2020": 97, "2021": 91, "2022": 90, "2023": 89, "2024": 84}}
+  F [Dental Premiums]: {"non_empty": 958, "numeric": 958, "min": "-36998", "max": "4750579291", "sum": "159176670825", "distinct": 956, "top_values": {"124119": 2, "17931432": 2, "-36998": 1, "10008271": 1, "100200": 1, "100377093": 1}}
+  G [Dental Payments]: {"non_empty": 958, "numeric": 958, "min": "-3709838", "max": "4031011213", "sum": "118694310049", "distinct": 951, "top_values": {"0": 5, "10281038": 2, "49025": 2, "51738": 2, "-11487": 1, "-20820": 1}}
+  H [Dental Members]: {"non_empty": 958, "numeric": 958, "min": "0", "max": "10721781", "sum": "373271569", "distinct": 927, "top_values": {"0": 11, "399": 4, "6888": 3, "105": 2, "1053": 2, "1189": 2}}
+  I [Dental Member Months]: {"non_empty": 958, "numeric": 958, "min": "0", "max": "122549957", "sum": "4428373485", "distinct": 947, "top_values": {"0": 5, "93998": 3, "13971": 2, "34318": 2, "34503": 2, "4986": 2}}
+  J [Dental Loss Ratio]: {"non_empty": 958, "numeric": 958, "min": "-1670", "max": "1143", "sum": "55819", "distinct": 119, "top_values": {"72": 33, "66": 30, "64": 25, "65": 25, "68": 25, "62": 21}}
+  K [Average Amount of Premiums per Member per Month]: {"non_empty": 954, "numeric": 954, "min": "-0.23", "max": "30037.22", "sum": "76108.88", "distinct": 864, "top_values": {"29.49": 3, "30.25": 3, "30.29": 3, "30.33": 3, "32": 3, "33.25": 3}}
+  L [Previous Year Average Amount of Premiums per Member per Month]: {"non_empty": 844, "numeric": 844, "min": "-0.23", "max": "1030.68", "sum": "39866.29", "distinct": 758, "top_values": {"0": 8, "29.49": 3, "30.25": 3, "30.33": 3, "32": 3, "33.25": 3}}
+  M [Percentage Change in Average Premium per Member per Month from Previous Year]: {"non_empty": 834, "numeric": 834, "min": "-2.13", "max": "619.4", "sum": "918.46", "distinct": 145, "top_values": {"0": 65, "0.01": 65, "0.02": 57, "-0.02": 41, "0.03": 39, "-0.01": 34}}

@@ -1,0 +1,88 @@
+{
+ "id": "cms_program_stats_part_d_utilization_2023",
+ "file": "cms_program_stats_part_d_utilization_2023.xlsx",
+ "questions": [
+  {
+   "question": "In 2023, what was the average number of 30-day equivalent prescription fills for a Medicare Advantage Part D enrollee who was deemed eligible for the low-income subsidy?",
+   "sheet": "MDCR UTLZN D 1_CPS_12UPD",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "74.81698021",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 1_CPS_12UPD', header=None)\n# Row 26 is 'Beneficiaries Deemed Eligible for LIS\u00b2' under 'Average Prescription Drug Events (Fills) per Part D Enrollee'\n# Column S (col 18) is 2023 Medicare Advantage Prescription Drug Plan\n# Locate row containing 'Beneficiaries Deemed Eligible' in the fills per enrollee section\n# Excel row 26 corresponds to index 25\nresult = float(df.iloc[25, 18])",
+   "qid": "cms_program_stats_part_d_utilization_2023#1",
+   "pass1": true,
+   "result": 74.81698020963184,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did Medicare Advantage Part D plans have more overall enrollees than stand-alone prescription drug plans in 2023?",
+   "sheet": "MDCR UTLZN D 2_CPS_12UPD",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 2_CPS_12UPD', header=None)\n# In 2023: col R (index 17) is Stand-Alone, col S (index 18) is MA-PD\n# Row index 7 corresponds to Overall Enrollees\npdp_enrollees = df.iloc[7, 17]\nmapd_enrollees = df.iloc[7, 18]\nresult = 'yes' if mapd_enrollees > pdp_enrollees else 'no'",
+   "qid": "cms_program_stats_part_d_utilization_2023#2",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Among the 50 US states, which three states had the highest average gross drug cost per Medicare Part D enrollee in 2023?",
+   "sheet": "MDCR UTLZN D 6_CPS_12UPD",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"New York\", \"Connecticut\", \"Kentucky\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 6_CPS_12UPD', header=None)\n# States are located in rows 8 to 58 (Excel rows 8 to 58, index 7 to 57)\n# Column A is area name, Column H (index 7) is Overall Part D Average Gross Drug Cost Per Part D Enrollee\nstates_df = df.iloc[7:58, [0, 7]].copy()\nstates_df.columns = ['state', 'cost']\n# Exclude DC if present (DC is index 15, row 16)\n# Question asks: 'Among the 50 US states'\nstates_df = states_df[states_df['state'] != 'District of Columbia']\nstates_df['cost'] = pd.to_numeric(states_df['cost'])\ntop3 = states_df.sort_values(by='cost', ascending=False).head(3)['state'].tolist()\nresult = top3",
+   "qid": "cms_program_stats_part_d_utilization_2023#3",
+   "pass1": true,
+   "result": [
+    "New York",
+    "Connecticut",
+    "Kentucky"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2023, what was the difference in total Medicare Part D utilizers between female beneficiaries and male beneficiaries?",
+   "sheet": "MDCR UTLZN D 5_CPS_12UPD",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "7091569",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 5_CPS_12UPD', header=None)\n# Female row: index 24 (Excel row 25), Male row: index 23 (Excel row 24)\n# Column B (index 1) is Total Medicare Part D Utilizers\nmale_utilizers = df.iloc[23, 1]\nfemale_utilizers = df.iloc[24, 1]\nresult = int(female_utilizers - male_utilizers)",
+   "qid": "cms_program_stats_part_d_utilization_2023#4",
+   "pass1": true,
+   "result": 7091569,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many US states had an average gross drug cost per Part D utilizer exceeding $6,000 in 2023?",
+   "sheet": "MDCR UTLZN D 7_CPS_12UPD",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "10",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 7_CPS_12UPD', header=None)\n# States start at row index 7 (Alabama) through row index 57 (Wyoming)\nstates_df = df.iloc[7:58, [0, 7]].copy()\nstates_df.columns = ['state', 'cost']\nstates_df = states_df[states_df['state'] != 'District of Columbia']\nstates_df['cost'] = pd.to_numeric(states_df['cost'])\nresult = int((states_df['cost'] > 6000).sum())",
+   "qid": "cms_program_stats_part_d_utilization_2023#5",
+   "pass1": false,
+   "result": 11,
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  },
+  {
+   "question": "For Part D utilizers aged 65 and older who entered the catastrophic coverage phase in 2023, what was the average gross drug cost per person in dollars?",
+   "sheet": "MDCR UTLZN D 10_CPS_12UPD",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "33863",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_program_stats_part_d_utilization_2023.xlsx', sheet_name='MDCR UTLZN D 10_CPS_12UPD', header=None)\n# Row 10 (index 9) corresponds to '65 Years and Over'\n# Column P (index 15) is 'Part D Average Gross Drug Cost Per Utilizer who Entered Catastrophic Coverage Phase'\nresult = int(df.iloc[9, 15])",
+   "qid": "cms_program_stats_part_d_utilization_2023#6",
+   "pass1": true,
+   "result": 33863,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

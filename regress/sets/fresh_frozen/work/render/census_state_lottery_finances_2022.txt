@@ -1,0 +1,76 @@
+FILE census_state_lottery_finances_2022.xlsx (Excel workbook) with 1 sheet(s): ["22Lottery"]
+
+### Sheet "22Lottery": 71 rows x 5 columns (Excel rows 1..71, columns A..E)
+merged cells: A69:E69, C5:E5, A2:E2, A71:E71, A1:E1, A70:E70, A3:E3
+(whole sheet shown; Excel row numbers)
+r1: A=Income and Apportionment of State-Administered Lottery Funds: 2022
+r2: (blank)
+r3: A=(Thousand dollars)
+r4: (blank)
+r5: A=State | B=Income | C=Apportionment of funds
+r6: B=(ticket sales excluding commissions) | C=Prizes | D=Administration | E=Proceeds available
+r7: A=United States | B=97,889,130 | C=65,227,380 | D=4,323,880 | E=28,337,869
+r8: (blank)
+r9: A=Alabama | B=- | C=- | D=- | E=-
+r10: A=Alaska | B=- | C=- | D=- | E=-
+r11: A=Arizona | B=1,275,412 | C=925,422 | D=69,560 | E=280,429
+r12: A=Arkansas | B=546,764 | C=402,406 | D=44,293 | E=100,065
+r13: A=California | B=8,853,250 | C=5,825,673 | D=381,834 | E=2,645,743
+r14: (blank)
+r15: A=Colorado | B=764,695 | C=538,889 | D=47,227 | E=178,579
+r16: A=Connecticut | B=1,522,544 | C=1,041,156 | D=67,714 | E=413,673
+r17: A=Delaware | B=392,743 | C=223,550 | D=10,618 | E=158,575
+r18: A=Florida | B=8,808,741 | C=6,245,455 | D=198,867 | E=2,364,419
+r19: A=Georgia | B=5,101,024 | C=3,585,304 | D=205,036 | E=1,310,684
+r20: (blank)
+r21: A=Hawaii | B=- | C=- | D=- | E=-
+r22: A=Idaho | B=346,311 | C=257,122 | D=15,853 | E=73,336
+r23: A=Illinois | B=3,393,755 | C=2,211,364 | D=361,052 | E=821,339
+r24: A=Indiana | B=1,587,305 | C=1,138,516 | D=87,727 | E=361,062
+r25: A=Iowa | B=404,409 | C=274,214 | D=31,217 | E=98,977
+r26: (blank)
+r27: A=Kansas | B=295,856 | C=200,187 | D=19,016 | E=76,653
+r28: A=Kentucky | B=1,589,367 | C=1,152,007 | D=77,086 | E=360,274
+r29: A=Louisiana | B=615,873 | C=328,417 | D=28,735 | E=258,722
+r30: A=Maine | B=360,272 | C=264,781 | D=25,434 | E=70,057
+r31: A=Maryland | B=2,459,709 | C=1,689,110 | D=56,468 | E=714,132
+r32: (blank)
+r33: A=Massachusetts | B=5,855,020 | C=4,309,812 | D=111,885 | E=1,433,323
+r34: A=Michigan | B=4,446,357 | C=3,132,407 | D=103,639 | E=1,210,311
+r35: A=Minnesota | B=690,493 | C=488,761 | D=22,153 | E=179,579
+r36: A=Mississippi | B=461,040 | C=251,256 | D=10,257 | E=199,527
+r37: A=Missouri | B=1,675,736 | C=1,264,392 | D=55,193 | E=356,151
+r38: (blank)
+r39: A=Montana | B=77,383 | C=41,195 | D=17,304 | E=18,884
+r40: A=Nebraska | B=215,443 | C=119,567 | D=20,319 | E=75,557
+r41: A=Nevada | B=- | C=- | D=- | E=-
+r42: A=New Hampshire | B=474,474 | C=321,750 | D=35,083 | E=117,640
+r43: A=New Jersey | B=3,420,986 | C=2,209,065 | D=131,616 | E=1,080,305
+r44: (blank)
+r45: A=New Mexico | B=136,874 | C=74,114 | D=12,437 | E=50,323
+r46: A=New York | B=8,866,286 | C=4,901,590 | D=388,452 | E=3,576,244
+r47: A=North Carolina | B=3,887,051 | C=2,543,961 | D=339,072 | E=1,004,018
+r48: A=North Dakota | B=27,963 | C=15,361 | D=5,267 | E=7,335
+r49: A=Ohio | B=4,015,587 | C=2,791,674 | D=81,703 | E=1,142,210
+r50: (blank)
+r51: A=Oklahoma | B=327,961 | C=226,705 | D=7,705 | E=93,551
+r52: A=Oregon | B=1,333,117 | C=257,169 | D=105,927 | E=970,022
+r53: A=Pennsylvania | B=4,627,513 | C=3,369,990 | D=86,795 | E=1,170,729
+r54: A=Rhode Island | B=558,131 | C=196,223 | D=16,878 | E=345,030
+r55: A=South Carolina | B=2,094,957 | C=1,486,912 | D=27,640 | E=580,405
+r56: (blank)
+r57: A=South Dakota | B=233,809 | C=42,934 | D=11,446 | E=179,428
+r58: A=Tennessee | B=1,715,329 | C=1,202,358 | D=31,596 | E=481,375
+r59: A=Texas | B=8,296,892 | C=5,599,718 | D=686,039 | E=2,011,135
+r60: A=Utah | B=- | C=- | D=- | E=-
+r61: A=Vermont | B=151,582 | C=100,688 | D=10,507 | E=40,387
+r62: (blank)
+r63: A=Virginia | B=3,585,689 | C=2,676,925 | D=146,628 | E=762,136
+r64: A=Washington | B=820,623 | C=573,990 | D=30,598 | E=216,035
+r65: A=West Virginia | B=705,743 | C=152,452 | D=36,185 | E=517,106
+r66: A=Wisconsin | B=843,405 | C=557,117 | D=60,094 | E=226,194
+r67: A=Wyoming | B=25,656 | C=15,721 | D=3,725 | E=6,210
+r68: (blank)
+r69: A=Note: A dash ( - ) indicates that the state government did not administer a lottery progra...
+r70: (blank)
+r71: A=Last Revised:      March 25, 2025

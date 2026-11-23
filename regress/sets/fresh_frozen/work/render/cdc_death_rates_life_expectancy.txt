@@ -1,0 +1,1075 @@
+FILE cdc_death_rates_life_expectancy.csv (CSV). pandas.read_csv gives 1071 data rows x 5 columns.
+Columns and pandas dtypes: Year (int64); Race (str); Sex (str); Average Life Expectancy (Years) (float64); Age-adjusted Death Rate (float64)
+(whole sheet shown; r1 is the CSV header line; r2 is pandas index 0)
+r1: A=Year | B=Race | C=Sex | D=Average Life Expectancy (Years) | E=Age-adjusted Death Rate
+r2: A=1900 | B=All Races | C=Both Sexes | D=47.3 | E=2518
+r3: A=1901 | B=All Races | C=Both Sexes | D=49.1 | E=2473.1
+r4: A=1902 | B=All Races | C=Both Sexes | D=51.5 | E=2301.3
+r5: A=1903 | B=All Races | C=Both Sexes | D=50.5 | E=2379
+r6: A=1904 | B=All Races | C=Both Sexes | D=47.6 | E=2502.5
+r7: A=1905 | B=All Races | C=Both Sexes | D=48.7 | E=2423.7
+r8: A=1906 | B=All Races | C=Both Sexes | D=48.7 | E=2399
+r9: A=1907 | B=All Races | C=Both Sexes | D=47.6 | E=2494.4
+r10: A=1908 | B=All Races | C=Both Sexes | D=51.1 | E=2298.9
+r11: A=1909 | B=All Races | C=Both Sexes | D=52.1 | E=2249.2
+r12: A=1910 | B=All Races | C=Both Sexes | D=50 | E=2317.2
+r13: A=1911 | B=All Races | C=Both Sexes | D=52.6 | E=2245.4
+r14: A=1912 | B=All Races | C=Both Sexes | D=53.5 | E=2211.7
+r15: A=1913 | B=All Races | C=Both Sexes | D=52.5 | E=2206.5
+r16: A=1914 | B=All Races | C=Both Sexes | D=54.2 | E=2149.3
+r17: A=1915 | B=All Races | C=Both Sexes | D=54.5 | E=2174.8
+r18: A=1916 | B=All Races | C=Both Sexes | D=51.7 | E=2266.6
+r19: A=1917 | B=All Races | C=Both Sexes | D=50.9 | E=2275.9
+r20: A=1918 | B=All Races | C=Both Sexes | D=39.1 | E=2541.6
+r21: A=1919 | B=All Races | C=Both Sexes | D=54.7 | E=2057.2
+r22: A=1920 | B=All Races | C=Both Sexes | D=54.1 | E=2147.1
+r23: A=1921 | B=All Races | C=Both Sexes | D=60.8 | E=1958.2
+r24: A=1922 | B=All Races | C=Both Sexes | D=59.6 | E=2049.5
+r25: A=1923 | B=All Races | C=Both Sexes | D=57.2 | E=2141.4
+r26: A=1924 | B=All Races | C=Both Sexes | D=59.7 | E=2038
+r27: A=1925 | B=All Races | C=Both Sexes | D=59 | E=2068.7
+r28: A=1926 | B=All Races | C=Both Sexes | D=56.7 | E=2146.2
+r29: A=1927 | B=All Races | C=Both Sexes | D=60.4 | E=1989.5
+r30: A=1928 | B=All Races | C=Both Sexes | D=56.8 | E=2124.6
+r31: A=1929 | B=All Races | C=Both Sexes | D=57.1 | E=2081.2
+r32: A=1930 | B=All Races | C=Both Sexes | D=59.7 | E=1943.8
+r33: A=1931 | B=All Races | C=Both Sexes | D=61.1 | E=1895.1
+r34: A=1932 | B=All Races | C=Both Sexes | D=62.1 | E=1897.1
+r35: A=1933 | B=All Races | C=Both Sexes | D=63.3 | E=1850.1
+r36: A=1934 | B=All Races | C=Both Sexes | D=61.1 | E=1888.2
+r37: A=1935 | B=All Races | C=Both Sexes | D=61.7 | E=1860.1
+r38: A=1936 | B=All Races | C=Both Sexes | D=58.5 | E=1963.7
+r39: A=1937 | B=All Races | C=Both Sexes | D=60 | E=1882.6
+r40: A=1938 | B=All Races | C=Both Sexes | D=63.5 | E=1764.3
+r41: A=1939 | B=All Races | C=Both Sexes | D=63.7 | E=1766.9
+r42: A=1940 | B=All Races | C=Both Sexes | D=62.9 | E=1785
+r43: A=1941 | B=All Races | C=Both Sexes | D=64.8 | E=1694.6
+r44: A=1942 | B=All Races | C=Both Sexes | D=66.2 | E=1635.8
+r45: A=1943 | B=All Races | C=Both Sexes | D=63.3 | E=1702.4
+r46: A=1944 | B=All Races | C=Both Sexes | D=65.2 | E=1618.5
+r47: A=1945 | B=All Races | C=Both Sexes | D=65.9 | E=1575.4
+r48: A=1946 | B=All Races | C=Both Sexes | D=66.7 | E=1529.7
+r49: A=1947 | B=All Races | C=Both Sexes | D=66.8 | E=1532
+r50: A=1948 | B=All Races | C=Both Sexes | D=67.2 | E=1501.7
+r51: A=1949 | B=All Races | C=Both Sexes | D=68 | E=1457.3
+r52: A=1950 | B=All Races | C=Both Sexes | D=68.2 | E=1446
+r53: A=1951 | B=All Races | C=Both Sexes | D=68.4 | E=1423.5
+r54: A=1952 | B=All Races | C=Both Sexes | D=68.6 | E=1394.6
+r55: A=1953 | B=All Races | C=Both Sexes | D=68.8 | E=1385.6
+r56: A=1954 | B=All Races | C=Both Sexes | D=69.6 | E=1314.8
+r57: A=1955 | B=All Races | C=Both Sexes | D=69.6 | E=1332.3
+r58: A=1956 | B=All Races | C=Both Sexes | D=69.7 | E=1333.7
+r59: A=1957 | B=All Races | C=Both Sexes | D=69.5 | E=1356.7
+r60: A=1958 | B=All Races | C=Both Sexes | D=69.6 | E=1343.4
+r61: A=1959 | B=All Races | C=Both Sexes | D=69.9 | E=1317.3
+r62: A=1960 | B=All Races | C=Both Sexes | D=69.7 | E=1339.2
+r63: A=1961 | B=All Races | C=Both Sexes | D=70.2 | E=1298.8
+r64: A=1962 | B=All Races | C=Both Sexes | D=70.1 | E=1323.6
+r65: A=1963 | B=All Races | C=Both Sexes | D=69.9 | E=1346.3
+r66: A=1964 | B=All Races | C=Both Sexes | D=70.2 | E=1303.8
+r67: A=1965 | B=All Races | C=Both Sexes | D=70.2 | E=1306.5
+r68: A=1966 | B=All Races | C=Both Sexes | D=70.2 | E=1309
+r69: A=1967 | B=All Races | C=Both Sexes | D=70.5 | E=1274
+r70: A=1968 | B=All Races | C=Both Sexes | D=70.2 | E=1304.5
+r71: A=1969 | B=All Races | C=Both Sexes | D=70.5 | E=1271.8
+r72: A=1970 | B=All Races | C=Both Sexes | D=70.8 | E=1222.6
+r73: A=1971 | B=All Races | C=Both Sexes | D=71.1 | E=1213.1
+r74: A=1972 | B=All Races | C=Both Sexes | D=71.2 | E=1214.8
+r75: A=1973 | B=All Races | C=Both Sexes | D=71.4 | E=1201.2
+r76: A=1974 | B=All Races | C=Both Sexes | D=72 | E=1151.8
+r77: A=1975 | B=All Races | C=Both Sexes | D=72.6 | E=1094.4
+r78: A=1976 | B=All Races | C=Both Sexes | D=72.9 | E=1084.1
+r79: A=1977 | B=All Races | C=Both Sexes | D=73.3 | E=1051.6
+r80: A=1978 | B=All Races | C=Both Sexes | D=73.5 | E=1043.7
+r81: A=1979 | B=All Races | C=Both Sexes | D=73.9 | E=1010.6
+r82: A=1980 | B=All Races | C=Both Sexes | D=73.7 | E=1038.7
+r83: A=1981 | B=All Races | C=Both Sexes | D=74.1 | E=1007
+r84: A=1982 | B=All Races | C=Both Sexes | D=74.5 | E=984.9
+r85: A=1983 | B=All Races | C=Both Sexes | D=74.6 | E=990
+r86: A=1984 | B=All Races | C=Both Sexes | D=74.7 | E=982.1
+r87: A=1985 | B=All Races | C=Both Sexes | D=74.7 | E=987.8
+r88: A=1986 | B=All Races | C=Both Sexes | D=74.7 | E=978.4
+r89: A=1987 | B=All Races | C=Both Sexes | D=74.9 | E=969.6
+r90: A=1988 | B=All Races | C=Both Sexes | D=74.9 | E=975.1
+r91: A=1989 | B=All Races | C=Both Sexes | D=75.1 | E=949.9
+r92: A=1990 | B=All Races | C=Both Sexes | D=75.4 | E=938
+r93: A=1991 | B=All Races | C=Both Sexes | D=75.5 | E=921.9
+r94: A=1992 | B=All Races | C=Both Sexes | D=75.8 | E=905.3
+r95: A=1993 | B=All Races | C=Both Sexes | D=75.5 | E=925.8
+r96: A=1994 | B=All Races | C=Both Sexes | D=75.7 | E=913.2
+r97: A=1995 | B=All Races | C=Both Sexes | D=75.8 | E=909.5
+r98: A=1996 | B=All Races | C=Both Sexes | D=76.1 | E=893.7
+r99: A=1997 | B=All Races | C=Both Sexes | D=76.5 | E=877.7
+r100: A=1998 | B=All Races | C=Both Sexes | D=76.7 | E=870.1
+r101: A=1999 | B=All Races | C=Both Sexes | D=76.7 | E=875.6
+r102: A=2000 | B=All Races | C=Both Sexes | D=76.8 | E=869
+r103: A=2001 | B=All Races | C=Both Sexes | D=77 | E=858.8
+r104: A=2002 | B=All Races | C=Both Sexes | D=77 | E=855.9
+r105: A=2003 | B=All Races | C=Both Sexes | D=77.6 | E=843.5
+r106: A=2004 | B=All Races | C=Both Sexes | D=77.5 | E=813.7
+r107: A=2005 | B=All Races | C=Both Sexes | D=77.6 | E=815
+r108: A=2006 | B=All Races | C=Both Sexes | D=77.8 | E=791.8
+r109: A=2007 | B=All Races | C=Both Sexes | D=78.1 | E=775.3
+r110: A=2008 | B=All Races | C=Both Sexes | D=78.2 | E=774.9
+r111: A=2009 | B=All Races | C=Both Sexes | D=78.5 | E=749.6
+r112: A=2010 | B=All Races | C=Both Sexes | D=78.7 | E=747
+r113: A=2011 | B=All Races | C=Both Sexes | D=78.7 | E=741.3
+r114: A=2012 | B=All Races | C=Both Sexes | D=78.8 | E=732.8
+r115: A=2013 | B=All Races | C=Both Sexes | D=78.8 | E=731.9
+r116: A=2014 | B=All Races | C=Both Sexes | D=78.9 | E=724.6
+r117: A=2015 | B=All Races | C=Both Sexes | D=78.7 | E=733.1
+r118: A=2016 | B=All Races | C=Both Sexes | D=78.7 | E=728.8
+r119: A=2017 | B=All Races | C=Both Sexes | D=78.6 | E=731.9
+r120: A=2018 | B=All Races | C=Both Sexes | D=78.7 | E=723.6
+r121: A=1900 | B=All Races | C=Female | D=48.3 | E=2410.4
+r122: A=1901 | B=All Races | C=Female | D=50.6 | E=2350.5
+r123: A=1902 | B=All Races | C=Female | D=53.4 | E=2162.8
+r124: A=1903 | B=All Races | C=Female | D=52 | E=2250.6
+r125: A=1904 | B=All Races | C=Female | D=49.1 | E=2358.8
+r126: A=1905 | B=All Races | C=Female | D=50.2 | E=2287.7
+r127: A=1906 | B=All Races | C=Female | D=50.8 | E=2244.6
+r128: A=1907 | B=All Races | C=Female | D=49.9 | E=2327.3
+r129: A=1908 | B=All Races | C=Female | D=52.8 | E=2162.3
+r130: A=1909 | B=All Races | C=Female | D=53.8 | E=2111.5
+r131: A=1910 | B=All Races | C=Female | D=51.8 | E=2171.3
+r132: A=1911 | B=All Races | C=Female | D=54.4 | E=2112.1
+r133: A=1912 | B=All Races | C=Female | D=55.9 | E=2067.2
+r134: A=1913 | B=All Races | C=Female | D=55 | E=2058.1
+r135: A=1914 | B=All Races | C=Female | D=56.8 | E=2009
+r136: A=1915 | B=All Races | C=Female | D=56.8 | E=2044.3
+r137: A=1916 | B=All Races | C=Female | D=54.3 | E=2123.3
+r138: A=1917 | B=All Races | C=Female | D=54 | E=2119.9
+r139: A=1918 | B=All Races | C=Female | D=42.2 | E=2342.8
+r140: A=1919 | B=All Races | C=Female | D=56 | E=1973.1
+r141: A=1920 | B=All Races | C=Female | D=54.6 | E=2081.3
+r142: A=1921 | B=All Races | C=Female | D=61.8 | E=1890.4
+r143: A=1922 | B=All Races | C=Female | D=61 | E=1965.1
+r144: A=1923 | B=All Races | C=Female | D=58.5 | E=2050.5
+r145: A=1924 | B=All Races | C=Female | D=61.5 | E=1927.2
+r146: A=1925 | B=All Races | C=Female | D=60.6 | E=1957.1
+r147: A=1926 | B=All Races | C=Female | D=58 | E=2028
+r148: A=1927 | B=All Races | C=Female | D=62.1 | E=1863.8
+r149: A=1928 | B=All Races | C=Female | D=58.3 | E=1990.5
+r150: A=1929 | B=All Races | C=Female | D=58.7 | E=1940.9
+r151: A=1930 | B=All Races | C=Female | D=61.6 | E=1798.3
+r152: A=1931 | B=All Races | C=Female | D=63.1 | E=1743.6
+r153: A=1932 | B=All Races | C=Female | D=63.5 | E=1758.4
+r154: A=1933 | B=All Races | C=Female | D=65.1 | E=1699.1
+r155: A=1934 | B=All Races | C=Female | D=63.3 | E=1720.7
+r156: A=1935 | B=All Races | C=Female | D=63.9 | E=1690.6
+r157: A=1936 | B=All Races | C=Female | D=60.6 | E=1780.6
+r158: A=1937 | B=All Races | C=Female | D=62.4 | E=1695.1
+r159: A=1938 | B=All Races | C=Female | D=65.3 | E=1599.1
+r160: A=1939 | B=All Races | C=Female | D=65.4 | E=1599.8
+r161: A=1940 | B=All Races | C=Female | D=65.2 | E=1599.4
+r162: A=1941 | B=All Races | C=Female | D=66.8 | E=1502.4
+r163: A=1942 | B=All Races | C=Female | D=67.9 | E=1444.7
+r164: A=1943 | B=All Races | C=Female | D=64.4 | E=1507.8
+r165: A=1944 | B=All Races | C=Female | D=66.8 | E=1428.4
+r166: A=1945 | B=All Races | C=Female | D=67.9 | E=1376.8
+r167: A=1946 | B=All Races | C=Female | D=69.4 | E=1342.8
+r168: A=1947 | B=All Races | C=Female | D=69.7 | E=1332.5
+r169: A=1948 | B=All Races | C=Female | D=69.9 | E=1296.4
+r170: A=1949 | B=All Races | C=Female | D=70.7 | E=1252.6
+r171: A=1950 | B=All Races | C=Female | D=71.1 | E=1236
+r172: A=1951 | B=All Races | C=Female | D=71.4 | E=1213.4
+r173: A=1952 | B=All Races | C=Female | D=71.6 | E=1186.7
+r174: A=1953 | B=All Races | C=Female | D=72 | E=1172.6
+r175: A=1954 | B=All Races | C=Female | D=72.8 | E=1109.7
+r176: A=1955 | B=All Races | C=Female | D=72.8 | E=1121.9
+r177: A=1956 | B=All Races | C=Female | D=72.9 | E=1117.5
+r178: A=1957 | B=All Races | C=Female | D=72.7 | E=1134.5
+r179: A=1958 | B=All Races | C=Female | D=72.9 | E=1120.9
+r180: A=1959 | B=All Races | C=Female | D=73.2 | E=1093.5
+r181: A=1960 | B=All Races | C=Female | D=73.1 | E=1105.3
+r182: A=1961 | B=All Races | C=Female | D=73.6 | E=1068.5
+r183: A=1962 | B=All Races | C=Female | D=73.5 | E=1087.1
+r184: A=1963 | B=All Races | C=Female | D=73.4 | E=1098.5
+r185: A=1964 | B=All Races | C=Female | D=73.7 | E=1061.5
+r186: A=1965 | B=All Races | C=Female | D=73.8 | E=1056.1
+r187: A=1966 | B=All Races | C=Female | D=73.9 | E=1055.3
+r188: A=1967 | B=All Races | C=Female | D=74.3 | E=1020.5
+r189: A=1968 | B=All Races | C=Female | D=74.1 | E=1043.5
+r190: A=1969 | B=All Races | C=Female | D=74.4 | E=1013.4
+r191: A=1970 | B=All Races | C=Female | D=74.7 | E=971.4
+r192: A=1971 | B=All Races | C=Female | D=75 | E=960.6
+r193: A=1972 | B=All Races | C=Female | D=75.1 | E=958.7
+r194: A=1973 | B=All Races | C=Female | D=75.3 | E=947.8
+r195: A=1974 | B=All Races | C=Female | D=75.9 | E=907.5
+r196: A=1975 | B=All Races | C=Female | D=76.6 | E=855.1
+r197: A=1976 | B=All Races | C=Female | D=76.8 | E=849.4
+r198: A=1977 | B=All Races | C=Female | D=77.2 | E=820.7
+r199: A=1978 | B=All Races | C=Female | D=77.3 | E=816.4
+r200: A=1979 | B=All Races | C=Female | D=77.8 | E=789.9
+r201: A=1980 | B=All Races | C=Female | D=77.4 | E=817.7
+r202: A=1981 | B=All Races | C=Female | D=77.8 | E=792.7
+r203: A=1982 | B=All Races | C=Female | D=78.1 | E=776.4
+r204: A=1983 | B=All Races | C=Female | D=78.1 | E=783.3
+r205: A=1984 | B=All Races | C=Female | D=78.2 | E=779.4
+r206: A=1985 | B=All Races | C=Female | D=78.2 | E=784.2
+r207: A=1986 | B=All Races | C=Female | D=78.2 | E=778.5
+r208: A=1987 | B=All Races | C=Female | D=78.3 | E=773.8
+r209: A=1988 | B=All Races | C=Female | D=78.3 | E=780.5
+r210: A=1989 | B=All Races | C=Female | D=78.5 | E=761.3
+r211: A=1990 | B=All Races | C=Female | D=78.8 | E=750.3
+r212: A=1991 | B=All Races | C=Female | D=78.9 | E=737.9
+r213: A=1992 | B=All Races | C=Female | D=79.1 | E=725.3
+r214: A=1993 | B=All Races | C=Female | D=78.8 | E=745.6
+r215: A=1994 | B=All Races | C=Female | D=79 | E=738.3
+r216: A=1995 | B=All Races | C=Female | D=78.9 | E=739.2
+r217: A=1996 | B=All Races | C=Female | D=79.1 | E=732.7
+r218: A=1997 | B=All Races | C=Female | D=79.4 | E=725.3
+r219: A=1998 | B=All Races | C=Female | D=79.5 | E=724.2
+r220: A=1999 | B=All Races | C=Female | D=79.4 | E=734
+r221: A=2000 | B=All Races | C=Female | D=79.7 | E=731.4
+r222: A=2001 | B=All Races | C=Female | D=79.5 | E=725.6
+r223: A=2002 | B=All Races | C=Female | D=79.6 | E=723.6
+r224: A=2003 | B=All Races | C=Female | D=79.7 | E=715.2
+r225: A=2004 | B=All Races | C=Female | D=80.1 | E=690.5
+r226: A=2005 | B=All Races | C=Female | D=80.1 | E=692.3
+r227: A=2006 | B=All Races | C=Female | D=80.3 | E=672.2
+r228: A=2007 | B=All Races | C=Female | D=80.6 | E=658.1
+r229: A=2008 | B=All Races | C=Female | D=80.6 | E=660
+r230: A=2009 | B=All Races | C=Female | D=80.9 | E=636.8
+r231: A=2010 | B=All Races | C=Female | D=81 | E=634.9
+r232: A=2011 | B=All Races | C=Female | D=81.1 | E=632.4
+r233: A=2012 | B=All Races | C=Female | D=81.2 | E=624.7
+r234: A=2013 | B=All Races | C=Female | D=81.2 | E=623.5
+r235: A=2014 | B=All Races | C=Female | D=81.3 | E=616.7
+r236: A=2015 | B=All Races | C=Female | D=81.1 | E=624.2
+r237: A=2016 | B=All Races | C=Female | D=81.1 | E=617.5
+r238: A=2017 | B=All Races | C=Female | D=81.1 | E=619.7
+r239: A=2018 | B=All Races | C=Female | D=81.2 | E=611.3
+r240: A=1900 | B=All Races | C=Male | D=46.3 | E=2630.8
+r241: A=1901 | B=All Races | C=Male | D=47.6 | E=2600.5
+r242: A=1902 | B=All Races | C=Male | D=49.8 | E=2447.9
+r243: A=1903 | B=All Races | C=Male | D=49.1 | E=2513.5
+r244: A=1904 | B=All Races | C=Male | D=46.2 | E=2652.9
+r245: A=1905 | B=All Races | C=Male | D=47.3 | E=2565.5
+r246: A=1906 | B=All Races | C=Male | D=46.9 | E=2553.6
+r247: A=1907 | B=All Races | C=Male | D=45.6 | E=2660.3
+r248: A=1908 | B=All Races | C=Male | D=49.5 | E=2433.4
+r249: A=1909 | B=All Races | C=Male | D=50.5 | E=2385.7
+r250: A=1910 | B=All Races | C=Male | D=48.4 | E=2459.9
+r251: A=1911 | B=All Races | C=Male | D=50.9 | E=2374.5
+r252: A=1912 | B=All Races | C=Male | D=51.5 | E=2352.8
+r253: A=1913 | B=All Races | C=Male | D=50.3 | E=2351.2
+r254: A=1914 | B=All Races | C=Male | D=52 | E=2286.1
+r255: A=1915 | B=All Races | C=Male | D=52.5 | E=2302.6
+r256: A=1916 | B=All Races | C=Male | D=49.6 | E=2406.2
+r257: A=1917 | B=All Races | C=Male | D=48.4 | E=2427.8
+r258: A=1918 | B=All Races | C=Male | D=36.6 | E=2740.5
+r259: A=1919 | B=All Races | C=Male | D=53.5 | E=2141.5
+r260: A=1920 | B=All Races | C=Male | D=53.6 | E=2213.2
+r261: A=1921 | B=All Races | C=Male | D=60 | E=2025
+r262: A=1922 | B=All Races | C=Male | D=58.4 | E=2131.8
+r263: A=1923 | B=All Races | C=Male | D=56.1 | E=2229.5
+r264: A=1924 | B=All Races | C=Male | D=58.1 | E=2146.9
+r265: A=1925 | B=All Races | C=Male | D=57.6 | E=2178
+r266: A=1926 | B=All Races | C=Male | D=55.5 | E=2262.2
+r267: A=1927 | B=All Races | C=Male | D=59 | E=2113.8
+r268: A=1928 | B=All Races | C=Male | D=55.6 | E=2256.3
+r269: A=1929 | B=All Races | C=Male | D=55.8 | E=2219.7
+r270: A=1930 | B=All Races | C=Male | D=58.1 | E=2088.8
+r271: A=1931 | B=All Races | C=Male | D=59.4 | E=2047.4
+r272: A=1932 | B=All Races | C=Male | D=61 | E=2036.4
+r273: A=1933 | B=All Races | C=Male | D=61.7 | E=2002
+r274: A=1934 | B=All Races | C=Male | D=59.3 | E=2056.7
+r275: A=1935 | B=All Races | C=Male | D=59.9 | E=2031.2
+r276: A=1936 | B=All Races | C=Male | D=56.6 | E=2148.5
+r277: A=1937 | B=All Races | C=Male | D=58 | E=2072.8
+r278: A=1938 | B=All Races | C=Male | D=61.9 | E=1932.4
+r279: A=1939 | B=All Races | C=Male | D=62.1 | E=1937.2
+r280: A=1940 | B=All Races | C=Male | D=60.8 | E=1976
+r281: A=1941 | B=All Races | C=Male | D=63.1 | E=1894.3
+r282: A=1942 | B=All Races | C=Male | D=64.7 | E=1835.1
+r283: A=1943 | B=All Races | C=Male | D=62.4 | E=1907.7
+r284: A=1944 | B=All Races | C=Male | D=63.6 | E=1821.6
+r285: A=1945 | B=All Races | C=Male | D=63.6 | E=1791.6
+r286: A=1946 | B=All Races | C=Male | D=64.4 | E=1727.6
+r287: A=1947 | B=All Races | C=Male | D=64.4 | E=1743
+r288: A=1948 | B=All Races | C=Male | D=64.6 | E=1720.5
+r289: A=1949 | B=All Races | C=Male | D=65.2 | E=1676.7
+r290: A=1950 | B=All Races | C=Male | D=65.6 | E=1674.2
+r291: A=1951 | B=All Races | C=Male | D=65.6 | E=1651.7
+r292: A=1952 | B=All Races | C=Male | D=65.8 | E=1620.8
+r293: A=1953 | B=All Races | C=Male | D=66 | E=1619
+r294: A=1954 | B=All Races | C=Male | D=66.7 | E=1540.7
+r295: A=1955 | B=All Races | C=Male | D=66.7 | E=1565.2
+r296: A=1956 | B=All Races | C=Male | D=66.7 | E=1575.5
+r297: A=1957 | B=All Races | C=Male | D=66.4 | E=1606.7
+r298: A=1958 | B=All Races | C=Male | D=66.6 | E=1596.3
+r299: A=1959 | B=All Races | C=Male | D=66.8 | E=1573.4
+r300: A=1960 | B=All Races | C=Male | D=66.6 | E=1609
+r301: A=1961 | B=All Races | C=Male | D=67.1 | E=1567.6
+r302: A=1962 | B=All Races | C=Male | D=66.9 | E=1604.4
+r303: A=1963 | B=All Races | C=Male | D=66.6 | E=1644
+r304: A=1964 | B=All Races | C=Male | D=66.8 | E=1597
+r305: A=1965 | B=All Races | C=Male | D=66.8 | E=1614.3
+r306: A=1966 | B=All Races | C=Male | D=66.7 | E=1624.2
+r307: A=1967 | B=All Races | C=Male | D=67 | E=1591.8
+r308: A=1968 | B=All Races | C=Male | D=66.6 | E=1635.2
+r309: A=1969 | B=All Races | C=Male | D=66.8 | E=1601.4
+r310: A=1970 | B=All Races | C=Male | D=67.1 | E=1542.1
+r311: A=1971 | B=All Races | C=Male | D=67.4 | E=1542.5
+r312: A=1972 | B=All Races | C=Male | D=67.4 | E=1551.1
+r313: A=1973 | B=All Races | C=Male | D=67.6 | E=1537.5
+r314: A=1974 | B=All Races | C=Male | D=68.2 | E=1478.5
+r315: A=1975 | B=All Races | C=Male | D=68.8 | E=1417.4
+r316: A=1976 | B=All Races | C=Male | D=69.1 | E=1404.3
+r317: A=1977 | B=All Races | C=Male | D=69.5 | E=1369.3
+r318: A=1978 | B=All Races | C=Male | D=69.6 | E=1358.1
+r319: A=1979 | B=All Races | C=Male | D=70 | E=1316.2
+r320: A=1980 | B=All Races | C=Male | D=70 | E=1347.6
+r321: A=1981 | B=All Races | C=Male | D=70.4 | E=1308.2
+r322: A=1982 | B=All Races | C=Male | D=70.8 | E=1279.9
+r323: A=1983 | B=All Races | C=Male | D=71 | E=1284.4
+r324: A=1984 | B=All Races | C=Male | D=71.1 | E=1271
+r325: A=1985 | B=All Races | C=Male | D=71.1 | E=1277.6
+r326: A=1986 | B=All Races | C=Male | D=71.2 | E=1261.5
+r327: A=1987 | B=All Races | C=Male | D=71.4 | E=1245.7
+r328: A=1988 | B=All Races | C=Male | D=71.4 | E=1250
+r329: A=1989 | B=All Races | C=Male | D=71.7 | E=1214.2
+r330: A=1990 | B=All Races | C=Male | D=71.8 | E=1202
+r331: A=1991 | B=All Races | C=Male | D=72 | E=1180.2
+r332: A=1992 | B=All Races | C=Male | D=72.3 | E=1158
+r333: A=1993 | B=All Races | C=Male | D=72.2 | E=1177
+r334: A=1994 | B=All Races | C=Male | D=72.4 | E=1155.1
+r335: A=1995 | B=All Races | C=Male | D=72.5 | E=1143.6
+r336: A=1996 | B=All Races | C=Male | D=73.1 | E=1115.2
+r337: A=1997 | B=All Races | C=Male | D=73.6 | E=1087.7
+r338: A=1998 | B=All Races | C=Male | D=73.8 | E=1068.9
+r339: A=1999 | B=All Races | C=Male | D=73.9 | E=1067
+r340: A=2000 | B=All Races | C=Male | D=74.3 | E=1053.8
+r341: A=2001 | B=All Races | C=Male | D=74.3 | E=1035.3
+r342: A=2002 | B=All Races | C=Male | D=74.4 | E=1030.6
+r343: A=2003 | B=All Races | C=Male | D=74.5 | E=1010.3
+r344: A=2004 | B=All Races | C=Male | D=75 | E=973.3
+r345: A=2005 | B=All Races | C=Male | D=75 | E=971.9
+r346: A=2006 | B=All Races | C=Male | D=75.2 | E=943.4
+r347: A=2007 | B=All Races | C=Male | D=75.5 | E=922.9
+r348: A=2008 | B=All Races | C=Male | D=75.6 | E=918.8
+r349: A=2009 | B=All Races | C=Male | D=76 | E=890.9
+r350: A=2010 | B=All Races | C=Male | D=76.2 | E=887.1
+r351: A=2011 | B=All Races | C=Male | D=76.3 | E=875.3
+r352: A=2012 | B=All Races | C=Male | D=76.4 | E=865.1
+r353: A=2013 | B=All Races | C=Male | D=76.4 | E=863.6
+r354: A=2014 | B=All Races | C=Male | D=76.5 | E=855.1
+r355: A=2015 | B=All Races | C=Male | D=76.3 | E=863.2
+r356: A=2016 | B=All Races | C=Male | D=76.2 | E=861
+r357: A=2017 | B=All Races | C=Male | D=76.1 | E=864.5
+r358: A=2018 | B=All Races | C=Male | D=76.2 | E=855.5
+r359: A=1900 | B=Black | C=Both Sexes | D=33 | E=3423.3
+r360: A=1901 | B=Black | C=Both Sexes | D=33.7 | E=3338.4
+r361: A=1902 | B=Black | C=Both Sexes | D=34.6 | E=3190.4
+r362: A=1903 | B=Black | C=Both Sexes | D=33.1 | E=3373.7
+r363: A=1904 | B=Black | C=Both Sexes | D=30.8 | E=3586.2
+r364: A=1905 | B=Black | C=Both Sexes | D=31.3 | E=3440.1
+r365: A=1906 | B=Black | C=Both Sexes | D=32.9 | E=3223.4
+r366: A=1907 | B=Black | C=Both Sexes | D=32.5 | E=3295.1
+r367: A=1908 | B=Black | C=Both Sexes | D=34.9 | E=3048.2
+r368: A=1909 | B=Black | C=Both Sexes | D=35.7 | E=3006.9
+r369: A=1910 | B=Black | C=Both Sexes | D=35.6 | E=2983.5
+r370: A=1911 | B=Black | C=Both Sexes | D=36.4 | E=3000.6
+r371: A=1912 | B=Black | C=Both Sexes | D=37.9 | E=2959.2
+r372: A=1913 | B=Black | C=Both Sexes | D=38.4 | E=2906.6
+r373: A=1914 | B=Black | C=Both Sexes | D=38.9 | E=2914.6
+r374: A=1915 | B=Black | C=Both Sexes | D=38.9 | E=3021.8
+r375: A=1916 | B=Black | C=Both Sexes | D=41.3 | E=2940.3
+r376: A=1917 | B=Black | C=Both Sexes | D=38.8 | E=3069.6
+r377: A=1918 | B=Black | C=Both Sexes | D=31.1 | E=3411.9
+r378: A=1919 | B=Black | C=Both Sexes | D=44.5 | E=2648.5
+r379: A=1920 | B=Black | C=Both Sexes | D=45.3 | E=2743.3
+r380: A=1921 | B=Black | C=Both Sexes | D=51.5 | E=2459.8
+r381: A=1922 | B=Black | C=Both Sexes | D=52.4 | E=2507.8
+r382: A=1923 | B=Black | C=Both Sexes | D=48.3 | E=2717.8
+r383: A=1924 | B=Black | C=Both Sexes | D=46.6 | E=2806.5
+r384: A=1925 | B=Black | C=Both Sexes | D=45.7 | E=2858.7
+r385: A=1926 | B=Black | C=Both Sexes | D=44.6 | E=2906
+r386: A=1927 | B=Black | C=Both Sexes | D=48.2 | E=2676.2
+r387: A=1928 | B=Black | C=Both Sexes | D=46.3 | E=2835.5
+r388: A=1929 | B=Black | C=Both Sexes | D=46.7 | E=2832.6
+r389: A=1930 | B=Black | C=Both Sexes | D=48.1 | E=2682.9
+r390: A=1931 | B=Black | C=Both Sexes | D=50.4 | E=2516
+r391: A=1932 | B=Black | C=Both Sexes | D=53.7 | E=2397.3
+r392: A=1933 | B=Black | C=Both Sexes | D=54.7 | E=2307.9
+r393: A=1934 | B=Black | C=Both Sexes | D=51.8 | E=2386.5
+r394: A=1935 | B=Black | C=Both Sexes | D=53.1 | E=2316
+r395: A=1936 | B=Black | C=Both Sexes | D=49 | E=2496.6
+r396: A=1937 | B=Black | C=Both Sexes | D=50.3 | E=2374
+r397: A=1938 | B=Black | C=Both Sexes | D=52.9 | E=2217.2
+r398: A=1939 | B=Black | C=Both Sexes | D=54.5 | E=2157
+r399: A=1940 | B=Black | C=Both Sexes | D=53.1 | E=2254.1
+r400: A=1941 | B=Black | C=Both Sexes | D=53.8 | E=2142.8
+r401: A=1942 | B=Black | C=Both Sexes | D=56.6 | E=1988.9
+r402: A=1943 | B=Black | C=Both Sexes | D=55.6 | E=2006.9
+r403: A=1944 | B=Black | C=Both Sexes | D=56.6 | E=1904.5
+r404: A=1945 | B=Black | C=Both Sexes | D=57.7 | E=1808.8
+r405: A=1946 | B=Black | C=Both Sexes | D=59.1 | E=1711.7
+r406: A=1947 | B=Black | C=Both Sexes | D=59.7 | E=1749.7
+r407: A=1948 | B=Black | C=Both Sexes | D=60 | E=1766.9
+r408: A=1949 | B=Black | C=Both Sexes | D=60.6 | E=1739.9
+r409: A=1950 | B=Black | C=Both Sexes | D=60.8 | E=1757.6
+r410: A=1951 | B=Black | C=Both Sexes | D=61.2 | E=1698.2
+r411: A=1952 | B=Black | C=Both Sexes | D=61.4 | E=1671.3
+r412: A=1953 | B=Black | C=Both Sexes | D=62 | E=1641.2
+r413: A=1954 | B=Black | C=Both Sexes | D=63.4 | E=1514.8
+r414: A=1955 | B=Black | C=Both Sexes | D=63.7 | E=1510.2
+r415: A=1956 | B=Black | C=Both Sexes | D=63.6 | E=1519.2
+r416: A=1957 | B=Black | C=Both Sexes | D=63 | E=1571.7
+r417: A=1958 | B=Black | C=Both Sexes | D=63.4 | E=1552.1
+r418: A=1959 | B=Black | C=Both Sexes | D=63.9 | E=1504.4
+r419: A=1960 | B=Black | C=Both Sexes | D=63.6 | E=1549
+r420: A=1961 | B=Black | C=Both Sexes | D=64.5 | E=1492.2
+r421: A=1962 | B=Black | C=Both Sexes | D=64.2 | E=1532
+r422: A=1963 | B=Black | C=Both Sexes | D=63.7 | E=1581.5
+r423: A=1964 | B=Black | C=Both Sexes | D=64.2 | E=1507.1
+r424: A=1965 | B=Black | C=Both Sexes | D=64.3 | E=1508.9
+r425: A=1966 | B=Black | C=Both Sexes | D=64.2 | E=1529.7
+r426: A=1967 | B=Black | C=Both Sexes | D=64.9 | E=1466.9
+r427: A=1968 | B=Black | C=Both Sexes | D=64.1 | E=1615.6
+r428: A=1969 | B=Black | C=Both Sexes | D=64.5 | E=1570.4
+r429: A=1970 | B=Black | C=Both Sexes | D=64.1 | E=1518.1
+r430: A=1971 | B=Black | C=Both Sexes | D=64.6 | E=1481.3
+r431: A=1972 | B=Black | C=Both Sexes | D=64.7 | E=1486.3
+r432: A=1973 | B=Black | C=Both Sexes | D=65 | E=1473.3
+r433: A=1974 | B=Black | C=Both Sexes | D=66 | E=1397.7
+r434: A=1975 | B=Black | C=Both Sexes | D=66.8 | E=1327.5
+r435: A=1976 | B=Black | C=Both Sexes | D=67.2 | E=1311.2
+r436: A=1977 | B=Black | C=Both Sexes | D=67.7 | E=1286
+r437: A=1978 | B=Black | C=Both Sexes | D=68.1 | E=1267.7
+r438: A=1979 | B=Black | C=Both Sexes | D=68.5 | E=1238.5
+r439: A=1980 | B=Black | C=Both Sexes | D=68.1 | E=1312.9
+r440: A=1981 | B=Black | C=Both Sexes | D=68.9 | E=1256.5
+r441: A=1982 | B=Black | C=Both Sexes | D=69.4 | E=1220.1
+r442: A=1983 | B=Black | C=Both Sexes | D=69.4 | E=1239.8
+r443: A=1984 | B=Black | C=Both Sexes | D=69.5 | E=1234.5
+r444: A=1985 | B=Black | C=Both Sexes | D=69.3 | E=1259.1
+r445: A=1986 | B=Black | C=Both Sexes | D=69.1 | E=1264.6
+r446: A=1987 | B=Black | C=Both Sexes | D=69.1 | E=1260.9
+r447: A=1988 | B=Black | C=Both Sexes | D=68.9 | E=1281.9
+r448: A=1989 | B=Black | C=Both Sexes | D=68.8 | E=1273.5
+r449: A=1990 | B=Black | C=Both Sexes | D=69.1 | E=1248.5
+r450: A=1991 | B=Black | C=Both Sexes | D=69.3 | E=1233.6
+r451: A=1992 | B=Black | C=Both Sexes | D=69.6 | E=1205.3
+r452: A=1993 | B=Black | C=Both Sexes | D=69.2 | E=1240.2
+r453: A=1994 | B=Black | C=Both Sexes | D=69.5 | E=1216.2
+r454: A=1995 | B=Black | C=Both Sexes | D=69.6 | E=1213.6
+r455: A=1996 | B=Black | C=Both Sexes | D=70.2 | E=1177.6
+r456: A=1997 | B=Black | C=Both Sexes | D=71.1 | E=1139.2
+r457: A=1998 | B=Black | C=Both Sexes | D=71.3 | E=1127.1
+r458: A=1999 | B=Black | C=Both Sexes | D=71.4 | E=1135.7
+r459: A=2000 | B=Black | C=Both Sexes | D=71.8 | E=1121.4
+r460: A=2001 | B=Black | C=Both Sexes | D=72 | E=1106.2
+r461: A=2002 | B=Black | C=Both Sexes | D=72.2 | E=1097.3
+r462: A=2003 | B=Black | C=Both Sexes | D=72.4 | E=1080.5
+r463: A=2004 | B=Black | C=Both Sexes | D=72.9 | E=1043.8
+r464: A=2005 | B=Black | C=Both Sexes | D=73 | E=1035.1
+r465: A=2006 | B=Black | C=Both Sexes | D=73.4 | E=997.9
+r466: A=2007 | B=Black | C=Both Sexes | D=73.8 | E=972
+r467: A=2008 | B=Black | C=Both Sexes | D=74.3 | E=947.6
+r468: A=2009 | B=Black | C=Both Sexes | D=74.7 | E=912.8
+r469: A=2010 | B=Black | C=Both Sexes | D=75.1 | E=898.2
+r470: A=2011 | B=Black | C=Both Sexes | D=75.3 | E=877.1
+r471: A=2012 | B=Black | C=Both Sexes | D=75.5 | E=864.8
+r472: A=2013 | B=Black | C=Both Sexes | D=75.5 | E=860.8
+r473: A=2014 | B=Black | C=Both Sexes | D=75.6 | E=849.3
+r474: A=2015 | B=Black | C=Both Sexes | D=75.5 | E=851.9
+r475: A=2016 | B=Black | C=Both Sexes | D=75.3 | E=857.2
+r476: A=2017 | B=Black | C=Both Sexes | D=75.3 | E=854.1
+r477: A=2018 | B=Black | C=Both Sexes | E=852.9
+r478: A=1900 | B=Black | C=Female | D=33.5 | E=3308
+r479: A=1901 | B=Black | C=Female | D=35.3 | E=3167.2
+r480: A=1902 | B=Black | C=Female | D=36.4 | E=3003.4
+r481: A=1903 | B=Black | C=Female | D=34.6 | E=3210.9
+r482: A=1904 | B=Black | C=Female | D=32.7 | E=3362.4
+r483: A=1905 | B=Black | C=Female | D=33.1 | E=3247.5
+r484: A=1906 | B=Black | C=Female | D=33.9 | E=3115.4
+r485: A=1907 | B=Black | C=Female | D=34 | E=3179.3
+r486: A=1908 | B=Black | C=Female | D=36 | E=2963.6
+r487: A=1909 | B=Black | C=Female | D=37.3 | E=2875.6
+r488: A=1910 | B=Black | C=Female | D=37.5 | E=2875.3
+r489: A=1911 | B=Black | C=Female | D=38.2 | E=2899.8
+r490: A=1912 | B=Black | C=Female | D=40 | E=2807.7
+r491: A=1913 | B=Black | C=Female | D=40.3 | E=2802.7
+r492: A=1914 | B=Black | C=Female | D=40.8 | E=2810.1
+r493: A=1915 | B=Black | C=Female | D=40.5 | E=2948.8
+r494: A=1916 | B=Black | C=Female | D=43.1 | E=2853.6
+r495: A=1917 | B=Black | C=Female | D=40.8 | E=2970.6
+r496: A=1918 | B=Black | C=Female | D=32.5 | E=3304.3
+r497: A=1919 | B=Black | C=Female | D=44.4 | E=2663.2
+r498: A=1920 | B=Black | C=Female | D=45.2 | E=2756.2
+r499: A=1921 | B=Black | C=Female | D=51.3 | E=2475
+r500: A=1922 | B=Black | C=Female | D=53 | E=2476.1
+r501: A=1923 | B=Black | C=Female | D=48.9 | E=2657.8
+r502: A=1924 | B=Black | C=Female | D=47.8 | E=2693.2
+r503: A=1925 | B=Black | C=Female | D=46.7 | E=2741.9
+r504: A=1926 | B=Black | C=Female | D=45.6 | E=2778
+r505: A=1927 | B=Black | C=Female | D=48.9 | E=2565.5
+r506: A=1928 | B=Black | C=Female | D=47 | E=2703.1
+r507: A=1929 | B=Black | C=Female | D=47.8 | E=2664.8
+r508: A=1930 | B=Black | C=Female | D=49.2 | E=2530.1
+r509: A=1931 | B=Black | C=Female | D=51.5 | E=2362.8
+r510: A=1932 | B=Black | C=Female | D=54.6 | E=2256.1
+r511: A=1933 | B=Black | C=Female | D=56 | E=2174.1
+r512: A=1934 | B=Black | C=Female | D=53.7 | E=2213.4
+r513: A=1935 | B=Black | C=Female | D=55.2 | E=2136.5
+r514: A=1936 | B=Black | C=Female | D=51.4 | E=2278.7
+r515: A=1937 | B=Black | C=Female | D=52.5 | E=2158.5
+r516: A=1938 | B=Black | C=Female | D=54.3 | E=2057.1
+r517: A=1939 | B=Black | C=Female | D=56 | E=1992.4
+r518: A=1940 | B=Black | C=Female | D=54.9 | E=2057.5
+r519: A=1941 | B=Black | C=Female | D=55.3 | E=1945.9
+r520: A=1942 | B=Black | C=Female | D=58.2 | E=1803.7
+r521: A=1943 | B=Black | C=Female | D=56.1 | E=1837.6
+r522: A=1944 | B=Black | C=Female | D=57.7 | E=1733.6
+r523: A=1945 | B=Black | C=Female | D=59.6 | E=1634.8
+r524: A=1946 | B=Black | C=Female | D=61 | E=1556.8
+r525: A=1947 | B=Black | C=Female | D=61.9 | E=1586.1
+r526: A=1948 | B=Black | C=Female | D=62.5 | E=1580
+r527: A=1949 | B=Black | C=Female | D=62.7 | E=1572.2
+r528: A=1950 | B=Black | C=Female | D=62.9 | E=1574.1
+r529: A=1951 | B=Black | C=Female | D=63.4 | E=1508.3
+r530: A=1952 | B=Black | C=Female | D=63.8 | E=1465
+r531: A=1953 | B=Black | C=Female | D=64.5 | E=1434.3
+r532: A=1954 | B=Black | C=Female | D=65.9 | E=1326.3
+r533: A=1955 | B=Black | C=Female | D=66.1 | E=1326.7
+r534: A=1956 | B=Black | C=Female | D=66.1 | E=1331.9
+r535: A=1957 | B=Black | C=Female | D=65.5 | E=1374.6
+r536: A=1958 | B=Black | C=Female | D=65.8 | E=1354.6
+r537: A=1959 | B=Black | C=Female | D=66.5 | E=1305
+r538: A=1960 | B=Black | C=Female | D=66.3 | E=1340.5
+r539: A=1961 | B=Black | C=Female | D=67.1 | E=1295.9
+r540: A=1962 | B=Black | C=Female | D=66.9 | E=1324.5
+r541: A=1963 | B=Black | C=Female | D=66.6 | E=1347.8
+r542: A=1964 | B=Black | C=Female | D=67.3 | E=1284.1
+r543: A=1965 | B=Black | C=Female | D=67.6 | E=1266
+r544: A=1966 | B=Black | C=Female | D=67.6 | E=1274.6
+r545: A=1967 | B=Black | C=Female | D=68.5 | E=1209.7
+r546: A=1968 | B=Black | C=Female | D=67.9 | E=1325.6
+r547: A=1969 | B=Black | C=Female | D=68.6 | E=1274.9
+r548: A=1970 | B=Black | C=Female | D=68.3 | E=1228.7
+r549: A=1971 | B=Black | C=Female | D=68.9 | E=1196.8
+r550: A=1972 | B=Black | C=Female | D=69.1 | E=1181.2
+r551: A=1973 | B=Black | C=Female | D=69.3 | E=1179.7
+r552: A=1974 | B=Black | C=Female | D=70.3 | E=1109.7
+r553: A=1975 | B=Black | C=Female | D=71.3 | E=1042.4
+r554: A=1976 | B=Black | C=Female | D=71.6 | E=1031.2
+r555: A=1977 | B=Black | C=Female | D=72 | E=1012.2
+r556: A=1978 | B=Black | C=Female | D=72.4 | E=995.1
+r557: A=1979 | B=Black | C=Female | D=72.9 | E=967.1
+r558: A=1980 | B=Black | C=Female | D=72.5 | E=1031.8
+r559: A=1981 | B=Black | C=Female | D=73.2 | E=985.7
+r560: A=1982 | B=Black | C=Female | D=73.6 | E=958.8
+r561: A=1983 | B=Black | C=Female | D=73.5 | E=980.2
+r562: A=1984 | B=Black | C=Female | D=73.6 | E=974.9
+r563: A=1985 | B=Black | C=Female | D=73.4 | E=992.2
+r564: A=1986 | B=Black | C=Female | D=73.4 | E=992.7
+r565: A=1987 | B=Black | C=Female | D=73.4 | E=988.4
+r566: A=1988 | B=Black | C=Female | D=73.2 | E=1005.4
+r567: A=1989 | B=Black | C=Female | D=73.3 | E=995.8
+r568: A=1990 | B=Black | C=Female | D=73.6 | E=973.6
+r569: A=1991 | B=Black | C=Female | D=73.8 | E=961.8
+r570: A=1992 | B=Black | C=Female | D=73.9 | E=941.4
+r571: A=1993 | B=Black | C=Female | D=73.7 | E=968.6
+r572: A=1994 | B=Black | C=Female | D=73.9 | E=954
+r573: A=1995 | B=Black | C=Female | D=73.9 | E=955.7
+r574: A=1996 | B=Black | C=Female | D=74.2 | E=939.6
+r575: A=1997 | B=Black | C=Female | D=74.7 | E=921.6
+r576: A=1998 | B=Black | C=Female | D=74.8 | E=921
+r577: A=1999 | B=Black | C=Female | D=74.7 | E=933.6
+r578: A=2000 | B=Black | C=Female | D=75.1 | E=927.6
+r579: A=2001 | B=Black | C=Female | D=75.3 | E=917.9
+r580: A=2002 | B=Black | C=Female | D=75.4 | E=913.5
+r581: A=2003 | B=Black | C=Female | D=75.7 | E=898.3
+r582: A=2004 | B=Black | C=Female | D=76.1 | E=869.8
+r583: A=2005 | B=Black | C=Female | D=76.2 | E=862.7
+r584: A=2006 | B=Black | C=Female | D=76.7 | E=828.4
+r585: A=2007 | B=Black | C=Female | D=77 | E=808.1
+r586: A=2008 | B=Black | C=Female | D=77.3 | E=792
+r587: A=2009 | B=Black | C=Female | D=77.7 | E=763.3
+r588: A=2010 | B=Black | C=Female | D=78 | E=752.5
+r589: A=2011 | B=Black | C=Female | D=78.2 | E=739.8
+r590: A=2012 | B=Black | C=Female | D=78.4 | E=723.9
+r591: A=2013 | B=Black | C=Female | D=78.4 | E=720.6
+r592: A=2014 | B=Black | C=Female | D=78.5 | E=713.3
+r593: A=2015 | B=Black | C=Female | D=78.5 | E=710.8
+r594: A=2016 | B=Black | C=Female | D=78.3 | E=712.9
+r595: A=2017 | B=Black | C=Female | D=78.5 | E=706.1
+r596: A=2018 | B=Black | C=Female | E=702.6
+r597: A=1900 | B=Black | C=Male | D=32.5 | E=3576.5
+r598: A=1901 | B=Black | C=Male | D=32.2 | E=3524.8
+r599: A=1902 | B=Black | C=Male | D=32.9 | E=3399.8
+r600: A=1903 | B=Black | C=Male | D=31.7 | E=3546.5
+r601: A=1904 | B=Black | C=Male | D=29.1 | E=3845.7
+r602: A=1905 | B=Black | C=Male | D=29.6 | E=3654.7
+r603: A=1906 | B=Black | C=Male | D=31.8 | E=3341
+r604: A=1907 | B=Black | C=Male | D=31.1 | E=3408.1
+r605: A=1908 | B=Black | C=Male | D=33.8 | E=3140
+r606: A=1909 | B=Black | C=Male | D=34.2 | E=3149
+r607: A=1910 | B=Black | C=Male | D=33.8 | E=3087.5
+r608: A=1911 | B=Black | C=Male | D=34.6 | E=3094.2
+r609: A=1912 | B=Black | C=Male | D=35.9 | E=3114.2
+r610: A=1913 | B=Black | C=Male | D=36.7 | E=3011.9
+r611: A=1914 | B=Black | C=Male | D=37.1 | E=3017.4
+r612: A=1915 | B=Black | C=Male | D=37.5 | E=3104.1
+r613: A=1916 | B=Black | C=Male | D=39.6 | E=3035.1
+r614: A=1917 | B=Black | C=Male | D=37 | E=3172.8
+r615: A=1918 | B=Black | C=Male | D=29.9 | E=3532.5
+r616: A=1919 | B=Black | C=Male | D=44.5 | E=2650
+r617: A=1920 | B=Black | C=Male | D=45.5 | E=2748.4
+r618: A=1921 | B=Black | C=Male | D=51.6 | E=2461.2
+r619: A=1922 | B=Black | C=Male | D=51.8 | E=2560.4
+r620: A=1923 | B=Black | C=Male | D=47.7 | E=2803.9
+r621: A=1924 | B=Black | C=Male | D=45.5 | E=2947
+r622: A=1925 | B=Black | C=Male | D=44.9 | E=3000.7
+r623: A=1926 | B=Black | C=Male | D=43.7 | E=3054.7
+r624: A=1927 | B=Black | C=Male | D=47.6 | E=2801.1
+r625: A=1928 | B=Black | C=Male | D=45.6 | E=2980.3
+r626: A=1929 | B=Black | C=Male | D=45.7 | E=3012.6
+r627: A=1930 | B=Black | C=Male | D=47.3 | E=2845.5
+r628: A=1931 | B=Black | C=Male | D=49.5 | E=2680.3
+r629: A=1932 | B=Black | C=Male | D=52.8 | E=2550
+r630: A=1933 | B=Black | C=Male | D=53.5 | E=2452.1
+r631: A=1934 | B=Black | C=Male | D=50.2 | E=2567.5
+r632: A=1935 | B=Black | C=Male | D=51.3 | E=2502.9
+r633: A=1936 | B=Black | C=Male | D=47 | E=2722.4
+r634: A=1937 | B=Black | C=Male | D=48.3 | E=2596.1
+r635: A=1938 | B=Black | C=Male | D=51.7 | E=2384.3
+r636: A=1939 | B=Black | C=Male | D=53.2 | E=2328.1
+r637: A=1940 | B=Black | C=Male | D=51.5 | E=2458.9
+r638: A=1941 | B=Black | C=Male | D=52.5 | E=2351.1
+r639: A=1942 | B=Black | C=Male | D=55.4 | E=2187.8
+r640: A=1943 | B=Black | C=Male | D=55.4 | E=2189.9
+r641: A=1944 | B=Black | C=Male | D=55.8 | E=2084.9
+r642: A=1945 | B=Black | C=Male | D=56.1 | E=2002.7
+r643: A=1946 | B=Black | C=Male | D=57.5 | E=1878.6
+r644: A=1947 | B=Black | C=Male | D=57.9 | E=1922.8
+r645: A=1948 | B=Black | C=Male | D=58.1 | E=1954.3
+r646: A=1949 | B=Black | C=Male | D=58.9 | E=1915.4
+r647: A=1950 | B=Black | C=Male | D=59.1 | E=1949.5
+r648: A=1951 | B=Black | C=Male | D=59.2 | E=1903.4
+r649: A=1952 | B=Black | C=Male | D=59.1 | E=1894.1
+r650: A=1953 | B=Black | C=Male | D=59.7 | E=1863.1
+r651: A=1954 | B=Black | C=Male | D=61.1 | E=1726.6
+r652: A=1955 | B=Black | C=Male | D=61.4 | E=1707.5
+r653: A=1956 | B=Black | C=Male | D=61.3 | E=1724.1
+r654: A=1957 | B=Black | C=Male | D=60.7 | E=1797
+r655: A=1958 | B=Black | C=Male | D=61 | E=1779.2
+r656: A=1959 | B=Black | C=Male | D=61.3 | E=1724.7
+r657: A=1960 | B=Black | C=Male | D=61.1 | E=1777.6
+r658: A=1961 | B=Black | C=Male | D=62 | E=1713.3
+r659: A=1962 | B=Black | C=Male | D=61.6 | E=1775.4
+r660: A=1963 | B=Black | C=Male | D=61 | E=1859
+r661: A=1964 | B=Black | C=Male | D=61.3 | E=1768.1
+r662: A=1965 | B=Black | C=Male | D=61.2 | E=1791
+r663: A=1966 | B=Black | C=Male | D=60.9 | E=1832.4
+r664: A=1967 | B=Black | C=Male | D=61.4 | E=1767.2
+r665: A=1968 | B=Black | C=Male | D=60.4 | E=1976.8
+r666: A=1969 | B=Black | C=Male | D=60.6 | E=1934.4
+r667: A=1970 | B=Black | C=Male | D=60 | E=1873.9
+r668: A=1971 | B=Black | C=Male | D=60.5 | E=1836.1
+r669: A=1972 | B=Black | C=Male | D=60.4 | E=1871.8
+r670: A=1973 | B=Black | C=Male | D=60.9 | E=1849.5
+r671: A=1974 | B=Black | C=Male | D=61.7 | E=1769.5
+r672: A=1975 | B=Black | C=Male | D=62.4 | E=1697
+r673: A=1976 | B=Black | C=Male | D=62.9 | E=1676
+r674: A=1977 | B=Black | C=Male | D=63.4 | E=1647.9
+r675: A=1978 | B=Black | C=Male | D=63.7 | E=1626.9
+r676: A=1979 | B=Black | C=Male | D=64 | E=1601.5
+r677: A=1980 | B=Black | C=Male | D=63.8 | E=1695.5
+r678: A=1981 | B=Black | C=Male | D=64.5 | E=1626.6
+r679: A=1982 | B=Black | C=Male | D=65.1 | E=1580
+r680: A=1983 | B=Black | C=Male | D=65.2 | E=1600.5
+r681: A=1984 | B=Black | C=Male | D=65.3 | E=1597.1
+r682: A=1985 | B=Black | C=Male | D=65 | E=1632.9
+r683: A=1986 | B=Black | C=Male | D=64.8 | E=1648.4
+r684: A=1987 | B=Black | C=Male | D=64.7 | E=1646.3
+r685: A=1988 | B=Black | C=Male | D=64.4 | E=1673.1
+r686: A=1989 | B=Black | C=Male | D=64.3 | E=1666.1
+r687: A=1990 | B=Black | C=Male | D=64.5 | E=1642.4
+r688: A=1991 | B=Black | C=Male | D=64.6 | E=1624.1
+r689: A=1992 | B=Black | C=Male | D=65 | E=1586.2
+r690: A=1993 | B=Black | C=Male | D=64.6 | E=1631.1
+r691: A=1994 | B=Black | C=Male | D=64.9 | E=1591.9
+r692: A=1995 | B=Black | C=Male | D=65.2 | E=1585.2
+r693: A=1996 | B=Black | C=Male | D=66.1 | E=1523.2
+r694: A=1997 | B=Black | C=Male | D=67.2 | E=1458.2
+r695: A=1998 | B=Black | C=Male | D=67.6 | E=1429.8
+r696: A=1999 | B=Black | C=Male | D=67.8 | E=1432.6
+r697: A=2000 | B=Black | C=Male | D=68.2 | E=1403.5
+r698: A=2001 | B=Black | C=Male | D=68.5 | E=1380.5
+r699: A=2002 | B=Black | C=Male | D=68.7 | E=1364.8
+r700: A=2003 | B=Black | C=Male | D=68.9 | E=1343.5
+r701: A=2004 | B=Black | C=Male | D=69.4 | E=1296.9
+r702: A=2005 | B=Black | C=Male | D=69.5 | E=1281.3
+r703: A=2006 | B=Black | C=Male | D=69.9 | E=1239.5
+r704: A=2007 | B=Black | C=Male | D=70.3 | E=1204.8
+r705: A=2008 | B=Black | C=Male | D=70.9 | E=1168
+r706: A=2009 | B=Black | C=Male | D=71.4 | E=1123.1
+r707: A=2010 | B=Black | C=Male | D=71.8 | E=1104
+r708: A=2011 | B=Black | C=Male | D=72.2 | E=1067.1
+r709: A=2012 | B=Black | C=Male | D=72.3 | E=1058.6
+r710: A=2013 | B=Black | C=Male | D=72.3 | E=1052.8
+r711: A=2014 | B=Black | C=Male | D=72.5 | E=1034
+r712: A=2015 | B=Black | C=Male | D=72.2 | E=1040.3
+r713: A=2016 | B=Black | C=Male | D=72 | E=1049.5
+r714: A=2017 | B=Black | C=Male | D=71.9 | E=1049.5
+r715: A=2018 | B=Black | C=Male | E=1051.5
+r716: A=1900 | B=White | C=Both Sexes | D=47.6 | E=2501.2
+r717: A=1901 | B=White | C=Both Sexes | D=49.4 | E=2456.2
+r718: A=1902 | B=White | C=Both Sexes | D=51.9 | E=2284.3
+r719: A=1903 | B=White | C=Both Sexes | D=50.9 | E=2359.8
+r720: A=1904 | B=White | C=Both Sexes | D=48 | E=2481.9
+r721: A=1905 | B=White | C=Both Sexes | D=49.1 | E=2404.1
+r722: A=1906 | B=White | C=Both Sexes | D=49.3 | E=2374.8
+r723: A=1907 | B=White | C=Both Sexes | D=48.1 | E=2470.8
+r724: A=1908 | B=White | C=Both Sexes | D=51.5 | E=2278.1
+r725: A=1909 | B=White | C=Both Sexes | D=52.5 | E=2228.5
+r726: A=1910 | B=White | C=Both Sexes | D=50.3 | E=2299.4
+r727: A=1911 | B=White | C=Both Sexes | D=53 | E=2221.3
+r728: A=1912 | B=White | C=Both Sexes | D=53.9 | E=2187.9
+r729: A=1913 | B=White | C=Both Sexes | D=53 | E=2176.7
+r730: A=1914 | B=White | C=Both Sexes | D=54.9 | E=2116.8
+r731: A=1915 | B=White | C=Both Sexes | D=55.1 | E=2139.4
+r732: A=1916 | B=White | C=Both Sexes | D=52.5 | E=2223.9
+r733: A=1917 | B=White | C=Both Sexes | D=52 | E=2221.5
+r734: A=1918 | B=White | C=Both Sexes | D=39.8 | E=2477.7
+r735: A=1919 | B=White | C=Both Sexes | D=55.8 | E=2005.6
+r736: A=1920 | B=White | C=Both Sexes | D=54.9 | E=2096.3
+r737: A=1921 | B=White | C=Both Sexes | D=61.8 | E=1914.9
+r738: A=1922 | B=White | C=Both Sexes | D=60.4 | E=2004.4
+r739: A=1923 | B=White | C=Both Sexes | D=58.3 | E=2087
+r740: A=1924 | B=White | C=Both Sexes | D=61.4 | E=1968.7
+r741: A=1925 | B=White | C=Both Sexes | D=60.7 | E=1999.1
+r742: A=1926 | B=White | C=Both Sexes | D=58.2 | E=2078.8
+r743: A=1927 | B=White | C=Both Sexes | D=62 | E=1925.6
+r744: A=1928 | B=White | C=Both Sexes | D=58.4 | E=2053
+r745: A=1929 | B=White | C=Both Sexes | D=58.6 | E=2006.8
+r746: A=1930 | B=White | C=Both Sexes | D=61.4 | E=1870.7
+r747: A=1931 | B=White | C=Both Sexes | D=62.6 | E=1832.5
+r748: A=1932 | B=White | C=Both Sexes | D=63.2 | E=1845.1
+r749: A=1933 | B=White | C=Both Sexes | D=64.3 | E=1800.5
+r750: A=1934 | B=White | C=Both Sexes | D=62.4 | E=1834
+r751: A=1935 | B=White | C=Both Sexes | D=62.9 | E=1809.9
+r752: A=1936 | B=White | C=Both Sexes | D=59.8 | E=1906.6
+r753: A=1937 | B=White | C=Both Sexes | D=61.4 | E=1829.1
+r754: A=1938 | B=White | C=Both Sexes | D=65 | E=1714.8
+r755: A=1939 | B=White | C=Both Sexes | D=64.9 | E=1724
+r756: A=1940 | B=White | C=Both Sexes | D=64.2 | E=1735.3
+r757: A=1941 | B=White | C=Both Sexes | D=66.2 | E=1645
+r758: A=1942 | B=White | C=Both Sexes | D=67.3 | E=1594.8
+r759: A=1943 | B=White | C=Both Sexes | D=64.2 | E=1665.8
+r760: A=1944 | B=White | C=Both Sexes | D=66.2 | E=1582.8
+r761: A=1945 | B=White | C=Both Sexes | D=66.8 | E=1544.3
+r762: A=1946 | B=White | C=Both Sexes | D=67.5 | E=1505
+r763: A=1947 | B=White | C=Both Sexes | D=67.6 | E=1503.5
+r764: A=1948 | B=White | C=Both Sexes | D=68 | E=1469.9
+r765: A=1949 | B=White | C=Both Sexes | D=68.8 | E=1424.3
+r766: A=1950 | B=White | C=Both Sexes | D=69.1 | E=1410.8
+r767: A=1951 | B=White | C=Both Sexes | D=69.3 | E=1391
+r768: A=1952 | B=White | C=Both Sexes | D=69.5 | E=1361.7
+r769: A=1953 | B=White | C=Both Sexes | D=69.7 | E=1354.6
+r770: A=1954 | B=White | C=Both Sexes | D=70.5 | E=1288.6
+r771: A=1955 | B=White | C=Both Sexes | D=70.5 | E=1308.3
+r772: A=1956 | B=White | C=Both Sexes | D=70.5 | E=1309
+r773: A=1957 | B=White | C=Both Sexes | D=70.3 | E=1328.7
+r774: A=1958 | B=White | C=Both Sexes | D=70.5 | E=1316.3
+r775: A=1959 | B=White | C=Both Sexes | D=70.7 | E=1291.9
+r776: A=1960 | B=White | C=Both Sexes | D=70.6 | E=1311.3
+r777: A=1961 | B=White | C=Both Sexes | D=71 | E=1272.2
+r778: A=1962 | B=White | C=Both Sexes | D=70.9 | E=1292.4
+r779: A=1963 | B=White | C=Both Sexes | D=70.8 | E=1312.5
+r780: A=1964 | B=White | C=Both Sexes | D=71 | E=1275.2
+r781: A=1965 | B=White | C=Both Sexes | D=71.1 | E=1278.3
+r782: A=1966 | B=White | C=Both Sexes | D=71.1 | E=1278.7
+r783: A=1967 | B=White | C=Both Sexes | D=71.4 | E=1246.4
+r784: A=1968 | B=White | C=Both Sexes | D=71.1 | E=1271.4
+r785: A=1969 | B=White | C=Both Sexes | D=71.4 | E=1240.2
+r786: A=1970 | B=White | C=Both Sexes | D=71.7 | E=1193.3
+r787: A=1971 | B=White | C=Both Sexes | D=72 | E=1183.8
+r788: A=1972 | B=White | C=Both Sexes | D=72 | E=1185.3
+r789: A=1973 | B=White | C=Both Sexes | D=72.2 | E=1171.5
+r790: A=1974 | B=White | C=Both Sexes | D=72.8 | E=1125.2
+r791: A=1975 | B=White | C=Both Sexes | D=73.4 | E=1069.4
+r792: A=1976 | B=White | C=Both Sexes | D=73.6 | E=1060
+r793: A=1977 | B=White | C=Both Sexes | D=74 | E=1027.1
+r794: A=1978 | B=White | C=Both Sexes | D=74.1 | E=1020.1
+r795: A=1979 | B=White | C=Both Sexes | D=74.6 | E=986.8
+r796: A=1980 | B=White | C=Both Sexes | D=74.4 | E=1012.5
+r797: A=1981 | B=White | C=Both Sexes | D=74.8 | E=984
+r798: A=1982 | B=White | C=Both Sexes | D=75.1 | E=963.5
+r799: A=1983 | B=White | C=Both Sexes | D=75.2 | E=967.4
+r800: A=1984 | B=White | C=Both Sexes | D=75.3 | E=959.4
+r801: A=1985 | B=White | C=Both Sexes | D=75.3 | E=963.4
+r802: A=1986 | B=White | C=Both Sexes | D=75.4 | E=952.8
+r803: A=1987 | B=White | C=Both Sexes | D=75.6 | E=943.2
+r804: A=1988 | B=White | C=Both Sexes | D=75.6 | E=947.2
+r805: A=1989 | B=White | C=Both Sexes | D=75.9 | E=919.8
+r806: A=1990 | B=White | C=Both Sexes | D=76.1 | E=909.2
+r807: A=1991 | B=White | C=Both Sexes | D=76.3 | E=893
+r808: A=1992 | B=White | C=Both Sexes | D=76.5 | E=877.5
+r809: A=1993 | B=White | C=Both Sexes | D=76.3 | E=896.8
+r810: A=1994 | B=White | C=Both Sexes | D=76.5 | E=885.3
+r811: A=1995 | B=White | C=Both Sexes | D=76.5 | E=882
+r812: A=1996 | B=White | C=Both Sexes | D=76.8 | E=868.7
+r813: A=1997 | B=White | C=Both Sexes | D=77.1 | E=855.4
+r814: A=1998 | B=White | C=Both Sexes | D=77.3 | E=848.9
+r815: A=1999 | B=White | C=Both Sexes | D=77.3 | E=854.6
+r816: A=2000 | B=White | C=Both Sexes | D=77.3 | E=849.8
+r817: A=2001 | B=White | C=Both Sexes | D=77.5 | E=840.7
+r818: A=2002 | B=White | C=Both Sexes | D=77.5 | E=839
+r819: A=2003 | B=White | C=Both Sexes | D=77.7 | E=827.1
+r820: A=2004 | B=White | C=Both Sexes | D=78.1 | E=798.5
+r821: A=2005 | B=White | C=Both Sexes | D=78 | E=801.1
+r822: A=2006 | B=White | C=Both Sexes | D=78.3 | E=779.3
+r823: A=2007 | B=White | C=Both Sexes | D=78.5 | E=764.3
+r824: A=2008 | B=White | C=Both Sexes | D=78.5 | E=767.2
+r825: A=2009 | B=White | C=Both Sexes | D=78.8 | E=742.8
+r826: A=2010 | B=White | C=Both Sexes | D=78.9 | E=741.8
+r827: A=2011 | B=White | C=Both Sexes | D=79 | E=738.8
+r828: A=2012 | B=White | C=Both Sexes | D=79.1 | E=730.9
+r829: A=2013 | B=White | C=Both Sexes | D=79.1 | E=731
+r830: A=2014 | B=White | C=Both Sexes | D=79.1 | E=725.4
+r831: A=2015 | B=White | C=Both Sexes | D=78.9 | E=735
+r832: A=2016 | B=White | C=Both Sexes | D=78.9 | E=729.9
+r833: A=2017 | B=White | C=Both Sexes | D=78.8 | E=734.5
+r834: A=2018 | B=White | C=Both Sexes | E=725.4
+r835: A=1900 | B=White | C=Female | D=48.7 | E=2394
+r836: A=1901 | B=White | C=Female | D=51 | E=2334.7
+r837: A=1902 | B=White | C=Female | D=53.8 | E=2146.4
+r838: A=1903 | B=White | C=Female | D=52.5 | E=2231.5
+r839: A=1904 | B=White | C=Female | D=49.5 | E=2339.7
+r840: A=1905 | B=White | C=Female | D=50.6 | E=2269
+r841: A=1906 | B=White | C=Female | D=51.4 | E=2220.8
+r842: A=1907 | B=White | C=Female | D=50.4 | E=2303.8
+r843: A=1908 | B=White | C=Female | D=53.3 | E=2141.8
+r844: A=1909 | B=White | C=Female | D=54.2 | E=2092.1
+r845: A=1910 | B=White | C=Female | D=52 | E=2154
+r846: A=1911 | B=White | C=Female | D=54.9 | E=2088.3
+r847: A=1912 | B=White | C=Female | D=56.2 | E=2045.1
+r848: A=1913 | B=White | C=Female | D=55.7 | E=2027.6
+r849: A=1914 | B=White | C=Female | D=57.5 | E=1976.1
+r850: A=1915 | B=White | C=Female | D=57.5 | E=2008.4
+r851: A=1916 | B=White | C=Female | D=55.2 | E=2078.3
+r852: A=1917 | B=White | C=Female | D=55.3 | E=2063.3
+r853: A=1918 | B=White | C=Female | D=43.2 | E=2274.9
+r854: A=1919 | B=White | C=Female | D=57.4 | E=1915.1
+r855: A=1920 | B=White | C=Female | D=55.6 | E=2025.9
+r856: A=1921 | B=White | C=Female | D=62.9 | E=1842.3
+r857: A=1922 | B=White | C=Female | D=61.9 | E=1917.7
+r858: A=1923 | B=White | C=Female | D=59.6 | E=1995.9
+r859: A=1924 | B=White | C=Female | D=63.4 | E=1860.6
+r860: A=1925 | B=White | C=Female | D=62.4 | E=1890.5
+r861: A=1926 | B=White | C=Female | D=59.6 | E=1963.8
+r862: A=1927 | B=White | C=Female | D=63.9 | E=1800.4
+r863: A=1928 | B=White | C=Female | D=60 | E=1920.2
+r864: A=1929 | B=White | C=Female | D=60.3 | E=1869.9
+r865: A=1930 | B=White | C=Female | D=63.5 | E=1726.6
+r866: A=1931 | B=White | C=Female | D=64.7 | E=1681.8
+r867: A=1932 | B=White | C=Female | D=64.5 | E=1707.3
+r868: A=1933 | B=White | C=Female | D=66.3 | E=1649.4
+r869: A=1934 | B=White | C=Female | D=64.6 | E=1668.1
+r870: A=1935 | B=White | C=Female | D=65 | E=1642
+r871: A=1936 | B=White | C=Female | D=61.9 | E=1727.4
+r872: A=1937 | B=White | C=Female | D=63.8 | E=1644.3
+r873: A=1938 | B=White | C=Female | D=66.8 | E=1549.4
+r874: A=1939 | B=White | C=Female | D=66.6 | E=1556.8
+r875: A=1940 | B=White | C=Female | D=66.6 | E=1550.4
+r876: A=1941 | B=White | C=Female | D=68.5 | E=1453.2
+r877: A=1942 | B=White | C=Female | D=69.4 | E=1403.6
+r878: A=1943 | B=White | C=Female | D=65.7 | E=1469.1
+r879: A=1944 | B=White | C=Female | D=68.4 | E=1391.1
+r880: A=1945 | B=White | C=Female | D=69.5 | E=1344.7
+r881: A=1946 | B=White | C=Female | D=70.3 | E=1315.2
+r882: A=1947 | B=White | C=Female | D=70.5 | E=1301.6
+r883: A=1948 | B=White | C=Female | D=71 | E=1263.7
+r884: A=1949 | B=White | C=Female | D=71.9 | E=1217.3
+r885: A=1950 | B=White | C=Female | D=72.2 | E=1198
+r886: A=1951 | B=White | C=Female | D=72.4 | E=1179.1
+r887: A=1952 | B=White | C=Female | D=72.6 | E=1153.3
+r888: A=1953 | B=White | C=Female | D=73 | E=1141
+r889: A=1954 | B=White | C=Female | D=73.7 | E=1081.8
+r890: A=1955 | B=White | C=Female | D=73.7 | E=1095.4
+r891: A=1956 | B=White | C=Female | D=73.9 | E=1089.9
+r892: A=1957 | B=White | C=Female | D=73.7 | E=1104.1
+r893: A=1958 | B=White | C=Female | D=73.9 | E=1090.8
+r894: A=1959 | B=White | C=Female | D=74.2 | E=1065.3
+r895: A=1960 | B=White | C=Female | D=74.1 | E=1074.4
+r896: A=1961 | B=White | C=Female | D=74.6 | E=1038.8
+r897: A=1962 | B=White | C=Female | D=74.5 | E=1052.6
+r898: A=1963 | B=White | C=Female | D=74.4 | E=1062.6
+r899: A=1964 | B=White | C=Female | D=74.7 | E=1030.9
+r900: A=1965 | B=White | C=Female | D=74.8 | E=1026.7
+r901: A=1966 | B=White | C=Female | D=74.8 | E=1024.7
+r902: A=1967 | B=White | C=Female | D=75.2 | E=992.9
+r903: A=1968 | B=White | C=Female | D=75 | E=1012.2
+r904: A=1969 | B=White | C=Female | D=75.3 | E=984.2
+r905: A=1970 | B=White | C=Female | D=75.6 | E=944
+r906: A=1971 | B=White | C=Female | D=75.8 | E=933.4
+r907: A=1972 | B=White | C=Female | D=75.9 | E=932.9
+r908: A=1973 | B=White | C=Female | D=76.1 | E=921.4
+r909: A=1974 | B=White | C=Female | D=76.7 | E=884.2
+r910: A=1975 | B=White | C=Female | D=77.3 | E=834.1
+r911: A=1976 | B=White | C=Female | D=77.5 | E=828.9
+r912: A=1977 | B=White | C=Female | D=77.9 | E=799.7
+r913: A=1978 | B=White | C=Female | D=78 | E=796.6
+r914: A=1979 | B=White | C=Female | D=78.4 | E=770.1
+r915: A=1980 | B=White | C=Female | D=78.1 | E=796
+r916: A=1981 | B=White | C=Female | D=78.4 | E=773.6
+r917: A=1982 | B=White | C=Female | D=78.7 | E=758.6
+r918: A=1983 | B=White | C=Female | D=78.7 | E=764.1
+r919: A=1984 | B=White | C=Female | D=78.7 | E=760.5
+r920: A=1985 | B=White | C=Female | D=78.7 | E=764.2
+r921: A=1986 | B=White | C=Female | D=78.8 | E=758
+r922: A=1987 | B=White | C=Female | D=78.9 | E=753.2
+r923: A=1988 | B=White | C=Female | D=78.9 | E=758.7
+r924: A=1989 | B=White | C=Female | D=79.2 | E=738.3
+r925: A=1990 | B=White | C=Female | D=79.4 | E=728.3
+r926: A=1991 | B=White | C=Female | D=79.6 | E=715.9
+r927: A=1992 | B=White | C=Female | D=79.8 | E=703.9
+r928: A=1993 | B=White | C=Female | D=79.5 | E=723.9
+r929: A=1994 | B=White | C=Female | D=79.6 | E=717.3
+r930: A=1995 | B=White | C=Female | D=79.6 | E=718.4
+r931: A=1996 | B=White | C=Female | D=79.7 | E=713.3
+r932: A=1997 | B=White | C=Female | D=79.9 | E=707.5
+r933: A=1998 | B=White | C=Female | D=80 | E=706.9
+r934: A=1999 | B=White | C=Female | D=79.9 | E=716.6
+r935: A=2000 | B=White | C=Female | D=79.9 | E=715.3
+r936: A=2001 | B=White | C=Female | D=80 | E=710.4
+r937: A=2002 | B=White | C=Female | D=80.1 | E=709.3
+r938: A=2003 | B=White | C=Female | D=80.2 | E=701.6
+r939: A=2004 | B=White | C=Female | D=80.5 | E=677.7
+r940: A=2005 | B=White | C=Female | D=80.5 | E=680.9
+r941: A=2006 | B=White | C=Female | D=80.7 | E=662.3
+r942: A=2007 | B=White | C=Female | D=80.9 | E=649.4
+r943: A=2008 | B=White | C=Female | D=80.9 | E=653.7
+r944: A=2009 | B=White | C=Female | D=81.2 | E=631.3
+r945: A=2010 | B=White | C=Female | D=81.3 | E=630.8
+r946: A=2011 | B=White | C=Female | D=81.3 | E=630.3
+r947: A=2012 | B=White | C=Female | D=81.4 | E=623.8
+r948: A=2013 | B=White | C=Female | D=81.4 | E=623.6
+r949: A=2014 | B=White | C=Female | D=81.4 | E=617.6
+r950: A=2015 | B=White | C=Female | D=81.3 | E=627
+r951: A=2016 | B=White | C=Female | D=81.3 | E=619.4
+r952: A=2017 | B=White | C=Female | D=81.2 | E=623.5
+r953: A=2018 | B=White | C=Female | E=614.6
+r954: A=1900 | B=White | C=Male | D=46.6 | E=2613.2
+r955: A=1901 | B=White | C=Male | D=48 | E=2582.3
+r956: A=1902 | B=White | C=Male | D=50.2 | E=2430.1
+r957: A=1903 | B=White | C=Male | D=49.5 | E=2494.2
+r958: A=1904 | B=White | C=Male | D=46.6 | E=2630.5
+r959: A=1905 | B=White | C=Male | D=47.6 | E=2544.7
+r960: A=1906 | B=White | C=Male | D=47.3 | E=2529.3
+r961: A=1907 | B=White | C=Male | D=46 | E=2637
+r962: A=1908 | B=White | C=Male | D=49.9 | E=2412.3
+r963: A=1909 | B=White | C=Male | D=50.9 | E=2363.8
+r964: A=1910 | B=White | C=Male | D=48.6 | E=2441.9
+r965: A=1911 | B=White | C=Male | D=51.3 | E=2350.3
+r966: A=1912 | B=White | C=Male | D=51.9 | E=2327.5
+r967: A=1913 | B=White | C=Male | D=50.8 | E=2322.1
+r968: A=1914 | B=White | C=Male | D=52.7 | E=2254.1
+r969: A=1915 | B=White | C=Male | D=53.1 | E=2267.8
+r970: A=1916 | B=White | C=Male | D=50.2 | E=2365.6
+r971: A=1917 | B=White | C=Male | D=49.3 | E=2375.9
+r972: A=1918 | B=White | C=Male | D=37.1 | E=2680.7
+r973: A=1919 | B=White | C=Male | D=54.5 | E=2096
+r974: A=1920 | B=White | C=Male | D=54.4 | E=2166.6
+r975: A=1921 | B=White | C=Male | D=60.8 | E=1986.2
+r976: A=1922 | B=White | C=Male | D=59.1 | E=2088.2
+r977: A=1923 | B=White | C=Male | D=57.1 | E=2174.2
+r978: A=1924 | B=White | C=Male | D=59.8 | E=2073.7
+r979: A=1925 | B=White | C=Male | D=59.3 | E=2104.4
+r980: A=1926 | B=White | C=Male | D=57 | E=2190.6
+r981: A=1927 | B=White | C=Male | D=60.5 | E=2048.6
+r982: A=1928 | B=White | C=Male | D=57 | E=2182.8
+r983: A=1929 | B=White | C=Male | D=57.2 | E=2141.2
+r984: A=1930 | B=White | C=Male | D=59.7 | E=2013.8
+r985: A=1931 | B=White | C=Male | D=60.8 | E=1983.6
+r986: A=1932 | B=White | C=Male | D=62 | E=1982.9
+r987: A=1933 | B=White | C=Male | D=62.7 | E=1952.2
+r988: A=1934 | B=White | C=Male | D=60.5 | E=2000.7
+r989: A=1935 | B=White | C=Male | D=61 | E=1979.3
+r990: A=1936 | B=White | C=Male | D=58 | E=2087
+r991: A=1937 | B=White | C=Male | D=59.3 | E=2016.5
+r992: A=1938 | B=White | C=Male | D=63.2 | E=1882.7
+r993: A=1939 | B=White | C=Male | D=63.3 | E=1894.4
+r994: A=1940 | B=White | C=Male | D=62.1 | E=1925.2
+r995: A=1941 | B=White | C=Male | D=64.4 | E=1844.1
+r996: A=1942 | B=White | C=Male | D=65.9 | E=1793.7
+r997: A=1943 | B=White | C=Male | D=63.2 | E=1872.9
+r998: A=1944 | B=White | C=Male | D=64.5 | E=1788
+r999: A=1945 | B=White | C=Male | D=64.4 | E=1761.6
+r1000: A=1946 | B=White | C=Male | D=65.1 | E=1706.1
+r1001: A=1947 | B=White | C=Male | D=65.2 | E=1718.6
+r1002: A=1948 | B=White | C=Male | D=65.5 | E=1691.2
+r1003: A=1949 | B=White | C=Male | D=66.2 | E=1647.8
+r1004: A=1950 | B=White | C=Male | D=66.5 | E=1642.5
+r1005: A=1951 | B=White | C=Male | D=66.5 | E=1621.7
+r1006: A=1952 | B=White | C=Male | D=66.6 | E=1588.5
+r1007: A=1953 | B=White | C=Male | D=66.8 | E=1589
+r1008: A=1954 | B=White | C=Male | D=67.5 | E=1516.3
+r1009: A=1955 | B=White | C=Male | D=67.4 | E=1544.7
+r1010: A=1956 | B=White | C=Male | D=67.5 | E=1554.4
+r1011: A=1957 | B=White | C=Male | D=67.2 | E=1581.7
+r1012: A=1958 | B=White | C=Male | D=67.4 | E=1573.1
+r1013: A=1959 | B=White | C=Male | D=67.5 | E=1552.1
+r1014: A=1960 | B=White | C=Male | D=67.4 | E=1586
+r1015: A=1961 | B=White | C=Male | D=67.8 | E=1547.3
+r1016: A=1962 | B=White | C=Male | D=67.7 | E=1579.1
+r1017: A=1963 | B=White | C=Male | D=67.4 | E=1614.7
+r1018: A=1964 | B=White | C=Male | D=67.7 | E=1572
+r1019: A=1965 | B=White | C=Male | D=67.6 | E=1589.9
+r1020: A=1966 | B=White | C=Male | D=67.5 | E=1595.7
+r1021: A=1967 | B=White | C=Male | D=67.8 | E=1566.9
+r1022: A=1968 | B=White | C=Male | D=67.5 | E=1602.7
+r1023: A=1969 | B=White | C=Male | D=67.7 | E=1570.4
+r1024: A=1970 | B=White | C=Male | D=68 | E=1513.7
+r1025: A=1971 | B=White | C=Male | D=68.3 | E=1514.4
+r1026: A=1972 | B=White | C=Male | D=68.3 | E=1520.2
+r1027: A=1973 | B=White | C=Male | D=68.5 | E=1507.2
+r1028: A=1974 | B=White | C=Male | D=69 | E=1450.8
+r1029: A=1975 | B=White | C=Male | D=69.5 | E=1391.1
+r1030: A=1976 | B=White | C=Male | D=69.9 | E=1379.5
+r1031: A=1977 | B=White | C=Male | D=70.2 | E=1343.5
+r1032: A=1978 | B=White | C=Male | D=70.4 | E=1332.5
+r1033: A=1979 | B=White | C=Male | D=70.8 | E=1289.5
+r1034: A=1980 | B=White | C=Male | D=70.7 | E=1317.4
+r1035: A=1981 | B=White | C=Male | D=71.1 | E=1282.4
+r1036: A=1982 | B=White | C=Male | D=71.5 | E=1255.9
+r1037: A=1983 | B=White | C=Male | D=71.6 | E=1259.8
+r1038: A=1984 | B=White | C=Male | D=71.8 | E=1245.5
+r1039: A=1985 | B=White | C=Male | D=71.8 | E=1249.5
+r1040: A=1986 | B=White | C=Male | D=71.9 | E=1230.5
+r1041: A=1987 | B=White | C=Male | D=72.1 | E=1213.1
+r1042: A=1988 | B=White | C=Male | D=72.2 | E=1215.5
+r1043: A=1989 | B=White | C=Male | D=72.5 | E=1176
+r1044: A=1990 | B=White | C=Male | D=72.7 | E=1165.3
+r1045: A=1991 | B=White | C=Male | D=72.9 | E=1142.8
+r1046: A=1992 | B=White | C=Male | D=73.2 | E=1122.2
+r1047: A=1993 | B=White | C=Male | D=73.1 | E=1138.7
+r1048: A=1994 | B=White | C=Male | D=73.3 | E=1118.4
+r1049: A=1995 | B=White | C=Male | D=73.4 | E=1107.2
+r1050: A=1996 | B=White | C=Male | D=73.9 | E=1082.5
+r1051: A=1997 | B=White | C=Male | D=74.3 | E=1058.7
+r1052: A=1998 | B=White | C=Male | D=74.5 | E=1041.6
+r1053: A=1999 | B=White | C=Male | D=74.6 | E=1040.1
+r1054: A=2000 | B=White | C=Male | D=74.7 | E=1029.4
+r1055: A=2001 | B=White | C=Male | D=74.9 | E=1012.1
+r1056: A=2002 | B=White | C=Male | D=74.9 | E=1009
+r1057: A=2003 | B=White | C=Male | D=75.1 | E=988.8
+r1058: A=2004 | B=White | C=Male | D=75.5 | E=953.2
+r1059: A=2005 | B=White | C=Male | D=75.5 | E=952.9
+r1060: A=2006 | B=White | C=Male | D=75.8 | E=925.8
+r1061: A=2007 | B=White | C=Male | D=76 | E=907.1
+r1062: A=2008 | B=White | C=Male | D=76.1 | E=907.1
+r1063: A=2009 | B=White | C=Male | D=76.4 | E=880.5
+r1064: A=2010 | B=White | C=Male | D=76.5 | E=878.5
+r1065: A=2011 | B=White | C=Male | D=76.6 | E=870.2
+r1066: A=2012 | B=White | C=Male | D=76.7 | E=860
+r1067: A=2013 | B=White | C=Male | D=76.7 | E=859.2
+r1068: A=2014 | B=White | C=Male | D=76.7 | E=853.4
+r1069: A=2015 | B=White | C=Male | D=76.6 | E=861.9
+r1070: A=2016 | B=White | C=Male | D=76.4 | E=858.9
+r1071: A=2017 | B=White | C=Male | D=76.4 | E=863.4
+r1072: A=2018 | B=White | C=Male | E=853.1

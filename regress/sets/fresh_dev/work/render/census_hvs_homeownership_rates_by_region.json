@@ -1,0 +1,12 @@
+{
+ "file": "census_hvs_homeownership_rates_by_region.xlsx",
+ "sheets": [
+  {
+   "name": "Sheet1",
+   "rows": 476,
+   "cols": 5,
+   "shown_whole": true
+  }
+ ],
+ "chars": 21686
+}

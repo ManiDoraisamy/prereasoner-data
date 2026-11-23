@@ -1,0 +1,35 @@
+{
+ "id": "pa_medical_assistance_enrollment_by_county",
+ "answers": [
+  {
+   "id": "pa_medical_assistance_enrollment_by_county#1",
+   "answer": "296307",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nfiltered = df[(df['County Name'] == 'Allegheny') & (df['Calendar Year'] == 2022) & (df['Calendar Month'] == 10)]\nresult = int(filtered['MA Individuals'].iloc[0])"
+  },
+  {
+   "id": "pa_medical_assistance_enrollment_by_county#2",
+   "answer": "Bucks",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nfiltered = df[(df['County Name'].isin(['Bucks', 'Carbon'])) & (df['Calendar Year'] == 2025) & (df['Calendar Month'] == 3)]\nresult = str(filtered.sort_values(by='MA Children', ascending=False)['County Name'].iloc[0])"
+  },
+  {
+   "id": "pa_medical_assistance_enrollment_by_county#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nfiltered = df[(df['County Name'] == 'Allegheny') & (df['Calendar Year'] == 2022) & (df['Calendar Month'] == 10)]\ncount = filtered['MA Individuals'].iloc[0]\nresult = 'yes' if count > 250000 else 'no'"
+  },
+  {
+   "id": "pa_medical_assistance_enrollment_by_county#4",
+   "answer": "2003",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nresult = str(int(df['Calendar Year'].min()))"
+  },
+  {
+   "id": "pa_medical_assistance_enrollment_by_county#5",
+   "answer": "8347",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nfiltered = df[(df['County Name'] == 'Carbon') & (df['Calendar Year'] == 2025) & (df['Calendar Month'] == 3)]\nresult = int(filtered['MA Individuals'].iloc[0] - filtered['MA Children'].iloc[0])"
+  },
+  {
+   "id": "pa_medical_assistance_enrollment_by_county#6",
+   "answer": "279",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('pa_medical_assistance_enrollment_by_county.csv')\nresult = int((df['County Name'] == 'Adams').sum())"
+  }
+ ]
+}

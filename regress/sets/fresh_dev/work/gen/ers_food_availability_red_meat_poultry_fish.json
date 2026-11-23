@@ -1,0 +1,60 @@
+{
+ "id": "ers_food_availability_red_meat_poultry_fish",
+ "file": "ers_food_availability_red_meat_poultry_fish.xlsx",
+ "questions": [
+  {
+   "question": "In what year did per capita availability of boneless chicken first exceed that of beef?",
+   "sheet": "Leading",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2010",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Leading', header=None)\n\nheader_row = None\nfor idx, row in df.iterrows():\n    if any('Beef' in str(s) for s in row):\n        header_row = idx\n        break\n\nbeef_col, chicken_col = None, None\nfor c in range(df.shape[1]):\n    val = str(df.iloc[header_row, c])\n    if 'Beef' in val:\n        beef_col = c\n    elif 'Chicken' in val:\n        chicken_col = c\n\nfirst_year = None\nfor r in range(header_row + 1, len(df)):\n    try:\n        yr = int(float(df.iloc[r, 0]))\n        beef_val = float(df.iloc[r, beef_col])\n        chick_val = float(df.iloc[r, chicken_col])\n        if chick_val > beef_val:\n            first_year = str(yr)\n            break\n    except (ValueError, TypeError):\n        continue\n\nresult = first_year",
+   "qid": "ers_food_availability_red_meat_poultry_fish#1"
+  },
+  {
+   "question": "In 2019, what was the total per capita availability in pounds of red meat, poultry, and fish on a boneless, trimmed equivalent basis?",
+   "sheet": "Boneless",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "203.935209",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Boneless', header=None)\n\nfor r in range(len(df)):\n    try:\n        if int(float(df.iloc[r, 0])) == 2019:\n            result = float(df.iloc[r, 11])\n            break\n    except (ValueError, TypeError):\n        continue",
+   "qid": "ers_food_availability_red_meat_poultry_fish#2"
+  },
+  {
+   "question": "Between beef and pork, which had a higher per capita retail-weight availability in the United States in 2021?",
+   "sheet": "Retail",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Beef",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Retail', header=None)\n\nbeef_col, pork_col = None, None\nfor r in range(len(df)):\n    row_str = df.iloc[r].astype(str).tolist()\n    if any('Beef' in s for s in row_str) and any('Pork' in s for s in row_str):\n        for c in range(df.shape[1]):\n            val = str(df.iloc[r, c])\n            if 'Beef' in val:\n                beef_col = c\n            elif 'Pork' in val:\n                pork_col = c\n        break\n\nfor r in range(len(df)):\n    try:\n        if int(float(df.iloc[r, 0])) == 2021:\n            beef_val = float(df.iloc[r, beef_col])\n            pork_val = float(df.iloc[r, pork_col])\n            result = 'Beef' if beef_val > pork_val else 'Pork'\n            break\n    except (ValueError, TypeError):\n        continue",
+   "qid": "ers_food_availability_red_meat_poultry_fish#3"
+  },
+  {
+   "question": "Among the four red meats tracked (beef, veal, pork, and lamb), which three had the highest per capita availability on a boneless basis in 2019?",
+   "sheet": "Boneless",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"Beef\", \"Pork\", \"Lamb\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Boneless', header=None)\n\nmeats = ['Beef', 'Veal', 'Pork', 'Lamb']\nmeat_cols = {}\nfor r in range(len(df)):\n    row_str = [str(x).strip() for x in df.iloc[r]]\n    if 'Beef' in row_str and 'Veal' in row_str:\n        for c in range(df.shape[1]):\n            val = str(df.iloc[r, c]).strip()\n            if val in meats:\n                meat_cols[val] = c\n        break\n\nfor r in range(len(df)):\n    try:\n        if int(float(df.iloc[r, 0])) == 2019:\n            vals = {m: float(df.iloc[r, col]) for m, col in meat_cols.items()}\n            result = sorted(vals, key=vals.get, reverse=True)[:3]\n            break\n    except (ValueError, TypeError):\n        continue",
+   "qid": "ers_food_availability_red_meat_poultry_fish#4"
+  },
+  {
+   "question": "How many years from 2000 through 2020 saw per capita boneless chicken availability exceed 60 pounds?",
+   "sheet": "Leading",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "8",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Leading', header=None)\n\nchicken_col = None\nfor r in range(len(df)):\n    for c in range(df.shape[1]):\n        if 'Chicken' in str(df.iloc[r, c]):\n            chicken_col = c\n            break\n    if chicken_col is not None:\n        break\n\ncount = 0\nfor r in range(len(df)):\n    try:\n        yr = int(float(df.iloc[r, 0]))\n        if 2000 <= yr <= 2020:\n            val = float(df.iloc[r, chicken_col])\n            if val > 60:\n                count += 1\n    except (ValueError, TypeError):\n        continue\n\nresult = count",
+   "qid": "ers_food_availability_red_meat_poultry_fish#5"
+  },
+  {
+   "question": "What was the average annual per capita availability of turkey on a carcass-weight basis from 2010 through 2019, in pounds rounded to two decimal places?",
+   "sheet": "Carcass",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "16.12",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_food_availability_red_meat_poultry_fish.xlsx', sheet_name='Carcass', header=None)\n\nturkey_col = None\nfor r in range(len(df)):\n    for c in range(df.shape[1]):\n        if 'Turkey' in str(df.iloc[r, c]):\n            turkey_col = c\n            break\n    if turkey_col is not None:\n        break\n\nvals = []\nfor r in range(len(df)):\n    try:\n        yr = int(float(df.iloc[r, 0]))\n        if 2010 <= yr <= 2019:\n            vals.append(float(df.iloc[r, turkey_col]))\n    except (ValueError, TypeError):\n        continue\n\nresult = round(sum(vals) / len(vals), 2)",
+   "qid": "ers_food_availability_red_meat_poultry_fish#6"
+  }
+ ]
+}

@@ -1,0 +1,60 @@
+{
+ "id": "cdc_births_fertility_rates_us",
+ "file": "cdc_births_fertility_rates_us.csv",
+ "questions": [
+  {
+   "question": "In which year did the United States record the highest total number of births?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2007",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nresult = str(df.loc[df['Birth Number'].idxmax(), 'Year'])",
+   "qid": "cdc_births_fertility_rates_us#1"
+  },
+  {
+   "question": "What was the US crude birth rate in 2018?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "11.6",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nresult = float(df.loc[df['Year'] == 2018, 'Crude Birth Rate'].values[0])",
+   "qid": "cdc_births_fertility_rates_us#2"
+  },
+  {
+   "question": "Did the general fertility rate in the United States ever drop below 60 births per 1,000 women between 1909 and 2018?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nresult = 'yes' if (df['General Fertility Rate'] < 60).any() else 'no'",
+   "qid": "cdc_births_fertility_rates_us#3"
+  },
+  {
+   "question": "How many fewer live births were recorded in the United States in 2017 compared to 2007?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "460733",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nb_2007 = df.loc[df['Year'] == 2007, 'Birth Number'].values[0]\nb_2017 = df.loc[df['Year'] == 2017, 'Birth Number'].values[0]\nresult = int(b_2007 - b_2017)",
+   "qid": "cdc_births_fertility_rates_us#4"
+  },
+  {
+   "question": "In how many different years did the total number of US births reach or exceed 4 million?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "26",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\nresult = int((df['Birth Number'] >= 4000000).sum())",
+   "qid": "cdc_births_fertility_rates_us#5"
+  },
+  {
+   "question": "What was the average crude birth rate in the United States from 1920 through 1929?",
+   "sheet": "",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "25.03",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_births_fertility_rates_us.csv')\ndecade = df[(df['Year'] >= 1920) & (df['Year'] <= 1929)]\nresult = round(float(decade['Crude Birth Rate'].mean()), 2)",
+   "qid": "cdc_births_fertility_rates_us#6"
+  }
+ ]
+}

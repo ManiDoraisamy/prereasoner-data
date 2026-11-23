@@ -1,0 +1,138 @@
+{
+ "file": "acf_tanf_caseload_fy2023.xlsx",
+ "sheets": [
+  {
+   "name": "List of Tables",
+   "rows": 28,
+   "cols": 1,
+   "shown_whole": true
+  },
+  {
+   "name": "TFam",
+   "rows": 62,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "Two-par",
+   "rows": 63,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "One-par",
+   "rows": 62,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "Zero-par",
+   "rows": 62,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "TRec",
+   "rows": 62,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "Adults",
+   "rows": 62,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "Children",
+   "rows": 62,
+   "cols": 14,
+   "shown_whole": true
+  },
+  {
+   "name": "Oct22",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Nov22",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Dec22",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Jan23",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Feb23",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Mar23",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Apr23",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "May23",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Jun23",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Jul23",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Aug23",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "Sep23",
+   "rows": 62,
+   "cols": 8,
+   "shown_whole": true
+  },
+  {
+   "name": "FY2023-Families",
+   "rows": 65,
+   "cols": 5,
+   "shown_whole": true
+  },
+  {
+   "name": "FY2023-Recipients",
+   "rows": 64,
+   "cols": 4,
+   "shown_whole": true
+  }
+ ],
+ "chars": 122536
+}

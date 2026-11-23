@@ -1,0 +1,4205 @@
+{
+  "runner": "scripts/common.py run_program; bundled Python; 4 isolated workers; existing network block and static import restrictions plus AST checks",
+  "updated_at_utc": "2026-11-10T19:24:14.795808+00:00",
+  "questions_sha256": "44eeb22818a23bafbc380a8e3cbb51eb07ea8c6720059a638f736ba480a15571",
+  "count": 432,
+  "executed": 432,
+  "matching_gold": 432,
+  "failures": [],
+  "results": [
+    {
+      "id": "FF-0001",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 70.8,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c5d24cef78f6972a8760cbf1e136dff446da9be7066908cff29f5c4adfdba89d"
+    },
+    {
+      "id": "FF-0001",
+      "program": "program",
+      "ok": true,
+      "value": 70.8,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "399ef2d57662b65cd47cae2f405136b77318074223107c4ea857540ed457a5e2"
+    },
+    {
+      "id": "FF-0002",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 15.2,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "97427496077c4418d540f08ac4ff508060897be88e77566f15deec816bd2cc14"
+    },
+    {
+      "id": "FF-0002",
+      "program": "program",
+      "ok": true,
+      "value": 15.2,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a0dcb1a358a74efc2a09e5677f5df9b4cc0352a93864f0d09c04319d5aa2215c"
+    },
+    {
+      "id": "FF-0003",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 14.02,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ae46355754e23efde94608dcfd99a8757978495f88a3418f63643dd8b75f55ea"
+    },
+    {
+      "id": "FF-0003",
+      "program": "program",
+      "ok": true,
+      "value": 14.02,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6bd553dd4c0ad72f317e295f75d5c97c3bbe538d2e3b1ea21ad94a4270901700"
+    },
+    {
+      "id": "FF-0004",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2014",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a5e0a6d18145842114ce72cf155db8213f3d102b7fe35f0188fd99fe58cdf367"
+    },
+    {
+      "id": "FF-0004",
+      "program": "program",
+      "ok": true,
+      "value": "2014",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ba0ef03baa5c8ef8a77d85697828f24dcd68445efeabf9befe732704a5bfc4c8"
+    },
+    {
+      "id": "FF-0005",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 32.5,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9638de8c4feba24149aa3407d07399cb5c64d7ef73683d9bd0070fff129afd94"
+    },
+    {
+      "id": "FF-0005",
+      "program": "program",
+      "ok": true,
+      "value": 32.5,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "044cc05bd1299f50bc13c08f0d20fc56b4a18f2237e130b881d2434a083f67ad"
+    },
+    {
+      "id": "FF-0006",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "South",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5abcd174bca68d68aa3346f996d1fe463f1c2dfd95f7db946488104643571a10"
+    },
+    {
+      "id": "FF-0006",
+      "program": "program",
+      "ok": true,
+      "value": "South",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a3e08f965aedcb903162fbd473488dc58141f1ea55fe3decb6acd14d9d44e470"
+    },
+    {
+      "id": "FF-0007",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Mexican",
+        "Other Hispanic or Latino"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7b4db7475b804325f7edbcdc33b36e48fe9b908693776aceffbac133868b5820"
+    },
+    {
+      "id": "FF-0007",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Mexican",
+        "Other Hispanic or Latino"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7558e31cef7913e35cfde2a24274eb944725eae39a439c07013dc9b1db34f7a7"
+    },
+    {
+      "id": "FF-0008",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2010",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e516664e42ff024567f87c61e573b076aebd2769e8cfcdb1bb979121160d23fe"
+    },
+    {
+      "id": "FF-0008",
+      "program": "program",
+      "ok": true,
+      "value": "2010",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8fa8b19969e047ca577a7abdfe9aa765a0d52901a52ccdb4639e0c880d59a610"
+    },
+    {
+      "id": "FF-0009",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 6.1,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "bfd941573fc300c849d83842b479250024fa7c0b12bf430934a83fa5d6123019"
+    },
+    {
+      "id": "FF-0009",
+      "program": "program",
+      "ok": true,
+      "value": 6.1,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "705bb1c661c36141ce81f41ecbc181682ac591d231040d19d6690fb5af296c6d"
+    },
+    {
+      "id": "FF-0010",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "25–34 years",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c7e947b458b5463592caadbbfa1589c077078776eb405d3b2d8aa58648ae914e"
+    },
+    {
+      "id": "FF-0010",
+      "program": "program",
+      "ok": true,
+      "value": "25–34 years",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "bf6bf677ba520c37dbb0ca95094333d769722316a8681ffcd5d8f9d91100fc93"
+    },
+    {
+      "id": "FF-0011",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2006",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b0f7a05730e3a0462b0b4828f9f7ec2bad10f40acefa4fc9e46331dbdb629d25"
+    },
+    {
+      "id": "FF-0011",
+      "program": "program",
+      "ok": true,
+      "value": "2006",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e866b4ce2079e492b63c6c09795bc66980e6164cbcd69431b667f12f4b9c54aa"
+    },
+    {
+      "id": "FF-0012",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "45–54 years",
+        "35–44 years",
+        "55–64 years"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c86757cf07caf203dccd39555b8ab8b7b2a656b4f1302d9bcf5bc21b75a0ebbc"
+    },
+    {
+      "id": "FF-0012",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "45–54 years",
+        "35–44 years",
+        "55–64 years"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6a1044813c4b12f2701c6738cc85716ed136fd153717c785077ad5d261608d31"
+    },
+    {
+      "id": "FF-0013",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 80.0,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8105bdc627df00fb1bc0150937ce465de353a6d36216158ec786cb9e6152a02a"
+    },
+    {
+      "id": "FF-0013",
+      "program": "program",
+      "ok": true,
+      "value": 80,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "030c371280a3b82fc4d61bc3b5ce79c439e577705542aaf6c0cdfa0be66ef02a"
+    },
+    {
+      "id": "FF-0014",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2010",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b8840189abb6c0e5fd814f3cc62bbefa32f2085c0d8d5a68be7b4e9589de4310"
+    },
+    {
+      "id": "FF-0014",
+      "program": "program",
+      "ok": true,
+      "value": "2010",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "75f857dfb30ef7a2e5f0d10b3db3739c001ec33c137f91b5e8a8552f453746ae"
+    },
+    {
+      "id": "FF-0015",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a0420dfee94d8bd9deb3c765e02f3ae08d94ace40a5e036b43338fc0423028ab"
+    },
+    {
+      "id": "FF-0015",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "1f6bc4ab5ff3dde6633023d0f4df57d3979320cc8dfe5d6dd380452206a6b2db"
+    },
+    {
+      "id": "FF-0016",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "White only",
+        "Asian only"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6485fd698f0223b45877cf65387bb79f42ac9e218bd65c58ce0bf5bb553417be"
+    },
+    {
+      "id": "FF-0016",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "White only",
+        "Asian only"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9d06fd79fc0c655b5a5cd0ea07c549aa65ed565a4536caa04c1690f7ec4ea002"
+    },
+    {
+      "id": "FF-0017",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 37.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f2313b24d0a92ed3b8482e4646b7b123c629b0ead13e7408e3dd62f5c650aab4"
+    },
+    {
+      "id": "FF-0017",
+      "program": "program",
+      "ok": true,
+      "value": 37.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e18db8b308ab80df927379dd5c6c3868e8b1c20b890709979454a590de6e721d"
+    },
+    {
+      "id": "FF-0018",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Female",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "18fd9672682720ea11f8cc7d1c170887f9b7f2ce7a295927d7ef39e17c031f7d"
+    },
+    {
+      "id": "FF-0018",
+      "program": "program",
+      "ok": true,
+      "value": "Female",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d1ce91bff24f5953f4e55562ea44bebc180337cf3f41d979856e12d9942af5f7"
+    },
+    {
+      "id": "FF-0019",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "South",
+        "Northeast"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b8e71c186bfa134de0e5c6b9c66f0fe891d33c95cc0966cfe775e50e214c0ccc"
+    },
+    {
+      "id": "FF-0019",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "South",
+        "Northeast"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "05bb0bca569ad5fc4d8eb261f1c17c19589e34cccbe74b5837ee6e92cdc1d88c"
+    },
+    {
+      "id": "FF-0020",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "1999",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7367bf686dd0f0e59cd1783895daecb9ad3d6122dc48cbf6133b1435b2fcf476"
+    },
+    {
+      "id": "FF-0020",
+      "program": "program",
+      "ok": true,
+      "value": "1999",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "4a568a62f76f2cafed1e5dd2b76853562b814efaa91fa0870147314c9b924fa9"
+    },
+    {
+      "id": "FF-0021",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 78.97103118896484,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "aaa4d2e0146f0d90fda82187a6e6c82642f10ad0eeecd9e79da36efe3e368ca4"
+    },
+    {
+      "id": "FF-0021",
+      "program": "program",
+      "ok": true,
+      "value": 78.97103118896484,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "bd010acf8ca0da873664e8560f60b6a3bec0fc5543946dd5190771d24f3e2e69"
+    },
+    {
+      "id": "FF-0022",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "88-89",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7a30ebd5dbafa18e58418ba31247728ef47bbf724dfd4c18ba69e43b6f8f894e"
+    },
+    {
+      "id": "FF-0022",
+      "program": "program",
+      "ok": true,
+      "value": "88-89",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "36308f891252e8047cc9db3fc01efd563d0b9b8d44d113fd4e6578c26310ebcd"
+    },
+    {
+      "id": "FF-0023",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "4fe48d6e9faffcc3f64657d918cd9388084471c1e8c175056201a080529a1b8a"
+    },
+    {
+      "id": "FF-0023",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "2aaf7805c4acd6830dfd8931ce4012963504d728065e1e2897b8fcaf4d14a118"
+    },
+    {
+      "id": "FF-0024",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "10-11",
+        "9-10",
+        "11-12"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7b56881c9d40340cb9f60eb388fa91e16237ec90cc687c4d4366bd4283375448"
+    },
+    {
+      "id": "FF-0024",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "10-11",
+        "9-10",
+        "11-12"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cc55e6cc845e2a565aaef56e645bc7f015bab9d164b414dade3df93939cd8bab"
+    },
+    {
+      "id": "FF-0025",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 79.33352661132812,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3bb00ab005fc6a0c94d5939bb6ff30c4a23205bed0e0c0731d5cef47c071bac9"
+    },
+    {
+      "id": "FF-0025",
+      "program": "program",
+      "ok": true,
+      "value": 79.33352661132812,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "4cc2831bc94172d89c77a69970a245d56f368f60860b6f315c4a25c6dff8cb31"
+    },
+    {
+      "id": "FF-0026",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "30–31",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5ea6b665520a4cc93b5267f0344e57c5663cc993492851d84b9df79b86f33e81"
+    },
+    {
+      "id": "FF-0026",
+      "program": "program",
+      "ok": true,
+      "value": "30–31",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "506c6357167bf4a1a9c1f91ab75d4fb6a382a98a420a8a6d5f016ad036e7421e"
+    },
+    {
+      "id": "FF-0027",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "13ed3be63afca47c8678b840b234d9962690949fc6e66c66c4f3950d6db0bf81"
+    },
+    {
+      "id": "FF-0027",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "fd6ee795248c13f3a6faedb8f926365b82ce2fb4622ad8d4d35d6b1e8c55f4c4"
+    },
+    {
+      "id": "FF-0028",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "88–89",
+        "87–88",
+        "89–90"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cad949a4de730dc274744fdec2287a1fb4fad3499e1a92504a4151f1c041f6e5"
+    },
+    {
+      "id": "FF-0028",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "88–89",
+        "87–88",
+        "89–90"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f442fb43e12e480ffda4c385e1a00bb718f3bb54380a2db2c76bab685a89a5d0"
+    },
+    {
+      "id": "FF-0029",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 238.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9b8cb2e5f4f28844ee1de686f00a49e3a6ed91fd581d503f7e68360415e2f5fd"
+    },
+    {
+      "id": "FF-0029",
+      "program": "program",
+      "ok": true,
+      "value": 238.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "76ba5c688745c11c3c49d30938dae38c998df029cdbbd0fe52508dcb661d332d"
+    },
+    {
+      "id": "FF-0030",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Federal",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "94c8a03ac7790242de6dddb8a635d7780b4c643b7ff5cba238ad6fca90eb50b6"
+    },
+    {
+      "id": "FF-0030",
+      "program": "program",
+      "ok": true,
+      "value": "Federal",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "94c2d1f286529f2da7c9d23844c4ef3bac3209147006e67482d68fbb2a631d14"
+    },
+    {
+      "id": "FF-0031",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2023",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "69bbbb22690d22aa1ef9cb7246a9ead26787897cf465eafcffcff3e6be64dab6"
+    },
+    {
+      "id": "FF-0031",
+      "program": "program",
+      "ok": true,
+      "value": "2023",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f52918c6a766ae780693ac7c2524496dc8ecf37feec7785eacd9a5b70489944e"
+    },
+    {
+      "id": "FF-0032",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1113.8,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "db9eb660d63e498d64cce9b575edd3dd524e2d9fe0f9bb9501fbf5f1acc682d1"
+    },
+    {
+      "id": "FF-0032",
+      "program": "program",
+      "ok": true,
+      "value": 1113.8,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a60736f456c2f91fd7633de99b0a9150f61a97898f0f56a05adcd72d306f7955"
+    },
+    {
+      "id": "FF-0033",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 467,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "568380dccbda6a5d77d69b8d7e42fc03d1d63b848b4c28eb1e1527c6fae1cc9e"
+    },
+    {
+      "id": "FF-0033",
+      "program": "program",
+      "ok": true,
+      "value": 467.0,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b19dbc7c9b01668780847cf90bfdd74acf7dd2161215d68696ddfc376045ef78"
+    },
+    {
+      "id": "FF-0034",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e374582573293ed66ed4aa243ec97429fc3547f6319315f36b88b3ba1037d441"
+    },
+    {
+      "id": "FF-0034",
+      "program": "program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ad346f433cd13ab150e9f3aa5b6ed80bceee7b5ec998742613adfb052c45e22b"
+    },
+    {
+      "id": "FF-0035",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 5,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "bc87c45fb0e0ed737e46599e792a46b19394f745c5afd8681bb4984089dff4b3"
+    },
+    {
+      "id": "FF-0035",
+      "program": "program",
+      "ok": true,
+      "value": 5,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "019627e378c1bec521957221347f304cd95e0ad69ec8556fe16d1a4327b53d81"
+    },
+    {
+      "id": "FF-0036",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 16.1,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d667087f084f05812a0025e15a8cfadeaf065e7e24762ef29a3ca62c0001012e"
+    },
+    {
+      "id": "FF-0036",
+      "program": "program",
+      "ok": true,
+      "value": 16.1,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "81745a92895c8764de3e1fd0e197505a0c1122e504c2a807fd94d55f3cf60e88"
+    },
+    {
+      "id": "FF-0037",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1257831,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9c6bd11887d30e28397ac53ad5936215144fa247fe98bd7bc2ec08b0f712bef3"
+    },
+    {
+      "id": "FF-0037",
+      "program": "program",
+      "ok": true,
+      "value": 1257831,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a10ab87a6a3992e3cbe9a033eb859559db7ed59f82799fd4ad899993a7bd7b14"
+    },
+    {
+      "id": "FF-0038",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "California",
+        "Texas",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a85e515cf12cd624e60ddfb6dafb62e33a7d0f068f883e05c842ff2891bfdcdd"
+    },
+    {
+      "id": "FF-0038",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "California",
+        "Texas",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "1072a1dd1fb1c76e9eb9d29e1d30fd4f48053ba0243f7f793d7e38bc2de7e20b"
+    },
+    {
+      "id": "FF-0039",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 37467064,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "98bcd164d7d5a4cf9ad2b527439909f7f3e628ceac99dfe9edbddbc93db467e6"
+    },
+    {
+      "id": "FF-0039",
+      "program": "program",
+      "ok": true,
+      "value": 37467064,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0d7bb7b8e91c001f74d228b07a169952ad72e89fac0570eb6562790bf4022f18"
+    },
+    {
+      "id": "FF-0040",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "1-9",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d497c2aac56704683bbabf79f00870df463e6d9f773adf2d1389a1013a0aebf5"
+    },
+    {
+      "id": "FF-0040",
+      "program": "program",
+      "ok": true,
+      "value": "1-9",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7845afa4340673a3ce1dd6b98be936c9a45cd4f5c9067539fa732e3c074872c8"
+    },
+    {
+      "id": "FF-0041",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 3898888074,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c06934ed63044bb96a4a0467d8a55e667bb189839ef0bd559331e9b461c81d8c"
+    },
+    {
+      "id": "FF-0041",
+      "program": "program",
+      "ok": true,
+      "value": 3898888074,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "db474523203b9f4d92d58945788a200a881693aea46cea7e21a05f8018cd9c88"
+    },
+    {
+      "id": "FF-0042",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2018",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3838213d3ab1828201882a799725e10617fd123d7c251f3bf5d8e2e364f4b3c4"
+    },
+    {
+      "id": "FF-0042",
+      "program": "program",
+      "ok": true,
+      "value": "2018",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "fbb93091beeaf4be123970859f420b7c3aa0eb12ba031102235bde909d81ce51"
+    },
+    {
+      "id": "FF-0043",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Non-Hispanic White",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3696b39aef84b9d42a15297c5267f005b993549f5490240400e5e616079da153"
+    },
+    {
+      "id": "FF-0043",
+      "program": "program",
+      "ok": true,
+      "value": "Non-Hispanic White",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "79268dafa5110c84659fa0457ac97d8a7d74d4c35bb6685fc4355d128d3a63c7"
+    },
+    {
+      "id": "FF-0044",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "California",
+        "New York",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a1e65d4a4091451beca9657afb9bd32aea48251b04759c5108b314f2e1916c10"
+    },
+    {
+      "id": "FF-0044",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "California",
+        "New York",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f0f9e3ec1904f496834c182bc1f31a822d3a3a5c9c28bfe5f393193bc898129c"
+    },
+    {
+      "id": "FF-0045",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 2517604,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "294b30e2216ae8553c31de6c8d0d65e01b987fd1a9fed9314edda84111b738e3"
+    },
+    {
+      "id": "FF-0045",
+      "program": "program",
+      "ok": true,
+      "value": 2517604,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c44e30bfc94c89583d0cbe8d6377b9e57a3ea1dc9b413fd6923c98322d092ef1"
+    },
+    {
+      "id": "FF-0046",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0787d4fe6562461d53165583933b7cc6732a5479ec240d91fee9b1b6fc813b84"
+    },
+    {
+      "id": "FF-0046",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "513a7ef5e1cf4b0524a59b70187de2e9ae1eba830351346484d0c418f650a1fd"
+    },
+    {
+      "id": "FF-0047",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "January",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "93e08eaffa5e1c532cae38149b211bb15591f078cc65c054aa581832b68b8b99"
+    },
+    {
+      "id": "FF-0047",
+      "program": "program",
+      "ok": true,
+      "value": "January",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "1e4c7fb54d80bb4ea14255476c98bca45e692e6f3bad4299d70246e74df63991"
+    },
+    {
+      "id": "FF-0048",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "California",
+        "Florida",
+        "Texas"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cbdadd3996c6243fbfc6d7a169da6a9e20a02d6a2f591cebe6d2698c9b043bdf"
+    },
+    {
+      "id": "FF-0048",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "California",
+        "Florida",
+        "Texas"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b25852699caa8c6ef5c64dafbf5daabf5c1e8f6f13575e5c1999f730d7e35e0c"
+    },
+    {
+      "id": "FF-0049",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ad0f832e62d35b645518fc77c8f2532dda42817d3e3a4082135b07981598b2bc"
+    },
+    {
+      "id": "FF-0049",
+      "program": "program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "43ebdd8ffc530481b3b03288281cff5cc21b998329d48e8fcef4fdd3699f703b"
+    },
+    {
+      "id": "FF-0050",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1550360,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6adcba2cc2aa43e595fe79f2ef5d0f88c0605d48daa0af0b3d4cc7ee8346fcdf"
+    },
+    {
+      "id": "FF-0050",
+      "program": "program",
+      "ok": true,
+      "value": 1550360,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "582fc50d5412e3092251f50eb70437448d0ad58a694b1e332d06e590d89b95ed"
+    },
+    {
+      "id": "FF-0051",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Non Profit - Corporation",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cfdc71a851e905af51626e75150baca536e34192f4f7ec7f10170a1704834ad0"
+    },
+    {
+      "id": "FF-0051",
+      "program": "program",
+      "ok": true,
+      "value": "Non Profit - Corporation",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "79572db3bc438155a5bb9a275133d762b14f5425a299e1954106a9f315fc6c40"
+    },
+    {
+      "id": "FF-0052",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Internal Medicine",
+        "Family Practice",
+        "Emergency Medicine",
+        "Anesthesiology",
+        "Obstetrics & Gynecology"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cc409581a25453d2beacc9bd95f7e8f5dc6b8e701f5919c8bbc758fccd098b66"
+    },
+    {
+      "id": "FF-0052",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Internal Medicine",
+        "Family Practice",
+        "Emergency Medicine",
+        "Anesthesiology",
+        "Obstetrics & Gynecology"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "70b8a46b2c344db000a5c8df42740c4dacc42ceeb1da999c4c95bb1ce49873fb"
+    },
+    {
+      "id": "FF-0053",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1319291952,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5e6e172544736a84c42c775744120c752adae467ea9a6e33e10f4c92ddf20934"
+    },
+    {
+      "id": "FF-0053",
+      "program": "program",
+      "ok": true,
+      "value": 1319291952,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e1adf6e1a6cec035adef1f2a399d53e86612cf3eb1fae833c99198f11737e232"
+    },
+    {
+      "id": "FF-0054",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2023",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0623d02ca4c53ca27d3c2af70f7a02743b16b8754e4e66d17072b3a3b095e1a3"
+    },
+    {
+      "id": "FF-0054",
+      "program": "program",
+      "ok": true,
+      "value": "2023",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3b6c1e9244d3081730ec7b298c53c0e20cdf80de082259582c3e60adc2559e6c"
+    },
+    {
+      "id": "FF-0055",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "California",
+        "Texas",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "728da8d1aeb2b479ba0b5fed48d05457425b0d51f8612be209422f8d8f88627d"
+    },
+    {
+      "id": "FF-0055",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "California",
+        "Texas",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0bedc72212b78d04f27973c10508a0295a3bcabb8cec19097243e2431c9caf51"
+    },
+    {
+      "id": "FF-0056",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 319885,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ee2ed1b6216fb55c774d2f0bbc7f79d85f75c3d83e3006a9cda598344807f082"
+    },
+    {
+      "id": "FF-0056",
+      "program": "program",
+      "ok": true,
+      "value": 319885,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3465fc58a34116e881576c97d4a4eccee859fe1bf5ea8261ab8b63f93711b65a"
+    },
+    {
+      "id": "FF-0057",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 13840,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a1a5beed34540ebd9f9fdc96896f73beacdd1554852718f9f0f22d6edb8d9afa"
+    },
+    {
+      "id": "FF-0057",
+      "program": "program",
+      "ok": true,
+      "value": 13840,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "898e9c7a307bf97d26529cfec140f14e21c685c4664563939a0e99ae3c5a0738"
+    },
+    {
+      "id": "FF-0058",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Florida",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "be0b62e2474714683a6d69930682c27206d9c25d18fbb7d58b969ce304fe08c0"
+    },
+    {
+      "id": "FF-0058",
+      "program": "program",
+      "ok": true,
+      "value": "Florida",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5ef4739fe966307f3a2d5ac7fb73b16ac80f374c8e1602e02907982f86d36387"
+    },
+    {
+      "id": "FF-0059",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5c414f81e8310d9ae183c3193220f2b37bf394131dc76117ac0e81b9a9c073bc"
+    },
+    {
+      "id": "FF-0059",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "681d28040c35294fbf84c73990f8330e3f7139007c9ce20d4854a2f0873ff7c5"
+    },
+    {
+      "id": "FF-0060",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "California",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5afeafdadf1088cd5d45049b1a08bc722600f0d8fbc2c9288f3da8e990a19789"
+    },
+    {
+      "id": "FF-0060",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "California",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d2383709beda5efc46ac3eacaa0cdd4cc43faac935ff25e8a20fea390a523373"
+    },
+    {
+      "id": "FF-0061",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 756,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "055b7af60edc440b7f881797fad5ebb156e1098084c4037053179c26e5a789c0"
+    },
+    {
+      "id": "FF-0061",
+      "program": "program",
+      "ok": true,
+      "value": 756,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "034c3684d0675ad7c7a702f7c0d3eb31f12e755079fdede37c22a73d7abbfbe2"
+    },
+    {
+      "id": "FF-0062",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Alaska",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "08e8c0d0844b86dc7375b10a378ee7f55eb9a4975bb250e1e859871914c2f92e"
+    },
+    {
+      "id": "FF-0062",
+      "program": "program",
+      "ok": true,
+      "value": "Alaska",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "78f5f6b112db4ebe11e7e0bd969a91250523cfc6a32fe6a608acb5bda11fb0d1"
+    },
+    {
+      "id": "FF-0063",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2009",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e489be9af5e9c0392036059a5231453e3432195c6b107fe58dd6bec84d23173e"
+    },
+    {
+      "id": "FF-0063",
+      "program": "program",
+      "ok": true,
+      "value": "2009",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d000c76a1629d3539c0bd3c190a19add07b2b638911d0a5506f8b74389302001"
+    },
+    {
+      "id": "FF-0064",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 304,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "4ee420ba377d46f41fa45c501c04a8996b695562ac6e28571b7c49ceeb659b3f"
+    },
+    {
+      "id": "FF-0064",
+      "program": "program",
+      "ok": true,
+      "value": 304,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3255dfd9ab185e538227d11d167942da07a307d2664c3c16b5ccc25a6c01b45f"
+    },
+    {
+      "id": "FF-0065",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 79.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7fcb728418fc3e5df7f9498933b813581e1793e62723396c21e0b75f71ceb256"
+    },
+    {
+      "id": "FF-0065",
+      "program": "program",
+      "ok": true,
+      "value": 79.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8f969503acfaaffd0f233730e0264158e805588f56aa0c0451ab6a8cf496c9ee"
+    },
+    {
+      "id": "FF-0066",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "1918",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8cd0bb8128581de262d01aa4d2aa80fd50c30a20b3667a85b55afe5ee1484c4d"
+    },
+    {
+      "id": "FF-0066",
+      "program": "program",
+      "ok": true,
+      "value": "1918",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6f7cb61fc40fe9d82298b632de8a9dfbf908d462b1a68de18c88f14a71573084"
+    },
+    {
+      "id": "FF-0067",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a2a5803e4942093225e5b11d783004fb93791ea38a42563cf66aa26d3859d883"
+    },
+    {
+      "id": "FF-0067",
+      "program": "program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "81ebbbc9b6539b1e9cefead2d7e24d1b0c2e63f3e6accbf68bd5af221b011405"
+    },
+    {
+      "id": "FF-0068",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Black",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "846b4da0758e747311dda5a754ad0e41ce7ab1cc317dd7b61b4392a0fbcdd049"
+    },
+    {
+      "id": "FF-0068",
+      "program": "program",
+      "ok": true,
+      "value": "Black",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "060e1fc677615e0cc2197359bb78d5a48f6b1a2d82c8e8583c7c8712e6122dec"
+    },
+    {
+      "id": "FF-0069",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 64115,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "96762af1a1d3ac825310fd4874e2f7cfc52869d50e2b61d26e3db4909bd85536"
+    },
+    {
+      "id": "FF-0069",
+      "program": "program",
+      "ok": true,
+      "value": 64115,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ff265beda56f26f8080ec3bfc262388b9a833e056960f3640bb074f3c8b018e2"
+    },
+    {
+      "id": "FF-0070",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "West Virginia",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "08d64cbf27af70fed80dfb9e64526d28b1ba40674f09ca8582532fcb321e8106"
+    },
+    {
+      "id": "FF-0070",
+      "program": "program",
+      "ok": true,
+      "value": "West Virginia",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f4b8e2d8aef35aa5106a86709313ce71d480157c4cee8b983b612399a65cdecb"
+    },
+    {
+      "id": "FF-0071",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "New York",
+        "California",
+        "Texas"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f5459158be6e198866f5e9838ff62a58ac71f0565d9350826a9c9b4239503679"
+    },
+    {
+      "id": "FF-0071",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "New York",
+        "California",
+        "Texas"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7c2ce64498f873fdf2858d70308071d80373ca2d4179c292e3ca7b166185affc"
+    },
+    {
+      "id": "FF-0072",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 25.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "153f3045c1c9d2a5e6d94b675ba4a9fd57cb447f0cd64d02b307c7a4d42ce279"
+    },
+    {
+      "id": "FF-0072",
+      "program": "program",
+      "ok": true,
+      "value": 25.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ff1ddccca130e7a0e20418959ad5c0de2b3765243b62e8fa2626d2ffae048747"
+    },
+    {
+      "id": "FF-0073",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 375.0,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "667d526d99d18e344e1d27f9d0f35b7460c7c874a452c35a2f7adb48668deda7"
+    },
+    {
+      "id": "FF-0073",
+      "program": "program",
+      "ok": true,
+      "value": 375,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "31c1af246aa2d9477b765e6c663b4e63b55842032eef2188df9e89b26c2cf0e7"
+    },
+    {
+      "id": "FF-0074",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Colorado",
+        "Missouri",
+        "Rhode Island",
+        "Virginia",
+        "New Jersey"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "53761b6eccb5b4a3737092114251a5e018b45f48294142197ff852dc4c987c1e"
+    },
+    {
+      "id": "FF-0074",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Colorado",
+        "Missouri",
+        "New Jersey",
+        "Rhode Island",
+        "Virginia"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0320a8109b3dd646aa234f22cbefaa2c5848c394c902533a74d31e7f9a8f36b9"
+    },
+    {
+      "id": "FF-0075",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "California",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "238f9d47de17073c2bd8988390df39a08fed680efe5f2ee300a3782558186d71"
+    },
+    {
+      "id": "FF-0075",
+      "program": "program",
+      "ok": true,
+      "value": "California",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f47b82520ca3a4f8fe128cff100af0fd4a5d0c2458e8ea68a134fc6d2b1e1c43"
+    },
+    {
+      "id": "FF-0076",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e1bae6e3528c1b63e8f814c32a5dacdf1527f2fb7cef35fd434bba04f2f11878"
+    },
+    {
+      "id": "FF-0076",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c038a68f64d72394361ce8e89fefac574137a326fd7f9af36012ca3f002799f5"
+    },
+    {
+      "id": "FF-0077",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 14904950,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "34b32d903f75edc46af2f0e06dc3e40ea238b03568dafa8cfc6dff9b953477ca"
+    },
+    {
+      "id": "FF-0077",
+      "program": "program",
+      "ok": true,
+      "value": 14904950,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b18c74d3df52f3243290ecbe9476823aefab4662e4fca3c8c1ca012f27adf7e3"
+    },
+    {
+      "id": "FF-0078",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "California",
+        "New York",
+        "Texas"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f9836c10019dfdcd22816d13e45a16d844b221b8ff19fca8cd598febad211d9d"
+    },
+    {
+      "id": "FF-0078",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "California",
+        "New York",
+        "Texas"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5b6fdd6ffa896e45a91c3c8702c4c62bdfb71281153b9405c28d1edc87aedb1e"
+    },
+    {
+      "id": "FF-0079",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2023",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "abaa1d69bbc86c6bf54f2a0674ea52562a0663d0ba22c30a667809364abdf681"
+    },
+    {
+      "id": "FF-0079",
+      "program": "program",
+      "ok": true,
+      "value": "2023",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8c8b40a7e2ee9890a98fb7adff6bc9d4fd8dad9652b85256d50fbd027ff35aa7"
+    },
+    {
+      "id": "FF-0080",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "California",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "07d9dc415d5952449a7e4db357d0e3dc2054e16e7bbd35a9494e58c69542593c"
+    },
+    {
+      "id": "FF-0080",
+      "program": "program",
+      "ok": true,
+      "value": "California",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "be3a31f99a8ae9715d57e92d2841e4194157168558ec03ec60f7b027495a0fd3"
+    },
+    {
+      "id": "FF-0081",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 82877280,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "288fdb11555a4c45f1e3f4ad30811f5852d06c8e0cc5842b2816fbaf0b99cf21"
+    },
+    {
+      "id": "FF-0081",
+      "program": "program",
+      "ok": true,
+      "value": 82877280,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b17dc317a54efe2cd613fc73d55f1ce3705187ddae702c630e1ab7187fe259dd"
+    },
+    {
+      "id": "FF-0082",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "60306c384a4487c7bc27d0d44859cbe8ca7dbefafe30ced7785771f150aae535"
+    },
+    {
+      "id": "FF-0082",
+      "program": "program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3c675808345f6498c50e2eeb872ac6949fc5fe547e3fa202866ceeeaf661e03e"
+    },
+    {
+      "id": "FF-0083",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1878002,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "34e6b1ac79155d18989ba541fd8ee23accd14d93a526774b202b6d03fdfdb837"
+    },
+    {
+      "id": "FF-0083",
+      "program": "program",
+      "ok": true,
+      "value": 1878002,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ef894826d7d7ff98268626bf091e06f3f44f09a650a98b549856708a6134d819"
+    },
+    {
+      "id": "FF-0084",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2017",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "adae65745b0d0c984ee1feb89330f6f099e005743936620abac565f1e4519865"
+    },
+    {
+      "id": "FF-0084",
+      "program": "program",
+      "ok": true,
+      "value": "2017",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "134068a9eb2eaa58ed43b2cf536e81f9c285ba972200edb26c97778480d79764"
+    },
+    {
+      "id": "FF-0085",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1.62,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f68361d7637c8dbf76f853b999a43e455a45dc5f1153102b076378c769067985"
+    },
+    {
+      "id": "FF-0085",
+      "program": "program",
+      "ok": true,
+      "value": 1.62,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d630cc0caee8f686f668b7780a067189539e6b03713b07b937f9061de198fc38"
+    },
+    {
+      "id": "FF-0086",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Mount Sinai Hospital",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "47348cde4d1b2364a9beaacd9867b5ddb80eb7e56f111e4bed1f1b369d4b5eed"
+    },
+    {
+      "id": "FF-0086",
+      "program": "program",
+      "ok": true,
+      "value": "Mount Sinai Hospital",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6a50c8c08dc8d08f09e3414dc3dbc3dbc6c0e965b527be683e834250c741fb6d"
+    },
+    {
+      "id": "FF-0087",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 93,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cbd8704ea21200a21150723339dcddbdfcc98e5f30a9a6ce2c0d6cee39f7e3ad"
+    },
+    {
+      "id": "FF-0087",
+      "program": "program",
+      "ok": true,
+      "value": 93,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cbd8704ea21200a21150723339dcddbdfcc98e5f30a9a6ce2c0d6cee39f7e3ad"
+    },
+    {
+      "id": "FF-0088",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "NY Metro - NYC",
+        "NY Metro - Long Island"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "1614f6d2860909f0a2b0dff42e507d605268bc885adede6857e25c7e914e7649"
+    },
+    {
+      "id": "FF-0088",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "NY Metro - NYC",
+        "NY Metro - Long Island"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "1614f6d2860909f0a2b0dff42e507d605268bc885adede6857e25c7e914e7649"
+    },
+    {
+      "id": "FF-0089",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Metropolitan Area Regional Office - New York City",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0d7b2d93fb24288fd9d7e715d158ebd096f5c0f6edd074a9b01c031c9e10f0b6"
+    },
+    {
+      "id": "FF-0089",
+      "program": "program",
+      "ok": true,
+      "value": "Metropolitan Area Regional Office - New York City",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "841575657557fb0806a3313317facd3935d4122b0a0d42acac4ef4422e3b74c9"
+    },
+    {
+      "id": "FF-0090",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 8,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b908099a9376be4bb9e2dfef1be1a391a883d51a1086c081f0af3a2f279c834b"
+    },
+    {
+      "id": "FF-0090",
+      "program": "program",
+      "ok": true,
+      "value": 8,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b908099a9376be4bb9e2dfef1be1a391a883d51a1086c081f0af3a2f279c834b"
+    },
+    {
+      "id": "FF-0091",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 14625,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "13f37cf9016e035c09df5afb692b401b508222e57752e45ffc2084933c8ef3fe"
+    },
+    {
+      "id": "FF-0091",
+      "program": "program",
+      "ok": true,
+      "value": 14625,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "13f37cf9016e035c09df5afb692b401b508222e57752e45ffc2084933c8ef3fe"
+    },
+    {
+      "id": "FF-0092",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7997c635f760aaeaded58c9623c28706fa8af31d369b7e9acc3275b5fc0c0ec2"
+    },
+    {
+      "id": "FF-0092",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7997c635f760aaeaded58c9623c28706fa8af31d369b7e9acc3275b5fc0c0ec2"
+    },
+    {
+      "id": "FF-0093",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 44.35,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c855c751f34019b1c3ad72b5f13bf254dec1fd549b22a02f2cb3067f12db2af0"
+    },
+    {
+      "id": "FF-0093",
+      "program": "program",
+      "ok": true,
+      "value": 44.35,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c855c751f34019b1c3ad72b5f13bf254dec1fd549b22a02f2cb3067f12db2af0"
+    },
+    {
+      "id": "FF-0094",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "NEW HAVEN",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f8dbd5e7981d5051f3fa468a6da3469d5d5fe557d793a77bd2b26299676f9a9b"
+    },
+    {
+      "id": "FF-0094",
+      "program": "program",
+      "ok": true,
+      "value": "NEW HAVEN",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ab854162616c6d1c0ec7733d45037590d4d232f2e579e4d78749f2254ba5157d"
+    },
+    {
+      "id": "FF-0095",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "HARTFORD",
+        "NEW HAVEN",
+        "WATERBURY"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "826c7f72e47f64a20a8cdd404da8ddcf467a9d45ba524a9b113b102e67686787"
+    },
+    {
+      "id": "FF-0095",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "HARTFORD",
+        "NEW HAVEN",
+        "WATERBURY"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f3b8bf3e3be0807c0c9a12b989d230d9190887c0faf34d84fca479d5acd53bd2"
+    },
+    {
+      "id": "FF-0096",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 5164,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "87ffd3a205cb7a78cf0870acfa53b9a3c99a2a4cebc6603a4545549d7c575815"
+    },
+    {
+      "id": "FF-0096",
+      "program": "program",
+      "ok": true,
+      "value": 5164,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "87ffd3a205cb7a78cf0870acfa53b9a3c99a2a4cebc6603a4545549d7c575815"
+    },
+    {
+      "id": "FF-0097",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1104370,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "129233324e6925f9442296490294c40bac14cc1de7190c6531ac2c58607127f0"
+    },
+    {
+      "id": "FF-0097",
+      "program": "program",
+      "ok": true,
+      "value": 1104370,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f885cf95b3fac033a996a776c906d21dc7e0d5c72ab3464c0021c8ca2d3f63ad"
+    },
+    {
+      "id": "FF-0098",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "PUGET SOUND EDUCATIONAL SERVICE DISTRICT 121",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7a4bfdd0c6877e29caa4925d4e4d6806c26512764b4197f618ed2b45ad09f136"
+    },
+    {
+      "id": "FF-0098",
+      "program": "program",
+      "ok": true,
+      "value": "PUGET SOUND EDUCATIONAL SERVICE DISTRICT 121",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7a4bfdd0c6877e29caa4925d4e4d6806c26512764b4197f618ed2b45ad09f136"
+    },
+    {
+      "id": "FF-0099",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "860c3af11bf3576a15df2152f1b89bc81bd1c5b22cb9be3a493341f608d8a121"
+    },
+    {
+      "id": "FF-0099",
+      "program": "program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "60f7b9a8b82937c41e35669da4ea76aa96545cca7f4cbb7a0ea409640ed43657"
+    },
+    {
+      "id": "FF-0100",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "KING",
+        "PIERCE",
+        "SNOHOMISH"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "eac02bf6da8a97bbcba44647477f660f27928e7596bc5da8b5459b99d2e6747d"
+    },
+    {
+      "id": "FF-0100",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "KING",
+        "PIERCE",
+        "SNOHOMISH"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "eac02bf6da8a97bbcba44647477f660f27928e7596bc5da8b5459b99d2e6747d"
+    },
+    {
+      "id": "FF-0101",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 37,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "40ce80fe872a2c806d6b4ddb21961dadff5a70e15438521886c0acfd1f28c376"
+    },
+    {
+      "id": "FF-0101",
+      "program": "program",
+      "ok": true,
+      "value": 37,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "40ce80fe872a2c806d6b4ddb21961dadff5a70e15438521886c0acfd1f28c376"
+    },
+    {
+      "id": "FF-0102",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "BARSTOW COMMUNITY HOSPITAL",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "1274897998030ed26662818e63812e1cc9d8a9a5620e381fd51cc432bd6b804e"
+    },
+    {
+      "id": "FF-0102",
+      "program": "program",
+      "ok": true,
+      "value": "BARSTOW COMMUNITY HOSPITAL",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "4125b719e4c671016283aa1dc0f76c81087336368cc1f8aec9afa70d9372b38b"
+    },
+    {
+      "id": "FF-0103",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 83672,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f3553f8201ecfbf87a4e147aff3d8ec75f2d14ffc222dd65ee4b6bd149b7840a"
+    },
+    {
+      "id": "FF-0103",
+      "program": "program",
+      "ok": true,
+      "value": 83672,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f3553f8201ecfbf87a4e147aff3d8ec75f2d14ffc222dd65ee4b6bd149b7840a"
+    },
+    {
+      "id": "FF-0104",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "BARTON MEMORIAL HOSPITAL",
+        "MARSHALL MEDICAL CENTER"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d3a0f43c350fd6fae5c3f98f4b7c3f85bb5961c709cf801ee5fb5bf3297ce63a"
+    },
+    {
+      "id": "FF-0104",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "BARTON MEMORIAL HOSPITAL",
+        "MARSHALL MEDICAL CENTER"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "036ba6838d50af2f60ea58e7022e6ca1d056af710ddc62bd3d423c96cbbbaafa"
+    },
+    {
+      "id": "FF-0105",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1392,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d805665e6eafdfeea3cfe25b97e9e879ff69376397e9d4f925abafb67d85b15e"
+    },
+    {
+      "id": "FF-0105",
+      "program": "program",
+      "ok": true,
+      "value": 1392,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "017f9034e6859ef8f7bbaf3f139833d46a282d8ecd2c69eb67f0a1b145189148"
+    },
+    {
+      "id": "FF-0106",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "John Muir Medical Center – Concord Campus",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9dd235ac96dfd72cd1e5147e8ac25abb217884fcede059e09da2174bc9c2a00a"
+    },
+    {
+      "id": "FF-0106",
+      "program": "program",
+      "ok": true,
+      "value": "John Muir Medical Center – Concord Campus",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b266db05a76212ef4e125f5690f6cb34d12aff0ae438ae69d6c4f320f12f3b7c"
+    },
+    {
+      "id": "FF-0107",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2022",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "81eb45f0be9090703861538320f1cc43f72637ba371fa3f16222bcaa65f6b543"
+    },
+    {
+      "id": "FF-0107",
+      "program": "program",
+      "ok": true,
+      "value": "2022",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "61e29a2dd6ad16ecfeb20449afbffe6510a5bd5e9f72e0a4ebca21297bfd1e86"
+    },
+    {
+      "id": "FF-0108",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Government",
+        "Nonprofit",
+        "Investor Owned"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ac2bc8aabc670822ef6c7aea49bbc89c5fc4745dc9a24f9acd10fb3699dfed2e"
+    },
+    {
+      "id": "FF-0108",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Nonprofit",
+        "Investor Owned",
+        "Government"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "fb2bfe9ed3b5612f21ce54e8c2ef4d71e6fadddd1d715348b23d4ec2bd52593a"
+    },
+    {
+      "id": "FF-0109",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 122,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e56995b5148e8bd9e44628b87e678a095fedbf37ddba14a38e8a979d35e8f55f"
+    },
+    {
+      "id": "FF-0109",
+      "program": "program",
+      "ok": true,
+      "value": 122,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "dd630a9e1bcf17fa01fe67b31f07cecb6fdc4e15acb43e4b228c20f562b44f71"
+    },
+    {
+      "id": "FF-0110",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8af0224379b738508920e1bbdb27ee5efc9d6bc8e1572f949a9fb7f18b537368"
+    },
+    {
+      "id": "FF-0110",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ebe67ac9197afe35d8a54cec066c163af61eabc26e296e1cd7ebaa65f4081a49"
+    },
+    {
+      "id": "FF-0111",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2019",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "72a163872170011f3115117d21401ceff5525c6db49d4d9b8f4ce81f1b03dd7b"
+    },
+    {
+      "id": "FF-0111",
+      "program": "program",
+      "ok": true,
+      "value": "2019",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "72a163872170011f3115117d21401ceff5525c6db49d4d9b8f4ce81f1b03dd7b"
+    },
+    {
+      "id": "FF-0112",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Other Race/ Ethnicity",
+        "Not Stated/Unknown"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3e6083026db124c558d94fc5c7d7f55a6417e950064f2078f02618889941238d"
+    },
+    {
+      "id": "FF-0112",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Other Race/ Ethnicity",
+        "Not Stated/Unknown"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f3ad2c825d540448754e9fd2039603f1e0ecee9fba68b69b7af73758598d79e2"
+    },
+    {
+      "id": "FF-0113",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 30503301,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "851bd877d4f487b9261f19779a270dc76589b8673ee895e6ce52b02e082cb628"
+    },
+    {
+      "id": "FF-0113",
+      "program": "program",
+      "ok": true,
+      "value": 30503301,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "17c7ada6a96513f1ae31d159cbe4cb689dce9a7bd662e643cb878b0998764693"
+    },
+    {
+      "id": "FF-0114",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "South",
+        "West",
+        "Midwest"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "4fec9ef7ba0eb5e721229b1ddcbe3538773ea1d3fa1c9f2749ff822ec7036a18"
+    },
+    {
+      "id": "FF-0114",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "South",
+        "West",
+        "Midwest"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "374f93ba5c8ec4aa4524ba91fb6ffa313107cba5ec72892ab018b55c9d75dec3"
+    },
+    {
+      "id": "FF-0115",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Midwest",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "657ed697db8e426662152612bbc6acbac9009141943fe68b8be7a2a403026428"
+    },
+    {
+      "id": "FF-0115",
+      "program": "program",
+      "ok": true,
+      "value": "Midwest",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d2e015d7073fcafdb4a30cd52f1c4f75436ae076486df975accb57774ebdbaae"
+    },
+    {
+      "id": "FF-0116",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 10,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "275e41647d69a60a6f5910fa82534c6e1d6e5418fe8347aeda2466e4b1952e89"
+    },
+    {
+      "id": "FF-0116",
+      "program": "program",
+      "ok": true,
+      "value": 10,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "92cdad521da28dc369a0f6f120b7b6c71748f69fac404e6078ea66e453419a12"
+    },
+    {
+      "id": "FF-0117",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 334914895,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "2d814a41afc4e921c805f4bb851a44158493399d561f622227fcc928d332aec0"
+    },
+    {
+      "id": "FF-0117",
+      "program": "program",
+      "ok": true,
+      "value": 334914895,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "308ab2ddc7f7fa0c3095654d15b318d78605329ea3afd6403a4152d75bb25cc7"
+    },
+    {
+      "id": "FF-0118",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 3387962,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c6f3c2eff7f18c49101d4c999d12eb71195f19ef9b8fe06e4cd980f9b8a398da"
+    },
+    {
+      "id": "FF-0118",
+      "program": "program",
+      "ok": true,
+      "value": 3387962,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "45054c8c5ab56b92ca52d8d31182f518492d1c420d624e212451f1eaa1726692"
+    },
+    {
+      "id": "FF-0119",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "fb8c4c07a855a2d55768bee822544ca82aca6c4faa7406c42ccfc3ece53ab2dd"
+    },
+    {
+      "id": "FF-0119",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d5f045671ed36f0293d5e1b71d6c2d93e1a3a3eae8f8a6a42e1f35a8b3483bd2"
+    },
+    {
+      "id": "FF-0120",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2021",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d84de09170c09a7f5605fa31a8e0362515a97a113712d286c19e77a331da4e62"
+    },
+    {
+      "id": "FF-0120",
+      "program": "program",
+      "ok": true,
+      "value": "2021",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0f21a92bed3210fd936d6838de29f1bb040c0dd3c761ef38ac1d85b85dde8453"
+    },
+    {
+      "id": "FF-0121",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 116300,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3567e7c4efffede2a18cd5f4a3adcc4dcf88807ff206ae81746e4f47fd210ecf"
+    },
+    {
+      "id": "FF-0121",
+      "program": "program",
+      "ok": true,
+      "value": 116300,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7f4c3d5ab2e4820bed0ba008eb19efe228f5a89534bb2d4e9f402b34549466cc"
+    },
+    {
+      "id": "FF-0122",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Massachusetts",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "2a07cbc6f10c41bfd894c5d6dafe8c112553cfbfca32622bb030bd6549c104b9"
+    },
+    {
+      "id": "FF-0122",
+      "program": "program",
+      "ok": true,
+      "value": "Massachusetts",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e9a8f7ced71ecabf47ed9d9b6c9b1ee1c9c8be52deb3c5be8bb392e27ea741cd"
+    },
+    {
+      "id": "FF-0123",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 79318.0,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d8ed5c1e298d4eeb7ffb18c037ac263463659e1f4089d1f524fb339e3b681cf7"
+    },
+    {
+      "id": "FF-0123",
+      "program": "program",
+      "ok": true,
+      "value": 79318,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3ed865f86b2a94272b11c056b55d504c411d9d3d6bb54fa4b35bd69bef4b6c1b"
+    },
+    {
+      "id": "FF-0124",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2019",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "47e62215c068d8f9de28ee6856998b7933a5a8b46dd3f081c4ac7601d1018f04"
+    },
+    {
+      "id": "FF-0124",
+      "program": "program",
+      "ok": true,
+      "value": "2019",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "319a7a286534f94c25cb6e37f794e6656e0df716a7722d324ca525fb6f34894f"
+    },
+    {
+      "id": "FF-0125",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 10.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "322e4357650a8ce91bc054d425901611f72168fc901cc9c90b90e451e5b6a204"
+    },
+    {
+      "id": "FF-0125",
+      "program": "program",
+      "ok": true,
+      "value": 10.7,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a8ecbc059388e856554b979232b1245bf8735456d0a88aa5aa662de4a573e467"
+    },
+    {
+      "id": "FF-0126",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Louisiana",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6e68598b5a86a9d8af562a84dd46a35ea52715de842250ff60e6907d81a6d47e"
+    },
+    {
+      "id": "FF-0126",
+      "program": "program",
+      "ok": true,
+      "value": "Louisiana",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "bb40285e58c13a025e39a10e69c1de90fd5195f9bde40a16fcdf02b83793a2f0"
+    },
+    {
+      "id": "FF-0127",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8a0660071be49576c6f8e7ef93b5b0eb8e38e55d1991ad2f89e2db5ebe9d1aca"
+    },
+    {
+      "id": "FF-0127",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "21c8b6963fef57a78d9bda34a0e71d6e666d6fc7f82abc35f3129fbf10efc7b7"
+    },
+    {
+      "id": "FF-0128",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 4,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "051cbb14c686a1edff4e8536d24a60f91c40f76d1b502459768374b06a42a161"
+    },
+    {
+      "id": "FF-0128",
+      "program": "program",
+      "ok": true,
+      "value": 4,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a09204d677b90eb795a2e3818a0fdd68c589ba6c71e16ab2741c3399421bbd46"
+    },
+    {
+      "id": "FF-0129",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 8350933,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5eb7f71c7aea905c425e3f16a8c407ad5cb753a9e63b5068ae7abd76ee1b81e5"
+    },
+    {
+      "id": "FF-0129",
+      "program": "program",
+      "ok": true,
+      "value": 8350933,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e2bcab22092bb1fc5af1442ac3104cf4bdbd413544dbb2108b7d67845a2d70bf"
+    },
+    {
+      "id": "FF-0130",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Furniture stores",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "57913718bb541bbb89f72ef2b6fb3ce4aeb2f55f9cf0df7da5cbed5952bf3e25"
+    },
+    {
+      "id": "FF-0130",
+      "program": "program",
+      "ok": true,
+      "value": "Furniture stores",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "935a48a26bbc4a83a7c44da9a980aa593818c4a192b0aeaa8f175f63ff8a5813"
+    },
+    {
+      "id": "FF-0131",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2020-04",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6991b0711a0e3f39309354d6a76ad9cba591f98370ffd5300d13becdffc05de8"
+    },
+    {
+      "id": "FF-0131",
+      "program": "program",
+      "ok": true,
+      "value": "2020-04",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8d4ed4fcfb70496e86ccf14332530cc278897fcf455cb008488a2a265e773ae1"
+    },
+    {
+      "id": "FF-0132",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 656157.0833333334,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "bdd984caba25317e8e9b2ed6a9518950e30f3b4dcb87ef180cde1e8e18ab5c99"
+    },
+    {
+      "id": "FF-0132",
+      "program": "program",
+      "ok": true,
+      "value": 656157.0833333334,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5b7a8f3cd00785b437254b2f737e763dac518873086b04398adfef91196543ac"
+    },
+    {
+      "id": "FF-0133",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 8638712,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7ddf6ac0bcbc954b1bb75a749793239a877839c9f94456e62a850de6a63d2e85"
+    },
+    {
+      "id": "FF-0133",
+      "program": "program",
+      "ok": true,
+      "value": 8638712,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6a9fa3216e53e3c1b98f6ce0a9ecc4c0f2b013215963621b76db6913550af6f6"
+    },
+    {
+      "id": "FF-0134",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "86e1a7c60160b793091118d0f39d98b1d0d01979bff52dee9dc3d2ed93d2f69d"
+    },
+    {
+      "id": "FF-0134",
+      "program": "program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f75097464c1046f3ce1b3cd387edfffa902ea5e79c61379edc402c62d292ebc6"
+    },
+    {
+      "id": "FF-0135",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "California",
+        "Texas",
+        "Pennsylvania"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e01137465ce21d11df086254885b6cc009bee7ad3daa27a6a331c9e3c7864555"
+    },
+    {
+      "id": "FF-0135",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "California",
+        "Texas",
+        "Pennsylvania"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "95b803f1ee4b46e82ae86fc18e68afb6b3777cff08a48e8337610cc7b425095f"
+    },
+    {
+      "id": "FF-0136",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Florida",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f9074b0f7c69f15793614f6e9e3621b937db285d3366593c00cf2423e941c279"
+    },
+    {
+      "id": "FF-0136",
+      "program": "program",
+      "ok": true,
+      "value": "Florida",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0b8372be100326c7a54917816dfa7e8eb0e6a5068734f8f683e63a0090a2815b"
+    },
+    {
+      "id": "FF-0137",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 6245455,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f8b531fec4f0bf48b48a4ba38144ae779e796a5945c3ee245dd637758029bee6"
+    },
+    {
+      "id": "FF-0137",
+      "program": "program",
+      "ok": true,
+      "value": 6245455,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f26633de04b2214b3ff224f211f35f0ffc8ad4a718b0fabf3edafc2b66794791"
+    },
+    {
+      "id": "FF-0138",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "New York",
+        "California",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f03767f49635842c2de662a34b5c9ad3eef8b3628726ceb480b3314359fb277f"
+    },
+    {
+      "id": "FF-0138",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "New York",
+        "California",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "74262c7b922d670395c1477975c9bbf144b2ad10f53b205299973ff81940cd1f"
+    },
+    {
+      "id": "FF-0139",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 5,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9fbfb1dd47a4e30e71ae9672c9abe43ae9be3afe0d58a9484be66d9c16c72b52"
+    },
+    {
+      "id": "FF-0139",
+      "program": "program",
+      "ok": true,
+      "value": 5,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0ee19fc8a1daf15c3fdd15ba3c16aed208dafb81f21c8adc2eb29f08163a9de6"
+    },
+    {
+      "id": "FF-0140",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Texas",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f48218eb64334d4f5ab245d2a640865431e8492106c80707d0772cda9b9d23ff"
+    },
+    {
+      "id": "FF-0140",
+      "program": "program",
+      "ok": true,
+      "value": "Texas",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "30277a2d2ea012d582e10fadec67012a1f41adf84b53553f326ee398ae958831"
+    },
+    {
+      "id": "FF-0141",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Washington",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "efe4a237addd525bd85093c4a0d5e4410f7d9b9e2739cdd784fe4fac50ac123a"
+    },
+    {
+      "id": "FF-0141",
+      "program": "program",
+      "ok": true,
+      "value": "Washington",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ada530efd46cffa91af3a45d90a87c050601183abe9cf9c00136a473197195cb"
+    },
+    {
+      "id": "FF-0142",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2020",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "968f322eff875146aa36c45c2effc0c3b191cf3df6cc83a35251b7fb826f25a0"
+    },
+    {
+      "id": "FF-0142",
+      "program": "program",
+      "ok": true,
+      "value": "2020",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9c1d4cebea12c8cb0106c14e6ebe5baf6829ad853017a69aadfcdfdb02e353ad"
+    },
+    {
+      "id": "FF-0143",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1251,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f1f51aec6f26471a001137328225c5d50cda486f5f27873e9c2832f792ff5a3b"
+    },
+    {
+      "id": "FF-0143",
+      "program": "program",
+      "ok": true,
+      "value": 1251,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "706ca1a982f45c8eca99e56106e699cb298f60d89dbf48a931a0cb8565532118"
+    },
+    {
+      "id": "FF-0144",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6bbda391f6d4d07d54f1e37d93f1c6d628bf523e1f4d1e73ad96155ca6ba3393"
+    },
+    {
+      "id": "FF-0144",
+      "program": "program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cc515c8b62a3c5f2938939b963a884316d63e86052975265ac0b202c7be4d15a"
+    },
+    {
+      "id": "FF-0145",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 231767,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "2b17857d5c7894669652c79f5f5147ec73f5000069b754cfde11d108ca90afca"
+    },
+    {
+      "id": "FF-0145",
+      "program": "program",
+      "ok": true,
+      "value": 231767,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f25d1f2776f1d4fcdeea75d98c7a3ead861e4a91ce96e7215f7f57bbb7504758"
+    },
+    {
+      "id": "FF-0146",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 483,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d6357d4dd6f7cc69ad1a3c767a53d9bd710cb10cadfdb6d8fdb15e65aa05493d"
+    },
+    {
+      "id": "FF-0146",
+      "program": "program",
+      "ok": true,
+      "value": 483,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d6357d4dd6f7cc69ad1a3c767a53d9bd710cb10cadfdb6d8fdb15e65aa05493d"
+    },
+    {
+      "id": "FF-0147",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Henry County",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f25dd5cca0d6e43e292e3c22ba6a0ac841c62293b0b9ee67db1bec5b6d3b0bf2"
+    },
+    {
+      "id": "FF-0147",
+      "program": "program",
+      "ok": true,
+      "value": "Henry County",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "886a12c79410f6eb096df2c2e3395718ddabe37e7f80022a33859a3ea3abb22f"
+    },
+    {
+      "id": "FF-0148",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Buena Vista City",
+        "Lexington City"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6ac2dc4fb6a5e7345d43fd5e8dc8146869f89791f6526138ceaf5b0d9c27fa3e"
+    },
+    {
+      "id": "FF-0148",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Buena Vista City",
+        "Lexington City"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ae49ec5f9ccc385873a76ad0de26d12f23d1b0eb1c311a2048980a607d23efb1"
+    },
+    {
+      "id": "FF-0149",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 860098.13,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ffe14e8d611b6a3d1889a1c6f68f3ce1d288654d9363c73cf462e0a806d8623b"
+    },
+    {
+      "id": "FF-0149",
+      "program": "program",
+      "ok": true,
+      "value": 860098.13,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "1d8d0d2893bdabfbc6793f99505e408f7224911c2d7958de35329f9ac793ec18"
+    },
+    {
+      "id": "FF-0150",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2018",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "aed38555da791672199c95c04d645b999d3daa85745f245107eb400a3a6d9786"
+    },
+    {
+      "id": "FF-0150",
+      "program": "program",
+      "ok": true,
+      "value": "2018",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "19122def36d1f73ff5e68d7a948936f4b13117d61e7b31584609998308564601"
+    },
+    {
+      "id": "FF-0151",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d1adec37a5796009632a2342d68f504ea118f0b1a24f7de17e288a7de462ff7e"
+    },
+    {
+      "id": "FF-0151",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "254a05ae737a6bedc0a868d910e64799d44f3be9bdb6f9a4875af68a9d06c068"
+    },
+    {
+      "id": "FF-0152",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "2025",
+        "2024",
+        "2023"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "33b8691e0cce89a690837a5096fcddbaeb1c94e3ccbad9be915cee6af5f792cf"
+    },
+    {
+      "id": "FF-0152",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "2025",
+        "2024",
+        "2023"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9b4de408ae64ce91a7cc14fb8dc5cecef4bd04dea8c8070e112cec4c40b2a044"
+    },
+    {
+      "id": "FF-0153",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 5519599,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "60958dfe06ce513c8584a51ab84542ffa926821327715d28b0bf750a92267e58"
+    },
+    {
+      "id": "FF-0153",
+      "program": "program",
+      "ok": true,
+      "value": 5519599,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "caa3c62f8b21f80a4cacc0dadec54ad2ca69f675d82b04da53255cd26c74ebcb"
+    },
+    {
+      "id": "FF-0154",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Midwest",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "58a1248798336711f6c04904978ebd78a894e0bbf005d057dca4fced88fdbbdb"
+    },
+    {
+      "id": "FF-0154",
+      "program": "program",
+      "ok": true,
+      "value": "Midwest",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e2b723dfd32efd2fb48f38c64a033dc3b080bd2da813280b826493072fd4ae4b"
+    },
+    {
+      "id": "FF-0155",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "  Idaho",
+        "  North Dakota",
+        "  Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c0c0992be2470b7e000034b9dd65cfaf2b505b4677aea3920ce80f0a52319311"
+    },
+    {
+      "id": "FF-0155",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Idaho",
+        "North Dakota",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3f5e7824c792b7adf720bffd8adf0468318c11b22dfce072a5cb05895a2a182c"
+    },
+    {
+      "id": "FF-0156",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 16,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "37bea918a69ef6ae3d6e5afecfedc6be0f92e47ed54ad7cd328f8d34e7f526c3"
+    },
+    {
+      "id": "FF-0156",
+      "program": "program",
+      "ok": true,
+      "value": 16,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7b574b9eca601bd05af75a8da59420c18cbf521dd13142e2708513aa23c981ed"
+    },
+    {
+      "id": "FF-0157",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 14696.93794873777,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "b53e5c538dc9f93ae0b3216ee6c1eec3606561861949ee8de138d84c7a2019aa"
+    },
+    {
+      "id": "FF-0157",
+      "program": "program",
+      "ok": true,
+      "value": 14696.93794873777,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9e96adab045e3ebbde504c656ee8e2abaf70e1ff74a66cebeda8dea255605075"
+    },
+    {
+      "id": "FF-0158",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Idaho",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "77a028e6c707e118f19d3e8d47b923638ca2b7e8292825788f5799193124ddfb"
+    },
+    {
+      "id": "FF-0158",
+      "program": "program",
+      "ok": true,
+      "value": "Idaho",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5d766c3d9c88f5af87c89a718eb6298bf6a51aa664a356401465f7f9d929e989"
+    },
+    {
+      "id": "FF-0159",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Utah",
+        "Idaho",
+        "Arizona",
+        "Mississippi"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "968544dc30cd3135466667384e527411f7455c6bd263d683a3662c4097387978"
+    },
+    {
+      "id": "FF-0159",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Utah",
+        "Idaho",
+        "Arizona",
+        "Mississippi"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "aa537238cbe751d9591166084035c4bf03e4e8e6508a4fa376b1b838ab0563cf"
+    },
+    {
+      "id": "FF-0160",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "367bc19afd1c81f686caac51fcf6d11fb96be007efb51f81e693bf1a2a8f7708"
+    },
+    {
+      "id": "FF-0160",
+      "program": "program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "2decc008a6316f4d453e0cc99aa55c9f34229ad7090011c0fcd39957e1602991"
+    },
+    {
+      "id": "FF-0161",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1177298,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "13cc5fe3c45a71971220dd68a50a92d52db20842160b3c0c0fd4ac4385fd091e"
+    },
+    {
+      "id": "FF-0161",
+      "program": "program",
+      "ok": true,
+      "value": 1177298,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ed6ab6f87eda9b0eb0566b62344f20369c78a5b44029993cf91bea26b509cb65"
+    },
+    {
+      "id": "FF-0162",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 344917,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "05e67e590c26894eaaee3e6c8a68cc36b91e1686178c0aba9d3d4be6ba1e2bfd"
+    },
+    {
+      "id": "FF-0162",
+      "program": "program",
+      "ok": true,
+      "value": 344917,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5fb0fcaa09066dfa4da7af95bb143c407b4e919621ce8e90ae185c78fc294c29"
+    },
+    {
+      "id": "FF-0163",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2005-06",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6152aebc24a495ef9f8150fa5f03749336c2306dfd837c69c81848dc10379563"
+    },
+    {
+      "id": "FF-0163",
+      "program": "program",
+      "ok": true,
+      "value": "2005-06",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "54e9c088b7ab2ef5de2722f0d9b555ac87b855230f2adcfe9f14da6befd92bca"
+    },
+    {
+      "id": "FF-0164",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "2011-12",
+        "2014-15",
+        "2015-16"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "745ca0fa4b164f749c74e1c7780b22a43b5a892ab12333643c2c863643bc30ee"
+    },
+    {
+      "id": "FF-0164",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "2011-12",
+        "2014-15",
+        "2015-16"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "59dd50a489086dca96d9d5a61c9fb8449af83123782ef96bf508c47fb76ac337"
+    },
+    {
+      "id": "FF-0165",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 66.03494739442361,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "82f598611f4a96e9fc61f4a34a9a3846d3833b88a1e9dc4d448e03d8f179c54b"
+    },
+    {
+      "id": "FF-0165",
+      "program": "program",
+      "ok": true,
+      "value": 66.03494739442361,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8d50e655df97b844fda0a1c9fd6829b27d752464577a1314d05d33f359df540e"
+    },
+    {
+      "id": "FF-0166",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "069bd5690d3b9393d2ea32417fbf16fb3616857d64144df756007fc33042d203"
+    },
+    {
+      "id": "FF-0166",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c5f02fbfc8185eac1d48a558eafeb74e2f972b64fac385d950c790695fd83a31"
+    },
+    {
+      "id": "FF-0167",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2016",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "638ec335227a7b998010b3829742e4df835f954a34bc06f94a74aa9617f8bf41"
+    },
+    {
+      "id": "FF-0167",
+      "program": "program",
+      "ok": true,
+      "value": "2016",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3142a6994be914b3c04a085db958f0e34801f64f1ad8f41f8935fb961c3fba1a"
+    },
+    {
+      "id": "FF-0168",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Males",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0d90fb52942cbea90a816928dee5ea0fecbba5d397368f4a9f5f0a403a7aae28"
+    },
+    {
+      "id": "FF-0168",
+      "program": "program",
+      "ok": true,
+      "value": "Males",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9fa470573837e9c451a6d91d02ed9b0ab2ddce129ab82a3dea0ac1561836fd51"
+    },
+    {
+      "id": "FF-0169",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 87.0,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "72f893702c91a63089aa1127236e95822b7c220400b95ba65861bf1ac6f40fd1"
+    },
+    {
+      "id": "FF-0169",
+      "program": "program",
+      "ok": true,
+      "value": 87.0,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3afc6d816dc64e6175efedd3951700ef6b12266fd43624a790483081ed94b3b5"
+    },
+    {
+      "id": "FF-0170",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Texas",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cff6320f64558099b6c7423d8837449c2e9f905f2a65e2b552bb679f54e0ec9b"
+    },
+    {
+      "id": "FF-0170",
+      "program": "program",
+      "ok": true,
+      "value": "Texas",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "13e778e49643989df52c0171ceab1a6b8ae51a6a5149e468b0c9f9f0f49f3bb1"
+    },
+    {
+      "id": "FF-0171",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "West Virginia",
+        "Tennessee",
+        "Wisconsin"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "2e49f9a3511b3a3e7ec639b307ee03a4eb84a886b1921607e0c9cff18cb2233c"
+    },
+    {
+      "id": "FF-0171",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "West Virginia",
+        "Tennessee",
+        "Wisconsin"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5c2f45154130c1300c648931a09ade9fe18bee4cd8d2e2bf4a078e9f6f04c72e"
+    },
+    {
+      "id": "FF-0172",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 5,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "497bfb8fbcc4caea1ff273cae68010c711ca081ab34f817766506d1c230d4277"
+    },
+    {
+      "id": "FF-0172",
+      "program": "program",
+      "ok": true,
+      "value": 5,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6597ee90114c5ed07989839357c7f7918c0f0df98d2366626547341c2f7d308c"
+    },
+    {
+      "id": "FF-0173",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 56923,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8aedd839310797a1fed7a39da08b985a20428745e497879087dd6c913eb4b83c"
+    },
+    {
+      "id": "FF-0173",
+      "program": "program",
+      "ok": true,
+      "value": 56923,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "05a8dfa8bd9d56922ed7731eeff8bc3b80be1cf3f7f590a474215088883050f3"
+    },
+    {
+      "id": "FF-0174",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "California ",
+        "Texas ",
+        "Florida "
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e85122765830d33dede81084a61ee43695a37e6675dc500dd145bd0606ddacb7"
+    },
+    {
+      "id": "FF-0174",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "California",
+        "Texas",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5d401e250bb3e7c7f189c8b1f1c3b3a5a559bf3afcf29a184e4f1d35c543ac9f"
+    },
+    {
+      "id": "FF-0175",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Pennsylvania",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0abe80d0a9149c9ae1edf845ed108f88184ae133283406bf3b11326f6967442f"
+    },
+    {
+      "id": "FF-0175",
+      "program": "program",
+      "ok": true,
+      "value": "Pennsylvania",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "a8a5c6e66026b12ce05e5463c3a921c0b22329ab3e2f54bebeda218ce0eb46a7"
+    },
+    {
+      "id": "FF-0176",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "bb88ac54b19703a994d9c0e223dd026ed5726f176dc3a09ada20df59313a5758"
+    },
+    {
+      "id": "FF-0176",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ef5bf0cc776a9b123166e15d98c08e5f10afc1b413014243ecbc93123951191f"
+    },
+    {
+      "id": "FF-0177",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 27632103,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d8925f30a3f65a63a050bfba1cf09dee2fa635ae4e04e0c763018b0b8eb32b73"
+    },
+    {
+      "id": "FF-0177",
+      "program": "program",
+      "ok": true,
+      "value": 27632103,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "493e081b5ae045738e5619aeafcbdd146bf3550234170133d8c3ab6961453456"
+    },
+    {
+      "id": "FF-0178",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "California",
+        "Texas",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "4737a888c6cddcd5cc0ff7120cdfbde6610e2406842d3586dd6b28dc01b2f7ec"
+    },
+    {
+      "id": "FF-0178",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "California",
+        "Texas",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "177cc38fd8f915a5bb72dd9f5bf9b7fb200e6f7b6499e0128a1042db3f2e53d9"
+    },
+    {
+      "id": "FF-0179",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 321645.101,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "aead47f6897fac68a4b238e76dc3b8f8362aeeb63e307e142d557c61281dbe77"
+    },
+    {
+      "id": "FF-0179",
+      "program": "program",
+      "ok": true,
+      "value": 321645.101,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "17ae9a28feb8a582500175e7e6982b51090f442b33e98925d8730ee76807d054"
+    },
+    {
+      "id": "FF-0180",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1076583,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "fcea1915e2af2d11499e7df14be7ca58c95aeea2eca7d4f4eb1b0c47e7f0a998"
+    },
+    {
+      "id": "FF-0180",
+      "program": "program",
+      "ok": true,
+      "value": 1076583,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "868a96bb0b3e354095407b55732ad80737235cca081329e5f32a73852b3f557e"
+    },
+    {
+      "id": "FF-0181",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 6096520,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "20a895bd2de2449bc037d72228b85a65b307c40c4e717a6f7c897cfcdf1bb051"
+    },
+    {
+      "id": "FF-0181",
+      "program": "program",
+      "ok": true,
+      "value": 6096520,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7743a664997ba6cd500c353e07644c9082c2322423ca6cc99afe2685e3543c32"
+    },
+    {
+      "id": "FF-0182",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Texas",
+        "California",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "12f751e2e1bb229d56099b747be3e7c812af43b70a201580d37e7b001fefd931"
+    },
+    {
+      "id": "FF-0182",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Texas",
+        "California",
+        "Florida"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d85f2607433b37385a8b6775bb9dcb407f6a384925f62824453de42511d57b6d"
+    },
+    {
+      "id": "FF-0183",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Florida",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9daca89c1d804520aee7b22257aafd6c7d7145c5c0bd73b8a0e6fb4cf4e36e51"
+    },
+    {
+      "id": "FF-0183",
+      "program": "program",
+      "ok": true,
+      "value": "Florida",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6c95d3b2c1ce597809f173b85bd639adb8b4b91404152be1901774f20209b37a"
+    },
+    {
+      "id": "FF-0184",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8944d8eaea83c33d421d18ec06db6ec590b416d9cef966f263301a177e4df31b"
+    },
+    {
+      "id": "FF-0184",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c81e9431149ace2911617fb6eadae25a7cba98f15ff0b00f300598c797c744b7"
+    },
+    {
+      "id": "FF-0185",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 39976695,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "676e14d4f59202df05746813cfa88ab0b0bd3a9e4644713d3433744cf6f57ae1"
+    },
+    {
+      "id": "FF-0185",
+      "program": "program",
+      "ok": true,
+      "value": 39976695,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8f6b4901963c8f112590e40f9bc46f34cf17c23d69cb3f8370728dbdc7e200ec"
+    },
+    {
+      "id": "FF-0186",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Chicago O'Hare International",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9816fb8ef94abfd9ef54b3f264d30681ce9a0b7476269051327ef20b8524796f"
+    },
+    {
+      "id": "FF-0186",
+      "program": "program",
+      "ok": true,
+      "value": "Chicago O'Hare International",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "28bee2051d5b3d9a6a5ae6c6a0adb90b383edf76b40a26d0b7dfc5a1621974af"
+    },
+    {
+      "id": "FF-0187",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Dallas-Fort Worth International",
+        "George Bush Intcntl/Houston",
+        "Austin-Bergstrom International"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8468ec5992a3710044dd79f23fb3e81e7b96d8224b489df418723e8e883a2c03"
+    },
+    {
+      "id": "FF-0187",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Dallas-Fort Worth International",
+        "George Bush Intcntl/Houston",
+        "Austin-Bergstrom International"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "981d96962cca7c467866bc069bca25dadda9dea9038ff3af3e4ca43f4819b1ea"
+    },
+    {
+      "id": "FF-0188",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 4,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "9dfc142fe6cdfd0fd53291cf30cef93efb25bab82c7060f4f28ba8cdf6cd19f2"
+    },
+    {
+      "id": "FF-0188",
+      "program": "program",
+      "ok": true,
+      "value": 4,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3fa4568137788fdb25dc184e395143755514050e780b17289f6072c424ba953c"
+    },
+    {
+      "id": "FF-0189",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 159949000,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "81dc59480f2ff75edcec433fe373ccaec6aa150145f635cca3092a2bd5ab18b0"
+    },
+    {
+      "id": "FF-0189",
+      "program": "program",
+      "ok": true,
+      "value": 159949000,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "97e0458261b0598ba18963b094d016a836cdeccb609df491b9f4e9ffa4a419ff"
+    },
+    {
+      "id": "FF-0190",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "fd0391f3e524d824492cf447fedef95380bb9972e2932a0ee104202257a20015"
+    },
+    {
+      "id": "FF-0190",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "11de35e81a086d2956e828c3131e6a982cfdede6e2375b10cca1a87b0f2910c1"
+    },
+    {
+      "id": "FF-0191",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "$25,000\nunder\n$50,000",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "bc7a8ff3a46c8dde6355a2c759cefa49cb91bcfa048b0d2968a20d9568e94a03"
+    },
+    {
+      "id": "FF-0191",
+      "program": "program",
+      "ok": true,
+      "value": "$25,000\nunder\n$50,000",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "eebdf3718c25dd593336081b92d0dfd509752427e38c8efe5da8ae6fa424d81c"
+    },
+    {
+      "id": "FF-0192",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "$10,000\nunder\n$25,000",
+        "$25,000\nunder\n$50,000",
+        "$1\nunder\n$10,000"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "1d659221103fc0b5e114489b1f1fad404a2491cc32efffc37b695193adc9a15a"
+    },
+    {
+      "id": "FF-0192",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "$10,000\nunder\n$25,000",
+        "$25,000\nunder\n$50,000",
+        "$1\nunder\n$10,000"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "fcc2efe98986ba3d1c512e34953f33d2abcd9daf5e5ad7bf7c70bf296a82c557"
+    },
+    {
+      "id": "FF-0193",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 361281,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c258589bd3ef8dd929e3a2e97a4f3e276ba13a23430d7eeb29d60a4a203b3dc1"
+    },
+    {
+      "id": "FF-0193",
+      "program": "program",
+      "ok": true,
+      "value": 361281,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "be0a4ccbfe52dd30a8f14f012499179fc74b0ec7f06cdaf0249dd32f0d0fb440"
+    },
+    {
+      "id": "FF-0194",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1335,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3f561aac7577fbec81f7cad3ae17b770df43b5106915ed6b5dd8576a29a0f538"
+    },
+    {
+      "id": "FF-0194",
+      "program": "program",
+      "ok": true,
+      "value": 1335,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3f561aac7577fbec81f7cad3ae17b770df43b5106915ed6b5dd8576a29a0f538"
+    },
+    {
+      "id": "FF-0195",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "W",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "dbd630a2e8c568cff28629b2d26c106e2b7d41827ce26ed9b0247206e3f41d6c"
+    },
+    {
+      "id": "FF-0195",
+      "program": "program",
+      "ok": true,
+      "value": "W",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "dbd630a2e8c568cff28629b2d26c106e2b7d41827ce26ed9b0247206e3f41d6c"
+    },
+    {
+      "id": "FF-0196",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "W",
+        "A",
+        "U"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e7d3f48896a596087fae0218ffe6a367e4872282d150904836fc55cc6c22822d"
+    },
+    {
+      "id": "FF-0196",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "A",
+        "U",
+        "W"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "2ed8c53f72993a216ffae94a92841c009446cb0662e6596d0b936a12b8f25b95"
+    },
+    {
+      "id": "FF-0197",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 29550,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d6bcef4be6dda00e946cfb6b25c653a47d5b4023bfaa383a318b2c5895b57718"
+    },
+    {
+      "id": "FF-0197",
+      "program": "program",
+      "ok": true,
+      "value": 29550,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d6bcef4be6dda00e946cfb6b25c653a47d5b4023bfaa383a318b2c5895b57718"
+    },
+    {
+      "id": "FF-0198",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Humboldt Park",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e8bf66ebd2102ec4e201c03092a676a24552ce4e1590e6794e27a53b17433e40"
+    },
+    {
+      "id": "FF-0198",
+      "program": "program",
+      "ok": true,
+      "value": "Humboldt Park",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "e8bf66ebd2102ec4e201c03092a676a24552ce4e1590e6794e27a53b17433e40"
+    },
+    {
+      "id": "FF-0199",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d08b795137f3cf8f64ef3f03fc8afa4c663b9b00f07f11971e00c5d9de129797"
+    },
+    {
+      "id": "FF-0199",
+      "program": "program",
+      "ok": true,
+      "value": "yes",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "3524a8515369bd4b159f659f92076c11644713193b2bd3acf4a970576c4c38b4"
+    },
+    {
+      "id": "FF-0200",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Bickerdike Apts.",
+        "Interstate Realty Management Co.",
+        "Urban Property Advisors, LLC"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cabe6a7a053bd46938a66c247ee7bd6afeb33fe6ef4bf9fe287fec9433b09979"
+    },
+    {
+      "id": "FF-0200",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Bickerdike Apts.",
+        "Interstate Realty Management Co.",
+        "Urban Property Advisors, LLC"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cabe6a7a053bd46938a66c247ee7bd6afeb33fe6ef4bf9fe287fec9433b09979"
+    },
+    {
+      "id": "FF-0201",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 90318,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "44a705cfd0264065fef1e9aa8f443cd49934c7a7f72bc82417641fe8904507a7"
+    },
+    {
+      "id": "FF-0201",
+      "program": "program",
+      "ok": true,
+      "value": 90318,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cc4a744d06be0dacace93ad775f657e2d5a6275b98299a14dd74ee4cc089b3b4"
+    },
+    {
+      "id": "FF-0202",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 8854,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f6684c7b7b91a603d0a0b10a318bb831bfb92b4d4db4c98075dd8c0fd35cc1db"
+    },
+    {
+      "id": "FF-0202",
+      "program": "program",
+      "ok": true,
+      "value": 8854,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "83cc5c87209a355948d3d710b977526e6158c8c5ffbee1219c41289c9349179f"
+    },
+    {
+      "id": "FF-0203",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 32,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6d9b8b9f079eb924f78afac3e18c9c93099d6e127e2f1fb352a31b355f4cf797"
+    },
+    {
+      "id": "FF-0203",
+      "program": "program",
+      "ok": true,
+      "value": 32,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "6d9b8b9f079eb924f78afac3e18c9c93099d6e127e2f1fb352a31b355f4cf797"
+    },
+    {
+      "id": "FF-0204",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2025",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c214e1332ae4e1952c79c30c767e96f8781e27a63c818a6e95f9bd61c059652a"
+    },
+    {
+      "id": "FF-0204",
+      "program": "program",
+      "ok": true,
+      "value": "2025",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d0c799470fcb7d1325f89ab98478f043284936e5378c708938d2183079ffee8d"
+    },
+    {
+      "id": "FF-0205",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 298,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ef458ea3a085ef1a989398621866aa0cae3c5ffb8e0193c61d1953d55cb64b91"
+    },
+    {
+      "id": "FF-0205",
+      "program": "program",
+      "ok": true,
+      "value": 298,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "ef458ea3a085ef1a989398621866aa0cae3c5ffb8e0193c61d1953d55cb64b91"
+    },
+    {
+      "id": "FF-0206",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Monroe",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f6b4f88786eecd6f573ec29eb25c44be5952265fa1a66183f8dbb0b1053d8e82"
+    },
+    {
+      "id": "FF-0206",
+      "program": "program",
+      "ok": true,
+      "value": "Monroe",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f6b4f88786eecd6f573ec29eb25c44be5952265fa1a66183f8dbb0b1053d8e82"
+    },
+    {
+      "id": "FF-0207",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "Rochester",
+        "New York",
+        "Brooklyn"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8d09c13c63c0a21596f2c2ece3c1eebaca2ec473ad66c616262871ae570d5143"
+    },
+    {
+      "id": "FF-0207",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "Rochester",
+        "New York",
+        "Brooklyn"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "8d09c13c63c0a21596f2c2ece3c1eebaca2ec473ad66c616262871ae570d5143"
+    },
+    {
+      "id": "FF-0208",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 350,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "445f33397e84a259a7c0cc8a2b76611535a50458b5f4c366dcd0d955ee7b52e3"
+    },
+    {
+      "id": "FF-0208",
+      "program": "program",
+      "ok": true,
+      "value": 350,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "4f7352f4cfe88be85fa6d9620220e33b0cd88d56752b3da9ab2aa5f69b2c4153"
+    },
+    {
+      "id": "FF-0209",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 5293670010.43,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "928ddd9fc085d6e24c4008a966bef41f9a41d8b2b369bee70ddf4fc21b09e82f"
+    },
+    {
+      "id": "FF-0209",
+      "program": "program",
+      "ok": true,
+      "value": 5293670010.43,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "1c9a990760a22b50fcc3493942ceb13580dc220429af8dc8d732dd4f1391c594"
+    },
+    {
+      "id": "FF-0210",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 42,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5afeac96d442c61f87a87477b44cbf145406f87c9fe9465fc4a15190b8f3cd6d"
+    },
+    {
+      "id": "FF-0210",
+      "program": "program",
+      "ok": true,
+      "value": 42,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5afeac96d442c61f87a87477b44cbf145406f87c9fe9465fc4a15190b8f3cd6d"
+    },
+    {
+      "id": "FF-0211",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Withholding",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "7271d6dc0c1e95430a7e4c734de9976da80e6699306d9c8694a2fa3b35508235"
+    },
+    {
+      "id": "FF-0211",
+      "program": "program",
+      "ok": true,
+      "value": "Withholding",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "cb03edbf2f213726046f8c34acfed0dfc6059f51e19b193179bca3fd53458c31"
+    },
+    {
+      "id": "FF-0212",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "5a92728bc05c0aeea6b71ddb413e6e96e8633ea3caef160de57c3344054d5736"
+    },
+    {
+      "id": "FF-0212",
+      "program": "program",
+      "ok": true,
+      "value": "no",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d3c2395b9e03307b9c3816d28c7875a62d28d7ff2c0e2714af4473a9fcc19ac1"
+    },
+    {
+      "id": "FF-0213",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": 1347,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0a58815f9084ae775713cdd80d62bd9b14d6e33186ce24f78c183f046a448741"
+    },
+    {
+      "id": "FF-0213",
+      "program": "program",
+      "ok": true,
+      "value": 1347,
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "0a58815f9084ae775713cdd80d62bd9b14d6e33186ce24f78c183f046a448741"
+    },
+    {
+      "id": "FF-0214",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "Cinnamon",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c35bd9ca32a88c1994b92358d7ef3d82def3e2466fa7c922d0966f0b6b7c87fe"
+    },
+    {
+      "id": "FF-0214",
+      "program": "program",
+      "ok": true,
+      "value": "Cinnamon",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "c35bd9ca32a88c1994b92358d7ef3d82def3e2466fa7c922d0966f0b6b7c87fe"
+    },
+    {
+      "id": "FF-0215",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": "2018-10-13",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "f1616a32cec14994e2866806ead3aed8993775a9e009acd8a2b46cf9ed03a3cd"
+    },
+    {
+      "id": "FF-0215",
+      "program": "program",
+      "ok": true,
+      "value": "2018-10-13",
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "776db7d41fb406a7664d20d59a77d1a55f6ddbbf38f89aee8dca95f9f039d45a"
+    },
+    {
+      "id": "FF-0216",
+      "program": "independent_check_program",
+      "ok": true,
+      "value": [
+        "14D",
+        "32E",
+        "14E"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d2f527e1c76c4c6d30d8db6c873035cdd742d2b25630586defa1bbe918d0384c"
+    },
+    {
+      "id": "FF-0216",
+      "program": "program",
+      "ok": true,
+      "value": [
+        "14D",
+        "32E",
+        "14E"
+      ],
+      "error": null,
+      "matches_gold": true,
+      "program_sha256": "d2f527e1c76c4c6d30d8db6c873035cdd742d2b25630586defa1bbe918d0384c"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+ "file": "ca_hcai_case_mix_index.xlsx",
+ "sheets": [
+  {
+   "name": "Case Mix Index",
+   "rows": 649,
+   "cols": 33,
+   "shown_whole": false
+  }
+ ],
+ "chars": 31097
+}

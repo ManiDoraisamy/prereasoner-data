@@ -1,0 +1,35 @@
+{
+ "id": "nces_digest_college_enrollment_recent_graduates",
+ "answers": [
+  {
+   "id": "nces_digest_college_enrollment_recent_graduates#1",
+   "answer": "66.03494739",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\ndata = df[pd.to_numeric(df[0], errors='coerce').notnull()].copy()\ndata[0] = data[0].astype(int)\nrow_2022 = data[data[0] == 2022]\n# Column T is index 19 (Female total college enrollment rate)\nresult = float(row_2022.iloc[0, 19])"
+  },
+  {
+   "id": "nces_digest_college_enrollment_recent_graduates#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\ndata = df[pd.to_numeric(df[0], errors='coerce').notnull()].copy()\ndata[0] = data[0].astype(int)\nrow_2022 = data[data[0] == 2022].iloc[0]\nmale_rate = float(row_2022[13]) # Column N is index 13 (Males total)\nfemale_rate = float(row_2022[19]) # Column T is index 19 (Females total)\nresult = 'yes' if female_rate > male_rate else 'no'"
+  },
+  {
+   "id": "nces_digest_college_enrollment_recent_graduates#3",
+   "answer": "2016",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\ndata = df[pd.to_numeric(df[0], errors='coerce').notnull()].copy()\ndata[0] = data[0].astype(int)\nsubset = data[(data[0] >= 2010) & (data[0] <= 2022)].copy()\n# Column H is index 7 (Total percent enrolled in college)\nsubset[7] = pd.to_numeric(subset[7])\nbest_year = subset.loc[subset[7].idxmax(), 0]\nresult = str(int(best_year))"
+  },
+  {
+   "id": "nces_digest_college_enrollment_recent_graduates#4",
+   "answer": "17",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\ndata = df[pd.to_numeric(df[0], errors='coerce').notnull()].copy()\ndata[0] = data[0].astype(int)\nsubset = data[(data[0] >= 2000) & (data[0] <= 2022)].copy()\n# Column H is index 7\nsubset[7] = pd.to_numeric(subset[7])\nresult = int((subset[7] > 65).sum())"
+  },
+  {
+   "id": "nces_digest_college_enrollment_recent_graduates#5",
+   "answer": "Males",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\ndata = df[pd.to_numeric(df[0], errors='coerce').notnull()].copy()\ndata[0] = data[0].astype(int)\nrow_2022 = data[data[0] == 2022].iloc[0]\n# Column P is index 15 (Males 2-year college)\n# Column V is index 21 (Females 2-year college)\nmale_2yr = float(row_2022[15])\nfemale_2yr = float(row_2022[21])\nresult = 'Males' if male_2yr > female_2yr else 'Females'"
+  },
+  {
+   "id": "nces_digest_college_enrollment_recent_graduates#6",
+   "answer": "806",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_college_enrollment_recent_graduates.xlsx', sheet_name='Digest 2023 Table 302.10', header=None)\ndata = df[pd.to_numeric(df[0], errors='coerce').notnull()].copy()\ndata[0] = data[0].astype(int)\nsubset = data[(data[0] >= 1960) & (data[0] <= 1962)].copy()\n# Column D is index 3 (Number of recent male high school completers)\nresult = float(pd.to_numeric(subset[3]).mean())"
+  }
+ ]
+}

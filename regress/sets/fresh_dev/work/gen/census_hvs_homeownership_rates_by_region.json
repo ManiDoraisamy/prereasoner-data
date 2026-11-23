@@ -1,0 +1,60 @@
+{
+ "id": "census_hvs_homeownership_rates_by_region",
+ "file": "census_hvs_homeownership_rates_by_region.xlsx",
+ "questions": [
+  {
+   "question": "What was the homeownership rate in the Midwest during the second quarter of 2020?",
+   "sheet": "Sheet1",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "71.4",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\ncurrent_year = None\nresult = None\nfor idx, row in df.iterrows():\n    val = str(row[0]).strip()\n    if re.match(r'^\\d{4}', val) and not any(r in val for r in ['United', 'Northeast', 'Midwest', 'South', 'West']):\n        current_year = val\n    elif current_year == '2020' and 'Midwest' in val:\n        result = float(str(row[2]).replace('*', '').strip())\n        break",
+   "qid": "census_hvs_homeownership_rates_by_region#1"
+  },
+  {
+   "question": "In the third quarter of 2024, by how many percentage points did the homeownership rate in the Midwest exceed that of the Northeast?",
+   "sheet": "Sheet1",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "7.9",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\ncurrent_year = None\nmw_val = None\nne_val = None\nfor idx, row in df.iterrows():\n    val = str(row[0]).strip()\n    if re.match(r'^\\d{4}', val) and not any(r in val for r in ['United', 'Northeast', 'Midwest', 'South', 'West']):\n        current_year = val\n    elif current_year == '2024':\n        if 'Midwest' in val:\n            mw_val = float(str(row[3]).replace('*', '').strip())\n        elif 'Northeast' in val:\n            ne_val = float(str(row[3]).replace('*', '').strip())\nresult = round(mw_val - ne_val, 1)",
+   "qid": "census_hvs_homeownership_rates_by_region#2"
+  },
+  {
+   "question": "What was the average national homeownership rate across all four quarters of 2023?",
+   "sheet": "Sheet1",
+   "kind": "average",
+   "answer_type": "number",
+   "answer": "65.9",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\ncurrent_year = None\nresult = None\nfor idx, row in df.iterrows():\n    val = str(row[0]).strip()\n    if re.match(r'^\\d{4}', val) and not any(r in val for r in ['United', 'Northeast', 'Midwest', 'South', 'West']):\n        current_year = val\n    elif current_year == '2023' and 'United States' in val:\n        quarters = [float(str(row[c]).replace('*', '').strip()) for c in [1, 2, 3, 4]]\n        result = round(sum(quarters) / len(quarters), 2)\n        break",
+   "qid": "census_hvs_homeownership_rates_by_region#3"
+  },
+  {
+   "question": "Did the homeownership rate in the South exceed 70 percent in the second quarter of 2020?",
+   "sheet": "Sheet1",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\ncurrent_year = None\nval_q2 = None\nfor idx, row in df.iterrows():\n    val = str(row[0]).strip()\n    if re.match(r'^\\d{4}', val) and not any(r in val for r in ['United', 'Northeast', 'Midwest', 'South', 'West']):\n        current_year = val\n    elif current_year == '2020' and 'South' in val:\n        val_q2 = float(str(row[2]).replace('*', '').strip())\n        break\nresult = 'yes' if val_q2 > 70 else 'no'",
+   "qid": "census_hvs_homeownership_rates_by_region#4"
+  },
+  {
+   "question": "In which year between 2015 and 2019 was the fourth-quarter homeownership rate for the United States the highest?",
+   "sheet": "Sheet1",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2019",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\ncurrent_year = None\ndata = {}\ntarget_years = ['2015', '2016', '2017', '2018', '2019']\nfor idx, row in df.iterrows():\n    val = str(row[0]).strip()\n    if re.match(r'^\\d{4}', val) and not any(r in val for r in ['United', 'Northeast', 'Midwest', 'South', 'West']):\n        current_year = val\n    elif current_year in target_years and 'United States' in val:\n        data[current_year] = float(str(row[4]).replace('*', '').strip())\nresult = max(data, key=data.get)",
+   "qid": "census_hvs_homeownership_rates_by_region#5"
+  },
+  {
+   "question": "Between 2010 and 2019, in how many years did the national homeownership rate in the fourth quarter reach at least 64 percent?",
+   "sheet": "Sheet1",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "8",
+   "program": "import pandas as pd\nimport re\n\ndf = pd.read_excel('census_hvs_homeownership_rates_by_region.xlsx', sheet_name='Sheet1', header=None)\ncurrent_year = None\ntarget_years = [str(y) for y in range(2010, 2020)]\ndata = {}\nfor idx, row in df.iterrows():\n    val = str(row[0]).strip()\n    if re.match(r'^\\d{4}', val) and not any(r in val for r in ['United', 'Northeast', 'Midwest', 'South', 'West']):\n        current_year = val\n    elif current_year in target_years and 'United States' in val:\n        data[current_year] = float(str(row[4]).replace('*', '').strip())\nresult = sum(1 for v in data.values() if v >= 64.0)",
+   "qid": "census_hvs_homeownership_rates_by_region#6"
+  }
+ ]
+}

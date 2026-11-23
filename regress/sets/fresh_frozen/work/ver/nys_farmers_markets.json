@@ -1,0 +1,35 @@
+{
+ "id": "nys_farmers_markets",
+ "answers": [
+  {
+   "id": "nys_farmers_markets#1",
+   "answer": "298",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nresult = int((df['SNAP'] == 'Y').sum())"
+  },
+  {
+   "id": "nys_farmers_markets#2",
+   "answer": "Monroe",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nresult = str(df['County'].value_counts().idxmax())"
+  },
+  {
+   "id": "nys_farmers_markets#3",
+   "answer": "Louise McNeilly",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nmatch = df[df['Market Name'] == \"Delaware Community Farmers' Market\"]\nresult = str(match['Contact'].iloc[0])"
+  },
+  {
+   "id": "nys_farmers_markets#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nresult = 'yes' if (df['FCC Accepted'] == 'Y').all() else 'no'"
+  },
+  {
+   "id": "nys_farmers_markets#5",
+   "answer": "[\"Rochester\", \"New York\", \"Brooklyn\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nresult = df['City'].value_counts().head(3).index.tolist()"
+  },
+  {
+   "id": "nys_farmers_markets#6",
+   "answer": "350",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nys_farmers_markets.csv')\nfmnp_count = (df['FMNP'] == 'Y').sum()\nsnap_count = (df['SNAP'] == 'Y').sum()\nresult = int(fmnp_count - snap_count)"
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "file": "cdc_births_fertility_rates_us.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 110,
+   "cols": 4,
+   "shown_whole": true
+  }
+ ],
+ "chars": 4978
+}

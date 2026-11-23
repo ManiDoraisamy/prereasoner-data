@@ -1,0 +1,60 @@
+{
+ "id": "nces_digest_degrees_conferred",
+ "file": "nces_digest_degrees_conferred.xlsx",
+ "questions": [
+  {
+   "question": "How many bachelor's degrees were conferred on females in the 2019-20 academic year?",
+   "sheet": "Digest 2022 Table 318.10",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1177298",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\nrow = df[df[0].astype(str).str.strip().str.startswith('2019-20')].iloc[0]\nresult = int(row[9])",
+   "qid": "nces_digest_degrees_conferred#1"
+  },
+  {
+   "question": "In the 2020-21 school year, how many more bachelor's degrees were awarded to women than to men?",
+   "sheet": "Digest 2022 Table 318.10",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "344917",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\nrow = df[df[0].astype(str).str.strip().str.startswith('2020-21')].iloc[0]\nresult = int(row[9]) - int(row[7])",
+   "qid": "nces_digest_degrees_conferred#2"
+  },
+  {
+   "question": "In which academic year did female students first earn more than 50 percent of all doctor's degrees conferred?",
+   "sheet": "Digest 2022 Table 318.10",
+   "kind": "date_period",
+   "answer_type": "name",
+   "answer": "2005-06",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\ndata = df.iloc[4:68].copy()\ndata[19] = pd.to_numeric(data[19], errors='coerce')\nfirst_row = data[data[19] > 50].iloc[0]\nresult = str(first_row[0]).strip()",
+   "qid": "nces_digest_degrees_conferred#3"
+  },
+  {
+   "question": "Were more than 2 million bachelor's degrees awarded in the 2018-19 academic year?",
+   "sheet": "Digest 2022 Table 318.10",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\nrow = df[df[0].astype(str).str.strip().str.startswith('2018-19')].iloc[0]\ntotal = float(row[5])\nresult = 'yes' if total > 2000000 else 'no'",
+   "qid": "nces_digest_degrees_conferred#4"
+  },
+  {
+   "question": "How many reported academic years prior to the 2000-01 school year had women receiving more than half of all master's degrees?",
+   "sheet": "Digest 2022 Table 318.10",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "14",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\ndata = df.iloc[4:68].copy()\nidx_2000 = data[data[0].astype(str).str.strip().str.startswith('2000-01')].index[0]\ndata_prior = data.loc[:idx_2000 - 1].copy()\ndata_prior[15] = pd.to_numeric(data_prior[15], errors='coerce')\nresult = int((data_prior[15] > 50).sum())",
+   "qid": "nces_digest_degrees_conferred#5"
+  },
+  {
+   "question": "Which three academic years saw the highest total number of associate's degrees conferred between 2010-11 and 2015-16?",
+   "sheet": "Digest 2022 Table 318.10",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"2011-12\", \"2014-15\", \"2015-16\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\ndata = df.iloc[4:68].copy()\ndata[0] = data[0].astype(str).str.strip()\nyears = ['2010-11', '2011-12', '2012-13', '2013-14', '2014-15', '2015-16']\nsub = data[data[0].isin(years)].copy()\nsub[1] = pd.to_numeric(sub[1], errors='coerce')\ntop3 = sub.sort_values(by=1, ascending=False).head(3)\nresult = top3[0].tolist()",
+   "qid": "nces_digest_degrees_conferred#6"
+  }
+ ]
+}

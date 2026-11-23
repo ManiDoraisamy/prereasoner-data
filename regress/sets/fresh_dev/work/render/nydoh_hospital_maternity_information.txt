@@ -1,0 +1,89 @@
+FILE nydoh_hospital_maternity_information.csv (CSV). pandas.read_csv gives 61725 data rows x 10 columns.
+Columns and pandas dtypes: Year (int64); Facility ID (float64); Hospital Name (str); Hospital County (str); Measure ID (int64); Measure Name (str); Denominator (str); Category (str); Count (int64); Percent (float64)
+(sheet too large to show whole; r1 is the CSV header line; r2 is pandas index 0; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Year | B=Facility ID | C=Hospital Name | D=Hospital County | E=Measure ID | F=Measure Name | G=Denominator | H=Category | I=Count | J=Percent
+r2: A=2023 | C=Rest of State - All Hospitals | D=Rest of State | E=4 | F=Low/Outlet Forceps Delivery | G=All Deliveries | H=Route & Method | I=218 | J=0.2
+r3: A=2023 | C=Rest of State - All Hospitals | D=Rest of State | E=5 | F=Mid Forceps Delivery | G=All Deliveries | H=Route & Method | I=17 | J=0
+r4: A=2023 | C=Rest of State - All Hospitals | D=Rest of State | E=12 | F=Analgesia | G=All Deliveries | H=Anesthesia & Analgesia | I=39115 | J=38.4
+r5: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=1 | F=Total Births | G=All Deliveries | H=All Deliveries | I=200975
+r6: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=2 | F=Forceps Delivery | G=All Deliveries | H=Route & Method | I=576 | J=0.3
+r7: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=6 | F=Internal Fetal Monitoring | G=All Deliveries | H=Characteristics of Labor & Delivery | I=9169 | J=4.6
+r8: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=7 | F=External Fetal Monitoring | G=All Deliveries | H=Characteristics of Labor & Delivery | I=186313 | J=92.8
+r9: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=8 | F=Induction - Artificial Rupture of Membranes | G=All Deliveries | H=Characteristics of Labor & Delivery | I=32913 | J=16.4
+r10: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=10 | F=Induction - Medicinal | G=All Deliveries | H=Characteristics of Labor & Delivery | I=59115 | J=29.4
+r11: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=11 | F=Augmented Labor | G=All Deliveries | H=Characteristics of Labor & Delivery | I=47422 | J=23.6
+r12: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=13 | F=Attended by Licensed Midwife | G=All Deliveries | H=Attendant | I=20739 | J=10.3
+r13: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=14 | F=Vaginal Births | G=All Deliveries | H=Route & Method | I=131310 | J=65.3
+r14: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=15 | F=Vaginal Birth After Prior Cesarean | G=Deliveries After Prior C-Section | H=Route & Method | I=4961 | J=14.3
+r15: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=16 | F=Total Births After Prior Cesarean | G=Deliveries After Prior C-Section | H=Route & Method | I=34597
+r16: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=17 | F=Breech Births Delivered Vaginally | G=Vaginal Deliveries | H=Fetal Presentation | I=423 | J=0.3
+r17: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=18 | F=Episiotomy | G=Vaginal Deliveries | H=Characteristics of Labor & Delivery | I=5337 | J=4.1
+r18: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=19 | F=General Anesthesia | G=Vaginal Deliveries | H=Anesthesia & Analgesia | I=431 | J=0.3
+r19: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=20 | F=Spinal Anesthesia | G=Vaginal Deliveries | H=Anesthesia & Analgesia | I=9150 | J=7
+r20: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=21 | F=Epidural Anesthesia | G=Vaginal Deliveries | H=Anesthesia & Analgesia | I=91178 | J=69.5
+r21: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=22 | F=Local/Other Anesthesia | G=Vaginal Deliveries | H=Anesthesia & Analgesia | I=8659 | J=6.6
+r22: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=23 | F=Paracervical Anesthesia | G=Vaginal Deliveries | H=Anesthesia & Analgesia | I=7 | J=0
+r23: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=24 | F=Pudendal Anesthesia | G=Vaginal Deliveries | H=Anesthesia & Analgesia | I=52 | J=0
+r24: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=25 | F=Cesarean Births | G=All Deliveries | H=Route & Method | I=69499 | J=34.6
+r25: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=26 | F=Primary Cesarean | G=Deliveries Without Prior C-Section | H=Route & Method | I=39863 | J=24
+r26: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=27 | F=Repeat Cesarean | G=Deliveries After Prior C-Section | H=Route & Method | I=29636 | J=85.7
+r27: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=28 | F=General Anesthesia | G=Cesarean Deliveries | H=Anesthesia & Analgesia | I=2619 | J=3.8
+r28: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=29 | F=Spinal Anesthesia | G=Cesarean Deliveries | H=Anesthesia & Analgesia | I=48209 | J=69.5
+r29: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=30 | F=Epidural/Local Anesthesia | G=Cesarean Deliveries | H=Anesthesia & Analgesia | I=17945 | J=25.9
+r30: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=31 | F=Fed Any Breast Milk | G=All Deliveries | H=Infant Feeding Method | I=154801 | J=87.8
+r31: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=32 | F=Fed Exclusively Breast Milk | G=All Deliveries | H=Infant Feeding Method | I=73167 | J=41.5
+r32: A=2023 | C=Statewide - All Hospitals | D=Statewide | E=33 | F=Breast Fed Infants Supplemented w/Formula | G=Infants Fed Any Breast Milk | H=Infant Feeding Method | I=81634 | J=52.7
+r33: A=2023 | B=1 | C=Albany Medical Center Hospital | D=ALBANY | E=1 | F=Total Births | G=All Deliveries | H=All Deliveries | I=2252
+r34: A=2023 | B=1 | C=Albany Medical Center Hospital | D=ALBANY | E=2 | F=Forceps Delivery | G=All Deliveries | H=Route & Method | I=2 | J=0.1
+r35: A=2023 | B=1 | C=Albany Medical Center Hospital | D=ALBANY | E=4 | F=Low/Outlet Forceps Delivery | G=All Deliveries | H=Route & Method | I=2 | J=0.1
+... sampled rows:
+r9242: A=2021 | B=977 | C=Cayuga Medical Center at Ithaca | D=TOMPKINS | E=16 | F=Total Births After Prior Cesarean | G=Deliveries After Prior C-Section | H=Route & Method | I=115
+r11445: A=2020 | B=339 | C=United Memorial Medical Center North Street Campus | D=GENESEE | E=7 | F=External Fetal Monitoring | G=All Deliveries | H=Characteristics of Labor & Delivery | I=427 | J=89.1
+r11833: A=2020 | B=513 | C=Mercy Hospital | D=NASSAU | E=24 | F=Pudendal Anesthesia | G=Vaginal Deliveries | H=Anesthesia & Analgesia | I=0 | J=0
+r15022: A=2019 | B=245 | C=Stony Brook University Hospital | D=SUFFOLK | E=10 | F=Induction - Medicinal | G=All Deliveries | H=Characteristics of Labor & Delivery | I=685 | J=18.5
+r19642: A=2018 | B=678 | C=F.F. Thompson Hospital | D=ONTARIO | E=32 | F=Fed Exclusively Breast Milk | G=All Deliveries | H=Infant Feeding Method | I=460 | J=69.6
+r20951: A=2018 | B=1286 | C=Brookdale Hospital Medical Center | D=KINGS | E=29 | F=Spinal Anesthesia | G=Cesarean Deliveries | H=Anesthesia & Analgesia | I=158 | J=52.7
+r21479: A=2018 | B=1626 | C=Elmhurst Hospital Center | D=QUEENS | E=25 | F=Cesarean Births | G=All Deliveries | H=Route & Method | I=732 | J=31.7
+r21524: A=2018 | B=1629 | C=Jamaica Hospital Medical Center | D=QUEENS | E=14 | F=Vaginal Births | G=All Deliveries | H=Route & Method | I=1222 | J=60.5
+r23099: A=2017 | B=565 | C=Eastern Niagara Hospital - Lockport Division | D=NIAGARA | E=6 | F=Internal Fetal Monitoring | G=All Deliveries | H=Characteristics of Labor & Delivery | I=0 | J=0
+r24489: A=2017 | B=1153 | C=Wyoming County Community Hospital | D=WYOMING | E=33 | F=Breast Fed Infants Supplemented w/Formula | G=Infants Fed Any Breast Milk | H=Infant Feeding Method | I=15 | J=12.8
+r26297: A=2016 | B=325 | C=The University of Vermont Health Network - Alice Hyde Medical Center | D=FRANKLIN | E=4 | F=Low/Outlet Forceps Delivery | G=All Deliveries | H=Route & Method | I=7 | J=3.1
+r26418: A=2016 | B=367 | C=Samaritan Medical Center | D=JEFFERSON | E=33 | F=Breast Fed Infants Supplemented w/Formula | G=Infants Fed Any Breast Milk | H=Infant Feeding Method | I=226 | J=16.9
+r29382: A=2016 | B=3975 | C=New York-Presbyterian Hospital - Allen Hospital | D=NEW YORK | E=14 | F=Vaginal Births | G=All Deliveries | H=Route & Method | I=1388 | J=67.6
+r30918: A=2015 | B=678 | C=F.F. Thompson Hospital | D=ONTARIO | E=31 | F=Fed Any Breast Milk | G=All Deliveries | H=Infant Feeding Method | I=525 | J=85.1
+r34875: A=2014 | B=746 | C=Mary Imogene Bassett Hospital | D=OTSEGO | E=13 | F=Attended by Licensed Midwife | G=All Deliveries | H=Attendant | I=273 | J=31
+r34982: A=2014 | B=776 | C=Montefiore Nyack | D=ROCKLAND | E=27 | F=Repeat Cesarean | G=Deliveries After Prior C-Section | H=Route & Method | I=275 | J=83.1
+r35776: A=2014 | B=1122 | C=New York-Presbyterian Westchester | D=WESTCHESTER | E=15 | F=Vaginal Birth After Prior Cesarean | G=Deliveries After Prior C-Section | H=Route & Method | I=6 | J=1.7
+r36714: A=2014 | B=1630 | C=Long Island Jewish Medical Center | D=QUEENS | E=20 | F=Spinal Anesthesia | G=Vaginal Deliveries | H=Anesthesia & Analgesia | I=42 | J=0.8
+r37149: A=2013 | B=43 | C=Our Lady of Lourdes Memorial Hospital | D=BROOME | E=17 | F=Breech Births Delivered Vaginally | G=Vaginal Deliveries | H=Fetal Presentation | I=2 | J=0.3
+r38925: A=2013 | B=798 | C=Claxton-Hepburn Medical Center | D=ST LAWRENCE | E=26 | F=Primary Cesarean | G=Deliveries Without Prior C-Section | H=Route & Method | I=89 | J=35.6
+r42282: A=2012 | B=574 | C=Niagara Falls Memorial Medical Center | D=NIAGARA | E=31 | F=Fed Any Breast Milk | G=All Deliveries | H=Infant Feeding Method | I=333 | J=55.3
+r43370: A=2012 | B=977 | C=Cayuga Medical Center at Ithaca | D=TOMPKINS | E=1 | F=Total Births | G=All Deliveries | H=All Deliveries | I=898
+r45910: A=2011 | B=411 | C=Rochester General Hospital | D=MONROE | E=28 | F=General Anesthesia | G=Cesarean Deliveries | H=Anesthesia & Analgesia | I=43 | J=5.6
+r47077: A=2011 | B=818 | C=Saratoga Hospital | D=SARATOGA | E=17 | F=Breech Births Delivered Vaginally | G=Vaginal Deliveries | H=Fetal Presentation | I=0 | J=0
+r47496: A=2011 | B=977 | C=Cayuga Medical Center at Ithaca | D=TOMPKINS | E=33 | F=Breast Fed Infants Supplemented w/Formula | G=Infants Fed Any Breast Milk | H=Infant Feeding Method | I=121 | J=16.4
+r47705: A=2011 | B=1097 | C=SJRH - St Johns Division | D=WESTCHESTER | E=25 | F=Cesarean Births | G=All Deliveries | H=Route & Method | I=769 | J=48.8
+r47872: A=2011 | B=1165 | C=Jacobi Medical Center | D=BRONX | E=7 | F=External Fetal Monitoring | G=All Deliveries | H=Characteristics of Labor & Delivery | I=1417 | J=67.8
+r52842: A=2010 | B=1630 | C=Long Island Jewish Medical Center | D=QUEENS | E=15 | F=Vaginal Birth After Prior Cesarean | G=Deliveries After Prior C-Section | H=Route & Method | I=92 | J=11.3
+r53285: A=2009 | B=43 | C=Our Lady of Lourdes Memorial Hospital | D=BROOME | E=20 | F=Spinal Anesthesia | G=Vaginal Deliveries | H=Anesthesia & Analgesia | I=8 | J=1
+r55018: A=2009 | B=739 | C=A.O. Fox Memorial Hospital | D=OTSEGO | E=17 | F=Breech Births Delivered Vaginally | G=Vaginal Deliveries | H=Fetal Presentation | I=1 | J=0.4
+... last rows:
+r61719: A=2008 | B=3975 | C=New York-Presbyterian Hospital - Allen Hospital | D=NEW YORK | E=26 | F=Primary Cesarean | G=Deliveries Without Prior C-Section | H=Route & Method | I=709 | J=32.3
+r61720: A=2008 | B=3975 | C=New York-Presbyterian Hospital - Allen Hospital | D=NEW YORK | E=27 | F=Repeat Cesarean | G=Deliveries After Prior C-Section | H=Route & Method | I=156 | J=88.1
+r61721: A=2008 | B=3975 | C=New York-Presbyterian Hospital - Allen Hospital | D=NEW YORK | E=28 | F=General Anesthesia | G=Cesarean Deliveries | H=Anesthesia & Analgesia | I=45 | J=5.2
+r61722: A=2008 | B=3975 | C=New York-Presbyterian Hospital - Allen Hospital | D=NEW YORK | E=29 | F=Spinal Anesthesia | G=Cesarean Deliveries | H=Anesthesia & Analgesia | I=492 | J=56.9
+r61723: A=2008 | B=3975 | C=New York-Presbyterian Hospital - Allen Hospital | D=NEW YORK | E=30 | F=Epidural/Local Anesthesia | G=Cesarean Deliveries | H=Anesthesia & Analgesia | I=316 | J=36.5
+r61724: A=2008 | B=3975 | C=New York-Presbyterian Hospital - Allen Hospital | D=NEW YORK | E=31 | F=Fed Any Breast Milk | G=All Deliveries | H=Infant Feeding Method | I=2294 | J=99.7
+r61725: A=2008 | B=3975 | C=New York-Presbyterian Hospital - Allen Hospital | D=NEW YORK | E=32 | F=Fed Exclusively Breast Milk | G=All Deliveries | H=Infant Feeding Method | I=36 | J=1.6
+r61726: A=2008 | B=3975 | C=New York-Presbyterian Hospital - Allen Hospital | D=NEW YORK | E=33 | F=Breast Fed Infants Supplemented w/Formula | G=Infants Fed Any Breast Milk | H=Infant Feeding Method | I=2258 | J=98.4
+... column profiles (data rows below Excel row 1):
+  A [Year]: {"non_empty": 61725, "numeric": 61725, "min": "2008", "max": "2023", "sum": "124390123", "distinct": 16, "value_counts": {"2008": 4338, "2009": 4245, "2010": 4124, "2011": 4096, "2012": 4003, "2013": 3910, "2014": 3820, "2015": 3789, "2016": 3789, "2017": 3758, "2018": 3730, "2019": 3730, "2020": 3668, "2021": 3637, "2022": 3544, "2023": 3544}}
+  B [Facility ID]: {"non_empty": 61229, "numeric": 61229, "min": "1", "max": "15684", "sum": "55374655", "distinct": 147, "top_values": {"1": 496, "1005": 496, "1028": 496, "103": 496, "1039": 496, "1045": 496}}
+  C [Hospital Name]: {"non_empty": 61725, "distinct": 148, "top_values": {"Adirondack Medical Center-Saranac Lake Site": 496, "Albany Medical Center Hospital": 496, "Arnot Ogden Medical Center": 496, "Auburn Community Hospital": 496, "Canton-Potsdam Hospital": 496, "Carthage Area Hospital Inc": 496}}
+  D [Hospital County]: {"non_empty": 61725, "distinct": 54, "top_values": {"NEW YORK": 5292, "KINGS": 4648, "SUFFOLK": 3999, "WESTCHESTER": 3968, "QUEENS": 3640, "BRONX": 3136}}
+  E [Measure ID]: {"non_empty": 61725, "numeric": 61725, "min": "1", "max": "33", "sum": "1113339", "distinct": 31, "top_values": {"1": 2052, "10": 2052, "11": 2052, "13": 2052, "14": 2052, "15": 2052}}
+  F [Measure Name]: {"non_empty": 61725, "distinct": 29, "value_counts": {"General Anesthesia": 4104, "Spinal Anesthesia": 4104, "Attended by Licensed Midwife": 2052, "Augmented Labor": 2052, "Breast Fed Infants Supplemented w/Formula": 2052, "Breech Births Delivered Vaginally": 2052, "Cesarean Births": 2052, "Epidural Anesthesia": 2052, "Epidural/Local Anesthesia": 2052, "Episiotomy": 2052, "External Fetal Monitoring": 2052, "Fed Any Breast Milk": 2052, "Fed Exclusively Breast Milk": 2052, "Forceps Delivery": 2052, "Induction - Artificial Rupture of Membranes": 2052, "Induction - Medicinal": 2052, "Internal Fetal Monitoring": 2052, "Local/Other Anesthesia": 2052, "Paracervical Anesthesia": 2052, "Primary Cesarean": 2052, "Pudendal Anesthesia": 2052, "Repeat Cesarean": 2052, "Total Births": 2052, "Total Births After Prior Cesarean": 2052, "Vaginal Birth After Prior Cesarean": 2052, "Vaginal Births": 2052, "Analgesia": 1423, "Low/Outlet Forceps Delivery": 1423, "Mid Forceps Delivery": 1423}}
+  G [Denominator]: {"non_empty": 61725, "distinct": 6, "value_counts": {"All Deliveries": 28893, "Vaginal Deliveries": 16416, "Cesarean Deliveries": 6156, "Deliveries After Prior C-Section": 6156, "Deliveries Without Prior C-Section": 2052, "Infants Fed Any Breast Milk": 2052}}
+  H [Category]: {"non_empty": 61725, "distinct": 7, "value_counts": {"Anesthesia & Analgesia": 19891, "Route & Method": 17210, "Characteristics of Labor & Delivery": 12312, "Infant Feeding Method": 6156, "All Deliveries": 2052, "Attendant": 2052, "Fetal Presentation": 2052}}
+  I [Count]: {"non_empty": 61725, "numeric": 61725, "min": "0", "max": "249970", "sum": "49496222", "distinct": 4054, "top_values": {"0": 8591, "1": 2244, "2": 1344, "3": 937, "4": 783, "5": 653}}
+  J [Percent]: {"non_empty": 57620, "numeric": 57620, "min": "0", "max": "103.5", "sum": "1590798.9", "distinct": 1007, "top_values": {"0": 8997, "0.1": 1565, "0.2": 1169, "0.3": 950, "0.4": 740, "0.5": 523}}

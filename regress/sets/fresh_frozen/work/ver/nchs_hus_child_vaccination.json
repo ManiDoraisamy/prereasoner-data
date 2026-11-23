@@ -1,0 +1,35 @@
+{
+ "id": "nchs_hus_child_vaccination",
+ "answers": [
+  {
+   "id": "nchs_hus_child_vaccination#1",
+   "answer": "80",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_child_vaccination.xlsx', sheet_name='A', header=None)\n# Find row for 'Hib (full series)' and 'Total' under it\n# r89 is 'Hib (full series)\\7', r90 is 'Total'\nhib_row_idx = df[df[0].str.contains('Hib \\(full series\\)', na=False)].index[0]\ntotal_row_idx = hib_row_idx + 1\n# Column H is 2016 (index 7)\nval = df.iloc[total_row_idx, 7]\nresult = float(val)"
+  },
+  {
+   "id": "nchs_hus_child_vaccination#2",
+   "answer": "13.3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_child_vaccination.xlsx', sheet_name='A', header=None)\ndtp_idx = df[df[0].str.contains('DTP/DT/DTaP', na=False)].index[0]\n# Look for Below poverty and At or above poverty under DTP section\nsub = df.iloc[dtp_idx:dtp_idx+20]\nbelow = float(sub[sub[0].str.strip() == 'Below poverty'].iloc[0, 7])\nabove = float(sub[sub[0].str.strip() == 'At or above poverty'].iloc[0, 7])\nresult = round(above - below, 2)"
+  },
+  {
+   "id": "nchs_hus_child_vaccination#3",
+   "answer": "2010",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_child_vaccination.xlsx', sheet_name='A', header=None)\ncombined_idx = df[df[0].str.contains('Combined 7-vaccine series', na=False)].index[0]\ntotal_row = df.iloc[combined_idx + 1]\nyears = [str(int(y)) for y in df.iloc[4, 1:8]]\nrates = [float(x) for x in total_row[1:8]]\nmin_year = years[rates.index(min(rates))]\nresult = str(min_year)"
+  },
+  {
+   "id": "nchs_hus_child_vaccination#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_child_vaccination.xlsx', sheet_name='A', header=None)\npolio_idx = df[df[0].str.contains('Polio \\(3 doses or more\\)', na=False)].index[0]\ntotal_val = float(df.iloc[polio_idx + 1, 7])\nresult = \"yes\" if total_val > 90 else \"no\""
+  },
+  {
+   "id": "nchs_hus_child_vaccination#5",
+   "answer": "[\"White only\", \"Asian only\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_child_vaccination.xlsx', sheet_name='A', header=None)\npolio_idx = df[df[0].str.contains('Polio \\(3 doses or more\\)', na=False)].index[0]\n# Race/ethnicity groups under Polio: rows after 'Not Hispanic or Latino' up to Hispanic or Latino\n# Rows 55 to 62: White only, Black or African American only, American Indian or Alaska Native only, Asian only, Native Hawaiian or Other Pacific Islander only, 2 or more races, Hispanic or Latino\\2\ngroups = []\nfor r in range(polio_idx + 3, polio_idx + 10):\n    name = str(df.iloc[r, 0]).split('\\\\')[0].strip()\n    val = df.iloc[r, 7]\n    if val != '*' and pd.notna(val):\n        groups.append((df.iloc[r, 0], float(val)))\n\ngroups.sort(key=lambda x: x[1], reverse=True)\nresult = [groups[0][0], groups[1][0]]"
+  },
+  {
+   "id": "nchs_hus_child_vaccination#6",
+   "answer": "73.07",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nchs_hus_child_vaccination.xlsx', sheet_name='A', header=None)\nhepa_idx = df[df[0].str.contains('Hepatitis A \\(2 doses or more\\)', na=False)].index[0]\ntotal_row = df.iloc[hepa_idx + 1, 1:8].astype(float)\nresult = round(float(total_row.mean()), 2)"
+  }
+ ]
+}

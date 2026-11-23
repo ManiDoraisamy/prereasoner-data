@@ -1,0 +1,158 @@
+{
+ "dataset": "complex-unsold-products",
+ "kind": "own-rows",
+ "uploads": [
+  {
+   "name": "products",
+   "columns": [
+    "product_id",
+    "product_name",
+    "category"
+   ],
+   "rows": 5
+  },
+  {
+   "name": "purchases",
+   "columns": [
+    "purchase_id",
+    "customer_name",
+    "city",
+    "product_name"
+   ],
+   "rows": 6
+  }
+ ],
+ "normalized": [
+  {
+   "name": "products",
+   "upload": "products",
+   "columns": [
+    "product_id",
+    "product_name",
+    "category"
+   ]
+  },
+  {
+   "name": "purchases",
+   "upload": "purchases",
+   "columns": [
+    "purchase_id",
+    "customer_name",
+    "city",
+    "product_name"
+   ]
+  }
+ ],
+ "links_between_uploads": [
+  {
+   "from_table": "purchases",
+   "from_col": "product_name",
+   "to_table": "products",
+   "to_col": "product_name",
+   "conf": 0.9,
+   "inclusion": 1.0
+  }
+ ],
+ "routes": [
+  {
+   "upload": "products",
+   "table": "products",
+   "column": "category",
+   "column_index": 2,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "products connected to knowledgebase",
+   "bridged": true,
+   "cells": 3,
+   "cells_matched": 2
+  },
+  {
+   "upload": "products",
+   "table": "products",
+   "column": "product_name",
+   "column_index": 1,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "products connected to knowledgebase",
+   "bridged": true,
+   "cells": 5,
+   "cells_matched": 4
+  },
+  {
+   "upload": "purchases",
+   "table": "purchases",
+   "column": "city",
+   "column_index": 2,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "purchases connected to knowledgebase",
+   "bridged": true,
+   "cells": 3,
+   "cells_matched": 3
+  }
+ ],
+ "entity_columns": [
+  {
+   "upload": "products",
+   "table": "products",
+   "column": "category",
+   "column_index": 2,
+   "label": "musical group",
+   "type_qid": "Q215380",
+   "cells": 3,
+   "cells_matched_exactly": 2,
+   "routed_as_place": true,
+   "bridged": false,
+   "cells_matched": 0,
+   "has_country": false
+  },
+  {
+   "upload": "purchases",
+   "table": "purchases",
+   "column": "city",
+   "column_index": 2,
+   "label": "musical group",
+   "type_qid": "Q215380",
+   "cells": 3,
+   "cells_matched_exactly": 2,
+   "routed_as_place": true,
+   "bridged": false,
+   "cells_matched": 0,
+   "has_country": false
+  },
+  {
+   "upload": "purchases",
+   "table": "purchases",
+   "column": "customer_name",
+   "column_index": 1,
+   "label": "musical group",
+   "type_qid": "Q215380",
+   "cells": 5,
+   "cells_matched_exactly": 4,
+   "routed_as_place": false,
+   "bridged": true,
+   "cells_matched": 4,
+   "has_country": false,
+   "bridge": "purchases connected to knowledgebase",
+   "entity_table": "musical group"
+  }
+ ],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 32,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 32,
+  "country": 209,
+  "exchange_rate": 0,
+  "musical group": 4,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 19.1
+}

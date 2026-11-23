@@ -1,0 +1,35 @@
+{
+ "id": "census_population_projections_2023",
+ "answers": [
+  {
+   "id": "census_population_projections_2023#1",
+   "answer": "2080",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_population_projections_2023.xlsx', sheet_name='Main series', header=None)\ndata = df.iloc[7:86, [0, 1]].dropna()\ndata.columns = ['Year', 'Population']\ndata['Year'] = data['Year'].astype(int)\ndata['Population'] = pd.to_numeric(data['Population'])\npeak_year = data.loc[data['Population'].idxmax(), 'Year']\nresult = str(peak_year)"
+  },
+  {
+   "id": "census_population_projections_2023#2",
+   "answer": "29134",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_population_projections_2023.xlsx', sheet_name='Main series', header=None)\ndata = df.iloc[7:86, [0, 4]].dropna()\ndata.columns = ['Year', 'Births']\ndata['Year'] = pd.to_numeric(data['Year'])\ndata['Births'] = pd.to_numeric(data['Births'])\nbirths_subset = data[(data['Year'] >= 2023) & (data['Year'] <= 2030)]\nresult = int(births_subset['Births'].sum())"
+  },
+  {
+   "id": "census_population_projections_2023#3",
+   "answer": "360639",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_population_projections_2023.xlsx', sheet_name='Main series', header=None)\ndata = df.iloc[7:86, [0, 1]].dropna()\ndata.columns = ['Year', 'Population']\ndata['Year'] = pd.to_numeric(data['Year'])\ndata['Population'] = pd.to_numeric(data['Population'])\nresult = int(data.loc[data['Year'] == 2050, 'Population'].values[0])"
+  },
+  {
+   "id": "census_population_projections_2023#4",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_population_projections_2023.xlsx', sheet_name='Main series', header=None)\ndata = df.iloc[7:86, [0, 7]].dropna()\ndata.columns = ['Year', 'Migration']\ndata['Year'] = pd.to_numeric(data['Year'])\ndata['Migration'] = pd.to_numeric(data['Migration'])\nsubset = data[(data['Year'] >= 2023) & (data['Year'] <= 2100)]\nresult = 'yes' if (subset['Migration'] >= 1000).any() else 'no'"
+  },
+  {
+   "id": "census_population_projections_2023#5",
+   "answer": "20",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_population_projections_2023.xlsx', sheet_name='Main series', header=None)\ndata = df.iloc[7:86, [0, 2]].dropna()\ndata.columns = ['Year', 'Numeric_Change']\ndata['Year'] = pd.to_numeric(data['Year'])\ndata['Numeric_Change'] = pd.to_numeric(data['Numeric_Change'])\nsubset = data[(data['Year'] >= 2023) & (data['Year'] <= 2100)]\nresult = int((subset['Numeric_Change'] < 0).sum())"
+  },
+  {
+   "id": "census_population_projections_2023#6",
+   "answer": "133",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_population_projections_2023.xlsx', sheet_name='Main series', header=None)\ndata = df.iloc[7:86, [0, 4, 5]].dropna()\ndata.columns = ['Year', 'Births', 'Deaths']\ndata['Year'] = pd.to_numeric(data['Year'])\ndata['Births'] = pd.to_numeric(data['Births'])\ndata['Deaths'] = pd.to_numeric(data['Deaths'])\nrow_2040 = data[data['Year'] == 2040].iloc[0]\nresult = int(row_2040['Deaths'] - row_2040['Births'])"
+  }
+ ]
+}

@@ -1,0 +1,30 @@
+{
+ "id": "census_county_population_estimates_2023",
+ "answers": [
+  {
+   "id": "census_county_population_estimates_2023#1",
+   "answer": "334914895",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_county_population_estimates_2023.xlsx', sheet_name='CO-EST2023-POP', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'United States'].iloc[0]\n# Col F is index 5 (2023)\nresult = int(us_row[5])"
+  },
+  {
+   "id": "census_county_population_estimates_2023#2",
+   "answer": "3387962",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_county_population_estimates_2023.xlsx', sheet_name='CO-EST2023-POP', header=None)\nus_row = df[df[0].astype(str).str.strip() == 'United States'].iloc[0]\n# Col C is index 2 (2020), Col F is index 5 (2023)\nresult = int(us_row[5]) - int(us_row[2])"
+  },
+  {
+   "id": "census_county_population_estimates_2023#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_county_population_estimates_2023.xlsx', sheet_name='CO-EST2023-POP', header=None)\nrow = df[df[0].astype(str).str.replace('.', '', regex=False).str.strip() == 'Barbour County, Alabama'].iloc[0]\npop_2020 = float(row[2])\npop_2023 = float(row[5])\nresult = 'yes' if pop_2023 < pop_2020 else 'no'"
+  },
+  {
+   "id": "census_county_population_estimates_2023#4",
+   "answer": "2021",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_county_population_estimates_2023.xlsx', sheet_name='CO-EST2023-POP', header=None)\nrow = df[df[0].astype(str).str.replace('.', '', regex=False).str.strip() == 'Bibb County, Alabama'].iloc[0]\nyears = ['2020', '2021', '2022', '2023']\nvals = [float(row[i]) for i in [2, 3, 4, 5]]\nmax_year = years[vals.index(max(vals))]\nresult = max_year"
+  },
+  {
+   "id": "census_county_population_estimates_2023#5",
+   "answer": "59546.5",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_county_population_estimates_2023.xlsx', sheet_name='CO-EST2023-POP', header=None)\nrow = df[df[0].astype(str).str.replace('.', '', regex=False).str.strip() == 'Autauga County, Alabama'].iloc[0]\nvals = [float(row[i]) for i in [2, 3, 4, 5]]\nresult = sum(vals) / len(vals)"
+  }
+ ]
+}

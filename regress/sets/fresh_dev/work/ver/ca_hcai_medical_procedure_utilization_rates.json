@@ -1,0 +1,35 @@
+{
+ "id": "ca_hcai_medical_procedure_utilization_rates",
+ "answers": [
+  {
+   "id": "ca_hcai_medical_procedure_utilization_rates#1",
+   "answer": "26.4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nmatch = df[\n    (df['Year'] == 2024) &\n    (df['County'].astype(str).str.upper() == 'STATEWIDE') &\n    (df['Procedure'] == 'Uncomplicated Cesarean Delivery')\n]\nresult = float(match['Rate'].iloc[0])"
+  },
+  {
+   "id": "ca_hcai_medical_procedure_utilization_rates#2",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nhosp_2020 = df[(df['Year'] == 2020) & (df['Hospital'] == 'Sutter Davis Hospital')]\nvbac_rate = hosp_2020[hosp_2020['Procedure'] == 'Uncomplicated VBAC']['Rate'].iloc[0]\ncesarean_rate = hosp_2020[hosp_2020['Procedure'] == 'Uncomplicated Cesarean Delivery']['Rate'].iloc[0]\nresult = 'yes' if float(vbac_rate) > float(cesarean_rate) else 'no'"
+  },
+  {
+   "id": "ca_hcai_medical_procedure_utilization_rates#3",
+   "answer": "2020",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\ntop_year = df['Year'].value_counts().idxmax()\nresult = str(int(top_year))"
+  },
+  {
+   "id": "ca_hcai_medical_procedure_utilization_rates#4",
+   "answer": "Los Angeles",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nresult = df[df['County'] != 'STATEWIDE']['County'].value_counts().idxmax()"
+  },
+  {
+   "id": "ca_hcai_medical_procedure_utilization_rates#5",
+   "answer": "643",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\nsub = df[(df['Year'] == 2020) & (df['Hospital'] == 'Adventist Health and Rideout')]\nresult = int(pd.to_numeric(sub['Count']).sum())"
+  },
+  {
+   "id": "ca_hcai_medical_procedure_utilization_rates#6",
+   "answer": "[\"Los Angeles\", \"San Bernardino\", \"Riverside\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_medical_procedure_utilization_rates.xlsx', sheet_name='Sheet1')\ntop_3 = df[df['County'] != 'STATEWIDE']['County'].value_counts().head(3).index.tolist()\nresult = top_3"
+  }
+ ]
+}

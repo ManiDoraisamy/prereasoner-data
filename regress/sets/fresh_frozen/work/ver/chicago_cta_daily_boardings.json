@@ -1,0 +1,35 @@
+{
+ "id": "chicago_cta_daily_boardings",
+ "answers": [
+  {
+   "id": "chicago_cta_daily_boardings#1",
+   "answer": "361281",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_cta_daily_boardings.csv')\nrow = df[df['service_date'] == '12/25/2007']\nresult = int(row['total_rides'].iloc[0])"
+  },
+  {
+   "id": "chicago_cta_daily_boardings#2",
+   "answer": "1335",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_cta_daily_boardings.csv')\nresult = int((df['day_type'] == 'A').sum())"
+  },
+  {
+   "id": "chicago_cta_daily_boardings#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_cta_daily_boardings.csv')\ntotal_bus = df['bus'].sum()\ntotal_rail = df['rail_boardings'].sum()\nresult = 'yes' if total_bus > total_rail else 'no'"
+  },
+  {
+   "id": "chicago_cta_daily_boardings#4",
+   "answer": "442613",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_cta_daily_boardings.csv')\nrow = df[df['service_date'] == '02/01/2010']\nresult = int(row['bus'].iloc[0] - row['rail_boardings'].iloc[0])"
+  },
+  {
+   "id": "chicago_cta_daily_boardings#5",
+   "answer": "W",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_cta_daily_boardings.csv')\nresult = str(df['day_type'].value_counts().idxmax())"
+  },
+  {
+   "id": "chicago_cta_daily_boardings#6",
+   "answer": "[\"W\", \"U\", \"A\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('chicago_cta_daily_boardings.csv')\nresult = list(df['day_type'].unique())"
+  }
+ ]
+}

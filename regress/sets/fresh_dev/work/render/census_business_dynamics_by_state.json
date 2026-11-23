@@ -1,0 +1,12 @@
+{
+ "file": "census_business_dynamics_by_state.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 2295,
+   "cols": 26,
+   "shown_whole": false
+  }
+ ],
+ "chars": 26319
+}

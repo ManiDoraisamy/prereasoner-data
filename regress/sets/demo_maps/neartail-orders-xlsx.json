@@ -1,0 +1,83 @@
+{
+ "dataset": "neartail-orders-xlsx",
+ "kind": "own",
+ "uploads": [
+  {
+   "name": "orders",
+   "columns": [
+    "order ID",
+    "customer",
+    "item",
+    "quantity",
+    "unit price",
+    "amount",
+    "city"
+   ],
+   "rows": 10
+  }
+ ],
+ "normalized": [
+  {
+   "name": "orders",
+   "upload": "orders",
+   "columns": [
+    "order ID",
+    "customer",
+    "item",
+    "quantity",
+    "unit price",
+    "amount",
+    "city"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [
+  {
+   "upload": "orders",
+   "table": "orders",
+   "column": "city",
+   "column_index": 6,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "orders connected to knowledgebase",
+   "bridged": true,
+   "cells": 4,
+   "cells_matched": 4
+  }
+ ],
+ "entity_columns": [
+  {
+   "upload": "orders",
+   "table": "orders",
+   "column": "city",
+   "column_index": 6,
+   "label": "musical group",
+   "type_qid": "Q215380",
+   "cells": 4,
+   "cells_matched_exactly": 2,
+   "routed_as_place": true,
+   "bridged": false,
+   "cells_matched": 0,
+   "has_country": false
+  }
+ ],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 16,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 16,
+  "country": 209,
+  "exchange_rate": 0,
+  "musical group": 2,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 0.2
+}

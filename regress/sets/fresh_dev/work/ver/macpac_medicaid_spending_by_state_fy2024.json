@@ -1,0 +1,35 @@
+{
+ "id": "macpac_medicaid_spending_by_state_fy2024",
+ "answers": [
+  {
+   "id": "macpac_medicaid_spending_by_state_fy2024#1",
+   "answer": "157098.1152",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\n# State names are in column 0, Total Medicaid Total spending is in column 7 (H)\ncal_row = df[df[0].astype(str).str.strip() == 'California']\nresult = float(cal_row.iloc[0, 7])"
+  },
+  {
+   "id": "macpac_medicaid_spending_by_state_fy2024#2",
+   "answer": "[\"California\", \"New York\", \"Texas\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\n# States are between row 5 (index 4) and row 55 (index 54)\nstates_df = df.iloc[4:55, [0, 7]].copy()\nstates_df.columns = ['state', 'total']\nstates_df['total'] = pd.to_numeric(states_df['total'])\ntop3 = states_df.sort_values(by='total', ascending=False).head(3)\nresult = top3['state'].tolist()"
+  },
+  {
+   "id": "macpac_medicaid_spending_by_state_fy2024#3",
+   "answer": "Ohio",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\n# Column 0 is State, Column 2 (C) is Benefits Federal\nfl_val = float(df[df[0].astype(str).str.strip() == 'Florida'].iloc[0, 2])\noh_val = float(df[df[0].astype(str).str.strip() == 'Ohio'].iloc[0, 2])\nresult = 'Florida' if fl_val > oh_val else 'Ohio'"
+  },
+  {
+   "id": "macpac_medicaid_spending_by_state_fy2024#4",
+   "answer": "15",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\n# States + DC are in rows 4:55 (Excel rows 5 to 55)\nstates_df = df.iloc[4:55, [0, 7]].copy()\nstates_df.columns = ['state', 'total']\nstates_df['total'] = pd.to_numeric(states_df['total'])\nresult = int((states_df['total'] >= 20000).sum())"
+  },
+  {
+   "id": "macpac_medicaid_spending_by_state_fy2024#5",
+   "answer": "5379.960185",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\nterritories = ['American Samoa', 'Guam', 'Northern Mariana Islands', 'Puerto Rico', 'Virgin Islands']\nterritories_df = df[df[0].astype(str).str.strip().isin(territories)]\nresult = float(pd.to_numeric(territories_df[7]).sum())"
+  },
+  {
+   "id": "macpac_medicaid_spending_by_state_fy2024#6",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('macpac_medicaid_spending_by_state_fy2024.xlsx', sheet_name='Exhibit 16', header=None)\nwy_row = df[df[0].astype(str).str.strip() == 'Wyoming']\ntotal_medicaid = float(wy_row.iloc[0, 7])\nfederal_medicaid = float(wy_row.iloc[0, 9])\nresult = 'yes' if federal_medicaid > (total_medicaid / 2) else 'no'"
+  }
+ ]
+}

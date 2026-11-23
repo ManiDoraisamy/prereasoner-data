@@ -1,0 +1,30 @@
+{
+ "id": "medicaid_new_adult_group_enrollment",
+ "answers": [
+  {
+   "id": "medicaid_new_adult_group_enrollment#1",
+   "answer": "82877280",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_new_adult_group_enrollment.csv')\nfiltered = df[(df['State'] == 'Totals') & \n              (df['Updated Year'] == 2026) & \n              (df['Updated Month'] == 2) & \n              (df['Enrollment Year'] == 2025) & \n              (df['Enrollment Month'] == 6)]\nval = filtered['Total Medicaid Enrollees'].iloc[0]\nresult = int(str(val).replace(',', '').strip())"
+  },
+  {
+   "id": "medicaid_new_adult_group_enrollment#3",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_new_adult_group_enrollment.csv')\nfiltered = df[(df['State'] == 'Vermont') & \n              (df['Updated Year'] == 2020) & \n              (df['Updated Month'] == 2) & \n              (df['Enrollment Year'] == 2018) & \n              (df['Enrollment Month'] == 9)]\nval = filtered['Total VIII Group Newly Eligible Enrollees'].iloc[0]\nval_num = float(str(val).replace(',', '').strip()) if pd.notna(val) else 0\nresult = \"yes\" if val_num > 0 else \"no\""
+  },
+  {
+   "id": "medicaid_new_adult_group_enrollment#4",
+   "answer": "1878002",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_new_adult_group_enrollment.csv')\nstates = ['Ohio', 'New Jersey', 'Pennsylvania']\nfiltered = df[(df['State'].isin(states)) & \n              (df['Updated Year'] == 2020) & \n              (df['Updated Month'] == 2) & \n              (df['Enrollment Year'] == 2018) & \n              (df['Enrollment Month'] == 9)]\nresult = int(filtered['Total VIII Group Newly Eligible Enrollees'].astype(str).str.replace(',', '').astype(float).sum())"
+  },
+  {
+   "id": "medicaid_new_adult_group_enrollment#5",
+   "answer": "342",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_new_adult_group_enrollment.csv')\nresult = int((df['Enrollment Year'] == 2025).sum())"
+  },
+  {
+   "id": "medicaid_new_adult_group_enrollment#6",
+   "answer": "2017",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('medicaid_new_adult_group_enrollment.csv')\nresult = str(df['Updated Year'].value_counts().index[0])"
+  }
+ ]
+}

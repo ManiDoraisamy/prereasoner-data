@@ -1,0 +1,30 @@
+{
+ "id": "ct_tax_revenue_by_month",
+ "answers": [
+  {
+   "id": "ct_tax_revenue_by_month#1",
+   "answer": "5293670010",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\nfiltered = df[(df['Month'] == 'June') & (df['Calendar Year'] == 2026)]\nresult = float(filtered['Total Revenue'].values[0])"
+  },
+  {
+   "id": "ct_tax_revenue_by_month#2",
+   "answer": "42",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\nresult = int(df['Cannabis Tax'].dropna().count())"
+  },
+  {
+   "id": "ct_tax_revenue_by_month#3",
+   "answer": "Withholding",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\ndf_2012 = df[df['Calendar Year'] == 2012]\nwithholding_total = df_2012['Withholding'].sum()\nsales_use_total = df_2012['Sales and Use'].sum()\nresult = 'Withholding' if withholding_total > sales_use_total else 'Sales and Use'"
+  },
+  {
+   "id": "ct_tax_revenue_by_month#4",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\ncig_tax = df['Cigarette Tax'].dropna()\nresult = 'yes' if (cig_tax < 2000000).any() else 'no'"
+  },
+  {
+   "id": "ct_tax_revenue_by_month#5",
+   "answer": "34431526.09",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('ct_tax_revenue_by_month.csv')\nfiltered = df[df['Fiscal Year'] == 'FY 2011-12']\nresult = float(filtered['Admissions & Dues'].sum())"
+  }
+ ]
+}

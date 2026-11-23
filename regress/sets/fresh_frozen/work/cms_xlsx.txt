@@ -1,0 +1,394 @@
+CMS Program Statistics - Medicare Advantage - Outpatient Fac	https://data.cms.gov/sites/default/files/2026-08/c1218df9-6b9d-4833-becf-1c11d4c2a27b/MDCR%20OUTPT%20MA_CPS_16UMO_2016.zip
+CMS Program Statistics - Medicare Advantage - Outpatient Fac	https://data.cms.gov/sites/default/files/2026-08/4aef37f8-cf30-4c76-b893-d690e29d6138/MDCR%20OUTPT%20MA_CPS_16UMO_2017.zip
+CMS Program Statistics - Medicare Advantage - Outpatient Fac	https://data.cms.gov/sites/default/files/2026-08/0cdef6cb-8f26-43ef-9af6-8e0966c68196/MDCR%20OUTPT%20MA_CPS_16UMO_2018.zip
+CMS Program Statistics - Medicare Advantage - Outpatient Fac	https://data.cms.gov/sites/default/files/2026-08/fa25271d-93a7-4080-af8b-724d89d4318f/MDCR%20OUTPT%20MA_CPS_16UMO_2019.zip
+CMS Program Statistics - Medicare Advantage - Outpatient Fac	https://data.cms.gov/sites/default/files/2026-08/64b88411-eb8d-4e06-9a11-ab212d3806ec/MDCR%20OUTPT%20MA_CPS_16UMO_2020.zip
+CMS Program Statistics - Medicare Advantage - Outpatient Fac	https://data.cms.gov/sites/default/files/2026-08/31e8a87e-45c0-479e-83b6-a3716633131a/MDCR%20OUTPT%20MA_CPS_16UMO_2021.zip
+CMS Program Statistics - Medicare Advantage - Outpatient Fac	https://data.cms.gov/sites/default/files/2026-01/MDCR%20OUTPT%20MA_CPS_16UMO_2022.zip
+CMS Program Statistics - Medicare Advantage - Outpatient Fac	https://data.cms.gov/sites/default/files/2026-09/0cd2e502-4a2f-47cf-8e93-591c575284d5/MDCR%20OUTPT%20MA_CPS_16UMO_2023.zip
+CMS Program Statistics - Medicare Advantage - Physician, Non	https://data.cms.gov/sites/default/files/2026-08/ff6ce6ea-06a7-43d2-8ef2-eaab0a9aa706/MDCR%20PHYSSUPP%20MA_CPS17UMC_2016.zip
+CMS Program Statistics - Medicare Advantage - Physician, Non	https://data.cms.gov/sites/default/files/2026-08/69c7f0eb-2990-4210-bf44-d030a52989c6/MDCR%20PHYSSUPP%20MA_CPS17UMC_2017.zip
+CMS Program Statistics - Medicare Advantage - Physician, Non	https://data.cms.gov/sites/default/files/2026-08/53ae65d8-94dc-477b-9e0a-715bfa0a85b0/MDCR%20PHYSSUPP%20MA_CPS17UMC_2018.zip
+CMS Program Statistics - Medicare Advantage - Physician, Non	https://data.cms.gov/sites/default/files/2026-08/670fb8ed-eeb2-4ae0-9c66-439e6a28e987/MDCR%20PHYSSUPP%20MA_CPS17UMC_2019.zip
+CMS Program Statistics - Medicare Advantage - Physician, Non	https://data.cms.gov/sites/default/files/2026-08/4ad571f5-a27a-4ddf-87d2-99d957055f8a/MDCR%20PHYSSUPP%20MA_CPS17UMC_2020.zip
+CMS Program Statistics - Medicare Advantage - Physician, Non	https://data.cms.gov/sites/default/files/2026-08/5fa59374-af68-4835-8310-a3be0489f235/MDCR%20PHYSSUPP%20MA_CPS17UMC_2021.zip
+CMS Program Statistics - Medicare Advantage - Physician, Non	https://data.cms.gov/sites/default/files/2026-01/MDCR%20PHYSSUPP%20MA_CPS17UMC_2022.zip
+CMS Program Statistics - Medicare Advantage - Physician, Non	https://data.cms.gov/sites/default/files/2026-09/dc1d67a9-9471-4a38-a6c9-9e49b34247fa/MDCR%20PHYSSUPP%20MA_CPS17UMC_2023.zip
+CMS Program Statistics - Medicare Advantage-Inpatient Hospit	https://data.cms.gov/sites/default/files/2023-06/CPS%20MDCR%20INPT%20MA%202016.zip
+CMS Program Statistics - Medicare Advantage-Inpatient Hospit	https://data.cms.gov/sites/default/files/2023-06/CPS%20MDCR%20INPT%20MA%202017.zip
+CMS Program Statistics - Medicare Advantage-Inpatient Hospit	https://data.cms.gov/sites/default/files/2023-06/CPS%20MDCR%20INPT%20MA%202018.zip
+CMS Program Statistics - Medicare Advantage-Inpatient Hospit	https://data.cms.gov/sites/default/files/2023-06/CPS%20MDCR%20INPT%20MA%202019.zip
+CMS Program Statistics - Medicare Advantage-Inpatient Hospit	https://data.cms.gov/sites/default/files/2026-09/9eda25a3-b852-4a32-860f-0b882ed77e12/CPS%20MDCR%20INPT%20MA%202020%20FINAL_UPDATED.zip
+CMS Program Statistics - Medicare Advantage-Inpatient Hospit	https://data.cms.gov/sites/default/files/2026-09/f4155e4f-e642-4b90-b981-57988d86c4e8/CPS%20MDCR%20INPT%20MA%202021%20FINAL_UPDATED.zip
+CMS Program Statistics - Medicare Advantage-Inpatient Hospit	https://data.cms.gov/sites/default/files/2026-01/4a5fb16a-aeef-4992-a667-03f82e822d81/MDCR%20INPT%20HOSP%20MA_CPS_13UMI_2022.zip
+CMS Program Statistics - Medicare Advantage-Inpatient Hospit	https://data.cms.gov/sites/default/files/2026-09/fe55d97d-5480-45ac-833a-f23726776907/MDCR%20INPT%20HOSP%20MA_CPS_13UMI_2023.zip
+CMS Program Statistics - Medicare Advantage-Skilled Nursing 	https://data.cms.gov/sites/default/files/2023-06/CPS%20MDCR%20SNF%20MA%202016.zip
+CMS Program Statistics - Medicare Advantage-Skilled Nursing 	https://data.cms.gov/sites/default/files/2023-06/CPS%20MDCR%20SNF%20MA%202017.zip
+CMS Program Statistics - Medicare Advantage-Skilled Nursing 	https://data.cms.gov/sites/default/files/2023-06/CPS%20MDCR%20SNF%20MA%202018.zip
+CMS Program Statistics - Medicare Advantage-Skilled Nursing 	https://data.cms.gov/sites/default/files/2023-06/CPS%20MDCR%20SNF%20MA%202019.zip
+CMS Program Statistics - Medicare Advantage-Skilled Nursing 	https://data.cms.gov/sites/default/files/2024-05/CPS%20MDCR%20SNF%20MA%202020%20FINAL.zip
+CMS Program Statistics - Medicare Advantage-Skilled Nursing 	https://data.cms.gov/sites/default/files/2024-05/CPS%20MDCR%20SNF%20MA%202021%20FINAL.zip
+CMS Program Statistics - Medicare Advantage-Skilled Nursing 	https://data.cms.gov/sites/default/files/2026-01/3384c8a4-495a-4fe7-9584-da17a97fcd86/MDCR%20SNF%20MA_CPS14UMS_2022.zip
+CMS Program Statistics - Medicare Advantage-Skilled Nursing 	https://data.cms.gov/sites/default/files/2026-09/b1d0fcef-36c2-49d2-9b7a-7f356b3b3c55/MDCR%20SNF%20MA_CPS14UMS_2023.zip
+Kidney Care Choices Model : 2022-01-01	https://data.cms.gov/sites/default/files/2025-03/PY2022_KCC_PUF_Data_File.zip
+Medicare Current Beneficiary Survey - Cost Supplement : 2018	https://data.cms.gov/sites/default/files/2024-08/CSPUF2018_Data.zip
+Medicare Current Beneficiary Survey - Cost Supplement : 2019	https://data.cms.gov/sites/default/files/2024-08/CSPUF2019_Data.zip
+Medicare Current Beneficiary Survey - Cost Supplement : 2020	https://data.cms.gov/sites/default/files/2024-08/CSPUF2020_Data.zip
+Medicare Current Beneficiary Survey - Cost Supplement : 2021	https://data.cms.gov/sites/default/files/2024-08/CSPUF2021_Data.zip
+Medicare Current Beneficiary Survey - Cost Supplement : 2022	https://data.cms.gov/sites/default/files/2025-01/13f8f755-6533-4adf-a4cf-5ca29161231f/CSPUF2022_Data.zip
+Medicare Current Beneficiary Survey - Cost Supplement : 2023	https://data.cms.gov/sites/default/files/2026-01/e68b9516-a8f0-425e-916c-909c3b693afe/CSPUF2023_Data.zip
+Medicare Current Beneficiary Survey - COVID-19 Supplement : 	https://data.cms.gov/sites/default/files/2024-08/COVIDPUF2020S_Data.zip
+Medicare Current Beneficiary Survey - COVID-19 Supplement : 	https://data.cms.gov/sites/default/files/2024-08/COVIDPUF2020F_Data.zip
+Medicare Current Beneficiary Survey - COVID-19 Supplement : 	https://data.cms.gov/sites/default/files/2024-08/600b94d8-6c64-4468-a3e0-ca2e4c0d8c4f/COVIDPUF2021W_Data.zip
+Medicare Dialysis Facilities : 2009-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2009.zip
+Medicare Dialysis Facilities : 2010-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2010.zip
+Medicare Dialysis Facilities : 2011-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2011.zip
+Medicare Dialysis Facilities : 2012-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2012.zip
+Medicare Dialysis Facilities : 2013-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2013.zip
+Medicare Dialysis Facilities : 2014-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2014.zip
+Medicare Dialysis Facilities : 2015-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2015.zip
+Medicare Dialysis Facilities : 2016-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2016.zip
+Medicare Dialysis Facilities : 2017-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2017.zip
+Medicare Dialysis Facilities : 2018-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2018.zip
+Medicare Dialysis Facilities : 2019-12-31	https://data.cms.gov/sites/default/files/2021-07/dfr_data_2019.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/4a188c5d-72f6-46e5-8886-067b95895f44/2019_20190102.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/a995a2bd-f896-45bf-addd-44facfcbe1b4/2019_20190130.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/cfc95300-881a-439d-8f00-7ae7eba2a051/2019_20190227.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/14b1226d-fdae-44cc-8c68-25b3fd1da4ce/2019_20190327.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/8d112636-ebd5-4342-a496-3254e72a83b6/2019_20190508.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/7cf83c73-3703-43b4-8a2a-01ea6ed670db/2019_20190605.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/65b17031-c664-4c98-93b7-746a3d5603dc/2019_20190703.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/143b48c7-ba26-4b7b-8cfb-271468e637ac/2019_20190731.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/61eaab5f-bf01-4022-b005-b7b49a085286/2019_20190828.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/5b87864f-0d5f-45ae-8ef7-0755fa65c97e/2020_20190920.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/8a29f9d6-fdf2-4241-8631-24bab8b9c114/2020_20191108.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/5cc9c4ea-b780-4bc5-8427-907f5493ef56/2020_20191206.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/ed2f7f92-ac9f-480c-8280-b9a10037953a/2020_20200103.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/ce4b0026-c2a8-49ce-b530-3a2fc1367451/2020_20200131.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/d8e09181-8809-4605-ad29-3254aba9ba4f/2020_20200228.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/c90406bc-6cd2-4fce-8a93-3532d3f2513f/2020_20200410.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/751c67d2-5ea4-4a8a-9350-8d1ca522018f/2020_20200508.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/59c89d24-1c2a-47f6-bf02-54ec87904b73/2020_20200605.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/3d8d60a6-d132-4490-ac49-d673d33f0844/2020_20200703.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/afd9ab57-1482-49b2-b245-08415007c519/2020_20200731.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/1cc66b82-9b93-4489-b023-967a74206d5c/2020_20200911.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/99d54385-25fc-448e-af85-668b81ef91ec/2021_20200928.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/db288d4b-8cdb-4483-9924-6c005bfbe90d/2021_20201106.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/d8c0847f-3f80-446e-a0dc-015285a482ec/2021_20201204.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/6df5668f-6259-4386-afd7-27d63e40b8b2/2021_20210101.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/379cb591-36d9-4a48-af75-7ec84dd8596e/2021_20210129.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/c2236004-b650-4384-9db5-c5e9c9ce46a6/2021_20210226.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/ccf7c20b-de01-480e-a629-3a4b22e2f980/2021_20210409.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/804ba980-a54e-46ea-bc53-20c3904f172a/2021_20210507.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/2efc6658-3e84-4a57-bc05-752dec490fa9/2021_20210604.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/4fe4805d-63e4-4bb4-af59-b0314685688f/2021_20210702.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/f7ba26c3-0ff5-4cff-affc-974b9a6f3986/2021_20210730.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/313f3ad0-8412-432c-acf6-f46175ace422/2021_20210910.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/0089f6ea-4309-4686-be29-d4532da0db00/2022_20210926.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/0578b5c0-ed3b-46da-9488-3ea0fd37d57e/2022_20211105.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/fdd4cd90-fb20-47f7-9393-1c16858757e4/2022_20211203.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/eb622512-d36a-46c8-9b93-ff7b3df41da5/2022_20211231.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/938482fe-a523-4983-abbf-6739ebc3d6f2/2022_20220211.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/28a9c246-7484-4ed7-a8db-32bfc7336f3a/2022_20220311.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/49c5af4b-9625-4ac0-bd75-d75499de2d5d/2022_20220408.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/3cfde40f-40ad-44cc-8b47-c6f3fb7d050b/2022_20220506.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/cf3c822b-8333-4e7c-8e0e-4b873369d855/2022_20220603.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/b82114ef-4dfe-4ad7-8c7a-3d89cad470b6/2022_20220701.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/a1c31e00-f02c-4fea-b2a0-dd61677bdbcb/2022_20220729.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/78be4985-1061-412f-8186-f370189e7430/2022_20220909.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/0850cde2-c51a-4225-a66f-93652a947554/2023_20220924.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/138570ac-4a3e-476f-9284-9a59b7d97df2/2023_20221104.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/73fd9296-51ce-4072-81c1-82bfd4dae39c/2023_20221202.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/f4c11ce6-970d-487e-b03a-f6ec75b4ba00/2023_20221230.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/345e8284-9a21-4987-91a8-01beae73b695/2023_20230210.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/ebe9ea93-b210-45b3-a81f-fd5e867b3c93/2023_20230310.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/f3f63420-0cdc-41af-adbf-74fcb57f6888/2023_20230407.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/2ab90b80-b8f4-4eab-b6db-eba3b2a2a64b/2023_20230505.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/4e2e968f-41c1-43bf-a642-42c86c3e11b3/2023_20230602.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/659f4425-12fb-4197-ad83-f8e424a9056c/2023_20230630.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/aa4d3589-dcdd-477b-89fc-6f26f861c323/2023_20230811.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2023-11/df324831-85ef-469f-a52c-45937d09208f/2023_20230908.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-01/333d554e-d4db-4bff-ac69-80068c59953c/2024_20250131_Oct2023.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-01/aae877a9-335c-43dd-b1a0-e649742d1444/2024_20250131_Nov2023.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-01/df39a477-5d55-4770-a11e-f03eb9c6e2de/2024_20250131_Dec2023.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-02/8fcc8df5-e6b3-4381-80ff-308b40f442d9/2024_20250228_Jan2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-02/c67d7556-8870-4e86-aeab-32a62867dd74/2024_20250228_Feb2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-04/6645b2dd-1903-4074-b39a-3f618894051f/2024_20250331_MAR2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-04/f1dfb226-90b3-49a8-af0b-321e1758ad02/2024_20250331_APR2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-04/6f20c5a2-94a5-4734-8be0-1851b2f72ccc/2024_20250331_MAY2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-05/89fb4f07-ff1f-40e3-b8fd-172b8d0c9ff0/2024_20250430_JUN2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-05/7301679a-0661-4ab9-a3ff-5ff23ef23957/2024_20250430_JUL2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-05/86d332b6-16cf-4118-8627-ff085e1856ff/2024_20250430_AUG2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-05/74f1765a-fcac-41b7-8153-197542c051c3/2024_20250430_SEP2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2024-12/0be15bc4-f63d-484a-8c40-4810b35c91aa/2025_20241219_Oct2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2024-12/bb6379c7-c39f-4c6c-9f99-58e58065668b/2025_20241219_Nov2024.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2024-12/6258bcc2-9d95-4477-8c66-b43a7bc57c23/2025_20241212.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-01/b41e18c0-2249-490f-a57b-5ed085e03baf/2025_20250123.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-02/2cef8337-fdb7-46fd-bda7-5d926d3b7785/2025_20250220.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-03/482cd695-a618-4723-872c-6963f22642f6/2025_20250320.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-04/b3e5f38b-502d-4ab8-add4-78651e2bfe68/2025_20250417.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-05/ec7d5929-ba13-4a1a-8f4f-3af5034b7a0c/2025_20250515.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-06/0b76f2eb-35d1-4931-82ef-548161dd3796/2025_20250612.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-07/0f4753e2-ea08-477b-9f27-c97f15bd00fa/2025_20250724.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-08/c2c12def-0602-4165-9860-20bda749a900/2025_20250821.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-09/2e433d96-8f6c-441f-88bd-ce68d11911b1/2025_20250918.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-10/7347d364-e282-48c8-88a2-818f2a56571b/2026_20251020.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-11/c040c52e-b2c7-4868-b42f-f4a1c5c8f935/2026_20251114.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2025-12/a2809440-740b-4e2e-a3da-eb7a590010a5/2026_20251210.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-01/5fbb3f65-72cc-49db-a13e-91c4dbe0b883/2026_20260122.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-02/d20b96a8-8acb-43cc-91e0-4f0b94c1d3f0/2026_20260219.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-03/1d9ac9d7-b372-48ac-b7a9-8d9e356216f8/2026_20260318.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-04/675bb472-ce7a-48a1-b5ca-8ce7c9fc8c58/2026_20260415.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-05/4bee93f7-5315-4a25-9f83-b2bc454b82a3/2026_20260513.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-06/72a58ff7-527b-4b6b-a89c-700099d78122/2026_20260610.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-07/86072516-8629-44d7-9f0e-2d8877ef7fd3/2026_20260722.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-08/d8c9b393-66f0-4973-a748-f66742fe0fd2/2026_20260819.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-09/903ba816-d276-4c17-9b5a-0224bbd4e949/2026_20260916.zip
+Monthly Prescription Drug Plan Formulary and Pharmacy Networ	https://data.cms.gov/sites/default/files/2026-10/73ce0d29-e440-4d9a-9608-93678a50e8c8/2027_20261008.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/ee424519-cbdf-4c50-b180-0b9497a50641/SPUF_2019_20190227.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/a1286701-8c9b-408d-91b5-140b9aceb666/SPUF_2019_20190605.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/24297f86-31e1-4235-b1ac-2ecbc974ff7c/SPUF_2019_20190828.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/9a86dccd-f839-48d3-85fc-cbcda6be97f3/SPUF_2020_20191206.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/918dad58-7e10-4472-8c5c-cecf4c2bd8bb/SPUF_2020_20200228.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/a726d34f-e277-41a3-9f0f-c2b3f58f60fc/SPUF_2020_20200605.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/1f9bd73c-58af-492b-b10b-ec6c272adc7c/SPUF_2020_20200911.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/b0a1128b-d032-4b79-8714-9126390b23b9/SPUF_2021_20201204.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/2b74bb8d-73f3-464d-80ee-22d10c10a4ad/SPUF_2021_20210226.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/699bf435-1dee-4c00-b5a6-61b5fd63d773/SPUF_2021_20210604.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/10ee59e8-8b96-4607-96fe-c65c943c685a/SPUF_2021_20210910.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/299daa79-cf13-49f5-95d0-5b653531620e/SPUF_2022_20211203.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/f0c81466-a928-4618-904e-9828e843f970/SPUF_2022_20220311.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/288ea007-4e9f-4cd3-a138-1591b9540f52/SPUF_2022_20220603.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/ff4b27e3-e375-4853-b926-20e3519f2d02/SPUF_2022_20220909.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/3d945d0b-d8c3-4d13-b22f-175409cb5637/SPUF_2023_20221202.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/d83b7a01-221a-436a-bf0f-233f1fe59a76/SPUF_2023_20230310.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-11/04be6f2c-0db3-462e-8406-7d4285f81c78/SPUF_2023_20230602.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2023-10/d4409666-b539-45f9-80e4-7dbfbbdd8647/SPUF_2023_20230908.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2025-01/1fc9b722-db45-4925-96c0-1bde30a2ae0f/SPUF_2024_20250131_2023q4.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2025-04/09f4af93-d0b0-477c-99dc-c9a253d791c7/SPUF_2024_20250331_2024Q1.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2025-04/bfb248f9-ef09-4e80-9ba5-4ff6e39fa037/SPUF_2024_20250331_2024Q2.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2025-05/e015bae0-4b23-455d-8243-65aef830ab3c/SPUF_2024_20250430_2024Q3.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2025-01/e78ce888-f571-4d86-baf0-7a1f9efffff4/SPUF_2025_20250109.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2025-04/f868af60-dc78-4e9f-982c-31f53c1ad6a6/SPUF_2025_20250410.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2025-07/f96da400-b96c-4a14-9a01-730f8a3e294f/SPUF_2025_20250703.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2025-10/6b0620f5-9259-4f1f-929c-70feb8857887/SPUF_2025_20251009.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2026-01/5942aa7e-a0c4-4e65-bd56-32608c33649f/SPUF_2026_20260107.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2026-04/65e8dafd-c42b-4c2a-93c2-551bbc80bef9/SPUF_2026_20260408.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2026-07/64c8d9e1-f350-45e5-88d8-5a2acce2b2d4/SPUF_2026_20260701.zip
+Quarterly Prescription Drug Plan Formulary, Pharmacy Network	https://data.cms.gov/sites/default/files/2026-10/062e9434-ed9d-4e83-abbd-4d64eb375949/SPUF_2026_20261007.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_SUMMARY_AB_ALL_2.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_SUMMARY_AB_ALL_1.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_SUMMARY_AB_ALL_0.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_SUMMARY_AB_ALL.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_SUMMARY_AB_2017.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20SUMMARY%20AB%202018.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_SUMMARY_AB_1-6.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20SUMMARY%20AB%202020.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20SUMMARY%20AB%202021.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2026-10/83510c2c-313c-4de5-ad0d-68fc0099e1cd/MDCR%20SUMMARY%20AB_CPS11SAB_2022.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2026-10/14a28971-aa8a-4e3b-bf1b-f14815221dea/MDCR%20SUMMARY%20AB_CPS11SAB_2023.zip
+CMS Program Statistics - Medicare Part A & Part B - All Type	https://data.cms.gov/sites/default/files/2026-10/19ef7064-752f-430c-9494-76b2f0a44cf7/MDCR%20SUMMARY%20AB_CPS11SAB_2024.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2013-	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_INPT_HOSP_ALL_2.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2014-	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_INPT_HOSP_ALL_1.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2015-	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_INPT_HOSP_ALL_0.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2016-	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_INPT_HOSP_ALL.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2017-	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_INPT_HOSP_2017.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2018-	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20INPT%20HOSP%20ALL%202018.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2019-	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_INPT_HOSP_1-10.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2020-	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20INPT%202020.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2021-	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20INPT%202021.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2022-	https://data.cms.gov/sites/default/files/2026-01/293e5882-15fb-4844-bb5f-d343fdae9655/MDCR%20INPT%20HOSP_CPS_05UIP_2022.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2023-	https://data.cms.gov/sites/default/files/2026-01/7b6c177c-76bc-45db-a26f-31640033ca85/MDCR%20INPT%20HOSP_CPS_05UIP_2023.zip
+CMS Program Statistics - Medicare Inpatient Hospital : 2024-	https://data.cms.gov/sites/default/files/2026-09/6abdaa4f-c122-4847-a802-bd3ba4ce3a53/MDCR%20INPT%20HOSP_CPS_05UIP_2024.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_SNF_ALL_2.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_SNF_ALL_1.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_SNF_ALL_0.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_SNF_ALL.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_SNF_2017.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20SNF%202018.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_SNF_1-5.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20SNF%202020.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20SNF%202021.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2026-01/c72dc170-3d49-4625-8d77-de3dd2ad4eb9/MDCR%20SNF_CPS06USN_2022.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2026-01/7fb9cae0-38c4-4062-9915-ce7c6e9788da/MDCR%20SNF_CPS06USN_2023.zip
+CMS Program Statistics - Medicare Skilled Nursing Facility :	https://data.cms.gov/sites/default/files/2026-09/af7ca496-fc63-472f-aca2-9892c452916f/MDCR%20SNF_CPS06USN_2024.zip
+CMS Program Statistics - Medicare Hospice : 2013-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_HOSPICE_ALL_2.zip
+CMS Program Statistics - Medicare Hospice : 2014-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_HOSPICE_ALL_1.zip
+CMS Program Statistics - Medicare Hospice : 2015-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_HOSPICE_ALL_0.zip
+CMS Program Statistics - Medicare Hospice : 2016-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_HOSPICE_ALL.zip
+CMS Program Statistics - Medicare Hospice : 2017-12-31	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_HOSPICE_2017.zip
+CMS Program Statistics - Medicare Hospice : 2018-12-31	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20HOSPICE%202018.zip
+CMS Program Statistics - Medicare Hospice : 2019-12-31	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_HOSPICE_1-6.zip
+CMS Program Statistics - Medicare Hospice : 2020-12-31	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20HOSPICE%202020.zip
+CMS Program Statistics - Medicare Hospice : 2021-01-01	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20HOSPICE%202021.zip
+CMS Program Statistics - Medicare Hospice : 2022-01-01	https://data.cms.gov/sites/default/files/2026-07/4d82f5a1-5896-4658-9e3e-038b6c692666/MDCR%20HOSPICE_CPS_08UHS_2022.zip
+CMS Program Statistics - Medicare Hospice : 2023-01-01	https://data.cms.gov/sites/default/files/2026-07/8d4bfd6f-eccc-4bc3-88ce-a711a4e38c2e/MDCR%20HOSPICE_CPS_08UHS_2023.zip
+CMS Program Statistics - Medicare Hospice : 2024-01-01	https://data.cms.gov/sites/default/files/2026-09/47ca71f9-85a7-4e65-aa6b-674a15743736/MDCR%20HOSPICE_CPS_08UHS_2024.zip
+CMS Program Statistics - Medicare Home Health Agency : 2013-	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_HHA_ALL_2.zip
+CMS Program Statistics - Medicare Home Health Agency : 2014-	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_HHA_ALL_1.zip
+CMS Program Statistics - Medicare Home Health Agency : 2015-	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_HHA_ALL_0.zip
+CMS Program Statistics - Medicare Home Health Agency : 2016-	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_HHA_ALL.zip
+CMS Program Statistics - Medicare Home Health Agency : 2017-	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_HHA_2017.zip
+CMS Program Statistics - Medicare Home Health Agency : 2018-	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20HHA%202018.zip
+CMS Program Statistics - Medicare Home Health Agency : 2019-	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_HHA_1-6.zip
+CMS Program Statistics - Medicare Home Health Agency : 2020-	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20HHA%202020.zip
+CMS Program Statistics - Medicare Home Health Agency : 2021-	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20HHA%202021.zip
+CMS Program Statistics - Medicare Home Health Agency : 2022-	https://data.cms.gov/sites/default/files/2026-01/MDCR%20HHA_CPS_07UHH_2022.zip
+CMS Program Statistics - Medicare Home Health Agency : 2023-	https://data.cms.gov/sites/default/files/2026-01/MDCR%20HHA_CPS_07UHH_2023.zip
+CMS Program Statistics - Medicare Home Health Agency : 2024-	https://data.cms.gov/sites/default/files/2026-09/58ea54cf-ed1f-40e0-a78d-59c2ba2ff2b1/MDCR%20HHA_CPS_07UHH_2024.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2013	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_OUTPATIENT_ALL_2.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2014	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_OUTPATIENT_ALL_1.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2015	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_OUTPATIENT_ALL_0.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2016	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_OUTPATIENT_ALL.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2017	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_OUTPATIENT_2017.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2018	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20OUTPATIENT%20ALL.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2019	https://data.cms.gov/sites/default/files/2022-02/CPS_MDCR_OUTPATIENT_ALL.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2020	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20OUTPT%202020.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2021	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20OUTPT%202021.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2022	https://data.cms.gov/sites/default/files/2026-01/MDCR%20OUTPT_CPS_09UOT_2022.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2023	https://data.cms.gov/sites/default/files/2026-01/MDCR%20OUTPT_CPS_09UOT_2023.zip
+CMS Program Statistics - Medicare Outpatient Facility : 2024	https://data.cms.gov/sites/default/files/2026-09/ca3a123a-4562-480c-8cc6-4f08adf27456/MDCR%20OUTPT_CPS_09UOT_2024.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_PHYSSUPP_ALL_2.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_PHYSSUPP_ALL_1.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_PHYSSUPP_ALL_0.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_PHYSSUPP_ALL.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_PHYSSUPP_2017.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20PHYSSUPP%202018.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_PHYSSUPP_1-7.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20PHYSSUPP%202020.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20PHYSSUPP%202021.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2026-10/d43b2ae3-8a14-488a-a25c-7e43f880f27a/MDCR%20PHYSSUPP_CPS10UPS_2022.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2026-10/f8a0d8fc-0b88-4aad-81b8-6357a35bc942/MDCR%20PHYSSUPP_CPS10UPS_2023.zip
+CMS Program Statistics - Medicare Physician, Non-Physician P	https://data.cms.gov/sites/default/files/2026-10/ff007769-df8c-4f73-a71a-c641b281541c/MDCR%20PHYSSUPP_CPS10UPS_2024.zip
+CMS Program Statistics - Medicare Part D : 2013-12-31	https://data.cms.gov/sites/default/files/2021-05/CPS_MDCR_UTLZN_D_ALL_5.zip
+CMS Program Statistics - Medicare Part D : 2014-12-31	https://data.cms.gov/sites/default/files/2021-05/CPS_MDCR_UTLZN_D_ALL_4.zip
+CMS Program Statistics - Medicare Part D : 2015-12-31	https://data.cms.gov/sites/default/files/2021-05/CPS_MDCR_UTLZN_D_ALL_3.zip
+CMS Program Statistics - Medicare Part D : 2016-12-31	https://data.cms.gov/sites/default/files/2021-05/CPS_MDCR_UTLZN_D_ALL_2.zip
+CMS Program Statistics - Medicare Part D : 2017-12-31	https://data.cms.gov/sites/default/files/2021-05/CPS_MDCR_UTLZN_D_ALL_1.zip
+CMS Program Statistics - Medicare Part D : 2018-12-31	https://data.cms.gov/sites/default/files/2021-05/CPS_MDCR_UTLZN_D_ALL_0.zip
+CMS Program Statistics - Medicare Part D : 2019-12-31	https://data.cms.gov/sites/default/files/2021-05/CPS_MDCR_UTLZN_D_ALL.zip
+CMS Program Statistics - Medicare Part D : 2020-12-31	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20UTLZN%20D%202020.zip
+CMS Program Statistics - Medicare Part D : 2021-01-01	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20UTLZN%20D%202021.zip
+CMS Program Statistics - Medicare Part D : 2022-01-01	https://data.cms.gov/sites/default/files/2025-09/147fe37d-2220-4b41-9c8a-5b27112eee11/MDCR%20UTLZN%20D_CPS12UPD_2022.zip
+CMS Program Statistics - Medicare Part D : 2023-01-01	https://data.cms.gov/sites/default/files/2025-09/8580dab0-0060-4c42-a897-f2599e8a35fc/MDCR%20UTLZN%20D_CPS12UPD_2023.zip
+CMS Program Statistics - Medicare Part D : 2024-01-01	https://data.cms.gov/sites/default/files/2026-09/0b3b2b7f-a97d-4344-b1b2-f09a114d98ae/MDCR%20UTLZN%20D_CPS12UPD_2024.zip
+CMS Program Statistics - Medicare Premiums : 2013-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS%20MDCR%20PREMIUMS%20ALL_2.zip
+CMS Program Statistics - Medicare Premiums : 2014-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS%20MDCR%20PREMIUMS%20ALL_1.zip
+CMS Program Statistics - Medicare Premiums : 2015-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS%20MDCR%20PREMIUMS%20ALL_0.zip
+CMS Program Statistics - Medicare Premiums : 2016-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS%20MDCR%20PREMIUMS%20ALL.zip
+CMS Program Statistics - Medicare Premiums : 2017-12-31	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_PREMIUMS_2017.zip
+CMS Program Statistics - Medicare Premiums : 2018-12-31	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20PREMIUMS%202018.zip
+CMS Program Statistics - Medicare Premiums : 2019-12-31	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_PREMIUMS_1-6.zip
+CMS Program Statistics - Medicare Premiums : 2020-12-31	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20PREMIUMS%202020.zip
+CMS Program Statistics - Medicare Premiums : 2021-01-01	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20PREMIUMS%202021.zip
+CMS Program Statistics - Medicare Premiums : 2022-01-01	https://data.cms.gov/sites/default/files/2026-01/f91fd208-c641-40a4-aded-74c3b9ff609c/MDCR%20PREMIUMS_CPS04PRM_2022.zip
+CMS Program Statistics - Medicare Premiums : 2023-01-01	https://data.cms.gov/sites/default/files/2026-01/35b2cc41-1f3c-4ad1-ba60-7df16cad6939/MDCR%20PREMIUMS_CPS04PRM_2023.zip
+CMS Program Statistics - Medicare Premiums : 2024-01-01	https://data.cms.gov/sites/default/files/2026-09/823de678-6290-4e42-8aca-a2608279b90a/MDCR%20PREMIUMS_CPS04PRM_2024.zip
+Medicare Geographic Variation - by Hospital Referral Region 	https://data.cms.gov/sites/default/files/2024-12/2007-2013%20Medicare%20FFS%20Geographic%20Variation%20HRR%20Public%20Use%20File.zip
+Medicare Geographic Variation - by Hospital Referral Region 	https://data.cms.gov/sites/default/files/2024-12/2014-2021%20Medicare%20FFS%20Geographic%20Variation%20HRR%20Public%20Use%20File.zip
+CMS Program Statistics - Medicare Providers : 2013-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_PROVIDERS_ALL_2.zip
+CMS Program Statistics - Medicare Providers : 2014-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_PROVIDERS_ALL_1.zip
+CMS Program Statistics - Medicare Providers : 2015-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_PROVIDERS_ALL_0.zip
+CMS Program Statistics - Medicare Providers : 2016-12-31	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_PROVIDERS_ALL.zip
+CMS Program Statistics - Medicare Providers : 2017-12-31	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_PROVIDERS_2017_2.zip
+CMS Program Statistics - Medicare Providers : 2018-12-31	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20PROVIDERS%202018.zip
+CMS Program Statistics - Medicare Providers : 2019-12-31	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_PROVIDERS_1-7.zip
+CMS Program Statistics - Medicare Providers : 2020-12-31	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20PROVIDERS%202020.zip
+CMS Program Statistics - Medicare Providers : 2021-01-01	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20PROVIDERS%202021.zip
+CMS Program Statistics - Medicare Providers : 2022-01-01	https://data.cms.gov/sites/default/files/2025-09/52a70b8e-9f1c-46ec-b77e-a0132fb6aaf7/MDCR%20PROVIDERS_CPS19PRV_2022.zip
+CMS Program Statistics - Medicare Providers : 2023-01-01	https://data.cms.gov/sites/default/files/2025-09/7e6dbbac-0873-4fe6-9d4a-4168b79e4556/MDCR%20PROVIDERS_CPS19PRV_2023.zip
+CMS Program Statistics - Medicare Providers : 2024-01-01	https://data.cms.gov/sites/default/files/2026-09/d7c4299d-97b9-4644-a18e-9814a2c47af5/MDCR%20PROVIDERS_CPS19PRV_2024.zip
+CMS Program Statistics - Medicare Total Enrollment : 2013-12	https://data.cms.gov/sites/default/files/2020-01/2013_Total_Med_Enroll_0.zip
+CMS Program Statistics - Medicare Total Enrollment : 2014-12	https://data.cms.gov/sites/default/files/2020-01/2014_Total_Med_Enroll.zip
+CMS Program Statistics - Medicare Total Enrollment : 2015-12	https://data.cms.gov/sites/default/files/2020-01/2015_Total_Med_Enroll.zip
+CMS Program Statistics - Medicare Total Enrollment : 2016-12	https://data.cms.gov/sites/default/files/2020-01/2016_Total_Med_Enroll_0.zip
+CMS Program Statistics - Medicare Total Enrollment : 2017-12	https://data.cms.gov/sites/default/files/2019-12/2017_Total_Med_Enroll.zip
+CMS Program Statistics - Medicare Total Enrollment : 2018-12	https://data.cms.gov/sites/default/files/2021-01/CPS%20MDCR%20TOTAL%20ENROLL%20AB%201-8.zip
+CMS Program Statistics - Medicare Total Enrollment : 2019-12	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_ENROLL_AB_1-8.zip
+CMS Program Statistics - Medicare Total Enrollment : 2020-12	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20ENROLL%20AB%201-8%202020.zip
+CMS Program Statistics - Medicare Total Enrollment : 2021-01	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20ENROLL%20AB%201-8%202021.zip
+CMS Program Statistics - Medicare Total Enrollment : 2022-01	https://data.cms.gov/sites/default/files/2025-09/dd229ae6-3570-4311-9a52-6e987e95f0a2/MDCR%20ENROLL%20AB%201-8_CPS_02ENR_2022.zip
+CMS Program Statistics - Medicare Total Enrollment : 2023-01	https://data.cms.gov/sites/default/files/2025-09/e97fd774-4859-43bd-87b7-38e734075aa5/MDCR%20ENROLL%20AB%201-8_CPS_02ENR_2023.zip
+CMS Program Statistics - Medicare Total Enrollment : 2024-01	https://data.cms.gov/sites/default/files/2026-09/0a06b80d-bccb-4634-b062-7e53acdae289/MDCR%20ENROLL%20AB%201-8_CPS_02ENR_2024.zip
+CMS Program Statistics - Original Medicare Enrollment : 2013	https://data.cms.gov/sites/default/files/2020-01/2013_Org_Med_Enroll.zip
+CMS Program Statistics - Original Medicare Enrollment : 2014	https://data.cms.gov/sites/default/files/2020-01/2014_Org_Med_Enroll.zip
+CMS Program Statistics - Original Medicare Enrollment : 2015	https://data.cms.gov/sites/default/files/2020-01/2015_Org_Med_Enroll.zip
+CMS Program Statistics - Original Medicare Enrollment : 2016	https://data.cms.gov/sites/default/files/2020-01/2016_Org_Med_Enroll.zip
+CMS Program Statistics - Original Medicare Enrollment : 2017	https://data.cms.gov/sites/default/files/2019-12/2017_Org_Med_Enroll.zip
+CMS Program Statistics - Original Medicare Enrollment : 2018	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20ENROLL%20AB%209-14.zip
+CMS Program Statistics - Original Medicare Enrollment : 2019	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_ENROLL_AB_9-14.zip
+CMS Program Statistics - Original Medicare Enrollment : 2020	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20ENROLL%20AB%209-14%202020.zip
+CMS Program Statistics - Original Medicare Enrollment : 2021	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20ENROLL%20AB%209-14%202021.zip
+CMS Program Statistics - Original Medicare Enrollment : 2022	https://data.cms.gov/sites/default/files/2025-09/02bff2a9-4874-4541-96ae-ac306d297f16/MDCR%20ENROLL%20AB%209-14_CPS_02ENR_2022.zip
+CMS Program Statistics - Original Medicare Enrollment : 2023	https://data.cms.gov/sites/default/files/2025-09/d3e2470b-f7ed-4c92-9615-4bfee94b6bdb/MDCR%20ENROLL%20AB%209-14_CPS_02ENR_2023.zip
+CMS Program Statistics - Original Medicare Enrollment : 2024	https://data.cms.gov/sites/default/files/2026-09/8de1d266-f57b-4878-a018-802b5a456c76/MDCR%20ENROLL%20AB%209-14_CPS_02ENR_2024.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2020-01/2013_MA_Other_Enroll_0.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2020-01/2014_MA_Other_Enroll.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2020-01/2015_MA_Other_Enroll.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2020-01/2016_MA_Other_Enroll.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2019-12/2017_MA_Other_Enroll.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20ENROLL%20AB%2015-20%202018.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_ENROLL_AB_15-20.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20ENROLL%20AB%2015-20%202020.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2023-02/a5dd97e6-0511-4434-a612-404c5de5abac/CPS%20MDCR%20ENROLL%20AB%2015-20%202021.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2025-09/12e7fe6c-bd85-496d-8b98-2c0a790f0f5c/MDCR%20ENROLL%20AB%2015-20_CPS_02ENR_2022.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2025-09/6723fcf5-4d03-476e-a72d-f382ef0cd856/MDCR%20ENROLL%20AB%2015-20_CPS_02ENR_2023.zip
+CMS Program Statistics - Medicare Advantage & Other Health P	https://data.cms.gov/sites/default/files/2026-09/5f84186e-190e-44a9-914f-50f5557daf74/MDCR%20ENROLL%20AB%2015-20_CPS_02ENR_2024.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2013-12-3	https://data.cms.gov/sites/default/files/2020-01/2013_Newly_Enroll.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2014-12-3	https://data.cms.gov/sites/default/files/2020-01/2014_Newly_Enroll_0.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2015-12-3	https://data.cms.gov/sites/default/files/2020-01/2015_Newly_Enroll.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2016-12-3	https://data.cms.gov/sites/default/files/2020-01/2016_Newly_Enroll.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2017-12-3	https://data.cms.gov/sites/default/files/2019-12/2017_Newly_Enroll_0.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2018-12-3	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20ENROLL%20AB%2021-32%202018.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2019-12-3	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_ENROLL_AB_21-32.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2020-12-3	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20ENROLL%20AB%2021-32%202020.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2021-01-0	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20ENROLL%20AB%2021-32%202021.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2022-01-0	https://data.cms.gov/sites/default/files/2025-09/4150f6fb-d440-4a8f-8ae9-7e39603efbf9/MDCR%20ENROLL%20AB%2021-32_CPS_02ENR_2022.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2023-01-0	https://data.cms.gov/sites/default/files/2025-09/5000c51d-db17-4bed-8248-f7a9ebdfe5ac/MDCR%20ENROLL%20AB%2021-32_CPS_02ENR_2023.zip
+CMS Program Statistics - Medicare Newly Enrolled : 2024-01-0	https://data.cms.gov/sites/default/files/2026-09/35248dd5-4e50-41f9-b905-fb00fccdcc88/MDCR%20ENROLL%20AB%2021-32_CPS_02ENR_2024.zip
+CMS Program Statistics - Medicare Deaths : 2013-12-31	https://data.cms.gov/sites/default/files/2020-01/2013_Medicare_Deaths.zip
+CMS Program Statistics - Medicare Deaths : 2014-12-31	https://data.cms.gov/sites/default/files/2020-01/2014_Medicare_Deaths.zip
+CMS Program Statistics - Medicare Deaths : 2015-12-31	https://data.cms.gov/sites/default/files/2020-01/2015_Medicare_Deaths.zip
+CMS Program Statistics - Medicare Deaths : 2016-12-31	https://data.cms.gov/sites/default/files/2020-01/2016_Medicare_Deaths.zip
+CMS Program Statistics - Medicare Deaths : 2017-12-31	https://data.cms.gov/sites/default/files/2019-12/2017_Medicare_Deaths.zip
+CMS Program Statistics - Medicare Deaths : 2018-12-31	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20ENROLL%20AB%2033-39%202018.zip
+CMS Program Statistics - Medicare Deaths : 2019-12-31	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_ENROLL_AB_33-39.zip
+CMS Program Statistics - Medicare Deaths : 2020-12-31	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20ENROLL%20AB%2033-39%202020.zip
+CMS Program Statistics - Medicare Deaths : 2021-01-01	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20ENROLL%20AB%2033-39%202021.zip
+CMS Program Statistics - Medicare Deaths : 2022-01-01	https://data.cms.gov/sites/default/files/2025-09/114505e6-5a63-4a9d-aa51-b664281b21db/MDCR%20ENROLL%20AB%2033-39_CPS_02ENR_2022.zip
+CMS Program Statistics - Medicare Deaths : 2023-01-01	https://data.cms.gov/sites/default/files/2025-09/98b01634-48a8-4bf9-911d-fdd5554d87fc/MDCR%20ENROLL%20AB%2033-39_CPS_02ENR_2023.zip
+CMS Program Statistics - Medicare Deaths : 2024-01-01	https://data.cms.gov/sites/default/files/2026-09/a8afbea7-0d9a-46b9-89e5-86ed9ab12d17/MDCR%20ENROLL%20AB%2033-39_CPS_02ENR_2024.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2013-1	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_ENROLL_D_ALL_2.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2014-1	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_ENROLL_D_ALL_1.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2015-1	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_ENROLL_D_ALL_0.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2016-1	https://data.cms.gov/sites/default/files/2020-01/CPS_MDCR_ENROLL_D_ALL.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2017-1	https://data.cms.gov/sites/default/files/2019-12/CPS_MDCR_ENROLL_D_2017.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2018-1	https://data.cms.gov/sites/default/files/2021-01/CPS%20MDCR%20TOTAL%20ENROLL%20D.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2019-1	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_ENROLL_D_1-3.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2020-1	https://data.cms.gov/sites/default/files/2022-02/CPS%20MDCR%20ENROLL%20D%202020.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2021-0	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20ENROLL%20D%202021.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2022-0	https://data.cms.gov/sites/default/files/2025-09/3b6620c9-ee79-4472-8fef-a234638070c5/MDCR%20ENROLL%20D_CPS_03EPD_2022.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2023-0	https://data.cms.gov/sites/default/files/2025-09/c0458b01-5731-43b4-a45c-16944a8253e7/MDCR%20ENROLL%20D_CPS_03EPD_2023.zip
+CMS Program Statistics - Medicare Part D Enrollment : 2024-0	https://data.cms.gov/sites/default/files/2026-09/34722ca9-3ac4-47fa-87b9-0b7856a51d7d/MDCR%20ENROLL%20D_CPS_03EPD_2024.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2020-01/2013_Medicare_Medicaid.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2020-01/2014_Medicare_Medicaid.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2020-01/2015_Medicare_Medicaid.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2020-01/2016_Medicare_Medicaid.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2019-12/2017_Medicare_Medicaid_0.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2020-11/CPS%20MDCR%20TOTAL%20ENROLL%20AB%2040-48%202018.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2021-01/CPS_MDCR_ENROLL_AB_40-48.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2023-02/81df4385-6dd1-4f2d-8a67-308017e2d253/CPS%20MDCR%20ENROLL%20AB%2040-48%202020.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2023-02/CPS%20MDCR%20ENROLL%20AB%2040-48%202021.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2025-09/b24dfe6f-5581-4c22-b819-dbac60d62a88/MDCR%20ENROLL%20AB%2040-48_CPS_02ENR_2022.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2025-09/1104c73c-6cb7-422c-bb24-73236d1b5767/MDCR%20ENROLL%20AB%2040-48_CPS_02ENR_2023.zip
+CMS Program Statistics - Medicare-Medicaid Dual Enrollment :	https://data.cms.gov/sites/default/files/2026-09/fc798ab6-4910-4fc5-a43b-0dce34d93c33/MDCR%20ENROLL%20AB%2040-48_CPS_02ENR_2024.zip
+Medicare Current Beneficiary Survey - Survey File : 2013-12-	https://data.cms.gov/sites/default/files/2024-08/ATCPUF2013_Data.zip
+Medicare Current Beneficiary Survey - Survey File : 2015-12-	https://data.cms.gov/sites/default/files/2024-08/SFPUF2015_Data.zip
+Medicare Current Beneficiary Survey - Survey File : 2016-12-	https://data.cms.gov/sites/default/files/2024-08/SFPUF2016_Data.zip
+Medicare Current Beneficiary Survey - Survey File : 2017-12-	https://data.cms.gov/sites/default/files/2024-08/SFPUF2017_Data.zip
+Medicare Current Beneficiary Survey - Survey File : 2018-12-	https://data.cms.gov/sites/default/files/2024-08/SFPUF2018_Data.zip
+Medicare Current Beneficiary Survey - Survey File : 2019-12-	https://data.cms.gov/sites/default/files/2024-08/SFPUF2019_Data.zip
+Medicare Current Beneficiary Survey - Survey File : 2020-12-	https://data.cms.gov/sites/default/files/2024-08/SFPUF2020_Data.zip
+Medicare Current Beneficiary Survey - Survey File : 2021-10-	https://data.cms.gov/sites/default/files/2024-08/SFPUF2021_Data.zip
+Medicare Current Beneficiary Survey - Survey File : 2022-10-	https://data.cms.gov/sites/default/files/2024-10/SFPUF2022_Data.zip
+Medicare Current Beneficiary Survey - Survey File : 2023-01-	https://data.cms.gov/sites/default/files/2025-11/b76a3bff-b0fa-418b-92ed-5e4875b8f43f/SFPUF2023_Data.zip

@@ -1,0 +1,35 @@
+{
+ "id": "va_geographic_distribution_of_expenditures_fy2023",
+ "answers": [
+  {
+   "id": "va_geographic_distribution_of_expenditures_fy2023#1",
+   "answer": "[\"Texas\", \"California\", \"Florida\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='State Level Expenditures', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip().str.startswith('State')].index[0]\ndf_data = df.iloc[header_idx + 1:].copy()\ndf_data.columns = [str(c).strip() for c in df.iloc[header_idx]]\nstate_col = [c for c in df_data.columns if 'State' in c][0]\npop_col = [c for c in df_data.columns if 'Veteran Population' in c][0]\n\ndf_states = df_data[df_data[state_col].notna()].copy()\ndf_states = df_states[~df_states[state_col].astype(str).str.strip().str.lower().isin(['totals', 'notes:'])]\ndf_states = df_states[pd.to_numeric(df_states[pop_col], errors='coerce').notna()]\ndf_states[pop_col] = pd.to_numeric(df_states[pop_col])\n\ntop3 = df_states.sort_values(by=pop_col, ascending=False).head(3)\nresult = top3[state_col].str.strip().tolist()"
+  },
+  {
+   "id": "va_geographic_distribution_of_expenditures_fy2023#2",
+   "answer": "5447",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='DE', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('County', case=False, na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndf_data = df.iloc[header_idx + 1:].copy()\ncounty_col = df_data.columns[0]\npatients_col = [c for c in df_data.columns if 'Unique Patients' in c][0]\nkent_row = df_data[df_data[county_col].astype(str).str.strip().str.upper() == 'KENT']\nresult = int(pd.to_numeric(kent_row[patients_col].values[0]))"
+  },
+  {
+   "id": "va_geographic_distribution_of_expenditures_fy2023#3",
+   "answer": "4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='CT', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('County', case=False, na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndf_data = df.iloc[header_idx + 1:].copy()\ncounty_col = df_data.columns[0]\ntotal_col = [c for c in df_data.columns if 'Total Expenditure' in c][0]\n\n# Keep only county rows (before Totals / Congressional districts)\ndf_counties = df_data[df_data[county_col].notna()].copy()\nend_idx = df_counties[df_counties[county_col].astype(str).str.contains('Totals|CONG', case=False, na=False)].index[0]\ndf_counties = df_counties.loc[:end_idx - 1]\n\n# Total Expenditure is in $000s, so $100 million is 100,000\nexp_numeric = pd.to_numeric(df_counties[total_col], errors='coerce')\nresult = int((exp_numeric > 100000).sum())"
+  },
+  {
+   "id": "va_geographic_distribution_of_expenditures_fy2023#4",
+   "answer": "HAWAII",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='HI', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('County', case=False, na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndf_data = df.iloc[header_idx + 1:].copy()\ncounty_col = df_data.columns[0]\npatients_col = [c for c in df_data.columns if 'Unique Patients' in c][0]\n\nhawaii_row = df_data[df_data[county_col].astype(str).str.strip().str.upper() == 'HAWAII']\nmaui_row = df_data[df_data[county_col].astype(str).str.strip().str.upper() == 'MAUI']\n\nhawaii_val = pd.to_numeric(hawaii_row[patients_col].values[0], errors='coerce')\nmaui_val = pd.to_numeric(maui_row[patients_col].values[0], errors='coerce')\n\nresult = hawaii_row[county_col].values[0] if hawaii_val > maui_val else maui_row[county_col].values[0]"
+  },
+  {
+   "id": "va_geographic_distribution_of_expenditures_fy2023#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='State Level Expenditures', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip().str.startswith('State')].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndf_data = df.iloc[header_idx + 1:].copy()\nstate_col = [c for c in df_data.columns if 'State' in c][0]\npatients_col = [c for c in df_data.columns if 'Unique Patients' in c][0]\n\nfl_patients = pd.to_numeric(df_data[df_data[state_col].astype(str).str.strip() == 'Florida'][patients_col].values[0])\nca_patients = pd.to_numeric(df_data[df_data[state_col].astype(str).str.strip() == 'California'][patients_col].values[0])\n\nresult = 'yes' if fl_patients > ca_patients else 'no'"
+  },
+  {
+   "id": "va_geographic_distribution_of_expenditures_fy2023#6",
+   "answer": "CONG. DIST (02)",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('va_geographic_distribution_of_expenditures_fy2023.xlsx', sheet_name='AR', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.contains('County', case=False, na=False)].index[0]\ndf.columns = [str(c).strip() for c in df.iloc[header_idx]]\ndf_data = df.iloc[header_idx + 1:].copy()\narea_col = df_data.columns[0]\ntotal_col = [c for c in df_data.columns if 'Total Expenditure' in c][0]\n\ncd_rows = df_data[df_data[area_col].astype(str).str.contains('CONG. DIST', case=False, na=False)].copy()\ncd_rows[total_col] = pd.to_numeric(cd_rows[total_col])\nhighest_cd = cd_rows.sort_values(by=total_col, ascending=False).iloc[0]\nresult = highest_cd[area_col].strip()"
+  }
+ ]
+}

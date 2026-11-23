@@ -1,0 +1,35 @@
+{
+ "id": "census_cps_median_household_income_by_state",
+ "answers": [
+  {
+   "id": "census_cps_median_household_income_by_state#1",
+   "answer": "116300",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\n# Row 8 has years, row 9 has column labels (Median income, Standard error)\n# Column B is 2025 Median income\nstate_row = df[df[0].astype(str).str.strip() == 'Maryland'].iloc[0]\nresult = int(state_row[1])"
+  },
+  {
+   "id": "census_cps_median_household_income_by_state#2",
+   "answer": "Massachusetts",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\nca_val = df[df[0].astype(str).str.strip() == 'California'].iloc[0][1]\nma_val = df[df[0].astype(str).str.strip() == 'Massachusetts'].iloc[0][1]\nresult = 'California' if float(ca_val) > float(ma_val) else 'Massachusetts'"
+  },
+  {
+   "id": "census_cps_median_household_income_by_state#3",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\nms_val = float(df[df[0].astype(str).str.strip() == 'Mississippi'].iloc[0][1])\nresult = 'yes' if ms_val > 60000 else 'no'"
+  },
+  {
+   "id": "census_cps_median_household_income_by_state#4",
+   "answer": "79318",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\n# Current dollars section starts at row 7\n# Row 10 is United States (first occurrence)\nus_row = df[df[0].astype(str).str.strip() == 'United States'].iloc[0]\n# Years: 2025 (col 1/B), 2024 (col 3/D), 2023 (col 5/F), 2022 (col 7/H), 2021 (col 9/J)\nvals = [float(us_row[c]) for c in [1, 3, 5, 7, 9]]\nresult = sum(vals) / len(vals)"
+  },
+  {
+   "id": "census_cps_median_household_income_by_state#5",
+   "answer": "2019",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\n# Constant dollars section: second occurrence of United States (row 65, index 64)\nus_constant = df[df[0].astype(str).str.strip() == 'United States'].iloc[1]\n# Mapping of years to columns: 2022: H (col 7), 2021: J (col 9), 2020: L (col 11), 2019: N (col 13), 2018: P (col 15)\nyear_cols = {'2022': 7, '2021': 9, '2020': 11, '2019': 13, '2018': 15}\nresult = max(year_cols.keys(), key=lambda y: float(us_constant[year_cols[y]]))"
+  },
+  {
+   "id": "census_cps_median_household_income_by_state#6",
+   "answer": "4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_median_household_income_by_state.xlsx', sheet_name='h08', header=None)\nstates = ['California', 'Florida', 'Illinois', 'New York', 'Texas']\ncount = 0\nfor state in states:\n    val = float(df[df[0].astype(str).str.strip() == state].iloc[0][1])\n    if val >= 80000:\n        count += 1\nresult = count"
+  }
+ ]
+}

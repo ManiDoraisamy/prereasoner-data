@@ -1,0 +1,12 @@
+{
+ "file": "nyc_central_park_squirrel_census_2018.csv",
+ "sheets": [
+  {
+   "name": null,
+   "rows": 3023,
+   "cols": 31,
+   "shown_whole": false
+  }
+ ],
+ "chars": 31703
+}

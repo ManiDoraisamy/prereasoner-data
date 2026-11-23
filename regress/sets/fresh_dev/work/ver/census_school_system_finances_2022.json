@@ -1,0 +1,35 @@
+{
+ "id": "census_school_system_finances_2022",
+ "answers": [
+  {
+   "id": "census_school_system_finances_2022#1",
+   "answer": "16297551",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='1', header=None)\n# Find row for California and column for From federal sources (col D, index 3)\nca_row = df[df[0].astype(str).str.contains('California', na=False)].index[0]\n# Col D is index 3 in sheet '1'\nresult = int(df.iloc[ca_row, 3])\n"
+  },
+  {
+   "id": "census_school_system_finances_2022#2",
+   "answer": "14",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='10', header=None)\n# States and DC are rows between United States and the footnotes\n# Row for United States\nus_idx = df[df[0].astype(str).str.contains('United States', na=False)].index[0]\n# Filter rows with state names\nstate_rows = df.iloc[us_idx+1:].dropna(subset=[0])\nstate_rows = state_rows[state_rows[0].astype(str).str.contains('\\.{3,}', na=False)]\n# Total debt is in col C (index 2)\ndebt_series = pd.to_numeric(state_rows[2], errors='coerce')\nresult = int((debt_series > 10000000).sum())\n"
+  },
+  {
+   "id": "census_school_system_finances_2022#3",
+   "answer": "834113",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='7', header=None)\n# General administration is in column F (index 5)\nstates = ['Connecticut', 'Maine', 'Massachusetts', 'New Hampshire', 'Rhode Island', 'Vermont']\ntotal = 0\nfor state in states:\n    row = df[df[0].astype(str).str.contains(state, na=False)].index[0]\n    total += int(df.iloc[row, 5])\nresult = total\n"
+  },
+  {
+   "id": "census_school_system_finances_2022#4",
+   "answer": "9605.94",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='8', header=None)\n# Instruction Total is in column F (index 5)\nstates = ['California', 'Oregon', 'Washington']\nvalues = []\nfor state in states:\n    row = df[df[0].astype(str).str.contains(state, na=False)].index[0]\n    values.append(float(df.iloc[row, 5]))\nresult = round(sum(values) / len(values), 2)\n"
+  },
+  {
+   "id": "census_school_system_finances_2022#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='10', header=None)\n# Long-term debt issued is in column F (index 5)\ntx_row = df[df[0].astype(str).str.contains('Texas', na=False)].index[0]\nca_row = df[df[0].astype(str).str.contains('California', na=False)].index[0]\ntx_debt_issued = float(df.iloc[tx_row, 5])\nca_debt_issued = float(df.iloc[ca_row, 5])\nresult = \"yes\" if tx_debt_issued > ca_debt_issued else \"no\"\n"
+  },
+  {
+   "id": "census_school_system_finances_2022#6",
+   "answer": "State sources",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_school_system_finances_2022.xlsx', sheet_name='5', header=None)\nvt_row = df[df[0].astype(str).str.contains('Vermont', na=False)].index[0]\n# Col D (index 3) is Federal sources Total\n# Col F (index 5) is State sources Total\n# Col H (index 7) is Local sources Total\nshares = {\n    'Federal sources': float(df.iloc[vt_row, 3]),\n    'State sources': float(df.iloc[vt_row, 5]),\n    'Local sources': float(df.iloc[vt_row, 7])\n}\nresult = max(shares, key=shares.get)\n"
+  }
+ ]
+}

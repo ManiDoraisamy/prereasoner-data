@@ -1,0 +1,72 @@
+{
+ "dataset": "eval-neartail-ecommerce",
+ "kind": "own",
+ "uploads": [
+  {
+   "name": "orders",
+   "columns": [
+    "order_id",
+    "price",
+    "quantity",
+    "delivery_status",
+    "payment_method",
+    "channel",
+    "customer_segment"
+   ],
+   "rows": 10000
+  }
+ ],
+ "normalized": [
+  {
+   "name": "orders",
+   "upload": "orders",
+   "columns": [
+    "order_id",
+    "price",
+    "quantity",
+    "delivery_status",
+    "payment_method",
+    "channel",
+    "customer_segment"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [],
+ "entity_columns": [
+  {
+   "upload": "orders",
+   "table": "orders",
+   "column": "customer_segment",
+   "column_index": 6,
+   "label": "song",
+   "type_qid": "Q7366",
+   "cells": 3,
+   "cells_matched_exactly": 2,
+   "routed_as_place": false,
+   "bridged": true,
+   "cells_matched": 2,
+   "has_country": false,
+   "bridge": "orders connected to knowledgebase",
+   "entity_table": "song"
+  }
+ ],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 0,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 0,
+  "country": 209,
+  "exchange_rate": 0,
+  "schedule": 13,
+  "song": 2,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 6.0
+}

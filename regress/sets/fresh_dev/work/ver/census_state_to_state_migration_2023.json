@@ -1,0 +1,30 @@
+{
+ "id": "census_state_to_state_migration_2023",
+ "answers": [
+  {
+   "id": "census_state_to_state_migration_2023#1",
+   "answer": "93970",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_to_state_migration_2023.xlsx', sheet_name='tool_input')\nval = df[(df['Residence 1 Year Ago'] == 'California') & (df['Current Residence'] == 'Texas')]['Estimate'].values[0]\nresult = int(val)"
+  },
+  {
+   "id": "census_state_to_state_migration_2023#2",
+   "answer": "California",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_to_state_migration_2023.xlsx', sheet_name='tool_input')\nsub = df[['State', 'Out-Movers Estimate']].dropna()\nsub['Out-Movers Estimate'] = pd.to_numeric(sub['Out-Movers Estimate'])\nresult = str(sub.sort_values(by='Out-Movers Estimate', ascending=False).iloc[0]['State'])"
+  },
+  {
+   "id": "census_state_to_state_migration_2023#3",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_to_state_migration_2023.xlsx', sheet_name='tool_input')\nfl_in = pd.to_numeric(df[df['State'] == 'Florida']['In-Movers Estimate'].values[0])\nca_in = pd.to_numeric(df[df['State'] == 'California']['In-Movers Estimate'].values[0])\nresult = 'yes' if fl_in > ca_in else 'no'"
+  },
+  {
+   "id": "census_state_to_state_migration_2023#4",
+   "answer": "[\"Florida\", \"Texas\", \"California\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_to_state_migration_2023.xlsx', sheet_name='tool_input')\nsub = df[['State', 'In-Movers Estimate']].dropna()\nsub['In-Movers Estimate'] = pd.to_numeric(sub['In-Movers Estimate'])\nresult = sub.sort_values(by='In-Movers Estimate', ascending=False).head(3)['State'].tolist()"
+  },
+  {
+   "id": "census_state_to_state_migration_2023#6",
+   "answer": "46389",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_state_to_state_migration_2023.xlsx', sheet_name='tool_input')\nny_to_fl = pd.to_numeric(df[(df['Residence 1 Year Ago'] == 'New York') & (df['Current Residence'] == 'Florida')]['Estimate'].values[0])\nfl_to_ny = pd.to_numeric(df[(df['Residence 1 Year Ago'] == 'Florida') & (df['Current Residence'] == 'New York')]['Estimate'].values[0])\nresult = int(ny_to_fl - fl_to_ny)"
+  }
+ ]
+}

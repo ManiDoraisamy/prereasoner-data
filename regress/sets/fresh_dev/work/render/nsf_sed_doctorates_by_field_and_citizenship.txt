@@ -1,0 +1,77 @@
+FILE nsf_sed_doctorates_by_field_and_citizenship.xlsx (Excel workbook) with 1 sheet(s): ["Table 1\u20136"]
+
+### Sheet "Table 1\u20136": 72 rows x 11 columns (Excel rows 1..72, columns A..K)
+merged cells: A2:K2
+(whole sheet shown; Excel row numbers)
+r1: A=Table 1-6
+r2: A=Research doctorate recipients, by trend broad field of doctorate and citizenship status: S...
+r3: A=(Number)
+r4: A=Field and citizenship status | B=1978 | C=1983 | D=1988 | E=1993 | F=1998 | G=2003 | H=2008 | I=2013 | J=2018 | K=2023
+r5: A=All fields | B=30875 | C=31280 | D=33497 | E=39800 | F=42636 | G=40762 | H=48776 | I=52703 | J=55078 | K=57862
+r6: A=U.S. citizen or permanent resident | B=26683 | C=25698 | D=24932 | E=28722 | F=31204 | G=28170 | H=30844 | I=33964 | J=35349 | K=35566
+r7: A=Temporary visa holder | B=3475 | C=4555 | D=6241 | E=9964 | F=9461 | G=10597 | H=15261 | I=15674 | J=17582 | K=19393
+r8: A=Unknown citizenship | B=717 | C=1027 | D=2324 | E=1114 | F=1971 | G=1995 | H=2671 | I=3065 | J=2147 | K=2903
+r9: A=Science and engineering | B=17977 | C=19130 | D=21697 | E=26486 | F=28636 | G=26759 | H=34765 | I=39084 | J=42144 | K=45533
+r10: A=U.S. citizen or permanent resident | B=14874 | C=14963 | D=15121 | E=17397 | F=19338 | G=16867 | H=19907 | I=23503 | J=25436 | K=26622
+r11: A=Temporary visa holder | B=2656 | C=3532 | D=5078 | E=8332 | F=8012 | G=8694 | H=13053 | I=13444 | J=15204 | K=16768
+r12: A=Unknown citizenship | B=447 | C=635 | D=1498 | E=757 | F=1286 | G=1198 | H=1805 | I=2137 | J=1504 | K=2143
+r13: A=Agricultural sciences and natural resources | B=1085 | C=1268 | D=1277 | E=1235 | F=1315 | G=1226 | H=1252 | I=1391 | J=1499 | K=1477
+r14: A=U.S. citizen or permanent resident | B=724 | C=841 | D=775 | E=647 | F=708 | G=628 | H=675 | I=769 | J=823 | K=845
+r15: A=Temporary visa holder | B=342 | C=400 | D=423 | E=567 | F=562 | G=524 | H=516 | I=539 | J=630 | K=580
+r16: A=Unknown citizenship | B=19 | C=27 | D=79 | E=21 | F=45 | G=74 | H=61 | I=83 | J=46 | K=52
+r17: A=Biological and biomedical sciences | B=3516 | C=3817 | D=4208 | E=5212 | F=6011 | G=5927 | H=8145 | I=8707 | J=8782 | K=9575
+r18: A=U.S. citizen or permanent resident | B=3139 | C=3399 | D=3412 | E=3844 | F=4455 | G=4250 | H=5405 | I=6044 | J=6396 | K=6906
+r19: A=Temporary visa holder | B=297 | C=338 | D=566 | E=1277 | F=1351 | G=1434 | H=2364 | I=2211 | J=2157 | K=2299
+r20: A=Unknown citizenship | B=80 | C=80 | D=230 | E=91 | F=205 | G=243 | H=376 | I=452 | J=229 | K=370
+r21: A=Computer and information sciences | B=121 | C=286 | D=515 | E=880 | F=927 | G=866 | H=1787 | I=1843 | J=2000 | K=2687
+r22: A=U.S. citizen or permanent resident | B=90 | C=208 | D=326 | E=510 | F=563 | G=447 | H=697 | I=758 | J=742 | K=965
+r23: A=Temporary visa holder | B=27 | C=74 | D=176 | E=348 | F=326 | G=379 | H=1005 | I=990 | J=1163 | K=1573
+r24: A=Unknown citizenship | B=4 | C=4 | D=13 | E=22 | F=38 | G=40 | H=85 | I=95 | J=95 | K=149
+r25: A=Engineering | B=2423 | C=2781 | D=4186 | E=5698 | F=5922 | G=5279 | H=7863 | I=9000 | J=10164 | K=11403
+r26: A=U.S. citizen or permanent resident | B=1588 | C=1485 | D=2150 | E=2700 | F=3048 | G=2180 | H=2958 | I=3767 | J=4213 | K=4804
+r27: A=Temporary visa holder | B=781 | C=1191 | D=1730 | E=2791 | F=2581 | G=2913 | H=4492 | I=4759 | J=5575 | K=6034
+r28: A=Unknown citizenship | B=54 | C=105 | D=306 | E=207 | F=293 | G=186 | H=413 | I=474 | J=376 | K=565
+r29: A=Geosciences, atmospheric, and ocean sciences | B=578 | C=587 | D=670 | E=721 | F=766 | G=682 | H=865 | I=989 | J=1185 | K=1231
+r30: A=U.S. citizen or permanent resident | B=499 | C=474 | D=494 | E=463 | F=534 | G=451 | H=536 | I=654 | J=760 | K=782
+r31: A=Temporary visa holder | B=69 | C=97 | D=131 | E=228 | F=202 | G=201 | H=293 | I=290 | J=392 | K=395
+r32: A=Unknown citizenship | B=10 | C=16 | D=45 | E=30 | F=30 | G=30 | H=36 | I=45 | J=33 | K=54
+r33: A=Health sciences | B=485 | C=518 | D=737 | E=1016 | F=1285 | G=1353 | H=1689 | I=2109 | J=2473 | K=2435
+r34: A=U.S. citizen or permanent resident | B=433 | C=439 | D=581 | E=814 | F=987 | G=1020 | H=1199 | I=1539 | J=1809 | K=1729
+r35: A=Temporary visa holder | B=36 | C=58 | D=97 | E=163 | F=244 | G=268 | H=372 | I=427 | J=573 | K=564
+r36: A=Unknown citizenship | B=16 | C=21 | D=59 | E=39 | F=54 | G=65 | H=118 | I=143 | J=91 | K=142
+r37: A=Mathematics and statistics | B=838 | C=701 | D=749 | E=1146 | F=1177 | G=993 | H=1400 | I=1817 | J=2022 | K=2167
+r38: A=U.S. citizen or permanent resident | B=666 | C=459 | D=388 | E=590 | F=673 | G=517 | H=673 | I=873 | J=994 | K=977
+r39: A=Temporary visa holder | B=157 | C=208 | D=307 | E=518 | F=444 | G=440 | H=651 | I=843 | J=965 | K=1112
+r40: A=Unknown citizenship | B=15 | C=34 | D=54 | E=38 | F=60 | G=36 | H=76 | I=101 | J=63 | K=78
+r41: A=Physical sciences | B=2611 | C=2801 | D=3316 | E=3681 | F=3800 | G=3289 | H=4081 | I=4595 | J=5144 | K=5460
+r42: A=U.S. citizen or permanent resident | B=2167 | C=2189 | D=2239 | E=2317 | F=2444 | G=1953 | H=2138 | I=2593 | J=3008 | K=3176
+r43: A=Temporary visa holder | B=400 | C=540 | D=873 | E=1261 | F=1193 | G=1216 | H=1734 | I=1742 | J=1981 | K=2076
+r44: A=Unknown citizenship | B=44 | C=72 | D=204 | E=103 | F=163 | G=120 | H=209 | I=260 | J=155 | K=208
+r45: A=Psychology | B=3055 | C=3346 | D=3074 | E=3420 | F=3673 | G=3277 | H=3357 | I=3592 | J=3821 | K=3899
+r46: A=U.S. citizen or permanent resident | B=2862 | C=3116 | D=2730 | E=3161 | F=3275 | G=2867 | H=2892 | I=3067 | J=3309 | K=3249
+r47: A=Temporary visa holder | B=61 | C=81 | D=85 | E=150 | F=168 | G=196 | H=249 | I=282 | J=284 | K=366
+r48: A=Unknown citizenship | B=132 | C=149 | D=259 | E=109 | F=230 | G=214 | H=216 | I=243 | J=228 | K=284
+r49: A=Social sciences | B=3265 | C=3025 | D=2965 | E=3477 | F=3760 | G=3867 | H=4326 | I=5041 | J=5054 | K=5199
+r50: A=U.S. citizen or permanent resident | B=2706 | C=2353 | D=2026 | E=2351 | F=2651 | G=2554 | H=2734 | I=3439 | J=3382 | K=3189
+r51: A=Temporary visa holder | B=486 | C=545 | D=690 | E=1029 | F=941 | G=1123 | H=1377 | I=1361 | J=1484 | K=1769
+r52: A=Unknown citizenship | B=73 | C=127 | D=249 | E=97 | F=168 | G=190 | H=215 | I=241 | J=188 | K=241
+r53: A=Non-science and engineering | B=12898 | C=12150 | D=11800 | E=13314 | F=14000 | G=14003 | H=14011 | I=13619 | J=12934 | K=12329
+r54: A=U.S. citizen or permanent resident | B=11809 | C=10735 | D=9811 | E=11325 | F=11866 | G=11303 | H=10937 | I=10461 | J=9913 | K=8944
+r55: A=Temporary visa holder | B=819 | C=1023 | D=1163 | E=1632 | F=1449 | G=1903 | H=2208 | I=2230 | J=2378 | K=2625
+r56: A=Unknown citizenship | B=270 | C=392 | D=826 | E=357 | F=685 | G=797 | H=866 | I=928 | J=643 | K=760
+r57: A=Business | B=713 | C=750 | D=1033 | E=1281 | F=1175 | G=1036 | H=1421 | I=1551 | J=1473 | K=1560
+r58: A=U.S. citizen or permanent resident | B=572 | C=578 | D=694 | E=843 | F=853 | G=615 | H=703 | I=831 | J=740 | K=681
+r59: A=Temporary visa holder | B=131 | C=151 | D=258 | E=394 | F=268 | G=356 | H=619 | I=600 | J=642 | K=770
+r60: A=Unknown citizenship | B=10 | C=21 | D=81 | E=44 | F=54 | G=65 | H=99 | I=120 | J=91 | K=109
+r61: A=Education | B=7194 | C=7174 | D=6361 | E=6689 | F=6569 | G=6651 | H=6561 | I=4934 | J=4818 | K=4562
+r62: A=U.S. citizen or permanent resident | B=6635 | C=6408 | D=5478 | E=5969 | F=5748 | G=5650 | H=5584 | I=4118 | J=4025 | K=3755
+r63: A=Temporary visa holder | B=414 | C=563 | D=485 | E=554 | F=487 | G=588 | H=567 | I=515 | J=611 | K=546
+r64: A=Unknown citizenship | B=145 | C=203 | D=398 | E=166 | F=334 | G=413 | H=410 | I=301 | J=182 | K=261
+r65: A=Humanities and arts | B=4176 | C=3451 | D=3548 | E=4372 | F=5308 | G=5226 | H=4688 | I=5662 | J=5139 | K=4453
+r66: A=U.S. citizen or permanent resident | B=3910 | C=3094 | D=2998 | E=3752 | F=4497 | G=4297 | H=3706 | I=4493 | J=4145 | K=3333
+r67: A=Temporary visa holder | B=174 | C=229 | D=309 | E=506 | F=556 | G=694 | H=715 | I=770 | J=739 | K=849
+r68: A=Unknown citizenship | B=92 | C=128 | D=241 | E=114 | F=255 | G=235 | H=267 | I=399 | J=255 | K=271
+r69: A=Other non-science and engineering | B=815 | C=775 | D=858 | E=972 | F=948 | G=1090 | H=1341 | I=1472 | J=1504 | K=1754
+r70: A=U.S. citizen or permanent resident | B=692 | C=655 | D=641 | E=761 | F=768 | G=741 | H=944 | I=1019 | J=1003 | K=1175
+r71: A=Temporary visa holder | B=100 | C=80 | D=111 | E=178 | F=138 | G=265 | H=307 | I=345 | J=386 | K=460
+r72: A=Unknown citizenship | B=23 | C=40 | D=106 | E=33 | F=42 | G=84 | H=90 | I=108 | J=115 | K=119

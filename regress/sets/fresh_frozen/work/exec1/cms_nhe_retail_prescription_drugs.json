@@ -1,0 +1,84 @@
+{
+ "id": "cms_nhe_retail_prescription_drugs",
+ "file": "cms_nhe_retail_prescription_drugs.xlsx",
+ "questions": [
+  {
+   "question": "What were total retail prescription drug expenditures in billions of dollars in 2024?",
+   "sheet": "Table 16",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "467",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\n# Row 4 is 'Amount in Billions' (Excel row 4, index 3)\n# Find row where col 0 is 2024 or '2024'\nsub = df.iloc[4:32]\nrow_2024 = sub[sub[0].astype(str).str.strip() == '2024']\nresult = float(row_2024[1].values[0])",
+   "qid": "cms_nhe_retail_prescription_drugs#1",
+   "pass1": true,
+   "result": 467.0,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In 2020, did Medicare pay more for retail prescription drugs than private health insurance?",
+   "sheet": "Table 16",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\nsub = df.iloc[4:32]\nrow_2020 = sub[sub[0].astype(str).str.strip() == '2020']\n# col E (idx 4) is Private Health Insurance, col F (idx 5) is Medicare\nprivate_val = float(row_2020[4].values[0])\nmedicare_val = float(row_2020[5].values[0])\nresult = 'yes' if medicare_val > private_val else 'no'",
+   "qid": "cms_nhe_retail_prescription_drugs#2",
+   "pass1": true,
+   "result": "no",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "In which calendar year between 2000 and 2024 did out-of-pocket spending on retail prescription drugs reach its lowest level in billions?",
+   "sheet": "Table 16",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2012",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\nsub = df.iloc[4:32].copy()\nsub[0] = sub[0].astype(str).str.strip()\nsub[2] = pd.to_numeric(sub[2])\n# filter years 2000 to 2024\nsub = sub[sub[0].str.isdigit()]\nsub['year_int'] = sub[0].astype(int)\nsub = sub[(sub['year_int'] >= 2000) & (sub['year_int'] <= 2024)]\nmin_row = sub.loc[sub[2].idxmin()]\nresult = str(min_row[0])",
+   "qid": "cms_nhe_retail_prescription_drugs#3",
+   "pass1": false,
+   "result": "2000",
+   "error": null,
+   "reject1": "disagrees with stated answer"
+  },
+  {
+   "question": "In 2024, what percentage share of retail prescription drug spending came from Medicare?",
+   "sheet": "Table 16",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "34.9",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\n# Percent Distribution section is rows 63 to 90 (index 62 to 89)\nsub = df.iloc[62:90].copy()\nrow_2024 = sub[sub[0].astype(str).str.strip() == '2024']\n# Medicare is column F (idx 5)\nresult = float(row_2024[5].values[0])",
+   "qid": "cms_nhe_retail_prescription_drugs#4",
+   "pass1": true,
+   "result": 34.9,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between 2015 and 2024 inclusive, in how many years did out-of-pocket drug expenditures experience negative annual percentage growth?",
+   "sheet": "Table 16",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "5",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\n# Average Annual Percent Change rows are 34 to 61 (index 33 to 60)\nsub = df.iloc[33:61].copy()\nsub[0] = sub[0].astype(str).str.strip()\nsub = sub[sub[0].str.isdigit()]\nsub['year_int'] = sub[0].astype(int)\nsub = sub[(sub['year_int'] >= 2015) & (sub['year_int'] <= 2024)]\nsub[2] = pd.to_numeric(sub[2], errors='coerce')\nresult = int((sub[2] < 0).sum())",
+   "qid": "cms_nhe_retail_prescription_drugs#5",
+   "pass1": true,
+   "result": 5,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "What was the difference in billions of dollars between private health insurance spending and Medicare spending on retail drugs in 2023?",
+   "sheet": "Table 16",
+   "kind": "comparison",
+   "answer_type": "number",
+   "answer": "16.1",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('cms_nhe_retail_prescription_drugs.xlsx', sheet_name='Table 16', header=None)\nsub = df.iloc[4:32]\nrow_2023 = sub[sub[0].astype(str).str.strip() == '2023']\nprivate_val = float(row_2023[4].values[0])\nmedicare_val = float(row_2023[5].values[0])\nresult = round(private_val - medicare_val, 1)",
+   "qid": "cms_nhe_retail_prescription_drugs#6",
+   "pass1": true,
+   "result": 16.1,
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

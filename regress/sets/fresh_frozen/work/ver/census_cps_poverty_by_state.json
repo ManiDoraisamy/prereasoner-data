@@ -1,0 +1,30 @@
+{
+ "id": "census_cps_poverty_by_state",
+ "answers": [
+  {
+   "id": "census_cps_poverty_by_state#1",
+   "answer": "10.7",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_poverty_by_state.xlsx', sheet_name='pov21', header=None)\nrow = df[df[0].astype(str).str.strip() == 'California']\nresult = float(row[1].values[0])"
+  },
+  {
+   "id": "census_cps_poverty_by_state#2",
+   "answer": "Louisiana",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_poverty_by_state.xlsx', sheet_name='pov21', header=None)\n# State rows start from row 6 (Alabama) to row 56 (Wyoming), index 6 to 56\ndata = df.iloc[6:57, [0, 1]].copy()\ndata.columns = ['state', 'poverty_rate']\ndata['poverty_rate'] = pd.to_numeric(data['poverty_rate'])\nresult = data.loc[data['poverty_rate'].idxmax(), 'state'].strip()"
+  },
+  {
+   "id": "census_cps_poverty_by_state#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_poverty_by_state.xlsx', sheet_name='pov21', header=None)\ntx = float(df[df[0].astype(str).str.strip() == 'Texas'][1].values[0])\nny = float(df[df[0].astype(str).str.strip() == 'New York'][1].values[0])\nresult = 'yes' if tx > ny else 'no'"
+  },
+  {
+   "id": "census_cps_poverty_by_state#5",
+   "answer": "4",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_poverty_by_state.xlsx', sheet_name='pov21', header=None)\n# States and DC are in Excel rows 7 to 57 (pandas index 6 to 56)\ndata = df.iloc[6:57, [0, 1]].copy()\ndata.columns = ['state', 'poverty_rate']\ndata['poverty_rate'] = pd.to_numeric(data['poverty_rate'])\nresult = int((data['poverty_rate'] > 15.0).sum())"
+  },
+  {
+   "id": "census_cps_poverty_by_state#6",
+   "answer": "4.3",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_cps_poverty_by_state.xlsx', sheet_name='pov21', header=None)\n# Find columns for 2010-2012 and 2023-2025 in row index 3\ncol_2023_2025 = [c for c in df.columns if '2023-2025' in str(df.iloc[3, c])][0]\ncol_2010_2012 = [c for c in df.columns if '2010-2012' in str(df.iloc[3, c])][0]\n\nus_row = df[df[0].astype(str).str.strip() == 'United States']\nrate_2023_2025 = float(us_row[col_2023_2025].values[0])\nrate_2010_2012 = float(us_row[col_2010_2012].values[0])\nresult = round(rate_2010_2012 - rate_2023_2025, 2)"
+  }
+ ]
+}

@@ -1,0 +1,88 @@
+{
+ "id": "nyc_dohmh_air_quality",
+ "file": "nyc_dohmh_air_quality.csv",
+ "questions": [
+  {
+   "question": "What was the estimated annual death rate per 100,000 adults aged 30 and older attributable to PM2.5 in Kingsbridge - Riverdale during the 2005-2007 period?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "117.7",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_air_quality.csv')\nfiltered = df[(df['Name'] == 'Deaths due to PM2.5') & (df['Geo Place Name'] == 'Kingsbridge - Riverdale') & (df['Time Period'] == '2005-2007')]\nresult = float(filtered['Data Value'].iloc[0])",
+   "qid": "nyc_dohmh_air_quality#1",
+   "pass1": true,
+   "result": 117.7,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Between Central Harlem - Morningside Heights and East Harlem, which neighborhood had a higher estimated annual PM2.5-attributable death rate among adults aged 30 and older for the 2005-2007 time period?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Central Harlem - Morningside Heights",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_air_quality.csv')\nsub = df[(df['Name'] == 'Deaths due to PM2.5') & (df['Time Period'] == '2005-2007') & (df['Geo Place Name'].isin(['Central Harlem - Morningside Heights', 'East Harlem']))]\nresult = sub.sort_values(by='Data Value', ascending=False)['Geo Place Name'].iloc[0]",
+   "qid": "nyc_dohmh_air_quality#2",
+   "pass1": true,
+   "result": "Central Harlem - Morningside Heights",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "How many entries in this air quality dataset report data aggregated at the borough level?",
+   "sheet": "",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "910",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_air_quality.csv')\nresult = int((df['Geo Type Name'] == 'Borough').sum())",
+   "qid": "nyc_dohmh_air_quality#3",
+   "pass1": true,
+   "result": 910,
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which three geographic area types account for the largest number of records in the dataset?",
+   "sheet": "",
+   "kind": "top_n",
+   "answer_type": "list",
+   "answer": "[\"UHF42\", \"CD\", \"UHF34\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_air_quality.csv')\nresult = df['Geo Type Name'].value_counts().head(3).index.tolist()",
+   "qid": "nyc_dohmh_air_quality#4",
+   "pass1": true,
+   "result": [
+    "UHF42",
+    "CD",
+    "UHF34"
+   ],
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Which reporting time period has the highest total number of recorded observations in the dataset?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2019",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_air_quality.csv')\nresult = str(df['Time Period'].value_counts().index[0])",
+   "qid": "nyc_dohmh_air_quality#5",
+   "pass1": true,
+   "result": "2019",
+   "error": null,
+   "reject1": null
+  },
+  {
+   "question": "Did the average summer ozone concentration in Coney Island (CD13) exceed 30 ppb in 2013?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('nyc_dohmh_air_quality.csv')\nval = df[(df['Name'] == 'Ozone (O3)') & (df['Measure'] == 'Summer mean') & (df['Geo Place Name'] == 'Coney Island (CD13)') & (df['Time Period'] == '2013')]['Data Value'].iloc[0]\nresult = 'yes' if val > 30 else 'no'",
+   "qid": "nyc_dohmh_air_quality#6",
+   "pass1": true,
+   "result": "yes",
+   "error": null,
+   "reject1": null
+  }
+ ]
+}

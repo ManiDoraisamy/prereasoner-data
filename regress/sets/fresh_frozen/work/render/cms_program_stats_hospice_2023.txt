@@ -1,0 +1,412 @@
+FILE cms_program_stats_hospice_2023.xlsx (Excel workbook) with 7 sheet(s): ["Table of Contents", "MDCR HOSPICE 1_CPS_08UHS", "MDCR HOSPICE 2_CPS_08UHS", "MDCR HOSPICE 3_CPS_08UHS", "MDCR HOSPICE 4_CPS_08UHS", "MDCR HOSPICE 5_CPS_08UHS", "MDCR HOSPICE 6_CPS_08UHS"]
+
+### Sheet "Table of Contents": 8 rows x 2 columns (Excel rows 1..8, columns A..B)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Hospice Utilization
+r2: A=Table Name | B=Description
+r3: A=MDCR HOSPICE 1_CPS_08UHS | B=Medicare Hospices:  Utilization and Program Payments for Medicare Beneficiaries, by Type o...
+r4: A=MDCR HOSPICE 2_CPS_08UHS | B=Medicare Hospices:  Utilization and Program Payments for Medicare Beneficiaries, by Demogr...
+r5: A=MDCR HOSPICE 3_CPS_08UHS | B=Medicare Hospices:  Utilization and Program Payments for Medicare Beneficiaries, by Area o...
+r6: A=MDCR HOSPICE 4_CPS_08UHS | B=Medicare Hospices: Persons with Utilization and Total Service Visits for Medicare Benefici...
+r7: A=MDCR HOSPICE 5_CPS_08UHS | B=Medicare Hospices: Utilization and Program Payments for Medicare Beneficiaries, by Level o...
+r8: A=MDCR HOSPICE 6_CPS_08UHS | B=Medicare Hospices:  Utilization and Program Payments For Medicare Beneficiaries, by Number...
+
+### Sheet "MDCR HOSPICE 1_CPS_08UHS": 37 rows x 11 columns (Excel rows 1..37, columns A..K)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Hospices
+r2: A=Utilization and Program Payments for Medicare Beneficiaries, by Type of Entitlement
+r3: A=Calendar Year 2018-2023
+r4: A=Type of Entitlement and Calendar Year | B=Total Part A Enrollees | C=Total Persons With Utilization | D=Total Covered Days of Care | E=Covered Days of Care Per Person With Utilization | F=Covered Days of Care Per 1,000 Part A Enrollees | G=Total Program Payments | H=Program Payments Per Person With Utilization | I=Program Payments Per Covered Day | J=Program Payments Per Part A Enrollee | K=Discharged Dead
+r5: A=BLANK
+r6: A=All Beneficiaries
+r7: A=2018 | B=59649950.5 | C=1563711 | D=113984289 | E=72.89344962 | F=1910.886565 | G=1.925102874e+10 | H=12311.11678 | I=168.8919491 | J=322.7333565 | K=1132665
+r8: A=2019 | B=61166694 | C=1622426 | D=122351397 | E=75.41262098 | F=2000.294425 | G=2.089896895e+10 | H=12881.30796 | I=170.8110366 | J=341.6723643 | K=1165353
+r9: A=2020 | B=62498751.33 | C=1728004 | D=128294027 | E=74.24405673 | F=2052.745443 | G=2.244534567e+10 | H=12989.1746 | I=174.9523824 | J=359.1327058 | K=1272769
+r10: A=2021 | B=63557292.5 | C=1736816 | D=128009895 | E=73.70377461 | F=2014.08666 | G=2.306571484e+10 | H=13280.45967 | I=180.1869679 | J=362.9121684 | K=1257831
+r11: A=2022 | B=64759893.83 | C=1752493 | D=130448636 | E=74.43603826 | F=2014.342956 | G=2.369819695e+10 | H=13522.56297 | I=181.6668819 | J=365.9394039 | K=1262487
+r12: A=2023 | B=66171290.25 | C=1780218 | D=137990402 | E=77.51320456 | F=2085.35154 | G=2.566939685e+10 | H=14419.24351 | I=186.0230601 | J=387.9234749 | K=1258390
+r13: (blank)
+r14: A=Aged Beneficiaries
+r15: A=2018 | B=50964448.75 | C=1485235 | D=108994332 | E=73.38524341 | F=2138.634571 | G=1.839767596e+10 | H=12387.04714 | I=168.7947953 | J=360.9903847 | K=1077350
+r16: A=2019 | B=52644189.92 | C=1542756 | D=117186448 | E=75.9591588 | F=2226.009141 | G=2.000043415e+10 | H=12964.09422 | I=170.6719035 | J=379.9172174 | K=1109540
+r17: A=2020 | B=54190860.75 | C=1647621 | D=123022248 | E=74.66659383 | F=2270.165971 | G=2.150590421e+10 | H=13052.70096 | I=174.8131298 | J=396.8548185 | K=1215444
+r18: A=2021 | B=55516678.67 | C=1657202 | D=122917363 | E=74.17162362 | F=2214.061899 | G=2.213235827e+10 | H=13355.25679 | I=180.0588438 | J=398.6614257 | K=1201460
+r19: A=2022 | B=57016101.75 | C=1676464 | D=125532036 | E=74.87905258 | F=2201.694471 | G=2.278833881e+10 | H=13593.09762 | I=181.5340493 | J=399.6825126 | K=1209017
+r20: A=2023 | B=58697403.83 | C=1706413 | D=133081483 | E=77.98902317 | F=2267.246493 | G=2.473869105e+10 | H=14497.48159 | I=185.8913088 | J=421.4614179 | K=1207753
+r21: (blank)
+r22: A=Disabled Beneficiaries
+r23: A=2018 | B=8685501.75 | C=78476 | D=4989957 | E=63.58577145 | F=574.5156864 | G=853352774.4 | H=10874.06053 | I=171.0140537 | J=98.25025646 | K=55315
+r24: A=2019 | B=8522504.083 | C=79670 | D=5164949 | E=64.82928329 | F=606.0365533 | G=898534805.7 | H=11278.20768 | I=173.9677983 | J=105.4308448 | K=55813
+r25: A=2020 | B=8307890.583 | C=80383 | D=5271779 | E=65.58325765 | F=634.5508462 | G=939441468.6 | H=11687.06653 | I=178.2019824 | J=113.0782187 | K=57325
+r26: A=2021 | B=8040613.833 | C=79614 | D=5092532 | E=63.96528249 | F=633.3511478 | G=933356571.9 | H=11723.52315 | I=183.2794712 | J=116.0802634 | K=56371
+r27: A=2022 | B=7743792.083 | C=76029 | D=4916600 | E=64.66742953 | F=634.9085754 | G=909858139.6 | H=11967.25118 | I=185.0584021 | J=117.4951664 | K=53470
+r28: A=2023 | B=7473886.417 | C=73805 | D=4908919 | E=66.51201138 | F=656.8094197 | G=930705801.9 | H=12610.33537 | I=189.5948582 | J=124.5276888 | K=50637
+r29: (blank)
+r30: A=NOTES:  The total Medicare Part A enrollee counts and calculated 'per Part A enrollee' rat...
+r31: A=Advantage/Other Health Plans combined, because once a beneficiary enrolled in Medicare Adv...
+r32: A=his or her Medicare benefits revert to fee-for-service.  This table limits the reporting o...
+r33: A=calendar year and may not reflect all of a beneficiary's utilization days for an entire ho...
+r34: A=per person with utilization' calculation may be understated since utilization days that oc...
+r35: A=that occur after the specified calendar year are not included in the calculation.  Counts ...
+r36: A=BLANK
+r37: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR HOSPICE 2_CPS_08UHS": 49 rows x 13 columns (Excel rows 1..49, columns A..M)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Hospices
+r2: A=Utilization and Program Payments for Medicare Beneficiaries, by Demographic Characteristic...
+r3: A=Calendar Year 2023
+r4: A=Demographic Characteristic and Medicare-Medicaid Enrollment Status | B=Total Part A Enrollees | C=Total Persons With Utilization | D=Total Covered Days of Care | E=% of Total Covered Days of Care | F=Covered Days of Care Per Person With Utilization | G=Covered Days of Care Per 1,000 Part A Enrollees | H=Total Program Payments | I=% of Total Program Payments | J=Program Payments Per Person With Utilization | K=Program Payments Per Covered Day | L=Program Payments Per Part A Enrollee | M=Discharged Dead
+r5: A=BLANK
+r6: A=Total | B=66171290 | C=1780218 | D=137990402 | E=100 | F=77.51 | G=2085 | H=25669396850 | I=100 | J=14419 | K=186 | L=388 | M=1258390
+r7: A=BLANK
+r8: A=Age
+r9: A=Under 65 Years | B=7473886 | C=73805 | D=4908919 | E=3.6 | F=66.51 | G=657 | H=930705802 | I=3.6 | J=12610 | K=190 | L=125 | M=50637
+r10: A=65 Years and Over | B=58697404 | C=1706413 | D=133081483 | E=96.4 | F=77.99 | G=2267 | H=24738691049 | I=96.4 | J=14497 | K=186 | L=421 | M=1207753
+r11: A=BLANK
+r12: A=Under 18 Years | B=1222 | C=* | D=† | E=† | F=† | G=† | H=† | I=† | J=† | K=† | L=† | M=*
+r13: A=18-24 Years | B=83225 | C=† | D=† | E=† | F=† | G=† | H=† | I=† | J=† | K=† | L=† | M=†
+r14: A=25-34 Years | B=502640 | C=954 | D=62540 | E=0 | F=65.56 | G=124 | H=12122284 | I=0 | J=12707 | K=194 | L=24 | M=618
+r15: A=35-44 Years | B=997946 | C=3587 | D=237345 | E=0.2 | F=66.17 | G=238 | H=46486704 | I=0.2 | J=12960 | K=196 | L=47 | M=2348
+r16: A=45-54 Years | B=1726714 | C=12140 | D=801075 | E=0.6 | F=65.99 | G=464 | H=152443951 | I=0.6 | J=12557 | K=190 | L=88 | M=8158
+r17: A=55-64 Years | B=4162140 | C=57000 | D=3799232 | E=2.8 | F=66.65 | G=913 | H=718031904 | I=2.8 | J=12597 | K=189 | L=173 | M=39436
+r18: A=65-74 Years | B=32660064 | C=323546 | D=19677708 | E=14.3 | F=60.82 | G=603 | H=3813062869 | I=14.9 | J=11785 | K=194 | L=117 | M=237770
+r19: A=75-84 Years | B=19257338 | C=569487 | D=41205044 | E=29.9 | F=72.35 | G=2140 | H=7710524504 | I=30 | J=13539 | K=187 | L=400 | M=408059
+r20: A=85-94 Years | B=6043620 | C=627165 | D=53195497 | E=38.6 | F=84.82 | G=8802 | H=9761948697 | I=38 | J=15565 | K=184 | L=1615 | M=437027
+r21: A=95 Years and Over | B=736381 | C=186215 | D=19003234 | E=13.8 | F=102.05 | G=25806 | H=3453154980 | I=13.5 | J=18544 | K=182 | L=4689 | M=124897
+r22: A=BLANK
+r23: A=Sex
+r24: A=Male | B=30216621 | C=744230 | D=47917899 | E=34.7 | F=64.39 | G=1586 | H=9137531217 | I=35.6 | J=12278 | K=191 | L=302 | M=556329
+r25: A=Female | B=35954669 | C=1035988 | D=90072503 | E=65.3 | F=86.94 | G=2505 | H=16531865634 | I=64.4 | J=15958 | K=184 | L=460 | M=702061
+r26: A=BLANK
+r27: A=Race
+r28: A=Non-Hispanic White | B=47666852 | C=1423431 | D=108653605 | E=78.7 | F=76.33 | G=2279 | H=20027907985 | I=78 | J=14070 | K=184 | L=420 | M=1031485
+r29: A=Black (or African-American) | B=6933962 | C=149630 | D=11911284 | E=8.6 | F=79.6 | G=1718 | H=2227411122 | I=8.7 | J=14886 | K=187 | L=321 | M=98637
+r30: A=Asian/Pacific Islander | B=2509140 | C=39283 | D=3209027 | E=2.3 | F=81.69 | G=1279 | H=686014994 | I=2.7 | J=17463 | K=214 | L=273 | M=24662
+r31: A=Hispanic | B=6628677 | C=136677 | D=11946156 | E=8.7 | F=87.4 | G=1802 | H=2283454512 | I=8.9 | J=16707 | K=191 | L=344 | M=81993
+r32: A=American Indian/Alaska Native | B=240823 | C=6377 | D=470110 | E=0.3 | F=73.72 | G=1952 | H=82388247 | I=0.3 | J=12920 | K=175 | L=342 | M=4425
+r33: A=Other | B=598706 | C=11630 | D=939177 | E=0.7 | F=80.75 | G=1569 | H=190330563 | I=0.7 | J=16365 | K=203 | L=318 | M=7810
+r34: A=Unknown | B=1593130 | C=13190 | D=861043 | E=0.6 | F=65.28 | G=540 | H=171889428 | I=0.7 | J=13032 | K=200 | L=108 | M=9378
+r35: A=BLANK
+r36: A=Medicare-Medicaid Enrollment (MME) Status
+r37: A=MME | B=12443355 | C=515997 | D=45875384 | E=33.2 | F=88.91 | G=3687 | H=8441755586 | I=32.9 | J=16360 | K=184 | L=678 | M=331047
+r38: A=Non-MME | B=53727935 | C=1264221 | D=92115018 | E=66.8 | F=72.86 | G=1714 | H=17227641265 | I=67.1 | J=13627 | K=187 | L=321 | M=927343
+r39: (blank)
+r40: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r41: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r42: (blank)
+r43: A=NOTES:  The total Medicare Part A enrollee counts and calculated 'per Part A enrollee' rat...
+r44: A=combined, because once a beneficiary enrolled in Medicare Advantage/Other Health Plans ele...
+r45: A=table limits the reporting of hospice days to utilization days occurring within the specif...
+r46: A=hospice episode of care.  As a result, the 'covered days of care per person with utilizati...
+r47: A=calendar year and/or utilization days that occur after the specified calendar year are not...
+r48: (blank)
+r49: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR HOSPICE 3_CPS_08UHS": 80 rows x 11 columns (Excel rows 1..80, columns A..K)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Hospices
+r2: A=Utilization and Program Payments for Medicare Beneficiaries, by Area of Residence
+r3: A=Calendar Year 2023
+r4: A=Area of Residence | B=Total Part A Enrollees | C=Total Persons With Utilization | D=Total Covered Days of Care | E=Covered Days of Care Per Person With Utilization | F=Covered Days of Care Per 1,000 Part A Enrollees | G=Total Program Payments | H=Program Payments Per Person With Utilization | I=Program Payments Per Covered Day | J=Program Payments Per Part A Enrollee | K=Discharged Dead
+r5: A=BLANK
+r6: A=All Areas | B=66171290 | C=1780218 | D=137990402 | E=77.51 | F=2085 | G=25669396850 | H=14419 | I=186 | J=388 | K=1258390
+r7: A=United States | B=64839311 | C=1768382 | D=137387987 | E=77.69 | F=2119 | G=25596440771 | H=14474 | I=186 | J=395 | K=1251395
+r8: (blank)
+r9: A=Alabama | B=1095061 | C=37589 | D=3372039 | E=89.71 | F=3079 | G=525691490 | H=13985 | I=156 | J=480 | K=24041
+r10: A=Alaska | B=114285 | C=1367 | D=95799 | E=70.08 | F=838 | G=19257421 | H=14087 | I=201 | J=169 | K=1002
+r11: A=Arizona | B=1453732 | C=46952 | D=4176441 | E=88.95 | F=2873 | G=746061648 | H=15890 | I=179 | J=513 | K=30836
+r12: A=Arkansas | B=669268 | C=20138 | D=1594870 | E=79.2 | F=2383 | G=266471816 | H=13232 | I=167 | J=398 | K=14456
+r13: A=California | B=6637194 | C=186004 | D=17261430 | E=92.8 | F=2601 | G=3913019783 | H=21037 | I=227 | J=590 | K=109126
+r14: A=Colorado | B=998731 | C=25834 | D=1883300 | E=72.9 | F=1886 | G=352169757 | H=13632 | I=187 | J=353 | K=18801
+r15: A=Connecticut | B=722945 | C=16125 | D=894563 | E=55.48 | F=1237 | G=190677750 | H=11825 | I=213 | J=264 | K=12941
+r16: A=Delaware | B=237090 | C=6527 | D=464543 | E=71.17 | F=1959 | G=95015713 | H=14557 | I=205 | J=401 | K=4852
+r17: A=District of Columbia | B=94102 | C=1628 | D=138285 | E=84.94 | F=1470 | G=26469374 | H=16259 | I=191 | J=281 | K=1079
+r18: A=Florida | B=5024635 | C=155242 | D=12064133 | E=77.71 | F=2401 | G=2315099391 | H=14913 | I=192 | J=461 | K=110684
+r19: A=Georgia | B=1878044 | C=56907 | D=5003463 | E=87.92 | F=2664 | G=857914941 | H=15076 | I=171 | J=457 | K=38554
+r20: A=Hawaii | B=300376 | C=6761 | D=527249 | E=77.98 | F=1755 | G=112888252 | H=16697 | I=214 | J=376 | K=4631
+r21: A=Idaho | B=382427 | C=10282 | D=825875 | E=80.32 | F=2160 | G=141432730 | H=13755 | I=171 | J=370 | K=7264
+r22: A=Illinois | B=2345892 | C=60034 | D=3925315 | E=65.38 | F=1673 | G=737090643 | H=12278 | I=188 | J=314 | K=46248
+r23: A=Indiana | B=1346998 | C=39840 | D=2842842 | E=71.36 | F=2111 | G=506254117 | H=12707 | I=178 | J=376 | K=29855
+r24: A=Iowa | B=671696 | C=20341 | D=1288241 | E=63.33 | F=1918 | G=218861941 | H=10760 | I=170 | J=326 | K=15438
+r25: A=Kansas | B=576907 | C=18146 | D=1375420 | E=75.8 | F=2384 | G=233782453 | H=12883 | I=170 | J=405 | K=13066
+r26: A=Kentucky | B=961707 | C=23349 | D=1158123 | E=49.6 | F=1204 | G=222003028 | H=9508 | I=192 | J=231 | K=19027
+r27: A=Louisiana | B=921535 | C=28347 | D=2435588 | E=85.92 | F=2643 | G=395227046 | H=13942 | I=162 | J=429 | K=19577
+r28: A=Maine | B=368889 | C=9900 | D=664835 | E=67.16 | F=1802 | G=121571559 | H=12280 | I=183 | J=330 | K=7506
+r29: A=Maryland | B=1120743 | C=25504 | D=1469417 | E=57.62 | F=1311 | G=287863143 | H=11287 | I=196 | J=257 | K=19836
+r30: A=Massachusetts | B=1426517 | C=33947 | D=2405009 | E=70.85 | F=1686 | G=482447219 | H=14212 | I=201 | J=338 | K=25406
+r31: A=Michigan | B=2205222 | C=61918 | D=4692166 | E=75.78 | F=2128 | G=810673928 | H=13093 | I=173 | J=368 | K=45755
+r32: A=Minnesota | B=1119476 | C=30789 | D=2377999 | E=77.24 | F=2124 | G=441031691 | H=14324 | I=185 | J=394 | K=22549
+r33: A=Mississippi | B=631192 | C=19669 | D=1804008 | E=91.72 | F=2858 | G=287551520 | H=14620 | I=159 | J=456 | K=12970
+r34: A=Missouri | B=1305621 | C=38004 | D=2848740 | E=74.96 | F=2182 | G=487330943 | H=12823 | I=171 | J=373 | K=27617
+r35: A=Montana | B=255243 | C=4868 | D=307794 | E=63.23 | F=1206 | G=53373957 | H=10964 | I=173 | J=209 | K=3578
+r36: A=Nebraska | B=375213 | C=10103 | D=645482 | E=63.89 | F=1720 | G=114102605 | H=11294 | I=177 | J=304 | K=7794
+r37: A=Nevada | B=584438 | C=16935 | D=1357909 | E=80.18 | F=2323 | G=276021167 | H=16299 | I=203 | J=472 | K=11254
+r38: A=New Hampshire | B=335031 | C=8263 | D=542831 | E=65.69 | F=1620 | G=104168980 | H=12607 | I=192 | J=311 | K=6304
+r39: A=New Jersey | B=1711263 | C=37781 | D=2461558 | E=65.15 | F=1438 | G=501995143 | H=13287 | I=204 | J=293 | K=29054
+r40: A=New Mexico | B=449789 | C=11549 | D=890496 | E=77.11 | F=1980 | G=151870822 | H=13150 | I=171 | J=338 | K=7993
+r41: A=New York | B=3821452 | C=48378 | D=2754186 | E=56.93 | F=721 | G=598571547 | H=12373 | I=217 | J=157 | K=37260
+r42: A=North Carolina | B=2169794 | C=60453 | D=4444269 | E=73.52 | F=2048 | G=811706320 | H=13427 | I=183 | J=374 | K=45006
+r43: A=North Dakota | B=143788 | C=2811 | D=160132 | E=56.97 | F=1114 | G=26907488 | H=9572 | I=168 | J=187 | K=2206
+r44: A=Ohio | B=2477699 | C=79220 | D=6084609 | E=76.81 | F=2456 | G=1086101358 | H=13710 | I=178 | J=438 | K=57664
+r45: A=Oklahoma | B=790684 | C=27363 | D=2329177 | E=85.12 | F=2946 | G=371238353 | H=13567 | I=159 | J=470 | K=18049
+r46: A=Oregon | B=929723 | C=23704 | D=1551462 | E=65.45 | F=1669 | G=318473690 | H=13435 | I=205 | J=343 | K=17771
+r47: A=Pennsylvania | B=2885008 | C=72966 | D=4735098 | E=64.89 | F=1641 | G=852474228 | H=11683 | I=180 | J=295 | K=55858
+r48: A=Rhode Island | B=237623 | C=6872 | D=436739 | E=63.55 | F=1838 | G=88837352 | H=12927 | I=203 | J=374 | K=5356
+r49: A=South Carolina | B=1191989 | C=36293 | D=3047897 | E=83.98 | F=2557 | G=518257181 | H=14280 | I=170 | J=435 | K=25448
+r50: A=South Dakota | B=193767 | C=4035 | D=233972 | E=57.99 | F=1207 | G=39888738 | H=9886 | I=170 | J=206 | K=3135
+r51: A=Tennessee | B=1450926 | C=41651 | D=3096301 | E=74.34 | F=2134 | G=510103743 | H=12247 | I=165 | J=352 | K=30955
+r52: A=Texas | B=4628365 | C=149991 | D=14333048 | E=95.56 | F=3097 | G=2480147299 | H=16535 | I=173 | J=536 | K=97279
+r53: A=Utah | B=448951 | C=15612 | D=1297856 | E=83.13 | F=2891 | G=223641562 | H=14325 | I=172 | J=498 | K=10693
+r54: A=Vermont | B=161912 | C=3460 | D=233387 | E=67.45 | F=1441 | G=43071531 | H=12448 | I=185 | J=266 | K=2625
+r55: A=Virginia | B=1642111 | C=42428 | D=3044201 | E=71.75 | F=1854 | G=536214778 | H=12638 | I=176 | J=327 | K=31340
+r56: A=Washington | B=1488791 | C=30724 | D=1934082 | E=62.95 | F=1299 | G=396641739 | H=12910 | I=205 | J=266 | K=23415
+r57: A=West Virginia | B=448530 | C=11765 | D=752210 | E=63.94 | F=1677 | G=130744785 | H=11113 | I=174 | J=291 | K=9044
+r58: A=Wisconsin | B=1283079 | C=37695 | D=2995361 | E=79.46 | F=2335 | G=543119945 | H=14408 | I=181 | J=423 | K=27411
+r59: A=Wyoming | B=123854 | C=2318 | D=128237 | E=55.32 | F=1035 | G=24907164 | H=10745 | I=194 | J=201 | K=1786
+r60: A=BLANK
+r61: A=Territories, Possessions, and Other
+r62: A=Puerto Rico | B=764971 | C=11203 | D=557921 | E=49.8 | F=729 | G=65619613 | H=5857 | I=118 | J=86 | K=6578
+r63: A=Virgin Islands | B=20505 | C=367 | D=31082 | E=84.69 | F=1516 | G=4717210 | H=12853 | I=152 | J=230 | K=227
+r64: A=American Samoa | B=4957 | C=17 | D=1055 | E=62.06 | F=213 | G=202798 | H=11929 | I=192 | J=41 | K=11
+r65: A=Guam | B=19150 | C=121 | D=5091 | E=42.07 | F=266 | G=940362 | H=7772 | I=185 | J=49 | K=93
+r66: A=Northern Mariana Islands | B=3098 | C=17 | D=657 | E=38.65 | F=212 | G=119826 | H=7049 | I=182 | J=39 | K=11
+r67: A=Foreign Countries | B=519004 | C=108 | D=6147 | E=56.92 | F=12 | G=1269661 | H=11756 | I=207 | J=2 | K=73
+r68: A=Unknown | B=294 | C=* | D=† | E=† | F=† | G=† | H=† | I=† | J=† | K=*
+r69: (blank)
+r70: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r71: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r72: (blank)
+r73: A=NOTES:  The total Medicare Part A enrollee counts and calculated 'per Part A enrollee' rat...
+r74: A=Advantage/Other Health Plans combined, because once a beneficiary enrolled in Medicare Adv...
+r75: A=his or her Medicare benefits revert to fee-for-service.  This table limits the reporting o...
+r76: A=calendar year and may not reflect all of a beneficiary's utilization days for an entire ho...
+r77: A=with utilization' calculation may be understated since utilization days that occur prior t...
+r78: A=specified calendar year are not included in the calculation.  Counts and amounts may not s...
+r79: A=BLANK
+r80: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR HOSPICE 4_CPS_08UHS": 114 rows x 5 columns (Excel rows 1..114, columns A..E)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Hospices
+r2: A=Persons with Utilization and Total Service Visits for Medicare Beneficiaries, by Type of C...
+r3: A=Calendar Year 2023
+r4: A=Type of Control and Type of Service Visit | B=Total Persons With Utilization | C=Total Service Visits | D=Service Visits Per Person With Utilization | E=Service Visits Per 1,000 Part A Enrollees¹
+r5: A=BLANK
+r6: A=Total --  All Types of Control
+r7: A=Total | B=1766287 | C=81844435 | D=46.34 | E=1237
+r8: A=Skilled Nursing | B=1762998 | C=37467064 | D=21.25 | E=566
+r9: A=Home Health Aide | B=1249019 | C=37819980 | D=30.28 | E=572
+r10: A=Physical Therapy | B=19404 | C=62110 | D=3.2 | E=1
+r11: A=Speech Therapy | B=3319 | C=6270 | D=1.89 | E=0
+r12: A=Occupational Therapy | B=6260 | C=15707 | D=2.51 | E=0
+r13: A=Medical Social Worker | B=1439161 | C=6473304 | D=4.5 | E=98
+r14: A=BLANK
+r15: A=Voluntary Non-Profit - Church
+r16: A=Total | B=30780 | C=861690 | D=28 | E=13
+r17: A=Skilled Nursing | B=30738 | C=477997 | D=15.55 | E=7
+r18: A=Home Health Aide | B=16890 | C=287250 | D=17.01 | E=4
+r19: A=Physical Therapy | B=531 | C=1282 | D=2.41 | E=0
+r20: A=Speech Therapy | B=55 | C=76 | D=1.38 | E=0
+r21: A=Occupational Therapy | B=118 | C=203 | D=1.72 | E=0
+r22: A=Medical Social Worker | B=24693 | C=94882 | D=3.84 | E=1
+r23: A=BLANK
+r24: A=Voluntary Non-Profit - Private
+r25: A=Total | B=381106 | C=13118587 | D=34.42 | E=198
+r26: A=Skilled Nursing | B=379668 | C=6352054 | D=16.73 | E=96
+r27: A=Home Health Aide | B=252575 | C=5471779 | D=21.66 | E=83
+r28: A=Physical Therapy | B=6312 | C=15899 | D=2.52 | E=0
+r29: A=Speech Therapy | B=1195 | C=2436 | D=2.04 | E=0
+r30: A=Occupational Therapy | B=3205 | C=7281 | D=2.27 | E=0
+r31: A=Medical Social Worker | B=308174 | C=1269138 | D=4.12 | E=19
+r32: A=BLANK
+r33: A=Voluntary Non-Profit - Other
+r34: A=Total | B=184011 | C=6319548 | D=34.34 | E=96
+r35: A=Skilled Nursing | B=183607 | C=3084546 | D=16.8 | E=47
+r36: A=Home Health Aide | B=121331 | C=2599475 | D=21.42 | E=39
+r37: A=Physical Therapy | B=2663 | C=6282 | D=2.36 | E=0
+r38: A=Speech Therapy | B=411 | C=721 | D=1.75 | E=0
+r39: A=Occupational Therapy | B=525 | C=1315 | D=2.5 | E=0
+r40: A=Medical Social Worker | B=150508 | C=627209 | D=4.17 | E=9
+r41: A=BLANK
+r42: A=Proprietary - Individual
+r43: A=Total | B=37261 | C=2142617 | D=57.5 | E=32
+r44: A=Skilled Nursing | B=37227 | C=852022 | D=22.89 | E=13
+r45: A=Home Health Aide | B=29669 | C=1143226 | D=38.53 | E=17
+r46: A=Physical Therapy | B=259 | C=909 | D=3.51 | E=0
+r47: A=Speech Therapy | B=84 | C=187 | D=2.23 | E=0
+r48: A=Occupational Therapy | B=90 | C=262 | D=2.91 | E=0
+r49: A=Medical Social Worker | B=30929 | C=146011 | D=4.72 | E=2
+r50: A=BLANK
+r51: A=Proprietary - Partnership
+r52: A=Total | B=71805 | C=4013733 | D=55.9 | E=61
+r53: A=Skilled Nursing | B=71738 | C=1636925 | D=22.82 | E=25
+r54: A=Home Health Aide | B=54592 | C=2105433 | D=38.57 | E=32
+r55: A=Physical Therapy | B=388 | C=1357 | D=3.5 | E=0
+r56: A=Speech Therapy | B=58 | C=84 | D=1.45 | E=0
+r57: A=Occupational Therapy | B=21 | C=39 | D=1.86 | E=0
+r58: A=Medical Social Worker | B=59863 | C=269895 | D=4.51 | E=4
+r59: A=BLANK
+r60: A=Proprietary - Corporation
+r61: A=Total | B=756074 | C=40161079 | D=53.12 | E=607
+r62: A=Skilled Nursing | B=755022 | C=18252055 | D=24.17 | E=276
+r63: A=Home Health Aide | B=550584 | C=19060445 | D=34.62 | E=288
+r64: A=Physical Therapy | B=5796 | C=24146 | D=4.17 | E=0
+r65: A=Speech Therapy | B=812 | C=1546 | D=1.9 | E=0
+r66: A=Occupational Therapy | B=1109 | C=4037 | D=3.64 | E=0
+r67: A=Medical Social Worker | B=613127 | C=2818850 | D=4.6 | E=43
+r68: A=BLANK
+r69: A=Proprietary - Other
+r70: A=Total | B=153342 | C=7704882 | D=50.25 | E=116
+r71: A=Skilled Nursing | B=153238 | C=3245453 | D=21.18 | E=49
+r72: A=Home Health Aide | B=115793 | C=3883265 | D=33.54 | E=59
+r73: A=Physical Therapy | B=815 | C=4420 | D=5.42 | E=0
+r74: A=Speech Therapy | B=107 | C=218 | D=2.04 | E=0
+r75: A=Occupational Therapy | B=61 | C=105 | D=1.72 | E=0
+r76: A=Medical Social Worker | B=125684 | C=571421 | D=4.55 | E=9
+r77: A=BLANK
+r78: A=Government
+r79: A=Total | B=9043 | C=293282 | D=32.43 | E=4
+r80: A=Skilled Nursing | B=9034 | C=158197 | D=17.51 | E=2
+r81: A=Home Health Aide | B=5897 | C=107536 | D=18.24 | E=2
+r82: A=Physical Therapy | B=128 | C=901 | D=7.04 | E=0
+r83: A=Speech Therapy | B=16 | C=63 | D=3.94 | E=0
+r84: A=Occupational Therapy | B=34 | C=120 | D=3.53 | E=0
+r85: A=Medical Social Worker | B=7191 | C=26465 | D=3.68 | E=0
+r86: A=BLANK
+r87: A=Combination Government & Non-Profit
+r88: A=Total | B=10456 | C=274485 | D=26.25 | E=4
+r89: A=Skilled Nursing | B=10430 | C=146473 | D=14.04 | E=2
+r90: A=Home Health Aide | B=6411 | C=88730 | D=13.84 | E=1
+r91: A=Physical Therapy | B=151 | C=442 | D=2.93 | E=0
+r92: A=Speech Therapy | B=16 | C=18 | D=1.13 | E=0
+r93: A=Occupational Therapy | B=27 | C=86 | D=3.19 | E=0
+r94: A=Medical Social Worker | B=8885 | C=38736 | D=4.36 | E=1
+r95: A=BLANK
+r96: A=Other
+r97: A=Total | B=181488 | C=6954532 | D=38.32 | E=105
+r98: A=Skilled Nursing | B=181095 | C=3261342 | D=18.01 | E=49
+r99: A=Home Health Aide | B=125458 | C=3072841 | D=24.49 | E=46
+r100: A=Physical Therapy | B=2376 | C=6472 | D=2.72 | E=0
+r101: A=Speech Therapy | B=567 | C=921 | D=1.62 | E=0
+r102: A=Occupational Therapy | B=1072 | C=2259 | D=2.11 | E=0
+r103: A=Medical Social Worker | B=146034 | C=610697 | D=4.18 | E=9
+r104: A=BLANK
+r105: (blank)
+r106: A=¹Total Part A enrollees for 2023 was 66,171,290.  The calculated 'service visits per 1,000...
+r107: A=based on enrollees in Original Medicare and Medicare Advantage/Other Health Plans combined...
+r108: A=in a Medicare Advantage/Other Health Plan elects the hospice benefit, his or her Medicare ...
+r109: A=NOTES:  The 'total persons with utilization' count does not reflect those beneficiaries re...
+r110: A=skilled nursing, home health aide, physical therapy, speech therapy, occupational therapy,...
+r111: A='persons with utilization' counts do not add to totals because beneficiaries may use more ...
+r112: A=The 'service visit' counts may not sum to totals because of rounding.
+r113: (blank)
+r114: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR HOSPICE 5_CPS_08UHS": 77 rows x 5 columns (Excel rows 1..77, columns A..E)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Hospices
+r2: A=Utilization and Program Payments for Medicare Beneficiaries, by Level of Care and Site of ...
+r3: A=Calendar Year 2023
+r4: A=Level of Care and Site of Service | B=Total Persons With Utilization | C=Total Program Payments | D=Program Payments Per Person With Utilization | E=Program Payments Per Part A Enrollee¹
+r5: A=BLANK
+r6: A=Total | B=1780218 | C=25661362699 | D=14415 | E=388
+r7: (blank)
+r8: A=Routine Home Care | B=1584317 | C=23789209956 | D=15015 | E=360
+r9: A=Home | B=1003627 | C=13710063114 | D=13661 | E=207
+r10: A=Assisted Living Facility | B=286514 | C=5390551707 | D=18814 | E=81
+r11: A=Nursing Long Term Care Facility (LTC) or Non-Skilled Nursing Facility (NF) | B=254450 | C=3308911305 | D=13004 | E=50
+r12: A=Skilled Nursing Facility (SNF) | B=96797 | C=1136643027 | D=11743 | E=17
+r13: A=Inpatient Hospital | B=17379 | C=14721075 | D=847 | E=0
+r14: A=Inpatient Hospice Facility | B=18504 | C=36660745 | D=1981 | E=1
+r15: A=Long Term Care Hospital | B=843 | C=3999210 | D=4744 | E=0
+r16: A=Inpatient Psychiatric Facility | B=32 | C=172902 | D=5403 | E=0
+r17: A=Place Not Otherwise Specified | B=9115 | C=121098782 | D=13286 | E=2
+r18: A=Hospice Home Care Provided in Hospice Facility | B=28456 | C=66388089 | D=2333 | E=1
+r19: A=BLANK
+r20: A=Continuous Home Care | B=34497 | C=155666099 | D=4512 | E=2
+r21: A=Home | B=22836 | C=105551113 | D=4622 | E=2
+r22: A=Assisted Living Facility | B=8405 | C=36306214 | D=4320 | E=1
+r23: A=Nursing Long Term Care Facility (LTC) or Non-Skilled Nursing Facility (NF) | B=3386 | C=13451906 | D=3973 | E=0
+r24: A=Skilled Nursing Facility (SNF) | B=* | C=† | D=† | E=†
+r25: A=Inpatient Hospital | B=0 | C=0 | D=0 | E=0
+r26: A=Inpatient Hospice Facility | B=0 | C=0 | D=0 | E=0
+r27: A=Long Term Care Hospital | B=0 | C=0 | D=0 | E=0
+r28: A=Inpatient Psychiatric Facility | B=0 | C=0 | D=0 | E=0
+r29: A=Place Not Otherwise Specified | B=106 | C=352854 | D=3329 | E=0
+r30: A=Hospice Home Care Provided in Hospice Facility | B=* | C=† | D=† | E=†
+r31: A=BLANK
+r32: A=Inpatient Respite Care | B=64521 | C=187832583 | D=2911 | E=3
+r33: A=Home | B=* | C=† | D=† | E=†
+r34: A=Assisted Living Facility | B=0 | C=0 | D=0 | E=0
+r35: A=Nursing Long Term Care Facility (LTC) or Non-Skilled Nursing Facility (NF) | B=16439 | C=47318135 | D=2878 | E=1
+r36: A=Skilled Nursing Facility (SNF) | B=18353 | C=53576606 | D=2919 | E=1
+r37: A=Inpatient Hospital | B=4147 | C=9194512 | D=2217 | E=0
+r38: A=Inpatient Hospice Facility | B=28134 | C=77182456 | D=2743 | E=1
+r39: A=Long Term Care Hospital | B=130 | C=253365 | D=1949 | E=0
+r40: A=Inpatient Psychiatric Facility | B=* | C=† | D=† | E=†
+r41: A=Place Not Otherwise Specified | B=128 | C=294396 | D=2300 | E=0
+r42: A=Hospice Home Care Provided in Hospice Facility | B=0 | C=0 | D=0 | E=0
+r43: A=BLANK
+r44: A=General Inpatient Care | B=288777 | C=1197613547 | D=4147 | E=18
+r45: A=Home | B=0 | C=0 | D=0 | E=0
+r46: A=Assisted Living Facility | B=0 | C=0 | D=0 | E=0
+r47: A=Nursing Long Term Care Facility (LTC) or Non-Skilled Nursing Facility (NF) | B=0 | C=0 | D=0 | E=0
+r48: A=Skilled Nursing Facility (SNF) | B=4091 | C=17164795 | D=4196 | E=0
+r49: A=Inpatient Hospital | B=126463 | C=396365969 | D=3134 | E=6
+r50: A=Inpatient Hospice Facility | B=167539 | C=781232439 | D=4663 | E=12
+r51: A=Long Term Care Hospital | B=821 | C=2558379 | D=3116 | E=0
+r52: A=Inpatient Psychiatric Facility | B=0 | C=0 | D=0 | E=0
+r53: A=Place Not Otherwise Specified | B=88 | C=291965 | D=3318 | E=0
+r54: A=Hospice Home Care Provided in Hospice Facility | B=0 | C=0 | D=0 | E=0
+r55: (blank)
+r56: A=Other Hospice Services
+r57: A=Physician | B=277385 | C=98613416 | D=356 | E=1
+r58: A=Skilled Nursing² | B=1763024 | C=222219898 | D=126 | E=3
+r59: A=Medical Social Services² | B=1439180 | C=10119222 | D=7 | E=0
+r60: (blank)
+r61: A=Not Elsewhere Classified | B=1080 | C=87977 | D=81 | E=0
+r62: (blank)
+r63: A=* Counts between 1 and 10 have been suppressed because of CMS rules to protect the privacy...
+r64: A=† Counts have been cross-suppressed to prevent the recalculation of suppressed counts betw...
+r65: (blank)
+r66: A=¹Total Part A enrollees for 2023 was 66,171,290.  The 'program payments per Part A enrolle...
+r67: A=in Original Medicare and Medicare Advantage/Other Health Plans combined, because once a be...
+r68: A=Advantage/Other Health Plan elects the hospice benefit, his or her Medicare benefits rever...
+r69: (blank)
+r70: A=²Service Intensity Add-On (SIA) payments are an addition to the per diem Routine Home Care...
+r71: A=last 7 days of a patient's life; such services are provided by a registerd nurse (RN) or s...
+r72: A=January 1, 2016.
+r73: (blank)
+r74: A=NOTES:  The 'persons with utilization' counts do not add to totals because beneficiaries m...
+r75: A=year.  The payment amounts may not sum to totals because of rounding.
+r76: (blank)
+r77: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...
+
+### Sheet "MDCR HOSPICE 6_CPS_08UHS": 25 rows x 9 columns (Excel rows 1..25, columns A..I)
+(whole sheet shown; Excel row numbers)
+r1: A=Medicare Hospices
+r2: A=Utilization and Program Payments For Medicare Beneficiaries, by Number of Service Visits
+r3: A=Calendar Year 2023
+r4: A=Number of Service Visits | B=Total Persons With Utilization | C=Total Service Visits | D=Service Visits Per Person With Utilization | E=Service Visits Per 1,000 Part A Enrollees¹ | F=Total Program Payments | G=Program Payments Per Person With Utilization | H=Program Payments Per Service Visit | I=Program Payments Per Part A Enrollee¹
+r5: A=BLANK
+r6: A=Total | B=1780218 | C=81845265 | D=45.97485533 | E=1236.869716 | F=2.56613627e+10 | G=14414.7305 | H=313.5350921 | I=387.8020604
+r7: A=BLANK
+r8: A=0 | B=13905 | C=0 | D=0 | E=0 | F=55196165.04 | G=3969.519241 | H=0 | I=0.8341406799
+r9: A=1-9 | B=586336 | C=2754283 | D=4.697448221 | E=41.62353476 | F=1401603122 | G=2390.443571 | H=508.881303 | I=21.1814386
+r10: A=10-19 | B=319541 | C=4441601 | D=13.89994085 | E=67.12278064 | F=1798142808 | G=5627.267886 | H=404.8411389 | I=27.17406296
+r11: A=20-29 | B=173616 | C=4185034 | D=24.10511704 | E=63.24546467 | F=1762041740 | G=10149.07463 | H=421.0340323 | I=26.62849302
+r12: A=30-39 | B=115321 | C=3944692 | D=34.20618968 | E=59.61334568 | F=1668388607 | G=14467.34426 | H=422.9452153 | I=25.21317932
+r13: A=40-49 | B=85358 | C=3779149 | D=44.27410436 | E=57.11161118 | F=1575228052 | G=18454.36926 | H=416.8208376 | I=23.80530961
+r14: A=50-99 | B=232417 | C=16373265 | D=70.44779427 | E=247.4375962 | F=6092352608 | G=26213.0249 | H=372.0914923 | I=92.06942444
+r15: A=100 or more | B=253724 | C=46367241 | D=182.7467681 | E=700.7153831 | F=1.13084096e+10 | G=44569.72772 | H=243.8879121 | I=170.8960118
+r16: A=BLANK
+r17: A=¹Total Part A enrollees for 2023 was 66,171,290.  The calculated 'per Part A Enrollee' rat...
+r18: A=Original Medicare and Medicare Advantage/Other Health Plans combined, because once a benef...
+r19: A=Advantage/Other Health Plan elects the hospice benefit, his or her Medicare benefits rever...
+r20: (blank)
+r21: A=NOTES:  Service visits are defined as the following:  skilled nursing, home health aide, p...
+r22: A=or medical social worker; some beneficiaries have hospice utilization other than the servi...
+r23: A=sum to totals because of rounding.
+r24: (blank)
+r25: A=SOURCE:  Centers for Medicare & Medicaid Services, Office of Enterprise Data and Analytics...

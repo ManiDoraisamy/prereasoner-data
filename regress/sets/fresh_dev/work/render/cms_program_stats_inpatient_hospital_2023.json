@@ -1,0 +1,72 @@
+{
+ "file": "cms_program_stats_inpatient_hospital_2023.xlsx",
+ "sheets": [
+  {
+   "name": "Table of Contents",
+   "rows": 12,
+   "cols": 2,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 1_CPS_05UIP",
+   "rows": 36,
+   "cols": 28,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 2_CPS_05UIP",
+   "rows": 46,
+   "cols": 24,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 3_CPS_05UIP",
+   "rows": 76,
+   "cols": 22,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 4_CPS_05UIP",
+   "rows": 28,
+   "cols": 27,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 5_CPS_05UIP",
+   "rows": 35,
+   "cols": 29,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 6_CPS_05UIP",
+   "rows": 45,
+   "cols": 25,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 7_CPS_05UIP",
+   "rows": 74,
+   "cols": 23,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 8_CPS_05UIP",
+   "rows": 63,
+   "cols": 10,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 9_CPS_05UIP",
+   "rows": 44,
+   "cols": 16,
+   "shown_whole": true
+  },
+  {
+   "name": "MDCR INPT HOSP 10_CPS_05UIP",
+   "rows": 43,
+   "cols": 5,
+   "shown_whole": true
+  }
+ ],
+ "chars": 93015
+}

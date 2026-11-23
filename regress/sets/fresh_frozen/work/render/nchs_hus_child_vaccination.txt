@@ -1,0 +1,204 @@
+FILE nchs_hus_child_vaccination.xlsx (Excel workbook) with 1 sheet(s): ["A"]
+
+### Sheet "A": 199 rows x 8 columns (Excel rows 1..199, columns A..H)
+merged cells: A3:H3, B4:H4, A2:H2, A199:H199, B6:H6, A1:H1, A198:H198, A197:H197
+(whole sheet shown; Excel row numbers)
+r1: A=Table VaxCh. Vaccination coverage for selected diseases by age 24 months, by race and Hisp...
+r2: A=Excel version (with more data years and standard errors when available): https://www.cdc.g...
+r3: A=[Data are based on telephone interviews of a sample of the civilian noninstitutionalized p...
+r4: B=Birth year
+r5: A=Characteristic | B=2010 | C=2011 | D=2012 | E=2013 | F=2014 | G=2015 | H=2016
+r6: A=Combined 7-vaccine series\1 | B=Percent of children vaccinated by age 24 months
+r7: A=Total | B=65.9 | C=67.7 | D=69 | E=68.3 | F=68.5 | G=68.3 | H=69.7
+r8: A=Not Hispanic or Latino\2:
+r9: A=White only | B=67.1 | C=69.2 | D=70.3 | E=69.6 | F=70 | G=68.6 | H=71.4
+r10: A=Black or African American only | B=63.8 | C=61.4 | D=63.2 | E=62.8 | F=64.7 | G=63.9 | H=64
+r11: A=American Indian or Alaska Native only | B=* | C=72.1 | D=76.4 | E=* | F=* | G=* | H=*
+r12: A=Asian only | B=66.7 | C=66.4 | D=76.4 | E=67.8 | F=70.1 | G=67.1 | H=67.5
+r13: A=Native Hawaiian or Other Pacific Islander only | B=* | C=* | D=* | E=* | F=* | G=* | H=*
+r14: A=2 or more races | B=65.1 | C=69.4 | D=68.6 | E=67.8 | F=69.8 | G=71.2 | H=72.5
+r15: A=Hispanic or Latino\2 | B=65.3 | C=68.2 | D=67.5 | E=69.1 | F=67.5 | G=69.8 | H=69
+r16: A=Poverty level\3:
+r17: A=Below poverty | B=60.5 | C=61.1 | D=64.1 | E=64 | F=60.2 | G=62.3 | H=60.7
+r18: A=At or above poverty | B=69.1 | C=71.6 | D=72.1 | E=71.3 | F=71.9 | G=71.4 | H=73
+r19: A=Hispanic origin, race, and poverty level\2,\3:
+r20: A=Not Hispanic or Latino:
+r21: A=White only:
+r22: A=Below poverty | B=53.9 | C=58.1 | D=60.6 | E=58.5 | F=60.1 | G=60.4 | H=57.6
+r23: A=At or above poverty | B=70.1 | C=72.2 | D=72.5 | E=73.2 | F=72.3 | G=70.9 | H=74
+r24: A=Black or African American only:
+r25: A=Below poverty | B=61.3 | C=54.5 | D=59.6 | E=64.5 | F=62.3 | G=60.9 | H=54.9
+r26: A=At or above poverty | B=68.6 | C=68.6 | D=71.3 | E=63.4 | F=68.2 | G=66.7 | H=69.5
+r27: A=Hispanic or Latino:
+r28: A=Below poverty | B=66.4 | C=64.9 | D=67.7 | E=68.5 | F=59.4 | G=65.6 | H=66.5
+r29: A=At or above poverty | B=63.6 | C=72.3 | D=68.2 | E=68.5 | F=71 | G=72.6 | H=69.5
+r30: A=Location of residence\4:
+r31: A=Inside MSA:
+r32: A=Principal city | B=66.3 | C=66 | D=68.3 | E=68.6 | F=68.4 | G=69.4 | H=68.9
+r33: A=Nonprincipal city | B=65.5 | C=69.6 | D=69.2 | E=68.8 | F=68.9 | G=68.6 | H=71.3
+r34: A=Outside MSA | B=65.9 | C=67.4 | D=70.2 | E=65.2 | F=67.9 | G=62.4 | H=66.4
+r35: A=DTP/DT/DTaP (4 doses or more)\5
+r36: A=Total | B=79.7 | C=80.7 | D=81.4 | E=81.2 | F=80.1 | G=80.7 | H=80.4
+r37: A=Not Hispanic or Latino\2:
+r38: A=White only | B=81.3 | C=83.6 | D=82.8 | E=83.1 | F=81.5 | G=80.8 | H=83
+r39: A=Black or African American only | B=76.1 | C=71.4 | D=74.9 | E=75.4 | F=75.3 | G=75.7 | H=75.9
+r40: A=American Indian or Alaska Native only | B=83.6 | C=78.8 | D=85.6 | E=73.1 | F=* | G=* | H=*
+r41: A=Asian only | B=83.2 | C=80.6 | D=90.2 | E=84.4 | F=82.5 | G=83.9 | H=78.6
+r42: A=Native Hawaiian or Other Pacific Islander only | B=* | C=* | D=* | E=* | F=* | G=* | H=*
+r43: A=2 or more races | B=79 | C=82.4 | D=77.1 | E=79.8 | F=79.5 | G=82.4 | H=81.7
+r44: A=Hispanic or Latino\2 | B=78.3 | C=80.2 | D=81.3 | E=81 | F=79.9 | G=82.5 | H=78
+r45: A=Poverty level\3:
+r46: A=Below poverty | B=75 | C=73.7 | D=76.6 | E=75.7 | F=72.5 | G=75.3 | H=70.8
+r47: A=At or above poverty | B=82.8 | C=84.5 | D=84.3 | E=84.7 | F=83.3 | G=83.3 | H=84.1
+r48: A=Location of residence\4:
+r49: A=Inside MSA:
+r50: A=Principal city | B=80.1 | C=78.8 | D=82 | E=81.1 | F=79.1 | G=83 | H=79.7
+r51: A=Nonprincipal city | B=80.1 | C=83 | D=81.3 | E=82.2 | F=81.9 | G=80 | H=81.9
+r52: A=Outside MSA | B=77.7 | C=79.9 | D=80.1 | E=78.5 | F=77.6 | G=73.7 | H=77.1
+r53: A=Polio (3 doses or more)
+r54: A=Total | B=91.9 | C=92 | D=93 | E=92.3 | F=91 | G=92.6 | H=92.5
+r55: A=Not Hispanic or Latino\2:
+r56: A=White only | B=92.2 | C=93.1 | D=92.5 | E=92.5 | F=91.2 | G=92.5 | H=93.6
+r57: A=Black or African American only | B=92.1 | C=88.4 | D=92.6 | E=92.4 | F=88.9 | G=91.5 | H=91.5
+r58: A=American Indian or Alaska Native only | B=94.5 | C=90.8 | D=94.9 | E=90 | F=87.8 | G=93 | H=84.8
+r59: A=Asian only | B=93.8 | C=90.2 | D=97.2 | E=92.2 | F=93.4 | G=96.8 | H=92.6
+r60: A=Native Hawaiian or Other Pacific Islander only | B=* | C=95.6 | D=92.9 | E=88.4 | F=87.1 | G=90.8 | H=*
+r61: A=2 or more races | B=91.5 | C=92.5 | D=91.7 | E=90.4 | F=90.1 | G=92.3 | H=91.6
+r62: A=Hispanic or Latino\2 | B=91.4 | C=92 | D=93.6 | E=92.7 | F=91.6 | G=92.5 | H=91.6
+r63: A=Poverty level\3:
+r64: A=Below poverty | B=90.5 | C=88.2 | D=91.7 | E=90.3 | F=88.3 | G=90.3 | H=89.1
+r65: A=At or above poverty | B=92.8 | C=93.9 | D=93.9 | E=93.5 | F=92.1 | G=93.5 | H=93.8
+r66: A=Location of residence\4:
+r67: A=Inside MSA:
+r68: A=Principal city | B=91.8 | C=90.2 | D=92.9 | E=92.8 | F=90.7 | G=92.9 | H=92
+r69: A=Nonprincipal city | B=91.9 | C=93.5 | D=93.3 | E=92.8 | F=91.3 | G=92.7 | H=93.4
+r70: A=Outside MSA | B=92.4 | C=93 | D=92.5 | E=89.3 | F=91.2 | G=90.6 | H=91.1
+r71: A=Measles, mumps, rubella (1 dose or more)\6
+r72: A=Total | B=90 | C=90.1 | D=90.6 | E=90.3 | F=89.8 | G=90.8 | H=90.8
+r73: A=Not Hispanic or Latino\2:
+r74: A=White only | B=89.7 | C=89.9 | D=89.9 | E=90.1 | F=90 | G=89.9 | H=90.2
+r75: A=Black or African American only | B=89.3 | C=88.1 | D=89 | E=87.8 | F=86.8 | G=89.5 | H=90.5
+r76: A=American Indian or Alaska Native only | B=88.5 | C=95.5 | D=95.6 | E=88.5 | F=89.4 | G=87.3 | H=86
+r77: A=Asian only | B=93.2 | C=95.4 | D=96.4 | E=90.5 | F=92.9 | G=95.3 | H=93.4
+r78: A=Native Hawaiian or Other Pacific Islander only | B=* | C=94.1 | D=96.6 | E=* | F=* | G=* | H=*
+r79: A=2 or more races | B=90.6 | C=89.5 | D=89.1 | E=92.7 | F=89.7 | G=92.9 | H=91.7
+r80: A=Hispanic or Latino\2 | B=90.7 | C=90.4 | D=91.4 | E=91.1 | F=90.1 | G=91.7 | H=91.6
+r81: A=Poverty level\3:
+r82: A=Below poverty | B=88.9 | C=88.2 | D=89.6 | E=87.6 | F=86.1 | G=89 | H=88
+r83: A=At or above poverty | B=90.7 | C=91.1 | D=91 | E=92.1 | F=91.5 | G=91.4 | H=91.7
+r84: A=Location of residence\4:
+r85: A=Inside MSA:
+r86: A=Principal city | B=89.5 | C=88.8 | D=91.7 | E=90.5 | F=90.1 | G=92.3 | H=90.5
+r87: A=Nonprincipal city | B=89.9 | C=91.4 | D=90 | E=90.2 | F=89.2 | G=89.9 | H=91.5
+r88: A=Outside MSA | B=92.1 | C=90.7 | D=88.2 | E=89.5 | F=90.3 | G=87.5 | H=89.2
+r89: A=Hib (full series)\7
+r90: A=Total | B=79.6 | C=79.9 | D=80.2 | E=80.8 | F=79.5 | G=79.6 | H=80
+r91: A=Not Hispanic or Latino\2:
+r92: A=White only | B=81.9 | C=82.5 | D=81.8 | E=81.5 | F=81.3 | G=79.8 | H=81.7
+r93: A=Black or African American only | B=75.8 | C=71.8 | D=74.6 | E=76.2 | F=75.2 | G=76.2 | H=76.2
+r94: A=American Indian or Alaska Native only | B=86.6 | C=81.4 | D=86.4 | E=78.1 | F=* | G=76.3 | H=*
+r95: A=Asian only | B=77.8 | C=76.5 | D=87.1 | E=81.8 | F=78.9 | G=82.8 | H=81.4
+r96: A=Native Hawaiian or Other Pacific Islander only | B=* | C=* | D=88.4 | E=* | F=* | G=* | H=*
+r97: A=2 or more races | B=79.1 | C=81.9 | D=79.4 | E=80.2 | F=79.1 | G=80.8 | H=80.9
+r98: A=Hispanic or Latino\2 | B=77.8 | C=79.8 | D=78.3 | E=82.2 | F=79.2 | G=80.4 | H=78.6
+r99: A=Poverty level\3:
+r100: A=Below poverty | B=74.7 | C=72.8 | D=75.2 | E=75.7 | F=71.2 | G=74.3 | H=71.9
+r101: A=At or above poverty | B=82.9 | C=83.8 | D=83 | E=84.1 | F=82.9 | G=82.2 | H=83.3
+r102: A=Location of residence\4:
+r103: A=Inside MSA:
+r104: A=Principal city | B=79.1 | C=77.9 | D=79.4 | E=80.3 | F=79 | G=80.9 | H=79.2
+r105: A=Nonprincipal city | B=80.1 | C=82.2 | D=81.1 | E=82.2 | F=80.4 | G=79.7 | H=81.9
+r106: A=Outside MSA | B=80.1 | C=79.3 | D=79.8 | E=78.2 | F=78.5 | G=74.5 | H=75.9
+r107: A=Hepatitis A (2 doses or more)
+r108: A=Total | B=66.9 | C=71.1 | D=72.8 | E=74.5 | F=73.6 | G=76.4 | H=76.2
+r109: A=Not Hispanic or Latino\2:
+r110: A=White only | B=66.1 | C=68.7 | D=72.8 | E=74.1 | F=72.3 | G=75.4 | H=76.2
+r111: A=Black or African American only | B=67.8 | C=66.9 | D=71.6 | E=72.2 | F=66.5 | G=72.1 | H=73.2
+r112: A=American Indian or Alaska Native only | B=* | C=* | D=85.6 | E=* | F=* | G=* | H=*
+r113: A=Asian only | B=72.6 | C=78.9 | D=86.1 | E=78.9 | F=82.8 | G=88.4 | H=78.4
+r114: A=Native Hawaiian or Other Pacific Islander only | B=* | C=* | D=* | E=* | F=* | G=* | H=*
+r115: A=2 or more races | B=66.4 | C=74.4 | D=67.1 | E=65.4 | F=69.5 | G=75.9 | H=72.9
+r116: A=Hispanic or Latino\2 | B=67.5 | C=75.1 | D=72.1 | E=78.1 | F=77.3 | G=78.1 | H=78.3
+r117: A=Poverty level\3:
+r118: A=Below poverty | B=65.2 | C=69 | D=68.7 | E=71.7 | F=67.7 | G=75 | H=74.4
+r119: A=At or above poverty | B=68.4 | C=72.6 | D=74.5 | E=75.6 | F=76.4 | G=77 | H=77.2
+r120: A=Location of residence\4:
+r121: A=Inside MSA:
+r122: A=Principal city | B=69.7 | C=72.2 | D=74.2 | E=77.6 | F=73.6 | G=78 | H=76.8
+r123: A=Nonprincipal city | B=66.2 | C=72.7 | D=73.6 | E=72.9 | F=74.3 | G=76.9 | H=76.7
+r124: A=Outside MSA | B=60.5 | C=62 | D=65.3 | E=68.6 | F=71.3 | G=68 | H=71.3
+r125: A=Hepatitis B (3 doses or more)
+r126: A=Total | B=89.3 | C=89.8 | D=91.4 | E=91.6 | F=90.2 | G=90.6 | H=91.4
+r127: A=Not Hispanic or Latino\2:
+r128: A=White only | B=88.6 | C=89.7 | D=90.2 | E=91.7 | F=90.6 | G=89.7 | H=92.2
+r129: A=Black or African American only | B=90.2 | C=89.8 | D=92.2 | E=92.1 | F=89.4 | G=90.1 | H=90.2
+r130: A=American Indian or Alaska Native only | B=96.3 | C=94.3 | D=97.7 | E=94.2 | F=88.7 | G=90.4 | H=87.6
+r131: A=Asian only | B=92.3 | C=89.2 | D=95.8 | E=92.4 | F=94.7 | G=90.2 | H=91.4
+r132: A=Native Hawaiian or Other Pacific Islander only | B=* | C=94 | D=94.3 | E=88.2 | F=* | G=93.1 | H=*
+r133: A=2 or more races | B=91.5 | C=90.6 | D=91.5 | E=90 | F=90 | G=90.5 | H=91.9
+r134: A=Hispanic or Latino\2 | B=89 | C=89.8 | D=92.2 | E=91.4 | F=89.1 | G=92.5 | H=90.6
+r135: A=Poverty level\3:
+r136: A=Below poverty | B=88.8 | C=87.5 | D=91.4 | E=92.1 | F=88 | G=90.1 | H=89.6
+r137: A=At or above poverty | B=89.7 | C=90.9 | D=91.7 | E=91.6 | F=91 | G=91.4 | H=92.2
+r138: A=Location of residence\4:
+r139: A=Inside MSA:
+r140: A=Principal city | B=89.1 | C=87.7 | D=91.1 | E=92 | F=90.3 | G=91 | H=90.5
+r141: A=Nonprincipal city | B=89.2 | C=91.6 | D=91.8 | E=91.3 | F=89.5 | G=90.4 | H=92.4
+r142: A=Outside MSA | B=90.4 | C=91.4 | D=91.9 | E=91.3 | F=92.1 | G=89.7 | H=91.3
+r143: A=Varicella (1 dose or more)\6
+r144: A=Total | B=89.3 | C=89.2 | D=90.2 | E=89.6 | F=89.1 | G=90.2 | H=90.3
+r145: A=Not Hispanic or Latino\2:
+r146: A=White only | B=88.6 | C=88.1 | D=88.9 | E=89.2 | F=89.1 | G=89.2 | H=89.2
+r147: A=Black or African American only | B=89.4 | C=89.9 | D=90 | E=88.4 | F=87.2 | G=89.1 | H=90.6
+r148: A=American Indian or Alaska Native only | B=90 | C=93.4 | D=92.1 | E=87.4 | F=87.3 | G=86.8 | H=83.2
+r149: A=Asian only | B=93.1 | C=93.2 | D=93.8 | E=89.9 | F=91 | G=95.3 | H=92.1
+r150: A=Native Hawaiian or Other Pacific Islander only | B=* | C=90.8 | D=95.3 | E=84.4 | F=* | G=* | H=*
+r151: A=2 or more races | B=88.3 | C=88.5 | D=88.7 | E=89.9 | F=89.4 | G=93.1 | H=90.9
+r152: A=Hispanic or Latino\2 | B=90.4 | C=90.1 | D=92 | E=90.8 | F=89.7 | G=91.2 | H=91.9
+r153: A=Poverty level\3:
+r154: A=Below poverty | B=88.5 | C=87.5 | D=89.1 | E=87.9 | F=85.5 | G=89.1 | H=87.6
+r155: A=At or above poverty | B=89.8 | C=90.1 | D=90.6 | E=90.7 | F=90.6 | G=90.7 | H=91.3
+r156: A=Location of residence\4:
+r157: A=Inside MSA:
+r158: A=Principal city | B=89.4 | C=88.4 | D=91 | E=90.3 | F=89.3 | G=92.1 | H=90.2
+r159: A=Nonprincipal city | B=88.9 | C=90 | D=90 | E=89.3 | F=88.8 | G=89.1 | H=90.8
+r160: A=Outside MSA | B=90.7 | C=89.6 | D=87.9 | E=87.7 | F=89.3 | G=86.4 | H=88.7
+r161: A=Pneumococcal conjugate vaccine  (4 doses or more)\8
+r162: A=Total | B=80.1 | C=80.8 | D=82.4 | E=81.7 | F=81.3 | G=81 | H=81.4
+r163: A=Not Hispanic or Latino\2:
+r164: A=White only | B=82.8 | C=83.2 | D=83.8 | E=83.4 | F=82.9 | G=82 | H=83.9
+r165: A=Black or African American only | B=76.7 | C=74.3 | D=78.6 | E=76.7 | F=75.7 | G=77.4 | H=74.6
+r166: A=American Indian or Alaska Native only | B=* | C=78.4 | D=86 | E=75 | F=74.3 | G=70.5 | H=*
+r167: A=Asian only | B=79.2 | C=78.4 | D=86.8 | E=79.2 | F=82.3 | G=78.1 | H=80.4
+r168: A=Native Hawaiian or Other Pacific Islander only | B=* | C=* | D=89.8 | E=* | F=* | G=* | H=*
+r169: A=2 or more races | B=78 | C=82.3 | D=81.2 | E=80 | F=82.5 | G=83.3 | H=80.8
+r170: A=Hispanic or Latino\2 | B=78.5 | C=80.2 | D=80.9 | E=82.4 | F=81 | G=81.8 | H=81
+r171: A=Poverty level\3:
+r172: A=Below poverty | B=74.1 | C=73.8 | D=76.3 | E=75.9 | F=74.3 | G=75.2 | H=72.1
+r173: A=At or above poverty | B=83.8 | C=85.1 | D=85.9 | E=85 | F=84.3 | G=83.8 | H=85
+r174: A=Location of residence\4:
+r175: A=Inside MSA:
+r176: A=Principal city | B=79.2 | C=78.1 | D=81.7 | E=81.8 | F=81.8 | G=82.1 | H=80.5
+r177: A=Nonprincipal city | B=81.2 | C=84.3 | D=83.8 | E=82.8 | F=81.1 | G=81.1 | H=83.3
+r178: A=Outside MSA | B=80.1 | C=79.1 | D=80.7 | E=77.3 | F=80.1 | G=76.2 | H=78
+r179: A=Rotavirus vaccine\9
+r180: A=Total | B=67 | C=70.8 | D=71.3 | E=72.5 | F=72.3 | G=72.1 | H=75.1
+r181: A=Not Hispanic or Latino\2:
+r182: A=White only | B=70.1 | C=73.7 | D=73.8 | E=74.8 | F=75.3 | G=75.7 | H=79
+r183: A=Black or African American only | B=57 | C=63.1 | D=62.4 | E=66.2 | F=66.5 | G=65.5 | H=64.9
+r184: A=American Indian or Alaska Native only | B=* | C=* | D=* | E=* | F=* | G=* | H=*
+r185: A=Asian only | B=65.4 | C=69.1 | D=81.6 | E=69.8 | F=77.2 | G=64.1 | H=76.4
+r186: A=Native Hawaiian or Other Pacific Islander only | B=* | C=* | D=* | E=* | F=* | G=* | H=*
+r187: A=2 or more races | B=67.2 | C=70.9 | D=70.4 | E=69.2 | F=72.1 | G=74.9 | H=74
+r188: A=Hispanic or Latino\2 | B=68 | C=70.1 | D=69.5 | E=73.5 | F=69.2 | G=70.1 | H=73.3
+r189: A=Poverty level\3:
+r190: A=Below poverty | B=61.4 | C=61.6 | D=62 | E=66.9 | F=62 | G=63.5 | H=64
+r191: A=At or above poverty | B=70.8 | C=75.8 | D=76 | E=76.2 | F=77.5 | G=76 | H=79.6
+r192: A=Location of residence\4:
+r193: A=Inside MSA:
+r194: A=Principal city | B=68.4 | C=69.9 | D=70.3 | E=72.8 | F=72.1 | G=72.4 | H=74.2
+r195: A=Nonprincipal city | B=66.6 | C=73.8 | D=72.9 | E=74.3 | F=72.6 | G=72.9 | H=77.2
+r196: A=Outside MSA | B=64.1 | C=64.8 | D=69.5 | E=65.6 | F=72.3 | G=67.9 | H=70.3
+r197: A=* Estimates are considered unreliable. Percentages are not shown if the unweighted sample ...
+r198: A=NOTES: Vaccination coverage estimates are based on provider-verified responses from parent...
+r199: A=SOURCE: National Center for Immunization and Respiratory Diseases (NCIRD), National Immuni...

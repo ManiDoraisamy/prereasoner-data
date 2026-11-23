@@ -1,0 +1,35 @@
+{
+ "id": "nces_digest_degrees_conferred",
+ "answers": [
+  {
+   "id": "nces_digest_degrees_conferred#1",
+   "answer": "1177298",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\nyear_row = df[df[0].astype(str).str.strip().str.startswith('2019-20')].index[0]\nresult = int(df.iloc[year_row, 9])"
+  },
+  {
+   "id": "nces_digest_degrees_conferred#2",
+   "answer": "344917",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\nyear_row = df[df[0].astype(str).str.strip().str.startswith('2020-21')].index[0]\nmales = float(df.iloc[year_row, 7])\nfemales = float(df.iloc[year_row, 9])\nresult = int(females - males)"
+  },
+  {
+   "id": "nces_digest_degrees_conferred#3",
+   "answer": "2005-06",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\ndata = df.iloc[4:68].copy()\ndata[19] = pd.to_numeric(data[19], errors='coerce')\nmatch = data[data[19] > 50].iloc[0]\nresult = str(match[0]).strip()"
+  },
+  {
+   "id": "nces_digest_degrees_conferred#4",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\nyear_row = df[df[0].astype(str).str.strip().str.startswith('2018-19')].index[0]\ntotal_bachelors = float(df.iloc[year_row, 5])\nresult = 'yes' if total_bachelors > 2000000 else 'no'"
+  },
+  {
+   "id": "nces_digest_degrees_conferred#5",
+   "answer": "14",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\ndata = df.iloc[4:68].copy()\nyear_2000_idx = data[data[0].astype(str).str.strip().str.startswith('2000-01')].index[0]\nprior_data = data.loc[:year_2000_idx - 1]\npct_female = pd.to_numeric(prior_data[15], errors='coerce')\nresult = int((pct_female > 50).sum())"
+  },
+  {
+   "id": "nces_digest_degrees_conferred#6",
+   "answer": "[\"2011-12\", \"2014-15\", \"2015-16\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('nces_digest_degrees_conferred.xlsx', sheet_name='Digest 2022 Table 318.10', header=None)\ndata = df.iloc[4:68].copy()\ndata['year'] = data[0].astype(str).str.strip()\nyears = ['2010-11', '2011-12', '2012-13', '2013-14', '2014-15', '2015-16']\nsubset = data[data['year'].isin(years)].copy()\nsubset[1] = pd.to_numeric(subset[1])\ntop3 = subset.sort_values(by=1, ascending=False).head(3)\nresult = top3['year'].tolist()"
+  }
+ ]
+}

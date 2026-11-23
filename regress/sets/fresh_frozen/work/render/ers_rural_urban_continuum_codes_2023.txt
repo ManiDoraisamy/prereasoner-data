@@ -1,0 +1,129 @@
+FILE ers_rural_urban_continuum_codes_2023.xlsx (Excel workbook) with 2 sheet(s): ["Rural-urban Continuum Code 2023", "Documentation"]
+
+### Sheet "Rural-urban Continuum Code 2023": 3236 rows x 6 columns (Excel rows 1..3236, columns A..F)
+(sheet too large to show whole; Excel row numbers; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=FIPS | B=State | C=County_Name | D=Population_2020 | E=RUCC_2023 | F=Description
+r2: A=01001 | B=AL | C=Autauga County | D=58805 | E=2 | F=Metro - Counties in metro areas of 250,000 to 1 million population
+r3: A=01003 | B=AL | C=Baldwin County | D=231767 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+r4: A=01005 | B=AL | C=Barbour County | D=25223 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r5: A=01007 | B=AL | C=Bibb County | D=22293 | E=1 | F=Metro - Counties in metro areas of 1 million population or more
+r6: A=01009 | B=AL | C=Blount County | D=59134 | E=1 | F=Metro - Counties in metro areas of 1 million population or more
+r7: A=01011 | B=AL | C=Bullock County | D=10357 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+r8: A=01013 | B=AL | C=Butler County | D=19051 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r9: A=01015 | B=AL | C=Calhoun County | D=116441 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+r10: A=01017 | B=AL | C=Chambers County | D=34772 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r11: A=01019 | B=AL | C=Cherokee County | D=24971 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+r12: A=01021 | B=AL | C=Chilton County | D=45014 | E=1 | F=Metro - Counties in metro areas of 1 million population or more
+r13: A=01023 | B=AL | C=Choctaw County | D=12665 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r14: A=01025 | B=AL | C=Clarke County | D=23087 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r15: A=01027 | B=AL | C=Clay County | D=14236 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r16: A=01029 | B=AL | C=Cleburne County | D=15056 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+r17: A=01031 | B=AL | C=Coffee County | D=53465 | E=4 | F=Nonmetro - Urban population of 20,000 or more, adjacent to a metro area
+r18: A=01033 | B=AL | C=Colbert County | D=57227 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+r19: A=01035 | B=AL | C=Conecuh County | D=11597 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r20: A=01037 | B=AL | C=Coosa County | D=10387 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+r21: A=01039 | B=AL | C=Covington County | D=37570 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r22: A=01041 | B=AL | C=Crenshaw County | D=13194 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+r23: A=01043 | B=AL | C=Cullman County | D=87866 | E=4 | F=Nonmetro - Urban population of 20,000 or more, adjacent to a metro area
+r24: A=01045 | B=AL | C=Dale County | D=49326 | E=4 | F=Nonmetro - Urban population of 20,000 or more, adjacent to a metro area
+r25: A=01047 | B=AL | C=Dallas County | D=38462 | E=4 | F=Nonmetro - Urban population of 20,000 or more, adjacent to a metro area
+r26: A=01049 | B=AL | C=DeKalb County | D=71608 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r27: A=01051 | B=AL | C=Elmore County | D=87977 | E=2 | F=Metro - Counties in metro areas of 250,000 to 1 million population
+r28: A=01053 | B=AL | C=Escambia County | D=36757 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r29: A=01055 | B=AL | C=Etowah County | D=103436 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+r30: A=01057 | B=AL | C=Fayette County | D=16321 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+r31: A=01059 | B=AL | C=Franklin County | D=32113 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r32: A=01061 | B=AL | C=Geneva County | D=26659 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+r33: A=01063 | B=AL | C=Greene County | D=7730 | E=2 | F=Metro - Counties in metro areas of 250,000 to 1 million population
+r34: A=01065 | B=AL | C=Hale County | D=14785 | E=2 | F=Metro - Counties in metro areas of 250,000 to 1 million population
+r35: A=01067 | B=AL | C=Henry County | D=17146 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+... sampled rows:
+r611: A=17025 | B=IL | C=Clay County | D=13288 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r749: A=18097 | B=IN | C=Marion County | D=977203 | E=1 | F=Metro - Counties in metro areas of 1 million population or more
+r751: A=18101 | B=IN | C=Martin County | D=9812 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r773: A=18145 | B=IN | C=Shelby County | D=45055 | E=1 | F=Metro - Counties in metro areas of 1 million population or more
+r948: A=20113 | B=KS | C=McPherson County | D=30223 | E=7 | F=Nonmetro - Urban population of 5,000 to 20,000, not adjacent to a metro area
+r972: A=20161 | B=KS | C=Riley County | D=71959 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+r1261: A=26053 | B=MI | C=Gogebic County | D=14380 | E=7 | F=Nonmetro - Urban population of 5,000 to 20,000, not adjacent to a metro area
+r1343: A=27051 | B=MN | C=Grant County | D=6074 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r1376: A=27117 | B=MN | C=Pipestone County | D=9424 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+r1379: A=27123 | B=MN | C=Ramsey County | D=552352 | E=1 | F=Metro - Counties in metro areas of 1 million population or more
+r1477: A=28145 | B=MS | C=Union County | D=27777 | E=7 | F=Nonmetro - Urban population of 5,000 to 20,000, not adjacent to a metro area
+r1564: A=29155 | B=MO | C=Pemiscot County | D=15661 | E=7 | F=Nonmetro - Urban population of 5,000 to 20,000, not adjacent to a metro area
+r1677: A=31039 | B=NE | C=Cuming County | D=9013 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r1684: A=31053 | B=NE | C=Dodge County | D=37167 | E=4 | F=Nonmetro - Urban population of 20,000 or more, adjacent to a metro area
+r1870: A=36077 | B=NY | C=Otsego County | D=58524 | E=7 | F=Nonmetro - Urban population of 5,000 to 20,000, not adjacent to a metro area
+r1966: A=37145 | B=NC | C=Person County | D=39097 | E=2 | F=Metro - Counties in metro areas of 250,000 to 1 million population
+r2213: A=41003 | B=OR | C=Benton County | D=95184 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+r2220: A=41017 | B=OR | C=Deschutes County | D=198253 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+r2269: A=42043 | B=PA | C=Dauphin County | D=286401 | E=2 | F=Metro - Counties in metro areas of 250,000 to 1 million population
+r2328: A=45017 | B=SC | C=Calhoun County | D=14119 | E=2 | F=Metro - Counties in metro areas of 250,000 to 1 million population
+r2355: A=45071 | B=SC | C=Newberry County | D=37719 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r2466: A=47069 | B=TN | C=Hardeman County | D=25462 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r2676: A=48299 | B=TX | C=Llano County | D=21243 | E=7 | F=Nonmetro - Urban population of 5,000 to 20,000, not adjacent to a metro area
+r2744: A=48435 | B=TX | C=Sutton County | D=3372 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r2903: A=51167 | B=VA | C=Russell County | D=25781 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+r2976: A=53039 | B=WA | C=Klickitat County | D=22735 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r3002: A=54013 | B=WV | C=Calhoun County | D=6229 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+r3015: A=54039 | B=WV | C=Kanawha County | D=180745 | E=3 | F=Metro - Counties in metro areas of fewer than 250,000 population
+r3020: A=54049 | B=WV | C=Marion County | D=56205 | E=4 | F=Nonmetro - Urban population of 20,000 or more, adjacent to a metro area
+r3025: A=54059 | B=WV | C=Mingo County | D=23568 | E=8 | F=Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area
+... last rows:
+r3229: A=72145 | B=PR | C=Vega Baja Municipio | D=54414 | E=1 | F=Metro - Counties in metro areas of 1 million population or more
+r3230: A=72147 | B=PR | C=Vieques Municipio | D=8249 | E=6 | F=Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area
+r3231: A=72149 | B=PR | C=Villalba Municipio | D=22093 | E=2 | F=Metro - Counties in metro areas of 250,000 to 1 million population
+r3232: A=72151 | B=PR | C=Yabucoa Municipio | D=30426 | E=1 | F=Metro - Counties in metro areas of 1 million population or more
+r3233: A=72153 | B=PR | C=Yauco Municipio | D=34172 | E=2 | F=Metro - Counties in metro areas of 250,000 to 1 million population
+r3234: A=78010 | B=VI | C=St. Croix Island | D=41004 | E=5 | F=Nonmetro - Urban population of 20,000 or more, not adjacent to a metro area
+r3235: A=78020 | B=VI | C=St. John Island | D=3881 | E=9 | F=Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area
+r3236: A=78030 | B=VI | C=St. Thomas Island | D=42261 | E=5 | F=Nonmetro - Urban population of 20,000 or more, not adjacent to a metro area
+... column profiles (data rows below Excel row 1):
+  A [FIPS]: {"non_empty": 3235, "distinct": 3235, "top_values": {"01001": 1, "01003": 1, "01005": 1, "01007": 1, "01009": 1, "01011": 1}}
+  B [State]: {"non_empty": 3235, "distinct": 56, "top_values": {"TX": 254, "GA": 159, "VA": 133, "KY": 120, "MO": 115, "KS": 105}}
+  C [County_Name]: {"non_empty": 3235, "distinct": 1973, "top_values": {"Washington County": 30, "Jefferson County": 25, "Franklin County": 24, "Jackson County": 23, "Lincoln County": 23, "Madison County": 19}}
+  D [Population_2020]: {"non_empty": 3235, "numeric": 3235, "min": "0", "max": "10014009", "sum": "335073176", "distinct": 3173, "top_values": {"34668": 3, "0": 2, "10019": 2, "10355": 2, "10545": 2, "10679": 2}}
+  E [RUCC_2023]: {"non_empty": 3233, "numeric": 3233, "min": "1", "max": "9", "sum": "16758", "distinct": 9, "value_counts": {"9": 595, "1": 483, "8": 468, "2": 398, "6": 385, "3": 371, "7": 248, "4": 204, "5": 81}}
+  F [Description]: {"non_empty": 3235, "distinct": 10, "value_counts": {"Nonmetro - Urban population of fewer than 5,000, not adjacent to a metro area": 595, "Metro - Counties in metro areas of 1 million population or more": 483, "Nonmetro - Urban population of fewer than 5,000, adjacent to a metro area": 468, "Metro - Counties in metro areas of 250,000 to 1 million population": 398, "Nonmetro - Urban population of 5,000 to 20,000, adjacent to a metro area": 385, "Metro - Counties in metro areas of fewer than 250,000 population": 371, "Nonmetro - Urban population of 5,000 to 20,000, not adjacent to a metro area": 248, "Nonmetro - Urban population of 20,000 or more, adjacent to a metro area": 204, "Nonmetro - Urban population of 20,000 or more, not adjacent to a metro area": 81, "Not Applicable": 2}}
+
+### Sheet "Documentation": 40 rows x 4 columns (Excel rows 1..40, columns A..D)
+(whole sheet shown; Excel row numbers)
+r1: A=2023 Rural-Urban Continuum Codes
+r2: A=Variable name/column | B=Description
+r3: A=FIPS | B=State+county Federal Information Processing System ( FIPS) code
+r4: A=State | B=State or territory abbreviation
+r5: A=County_Name | B=County or county-equivalent name
+r6: A=Population_2020 | B=Total population 2020 (From the 2020 Census Demographic and Housing Characteristics File)
+r7: A=RUCC_2023 | B=Rural-Urban Continuum Code, 2023
+r8: A=Description | B=Description of code
+r9: (blank)
+r10: A=Description of 2023 Rural-Urban Continuum Codes
+r11: A=Metropolitan counties*
+r12: A=Code | B=Description
+r13: A=1 | B=Counties in metro areas of 1 million population or more
+r14: A=2 | B=Counties in metro areas of 250,000 to 1 million population
+r15: A=3 | B=Counties in metro areas of fewer than 250,000 population
+r16: A=Nonmetropolitan counties
+r17: A=Code | B=Description
+r18: A=4 | B=Urban population of 20,000 or more, adjacent to a metro area
+r19: A=5 | B=Urban population of 20,000 or more, not adjacent to a metro area
+r20: A=6 | B=Urban population of 5,000 to 20,000, adjacent to a metro area
+r21: A=7 | B=Urban population of 5,000 to 20,000, not adjacent to a metro area
+r22: A=8 | B=Urban population of fewer than 5,000, adjacent to a metro area
+r23: A=9 | B=Urban population of fewer than 5,000, not adjacent to a metro area
+r24: (blank)
+r25: A=Note: In Virginia, nonmetro independent cities were combined with their counties of origin...
+r26: A=FIPS Code | B=City | C=FIPS Code | D=County
+r27: A=51580 | B=Covington City | C=51005 | D=Alleghany County
+r28: A=51640 | B=Galax City | C=51035 | D=Carroll County
+r29: A=51595 | B=Emporia City | C=51081 | D=Greensville County
+r30: A=51690 | B=Martinsville City | C=51089 | D=Henry County
+r31: A=51590 | B=Danville City | C=51143 | D=Pittsylvania County
+r32: A=51530 | B=Buena Vista City | C=51163 | D=Rockbridge County
+r33: A=51678 | B=Lexington City | C=51163 | D=Rockbridge County
+r34: A=51620 | B=Franklin City | C=51175 | D=Southampton County
+r35: A=51720 | B=Norton City | C=51195 | D=Wise County
+r36: (blank)
+r37: A=*Metropolitan areas are based on the Office of Management and Budget (OMB) delineation as ...
+r38: A=For more detailed information on the Rural-Urban Continuum Codes, see the USDA, Economic R...
+r39: A=Source: USDA, Economic Research Service, Rural-Urban Continuum Codes data product, updated...
+r40: A=Contact: Austin Sanders and John Coromartie.

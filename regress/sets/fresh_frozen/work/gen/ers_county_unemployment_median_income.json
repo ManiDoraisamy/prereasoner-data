@@ -1,0 +1,60 @@
+{
+ "id": "ers_county_unemployment_median_income",
+ "file": "ers_county_unemployment_median_income.xlsx",
+ "questions": [
+  {
+   "question": "Which state had a higher estimated median household income in 2022, Alabama or Washington?",
+   "sheet": "Unemployment Med HH Income",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Washington",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip() == 'FIPS_Code'].index[0]\ndf.columns = df.iloc[header_idx]\ndata = df.iloc[header_idx + 1:].copy()\n\nal_inc = float(data.loc[data['FIPS_Code'].astype(str).str.strip() == '01000', 'Median_Household_Income_2022'].values[0])\nwa_inc = float(data.loc[data['FIPS_Code'].astype(str).str.strip() == '53000', 'Median_Household_Income_2022'].values[0])\nresult = 'Washington' if wa_inc > al_inc else 'Alabama'",
+   "qid": "ers_county_unemployment_median_income#1"
+  },
+  {
+   "question": "Between 2019 and 2023, in which year was the nationwide annual average unemployment rate the highest?",
+   "sheet": "Unemployment Med HH Income",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2020",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip() == 'FIPS_Code'].index[0]\ndf.columns = df.iloc[header_idx]\nus_row = df[df['FIPS_Code'].astype(str).str.strip() == '00000'].iloc[0]\n\nrates = {str(yr): float(us_row[f'Unemployment_rate_{yr}']) for yr in range(2019, 2024)}\nresult = max(rates, key=rates.get)",
+   "qid": "ers_county_unemployment_median_income#2"
+  },
+  {
+   "question": "How many counties or county equivalents are categorized as metropolitan areas according to the 2023 urban-rural classification?",
+   "sheet": "Unemployment Med HH Income",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "1251",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip() == 'FIPS_Code'].index[0]\ndf.columns = df.iloc[header_idx]\ndata = df.iloc[header_idx + 1:].copy()\n\nresult = int((pd.to_numeric(data['Metro_2023'], errors='coerce') == 1).sum())",
+   "qid": "ers_county_unemployment_median_income#3"
+  },
+  {
+   "question": "What was the estimated median household income in Baldwin County, Alabama in 2022?",
+   "sheet": "Unemployment Med HH Income",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "71704",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip() == 'FIPS_Code'].index[0]\ndf.columns = df.iloc[header_idx]\ndata = df.iloc[header_idx + 1:].copy()\n\nval = data.loc[data['FIPS_Code'].astype(str).str.strip() == '01003', 'Median_Household_Income_2022'].values[0]\nresult = int(val)",
+   "qid": "ers_county_unemployment_median_income#4"
+  },
+  {
+   "question": "In 2023, was the annual average unemployment rate across the entire United States greater than 4.0 percent?",
+   "sheet": "Unemployment Med HH Income",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip() == 'FIPS_Code'].index[0]\ndf.columns = df.iloc[header_idx]\nus_row = df[df['FIPS_Code'].astype(str).str.strip() == '00000'].iloc[0]\n\nrate = float(us_row['Unemployment_rate_2023'])\nresult = 'yes' if rate > 4.0 else 'no'",
+   "qid": "ers_county_unemployment_median_income#5"
+  },
+  {
+   "question": "What was the estimated median household income for the United States as a whole in 2022?",
+   "sheet": "Unemployment Med HH Income",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "74755",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ers_county_unemployment_median_income.xlsx', sheet_name='Unemployment Med HH Income', header=None)\nheader_idx = df[df.iloc[:, 0].astype(str).str.strip() == 'FIPS_Code'].index[0]\ndf.columns = df.iloc[header_idx]\nus_row = df[df['FIPS_Code'].astype(str).str.strip() == '00000'].iloc[0]\n\nresult = int(us_row['Median_Household_Income_2022'])",
+   "qid": "ers_county_unemployment_median_income#6"
+  }
+ ]
+}

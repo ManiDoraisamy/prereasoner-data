@@ -1,0 +1,60 @@
+{
+ "id": "ca_hcai_case_mix_index",
+ "file": "ca_hcai_case_mix_index.xlsx",
+ "questions": [
+  {
+   "question": "What was the case mix index for Highland Hospital in fiscal year 2025?",
+   "sheet": "Case Mix Index",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "1.540923562",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nrow = df[df['Hospital'] == 'HIGHLAND HOSPITAL']\nresult = float(row['FY2025'].values[0])",
+   "qid": "ca_hcai_case_mix_index#1"
+  },
+  {
+   "question": "Between Woodland Memorial Hospital and Sutter Davis Hospital, which facility had a higher case mix index in fiscal year 2025?",
+   "sheet": "Case Mix Index",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "WOODLAND MEMORIAL HOSPITAL",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nh1 = df[df['Hospital'] == 'WOODLAND MEMORIAL HOSPITAL']['FY2025'].values[0]\nh2 = df[df['Hospital'] == 'SUTTER DAVIS HOSPITAL']['FY2025'].values[0]\nresult = 'WOODLAND MEMORIAL HOSPITAL' if h1 > h2 else 'SUTTER DAVIS HOSPITAL'",
+   "qid": "ca_hcai_case_mix_index#2"
+  },
+  {
+   "question": "How many hospital entries in the dataset are located in Alameda County?",
+   "sheet": "Case Mix Index",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "28",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nresult = int((df['County'] == 'ALAMEDA').sum())",
+   "qid": "ca_hcai_case_mix_index#3"
+  },
+  {
+   "question": "Did Adventist Health Simi Valley maintain a case mix index above 1.50 in fiscal year 2024?",
+   "sheet": "Case Mix Index",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nval = df[df['Hospital'] == 'ADVENTIST HEALTH SIMI VALLEY']['FY2024'].values[0]\nresult = 'yes' if val > 1.50 else 'no'",
+   "qid": "ca_hcai_case_mix_index#4"
+  },
+  {
+   "question": "How many total hospital facilities in the dataset have a reported case mix index for fiscal year 2025?",
+   "sheet": "Case Mix Index",
+   "kind": "filtered_count",
+   "answer_type": "number",
+   "answer": "450",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nresult = int(df['FY2025'].notna().sum())",
+   "qid": "ca_hcai_case_mix_index#5"
+  },
+  {
+   "question": "Which California county has the highest number of listed healthcare facilities in this dataset?",
+   "sheet": "Case Mix Index",
+   "kind": "group_by",
+   "answer_type": "name",
+   "answer": "LOS ANGELES",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('ca_hcai_case_mix_index.xlsx', sheet_name='Case Mix Index')\nresult = str(df['County'].value_counts().idxmax())",
+   "qid": "ca_hcai_case_mix_index#6"
+  }
+ ]
+}

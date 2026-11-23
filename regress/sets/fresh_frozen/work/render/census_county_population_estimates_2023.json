@@ -1,0 +1,12 @@
+{
+ "file": "census_county_population_estimates_2023.xlsx",
+ "sheets": [
+  {
+   "name": "CO-EST2023-POP",
+   "rows": 3155,
+   "cols": 6,
+   "shown_whole": false
+  }
+ ],
+ "chars": 8002
+}

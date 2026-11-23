@@ -1,0 +1,12 @@
+{
+ "file": "census_cps_poverty_by_state.xlsx",
+ "sheets": [
+  {
+   "name": "pov21",
+   "rows": 59,
+   "cols": 41,
+   "shown_whole": true
+  }
+ ],
+ "chars": 21045
+}

@@ -1,0 +1,80 @@
+{
+ "dataset": "eval-formesign-procurement-xlsx",
+ "kind": "own",
+ "uploads": [
+  {
+   "name": "Contracts Register",
+   "columns": [
+    "Number",
+    "Ref",
+    "Name",
+    "Start",
+    "End",
+    "Supplier",
+    "Est  Value"
+   ],
+   "rows": 1007
+  },
+  {
+   "name": "Purchase orders over £5000",
+   "columns": [
+    "Purchase order",
+    "Supplier name",
+    "Created date and time",
+    "Directorate",
+    "Service Area",
+    "Net PO Value",
+    "Gross Value"
+   ],
+   "rows": 1168
+  }
+ ],
+ "normalized": [
+  {
+   "name": "Contracts_Register",
+   "upload": "Contracts Register",
+   "columns": [
+    "Number",
+    "Ref",
+    "Name",
+    "Start",
+    "End",
+    "Supplier",
+    "Est  Value"
+   ]
+  },
+  {
+   "name": "Purchase_orders_over_5000",
+   "upload": "Purchase orders over £5000",
+   "columns": [
+    "Purchase order",
+    "Supplier name",
+    "Created date and time",
+    "Directorate",
+    "Service Area",
+    "Net PO Value",
+    "Gross Value"
+   ]
+  }
+ ],
+ "links_between_uploads": [],
+ "routes": [],
+ "entity_columns": [],
+ "conversions": [],
+ "knowledgebase_tables": {
+  "Cities": 0,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 0,
+  "country": 209,
+  "exchange_rate": 0,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 7.1
+}

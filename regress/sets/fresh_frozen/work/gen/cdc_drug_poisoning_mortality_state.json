@@ -1,0 +1,60 @@
+{
+ "id": "cdc_drug_poisoning_mortality_state",
+ "file": "cdc_drug_poisoning_mortality_state.csv",
+ "questions": [
+  {
+   "question": "How many drug overdose deaths were recorded in Alabama in 2016 for all demographic groups combined?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "756",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nval = df[(df['State'] == 'Alabama') & (df['Year'] == 2016) & (df['Sex'] == 'Both Sexes') & (df['Age Group'] == 'All Ages') & (df['Race and Hispanic Origin'] == 'All Races-All Origins')]['Deaths'].iloc[0]\nresult = int(val)",
+   "qid": "cdc_drug_poisoning_mortality_state#1"
+  },
+  {
+   "question": "What was the nationwide age-adjusted drug poisoning death rate per 100,000 population in 1999?",
+   "sheet": "",
+   "kind": "lookup",
+   "answer_type": "number",
+   "answer": "6.057",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nval = df[df['Year'] == 1999]['US Age-adjusted Rate'].iloc[0]\nresult = float(val)",
+   "qid": "cdc_drug_poisoning_mortality_state#2"
+  },
+  {
+   "question": "In 2012, which state had a higher age-adjusted mortality rate from drug poisoning: Alabama or Alaska?",
+   "sheet": "",
+   "kind": "comparison",
+   "answer_type": "name",
+   "answer": "Alaska",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nal_rate = df[(df['State'] == 'Alabama') & (df['Year'] == 2012) & (df['Sex'] == 'Both Sexes') & (df['Age Group'] == 'All Ages') & (df['Race and Hispanic Origin'] == 'All Races-All Origins')]['Age-adjusted Rate'].iloc[0]\nak_rate = df[(df['State'] == 'Alaska') & (df['Year'] == 2012) & (df['Sex'] == 'Both Sexes') & (df['Age Group'] == 'All Ages') & (df['Race and Hispanic Origin'] == 'All Races-All Origins')]['Age-adjusted Rate'].iloc[0]\nresult = 'Alabama' if al_rate > ak_rate else 'Alaska'",
+   "qid": "cdc_drug_poisoning_mortality_state#3"
+  },
+  {
+   "question": "Did the national crude drug poisoning mortality rate exceed 15 deaths per 100,000 in 2014?",
+   "sheet": "",
+   "kind": "yes_no",
+   "answer_type": "yes_no",
+   "answer": "no",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nrate = df[df['Year'] == 2014]['US Crude Rate'].iloc[0]\nresult = 'yes' if rate > 15.0 else 'no'",
+   "qid": "cdc_drug_poisoning_mortality_state#4"
+  },
+  {
+   "question": "Between 2008 and 2016, which year saw the highest crude drug overdose death rate in Alaska?",
+   "sheet": "",
+   "kind": "date_period",
+   "answer_type": "date",
+   "answer": "2009",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nak = df[(df['State'] == 'Alaska') & (df['Year'] >= 2008) & (df['Year'] <= 2016) & (df['Sex'] == 'Both Sexes') & (df['Age Group'] == 'All Ages') & (df['Race and Hispanic Origin'] == 'All Races-All Origins')]\nyear = ak.loc[ak['Crude Death Rate'].idxmax()]['Year']\nresult = str(year)",
+   "qid": "cdc_drug_poisoning_mortality_state#5"
+  },
+  {
+   "question": "How many total drug poisoning fatalities occurred in Wyoming across the three-year span from 2014 through 2016?",
+   "sheet": "",
+   "kind": "filtered_sum",
+   "answer_type": "number",
+   "answer": "304",
+   "program": "import pandas as pd\n\ndf = pd.read_csv('cdc_drug_poisoning_mortality_state.csv')\nsub = df[(df['State'] == 'Wyoming') & (df['Year'].isin([2014, 2015, 2016])) & (df['Sex'] == 'Both Sexes') & (df['Age Group'] == 'All Ages') & (df['Race and Hispanic Origin'] == 'All Races-All Origins')]\nresult = int(sub['Deaths'].sum())",
+   "qid": "cdc_drug_poisoning_mortality_state#6"
+  }
+ ]
+}

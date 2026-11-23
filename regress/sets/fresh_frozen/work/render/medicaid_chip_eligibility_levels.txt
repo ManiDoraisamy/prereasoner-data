@@ -1,0 +1,55 @@
+FILE medicaid_chip_eligibility_levels.csv (CSV). pandas.read_csv gives 51 data rows x 12 columns.
+Columns and pandas dtypes: State (str); Notes (str); Medicaid Ages 0-1 (str); Medicaid Ages 1-5 (str); Medicaid Ages 6-18 (str); Separate CHIP (str); Pregnant Women Medicaid (str); Pregnant Women CHIP (str); Parent/Caretaker (str); Expansion to Adults (str); Separate CHIP Ages (str); Parent/Caretaker Income Standard (str)
+(whole sheet shown; r1 is the CSV header line; r2 is pandas index 0)
+r1: A=State | B=Notes | C=Medicaid Ages 0-1 | D=Medicaid Ages 1-5 | E=Medicaid Ages 6-18 | F=Separate CHIP | G=Pregnant Women Medicaid | H=Pregnant Women CHIP | I=Parent/Caretaker | J=Expansion to Adults | K=Separate CHIP Ages | L=Parent/Caretaker Income Standard
+r2: A=Alabama | C=141% | D=141% | E=141% | F=312% | G=141% | I=13% | J=No | L=FPL
+r3: A=Arkansas | C=142% | D=142% | E=142% | F=211% | G=209% | I=17% | J=133% | L=Dollars
+r4: A=Colorado | C=142% | D=142% | E=142% | F=260% | G=195% | H=260% | I=68% | J=133% | L=FPL
+r5: A=District of Columbia | C=319% | D=319% | E=319% | G=319% | I=216% | J=210% | L=FPL
+r6: A=Georgia | C=205% | D=149% | E=133% | F=247% | G=220% | I=34% | J=No | L=Dollars
+r7: A=Hawaii | B=The dollar values that represent the FPLs in Alaska and Hawaii are higher than in the cont... | C=308% | D=308% | E=308% | G=191% | I=105% | J=133% | L=FPL
+r8: A=Idaho | B=The state has a section 1115 demonstration that provides Medicaid coverage to some additio... | C=142% | D=142% | E=133% | F=185% | G=133% | I=24% | J=No | L=Dollars
+r9: A=Illinois | C=142% | D=142% | E=142% | F=313% | G=208% | I=133% | J=133% | L=FPL
+r10: A=Indiana | C=208% | D=158% | E=158% | F=250% | G=208% | I=19% | J=133% | L=Dollars
+r11: A=Kansas | C=166% | D=149% | E=133% | F=238% | G=166% | I=33% | J=No | L=Dollars
+r12: A=Kentucky | C=195% | D=159% | E=159% | F=213% | G=195% | I=23% | J=133% | L=Dollars
+r13: A=Louisiana | C=212% | D=212% | E=212% | F=250% | G=133% | I=19% | J=133% | L=FPL
+r14: A=Maine | B=The state covers some 19 and 20 year olds – FL (29%), ME (156%), MA (150%), NC (44%). | C=191% | D=157% | E=157% | F=208% | G=209% | I=100% | J=No | L=Dollars
+r15: A=Maryland | C=317% | D=317% | E=317% | G=259% | I=123% | J=133% | L=FPL
+r16: A=Massachusetts | B=The state covers some 19 and 20 year olds – FL (29%), ME (156%), MA (150%), NC (44%). | C=200% | D=150% | E=150% | F=300% | G=200% | I=133% | J=133% | L=FPL
+r17: A=Michigan | C=212% | D=212% | E=212% | G=195% | I=54% | J=133% | L=FPL
+r18: A=Minnesota | B=Minnesota covers children up to age 2 with income up to 283% of the FPL. | C=283% | D=275% | E=275% | G=278% | I=133% | J=200% | L=FPL
+r19: A=Mississippi | C=194% | D=143% | E=133% | F=209% | G=194% | I=23% | J=No | L=Dollars
+r20: A=Missouri | C=196% | D=150% | E=150% | F=300% | G=196% | H=300% | I=18% | J=No | L=Dollars
+r21: A=Montana | C=143% | D=143% | E=143% | F=261% | G=157% | I=24% | J=133% | L=Dollars
+r22: A=Nebraska | C=213% | D=213% | E=213% | G=194% | I=58% | J=No | L=FPL
+r23: A=Nevada | C=160% | D=160% | E=133% | F=200% | G=160% | I=32% | J=133% | L=Dollars
+r24: A=New Hampshire | C=318% | D=318% | E=318% | G=196% | I=68% | J=133% | L=Dollars
+r25: A=New York | B=Adults with incomes between 133 and 200% of the FPL are covered through the Basic Health P... | C=218% | D=149% | E=149% | F=400% | G=218% | I=133% | J=200% | L=FPL
+r26: A=North Dakota | C=147% | D=147% | E=133% | F=170% | G=147% | I=52% | J=133% | L=Dollars
+r27: A=Ohio | C=206% | D=206% | E=206% | G=200% | I=90% | J=133% | L=FPL
+r28: A=Oklahoma | B=The state has a section 1115 demonstration that provides Medicaid coverage to some additio... | C=205% | D=205% | E=205% | G=133% | I=41% | J=No | L=Dollars
+r29: A=Oregon | C=185% | D=133% | E=133% | F=300% | G=185% | I=40% | J=133% | L=Dollars
+r30: A=Pennsylvania | C=215% | D=157% | E=133% | F=314% | G=215% | I=33% | J=133% | L=FPL
+r31: A=Rhode Island | C=261% | D=261% | E=261% | G=190% | H=253% | I=116% | J=133% | L=FPL
+r32: A=South Carolina | C=208% | D=208% | E=208% | G=194% | I=62% | J=No | L=Dollars
+r33: A=South Dakota | C=182% | D=182% | E=182% | F=204% | G=133% | I=57% | J=No | L=Dollars
+r34: A=Texas | C=198% | D=144% | E=133% | F=201% | G=198% | I=15% | J=No | L=Dollars
+r35: A=Utah | B=The state has a section 1115 demonstration that provides Medicaid coverage to some additio... | C=139% | D=139% | E=133% | F=200% | G=139% | I=44% | J=No | L=Dollars
+r36: A=Vermont | C=312% | D=312% | E=312% | G=208% | I=53% | J=133% | L=Dollars
+r37: A=Virginia | C=143% | D=143% | E=143% | F=200% | G=143% | H=200% | I=49% | J=No | L=Dollars
+r38: A=Washington | C=210% | D=210% | E=210% | F=312% | G=193% | I=40% | J=133% | L=Dollars
+r39: A=West Virginia | C=158% | D=141% | E=133% | F=300% | G=158% | I=19% | J=133% | L=Dollars
+r40: A=Florida | B=The state covers some 19 and 20 year olds – FL (29%), ME (156%), MA (150%), NC (44%). | C=206% | D=140% | E=133% | F=210% | G=191% | I=29% | J=No | K=1 up to 19 | L=Dollars
+r41: A=Delaware | C=212% | D=142% | E=133% | F=212% | G=212% | I=87% | J=133% | K=1 up to 19 | L=FPL
+r42: A=Iowa | C=375% | D=167% | E=167% | F=302% | G=375% | I=54% | J=133% | K=1 up to 19 | L=FPL
+r43: A=Wisconsin | C=301% | D=186% | E=151% | F=301% | G=301% | I=95% | J=No | K=1 up to 19 | L=FPL
+r44: A=Arizona | C=147% | D=141% | E=133% | F=200% | G=156% | I=106% | J=133% | L=FPL
+r45: A=California | B=Separate CHIP in California covers certain children under age 2 statewide and covers child... | C=261% | D=261% | E=261% | F=317% | G=208% | I=109% | J=133% | L=FPL
+r46: A=New Jersey | C=194% | D=142% | E=142% | F=350% | G=194% | H=200% | I=31% | J=133% | L=Dollars
+r47: A=Tennessee | C=195% | D=142% | E=133% | F=250% | G=195% | I=101% | J=No | L=Dollars
+r48: A=New Mexico | C=300% | D=300% | E=240% | G=250% | I=45% | J=133% | L=Dollars
+r49: A=Wyoming | C=154% | D=154% | E=133% | F=200% | G=154% | I=54% | J=No | L=Dollars
+r50: A=Connecticut | C=196% | D=196% | E=196% | F=318% | G=258% | I=133% | J=133% | L=FPL
+r51: A=North Carolina | B=The state covers some 19 and 20 year olds – FL (29%), ME (156%), MA (150%), NC (44%). | C=210% | D=210% | E=133% | F=211% | G=196% | I=43% | J=No | K=6 up to 19 | L=Dollars
+r52: A=Alaska | B=The dollar values that represent the FPLs in Alaska and Hawaii are higher than in the cont... | C=203% | D=203% | E=203% | G=200% | I=139% | J=133% | L=Dollars

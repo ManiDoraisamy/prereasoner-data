@@ -1,0 +1,24 @@
+{
+ "file": "fhwa_vehicle_miles_by_functional_system_2023.xlsx",
+ "sheets": [
+  {
+   "name": "CRYSTAL_PERSIST",
+   "rows": 29,
+   "cols": 22,
+   "shown_whole": true
+  },
+  {
+   "name": "A",
+   "rows": 69,
+   "cols": 38,
+   "shown_whole": true
+  },
+  {
+   "name": "footnotes",
+   "rows": 8,
+   "cols": 2,
+   "shown_whole": true
+  }
+ ],
+ "chars": 34603
+}

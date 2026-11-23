@@ -1,0 +1,150 @@
+{
+ "file": "census_school_system_finances_2022.xlsx",
+ "sheets": [
+  {
+   "name": "Table of Contents",
+   "rows": 65,
+   "cols": 2,
+   "shown_whole": true
+  },
+  {
+   "name": "1",
+   "rows": 79,
+   "cols": 12,
+   "shown_whole": true
+  },
+  {
+   "name": "2",
+   "rows": 79,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "3",
+   "rows": 79,
+   "cols": 10,
+   "shown_whole": true
+  },
+  {
+   "name": "4",
+   "rows": 78,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "5",
+   "rows": 80,
+   "cols": 11,
+   "shown_whole": true
+  },
+  {
+   "name": "6",
+   "rows": 76,
+   "cols": 12,
+   "shown_whole": true
+  },
+  {
+   "name": "7",
+   "rows": 76,
+   "cols": 10,
+   "shown_whole": true
+  },
+  {
+   "name": "8",
+   "rows": 78,
+   "cols": 13,
+   "shown_whole": true
+  },
+  {
+   "name": "9",
+   "rows": 80,
+   "cols": 9,
+   "shown_whole": true
+  },
+  {
+   "name": "10",
+   "rows": 80,
+   "cols": 7,
+   "shown_whole": true
+  },
+  {
+   "name": "11",
+   "rows": 85,
+   "cols": 22,
+   "shown_whole": true
+  },
+  {
+   "name": "12",
+   "rows": 85,
+   "cols": 22,
+   "shown_whole": true
+  },
+  {
+   "name": "13",
+   "rows": 93,
+   "cols": 13,
+   "shown_whole": null
+  },
+  {
+   "name": "14",
+   "rows": 92,
+   "cols": 13,
+   "shown_whole": null
+  },
+  {
+   "name": "15",
+   "rows": 296,
+   "cols": 14,
+   "shown_whole": null
+  },
+  {
+   "name": "16",
+   "rows": 297,
+   "cols": 14,
+   "shown_whole": null
+  },
+  {
+   "name": "17",
+   "rows": 153,
+   "cols": 14,
+   "shown_whole": null
+  },
+  {
+   "name": "18",
+   "rows": 152,
+   "cols": 16,
+   "shown_whole": null
+  },
+  {
+   "name": "19",
+   "rows": 82,
+   "cols": 8,
+   "shown_whole": null
+  },
+  {
+   "name": "20",
+   "rows": 82,
+   "cols": 13,
+   "shown_whole": null
+  },
+  {
+   "name": "Appendix A - Definitions",
+   "rows": 131,
+   "cols": 1,
+   "shown_whole": null
+  },
+  {
+   "name": "Appendix B - State Notes",
+   "rows": 169,
+   "cols": 2,
+   "shown_whole": null
+  },
+  {
+   "name": "File Information",
+   "rows": 3,
+   "cols": 2,
+   "shown_whole": null
+  }
+ ],
+ "chars": 159162
+}

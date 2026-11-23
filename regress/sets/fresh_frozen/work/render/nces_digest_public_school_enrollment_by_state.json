@@ -1,0 +1,12 @@
+{
+ "file": "nces_digest_public_school_enrollment_by_state.xlsx",
+ "sheets": [
+  {
+   "name": "Digest 2023 Table 203.20",
+   "rows": 76,
+   "cols": 26,
+   "shown_whole": true
+  }
+ ],
+ "chars": 18115
+}

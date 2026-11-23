@@ -1,0 +1,35 @@
+{
+ "id": "census_voting_registration_by_state_2020",
+ "answers": [
+  {
+   "id": "census_voting_registration_by_state_2020#1",
+   "answer": "62.1",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\n# Row 5 (index 4) and Row 6 (index 5) contain headers\n# Find Florida row\nfl_row = df[df[0].astype(str).str.strip().str.upper() == 'FLORIDA']\n# Column L (index 11) is Percent voted (Citizen)\nresult = float(fl_row.iloc[0, 11])\n"
+  },
+  {
+   "id": "census_voting_registration_by_state_2020#2",
+   "answer": "[\"DISTRICT OF COLUMBIA\", \"NEW JERSEY\", \"MINNESOTA\"]",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\n# Data rows are from index 7 to 57 (Alabama to Wyoming)\n# Exclude 'UNITED STATES'\ndata = df.iloc[7:58, [0, 6]].copy()\ndata.columns = ['state', 'citizen_reg_rate']\ndata['citizen_reg_rate'] = pd.to_numeric(data['citizen_reg_rate'])\ntop3 = data.sort_values(by='citizen_reg_rate', ascending=False).head(3)\nresult = top3['state'].tolist()\n"
+  },
+  {
+   "id": "census_voting_registration_by_state_2020#3",
+   "answer": "CALIFORNIA",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\n# Column 0: state, Column 9: Percent voted (Total)\nca_val = float(df[df[0].astype(str).str.strip().str.upper() == 'CALIFORNIA'].iloc[0, 9])\ntx_val = float(df[df[0].astype(str).str.strip().str.upper() == 'TEXAS'].iloc[0, 9])\nresult = 'CALIFORNIA' if ca_val > tx_val else 'TEXAS'\n"
+  },
+  {
+   "id": "census_voting_registration_by_state_2020#4",
+   "answer": "16",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\n# States and DC are in rows index 7 to 57\ndata = df.iloc[7:58, [0, 11]].copy()\ndata.columns = ['state', 'citizen_voted_pct']\ndata['citizen_voted_pct'] = pd.to_numeric(data['citizen_voted_pct'])\nresult = int((data['citizen_voted_pct'] >= 70.0).sum())\n"
+  },
+  {
+   "id": "census_voting_registration_by_state_2020#5",
+   "answer": "yes",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\ndc_row = df[df[0].astype(str).str.strip().str.upper() == 'DISTRICT OF COLUMBIA']\n# Column G (index 6) is Percent registered (Citizen)\nrate = float(dc_row.iloc[0, 6])\nresult = 'yes' if rate > 85.0 else 'no'\n"
+  },
+  {
+   "id": "census_voting_registration_by_state_2020#6",
+   "answer": "57825",
+   "program": "import pandas as pd\n\ndf = pd.read_excel('census_voting_registration_by_state_2020.xlsx', sheet_name='Table 4a', header=None)\nstates = ['CALIFORNIA', 'TEXAS', 'NEW YORK']\n# Column C (index 2) is Total citizen population\nfiltered = df[df[0].astype(str).str.strip().str.upper().isin(states)]\nresult = int(pd.to_numeric(filtered[2]).sum())\n"
+  }
+ ]
+}

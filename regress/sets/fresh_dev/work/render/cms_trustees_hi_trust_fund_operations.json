@@ -1,0 +1,18 @@
+{
+ "file": "cms_trustees_hi_trust_fund_operations.xlsx",
+ "sheets": [
+  {
+   "name": "HI",
+   "rows": 70,
+   "cols": 28,
+   "shown_whole": true
+  },
+  {
+   "name": "Notes",
+   "rows": 23,
+   "cols": 1,
+   "shown_whole": true
+  }
+ ],
+ "chars": 12490
+}

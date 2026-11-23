@@ -1,0 +1,85 @@
+FILE cdc_leading_causes_of_death_us.csv (CSV). pandas.read_csv gives 10868 data rows x 6 columns.
+Columns and pandas dtypes: Year (int64); 113 Cause Name (str); Cause Name (str); State (str); Deaths (int64); Age-adjusted Death Rate (float64)
+(sheet too large to show whole; r1 is the CSV header line; r2 is pandas index 0; showing the first 35 rows, 30 sampled rows, the last 8 rows, and a profile of every column)
+r1: A=Year | B=113 Cause Name | C=Cause Name | D=State | E=Deaths | F=Age-adjusted Death Rate
+r2: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=United States | E=169936 | F=49.4
+r3: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Alabama | E=2703 | F=53.8
+r4: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Alaska | E=436 | F=63.7
+r5: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Arizona | E=4184 | F=56.2
+r6: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Arkansas | E=1625 | F=51.8
+r7: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=California | E=13840 | F=33.2
+r8: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Colorado | E=3037 | F=53.6
+r9: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Connecticut | E=2078 | F=53.2
+r10: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Delaware | E=608 | F=61.9
+r11: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=District of Columbia | E=427 | F=61
+r12: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Florida | E=13059 | F=56.1
+r13: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Georgia | E=4712 | F=45.2
+r14: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Hawaii | E=585 | F=35.7
+r15: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Idaho | E=876 | F=49.8
+r16: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Illinois | E=6019 | F=44.4
+r17: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Indiana | E=3978 | F=58.7
+r18: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Iowa | E=1536 | F=42.8
+r19: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Kansas | E=1567 | F=49.4
+r20: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Kentucky | E=3264 | F=72.9
+r21: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Louisiana | E=2780 | F=58.9
+r22: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Maine | E=990 | F=68
+r23: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Maryland | E=2408 | F=36.9
+r24: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Massachusetts | E=3821 | F=51.5
+r25: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Michigan | E=5623 | F=53
+r26: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Minnesota | E=2788 | F=44.6
+r27: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Mississippi | E=1738 | F=56.3
+r28: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Missouri | E=3776 | F=58.8
+r29: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Montana | E=579 | F=50.2
+r30: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Nebraska | E=811 | F=38.5
+r31: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Nevada | E=1496 | F=47.8
+r32: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=New Hampshire | E=907 | F=62.9
+r33: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=New Jersey | E=4482 | F=47.3
+r34: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=New Mexico | E=1460 | F=68.3
+r35: A=2017 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=New York | E=7687 | F=35.5
+... sampled rows:
+r2337: A=2013 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Utah | E=1103 | F=43.4
+r2555: A=2013 | B=Diabetes mellitus (E10-E14) | C=Diabetes | D=Arizona | E=1786 | F=23.5
+r2695: A=2013 | B=Influenza and pneumonia (J09-J18) | C=Influenza and pneumonia | D=Oregon | E=496 | F=10.4
+r2888: A=2012 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Michigan | E=3805 | F=36.6
+r2896: A=2012 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=New Jersey | E=2990 | F=31.7
+r2985: A=2012 | B=Alzheimer's disease (G30) | C=Alzheimer's disease | D=Iowa | E=1336 | F=30.5
+r3406: A=2012 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=Maryland | E=704 | F=11.3
+r3416: A=2012 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=New Jersey | E=1431 | F=13.6
+r3686: A=2011 | B=Chronic lower respiratory diseases (J40-J47) | C=CLRD | D=Rhode Island | E=526 | F=39.5
+r3782: A=2011 | B=Diseases of heart (I00-I09,I11,I13,I20-I51) | C=Heart disease | D=New Mexico | E=3333 | F=150.3
+r4937: A=2009 | B=Diseases of heart (I00-I09,I11,I13,I20-I51) | C=Heart disease | D=Montana | E=1832 | F=154.3
+r5264: A=2008 | B=All Causes | C=All causes | D=Rhode Island | E=9738 | F=742.9
+r5396: A=2008 | B=Chronic lower respiratory diseases (J40-J47) | C=CLRD | D=Iowa | E=1848 | F=49.4
+r5408: A=2008 | B=Chronic lower respiratory diseases (J40-J47) | C=CLRD | D=Nebraska | E=1047 | F=51.6
+r5801: A=2007 | B=All Causes | C=All causes | D=Arkansas | E=28191 | F=906.2
+r6149: A=2007 | B=Intentional self-harm (suicide) (*U03,X60-X84,Y87.0) | C=Suicide | D=Hawaii | E=133 | F=9.5
+r6601: A=2006 | B=Diabetes mellitus (E10-E14) | C=Diabetes | D=Virginia | E=1632 | F=22.1
+r6631: A=2006 | B=Diseases of heart (I00-I09,I11,I13,I20-I51) | C=Heart disease | D=Missouri | E=14749 | F=228.8
+r7372: A=2005 | B=Malignant neoplasms (C00-C97) | C=Cancer | D=Pennsylvania | E=29616 | F=195.6
+r7756: A=2004 | B=Diseases of heart (I00-I09,I11,I13,I20-I51) | C=Heart disease | D=Connecticut | E=7868 | F=189.5
+r8176: A=2003 | B=Cerebrovascular diseases (I60-I69) | C=Stroke | D=Georgia | E=4301 | F=65.6
+r8745: A=2002 | B=Cerebrovascular diseases (I60-I69) | C=Stroke | D=Delaware | E=405 | F=51.4
+r8772: A=2002 | B=Cerebrovascular diseases (I60-I69) | C=Stroke | D=North Dakota | E=469 | F=55.4
+r8908: A=2002 | B=Diseases of heart (I00-I09,I11,I13,I20-I51) | C=Heart disease | D=Indiana | E=15321 | F=250.9
+r8971: A=2002 | B=Influenza and pneumonia (J09-J18) | C=Influenza and pneumonia | D=Mississippi | E=801 | F=29.8
+r9205: A=2001 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=Wisconsin | E=2100 | F=37.5
+r9288: A=2001 | B=Alzheimer's disease (G30) | C=Alzheimer's disease | D=New Jersey | E=1376 | F=15.3
+r9314: A=2001 | B=Cerebrovascular diseases (I60-I69) | C=Stroke | D=California | E=18088 | F=62.1
+r9758: A=2000 | B=Accidents (unintentional injuries) (V01-X59,Y85-Y86) | C=Unintentional injuries | D=New Jersey | E=2284 | F=26.7
+r10597: A=1999 | B=Diabetes mellitus (E10-E14) | C=Diabetes | D=Rhode Island | E=236 | F=20.1
+... last rows:
+r10862: A=1999 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=United States | E=35525 | F=13
+r10863: A=1999 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=Utah | E=135 | F=9.1
+r10864: A=1999 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=Vermont | E=56 | F=9.2
+r10865: A=1999 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=Virginia | E=1035 | F=16.9
+r10866: A=1999 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=Washington | E=278 | F=5.2
+r10867: A=1999 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=West Virginia | E=345 | F=16.4
+r10868: A=1999 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=Wisconsin | E=677 | F=11.9
+r10869: A=1999 | B=Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27) | C=Kidney disease | D=Wyoming | E=30 | F=6.8
+... column profiles (data rows below Excel row 1):
+  A [Year]: {"non_empty": 10868, "numeric": 10868, "min": "1999", "max": "2017", "sum": "21822944", "distinct": 19, "value_counts": {"1999": 572, "2000": 572, "2001": 572, "2002": 572, "2003": 572, "2004": 572, "2005": 572, "2006": 572, "2007": 572, "2008": 572, "2009": 572, "2010": 572, "2011": 572, "2012": 572, "2013": 572, "2014": 572, "2015": 572, "2016": 572, "2017": 572}}
+  B [113 Cause Name]: {"non_empty": 10868, "distinct": 11, "value_counts": {"Accidents (unintentional injuries) (V01-X59,Y85-Y86)": 988, "All Causes": 988, "Alzheimer's disease (G30)": 988, "Cerebrovascular diseases (I60-I69)": 988, "Chronic lower respiratory diseases (J40-J47)": 988, "Diabetes mellitus (E10-E14)": 988, "Diseases of heart (I00-I09,I11,I13,I20-I51)": 988, "Influenza and pneumonia (J09-J18)": 988, "Intentional self-harm (suicide) (*U03,X60-X84,Y87.0)": 988, "Malignant neoplasms (C00-C97)": 988, "Nephritis, nephrotic syndrome and nephrosis (N00-N07,N17-N19,N25-N27)": 988}}
+  C [Cause Name]: {"non_empty": 10868, "distinct": 11, "value_counts": {"All causes": 988, "Alzheimer's disease": 988, "CLRD": 988, "Cancer": 988, "Diabetes": 988, "Heart disease": 988, "Influenza and pneumonia": 988, "Kidney disease": 988, "Stroke": 988, "Suicide": 988, "Unintentional injuries": 988}}
+  D [State]: {"non_empty": 10868, "distinct": 52, "top_values": {"Alabama": 209, "Alaska": 209, "Arizona": 209, "Arkansas": 209, "California": 209, "Colorado": 209}}
+  E [Deaths]: {"non_empty": 10868, "numeric": 10868, "min": "21", "max": "2813503", "sum": "168018304", "distinct": 5964, "top_values": {"343": 15, "265": 12, "189": 11, "308": 11, "393": 11, "86": 11}}
+  F [Age-adjusted Death Rate]: {"non_empty": 10868, "numeric": 10868, "min": "2.6", "max": "1087.3", "sum": "1386364.4", "distinct": 2490, "top_values": {"19.2": 40, "19.8": 37, "11.2": 35, "14.5": 35, "18.7": 34, "19.7": 34}}

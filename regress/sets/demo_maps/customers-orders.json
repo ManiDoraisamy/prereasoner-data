@@ -1,0 +1,120 @@
+{
+ "dataset": "customers-orders",
+ "kind": "world+fx",
+ "uploads": [
+  {
+   "name": "customers",
+   "columns": [
+    "customer ID",
+    "name",
+    "city",
+    "tier"
+   ],
+   "rows": 9
+  },
+  {
+   "name": "orders",
+   "columns": [
+    "order ID",
+    "customer",
+    "ordered",
+    "currency",
+    "amount"
+   ],
+   "rows": 23
+  }
+ ],
+ "normalized": [
+  {
+   "name": "customers",
+   "upload": "customers",
+   "columns": [
+    "customer ID",
+    "name",
+    "city",
+    "tier"
+   ]
+  },
+  {
+   "name": "orders",
+   "upload": "orders",
+   "columns": [
+    "order ID",
+    "customer",
+    "ordered",
+    "currency",
+    "amount"
+   ]
+  }
+ ],
+ "links_between_uploads": [
+  {
+   "from_table": "orders",
+   "from_col": "customer",
+   "to_table": "customers",
+   "to_col": "name",
+   "conf": 1.0,
+   "inclusion": 1.0
+  }
+ ],
+ "routes": [
+  {
+   "upload": "customers",
+   "table": "customers",
+   "column": "city",
+   "column_index": 2,
+   "world": "city",
+   "world_type": "city",
+   "bridge": "customers connected to knowledgebase",
+   "bridged": true,
+   "cells": 7,
+   "cells_matched": 7
+  }
+ ],
+ "entity_columns": [],
+ "conversions": [
+  {
+   "upload": "orders",
+   "table": "orders",
+   "currency_column": "currency",
+   "currency_index": 3,
+   "date_column": null,
+   "date_index": null,
+   "measures": [
+    {
+     "column": "amount",
+     "column_index": 4
+    }
+   ],
+   "rate_columns": [
+    "rate_to_aud",
+    "rate_to_cad",
+    "rate_to_chf",
+    "rate_to_cny",
+    "rate_to_eur",
+    "rate_to_gbp",
+    "rate_to_inr",
+    "rate_to_jpy",
+    "rate_to_usd"
+   ],
+   "as_of": "2026-11-18",
+   "days": 1
+  }
+ ],
+ "knowledgebase_tables": {
+  "Cities": 47,
+  "Continents": 7,
+  "Countries": 209,
+  "Elements": 174,
+  "States": 175,
+  "_catalog": 1014,
+  "_labels": 389,
+  "city": 47,
+  "country": 209,
+  "exchange_rate": 30,
+  "schedule": 13,
+  "types": 203,
+  "u_s_state": 174
+ },
+ "seconds": 8.0
+}
