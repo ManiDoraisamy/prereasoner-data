@@ -7,6 +7,38 @@ been removed, and that commit holds the code that ran. Records cited under `prer
 (`training/archive.json` names each group; `python -m training.archive fetch GROUP`).
 
 
+## The choice's misses on the training find set, and a line pin that narrows an aggregate to one line: three forms, none kept (2026-11-23)
+
+- **Study** (no spend: the find set's 201 WikiTableQuestions training questions whose right reading the engine listed
+  but did not pick, replayed at 335945bd from the recorded Decisions answers only; 197 replayed, 4 pools changed with
+  the spread form). The choice gives the right listing under 5% on half of them; it is the choice's second choice on 57,
+  third or lower on 131; 99 of the 197 were served unmarked. By how the picked reading differs from the best right one:
+  50 count as built only through a listing that pins one line by its label (right by accident: it pins the line holding
+  the gold), 44 picked such a pinned listing over an unpinned right one, 54 read another output or measure, 29 other
+  conditions, 10 add a condition, 3 swap a comparison's sides, 3 are ties, 2 flip a direction, 2 drop a condition.
+  "Built" on the find set therefore overstates the engine's reach by about 2.4 points (50 of 2,100).
+- **The family tried**: an aggregate (count, total, lowest, highest, rank, breakdown, also inside a difference or a
+  check) that a line pin by its label alone narrows to one data line among the several its other conditions keep says
+  nothing an aggregate says. A pin the other conditions already make, a pin holding several lines, a printed line's pin
+  and every show are untouched. Measured on the 896 (and the 91 demo questions) in three forms:
+
+  | Form | Built | Pick | Wins / losses | Unwarned wrong | Spend |
+  |---|---|---|---|---|---|
+  | Baseline (335945bd) | 792 | 727 | | 64 | |
+  | Not listed by the decoder | 791 | 728 | 5 / 4 | 68 | $0.11 (342 new choice calls) |
+  | Listed and offered; its probability goes to no answer | 792 | 724 | 2 / 5 | 61 | none (every call recorded) |
+  | Listed and offered; it lends its answer mass but cannot carry one alone (estimated from the two runs' records) | 792 | 724 | 1 / 4 | 63 | none |
+
+  The demo stayed at 84 right, 2 warned right, 4 erred, 1 wrong in every form except the first (85, 1, 4, 1).
+- **Why none is kept**: removing the listings reshaped 66 of 91 demo pools and most fresh dev pools, and the choice's
+  probabilities follow the pool, so wrong answers lost their competitors and their mark (fresh dev unwarned wrong 17 ->
+  21). Keeping them offered but taking their probability lowered the right answers they agree with: on the 300
+  WikiTableQuestions dev questions unmarked right fell 198 -> 176. And on the dev sets a pick such a pin narrows to one
+  line is right more often than wrong (the pin lands on the line the question means), so even the form that changes no
+  confidence loses picks. The family the training questions showed does not hold on the dev sets.
+- The diffs, the runs' records, the recorded calls and the study (script, per-question listings, families):
+  `prereasoner-scratch/patches/pin-rule-20261123/` in the archive (group `scratch-records`).
+
 ## The final fresh sample: on 1,000 WikiTableQuestions test questions no one had read, the engine alone 68.4%, with its retry 73.0%, Gemini 4 Neon 85.0%, Claude Opus 5.5 82.8% (2026-11-23)
 
 - Sample `wtq-fresh2` (`regress/sets/public/samples/wtq-fresh2.json`): 1,000 of the 2,344 WikiTableQuestions test
