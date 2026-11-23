@@ -5,6 +5,28 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## The final fresh sample: on 1,000 WikiTableQuestions test questions no one had read, the engine alone 68.4%, with its retry 73.0%, Gemini 4 Neon 85.0%, Claude Opus 5.5 82.8% (2026-11-23)
+
+- Sample `wtq-fresh2` (`regress/sets/public/samples/wtq-fresh2.json`): 1,000 of the 2,344 WikiTableQuestions test
+  questions neither earlier sample drew (seed 20261124), drawn after the night's last engine change (ca5dfb2e) and read
+  by nobody before the run. `regress/run_public.py --run 2026-11-23-final`, the systems as the 2026-11-22 benchmark
+  ran them (the frontier models get the retry's prompt over the raw table, one answer-format line more); records and
+  every model answer in `regress/sets/public/records/2026-11-23-final/` and `regress/sets/public/calls/`.
+
+  | System | Right of 1,000 | 95% interval |
+  |---|---|---|
+  | Prereasoner, the engine alone (no model writes a query) | 684 (68.4%) | 65.5-71.2 |
+  | Prereasoner as served (an erred answer retried by Gemini 4 Neon) | 730 (73.0%) | 70.2-75.7 |
+  | Gemini 4 Neon writing every query | 850 (85.0%) | 82.7-87.1 |
+  | Claude Opus 5.5 writing every query | 828 (82.8%) | 80.3-85.0 |
+
+- Paired with Neon: both right 645, the engine alone right 39, Neon alone right 205, neither 111. The engine built the
+  right query for 792 (79.2%) and picked it on 684; a perfect choice among what it builds stays below Neon. Its marks:
+  unmarked 728 answers, 583 right (80.1%); warned 141 (72 right); erred, and retried in serving, 131.
+- Against the earlier fresh sample (`wtq-fresh`, 1,000 other test questions, 703 at fp1): within each sample's
+  interval; the engine alone stands near 69-70% on unseen WikiTableQuestions tables, 15-16 points below Neon.
+- Spend $47.12 of the owner's $50: Neon $32.67, Opus $11.79, the retry $1.65, Decisions $1.00.
+
 ## A measure's spread, its highest less its lowest: dev picks 725 -> 727 (2 wins, 0 losses), unwarned wrong 65 -> 64; its training family 4 -> 6 right of 11 (2026-11-23)
 
 - "How long have they been playing?", "the difference between the highest and the lowest average": one column's

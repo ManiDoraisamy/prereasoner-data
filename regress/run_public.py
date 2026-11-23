@@ -108,7 +108,12 @@ class Ledger:
             entry["usd"] = round((entry["input"] * price[0] + entry["output"] * price[1]) / 1e6, 4)
             temporary = self.path.with_suffix(".tmp")
             temporary.write_text(json.dumps(self.held), encoding="utf-8")
-            os.replace(temporary, self.path)
+            for attempt in range(20):     # Windows refuses the replace while another process reads the file
+                try:
+                    os.replace(temporary, self.path)
+                    break
+                except PermissionError:
+                    time.sleep(0.05 * (attempt + 1))
 
 
 class Decisions:
