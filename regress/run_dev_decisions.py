@@ -210,6 +210,39 @@ def graded(item, rows) -> bool:
     return bool(result) and bool(item.grade(result) or (item.alternate is not None and item.alternate(result)))
 
 
+def pick_right(row: dict) -> bool:
+    """The always-answering pick: the answer the choice holds likeliest (its probability summed over the listed answers
+    that return it, the earlier listing first among equals), right."""
+    answers, right, p = row.get("listed_answer") or [], row.get("listed_right") or [], row.get("choose_p") or {}
+    mass = {}
+    for at, answer in enumerate(answers):
+        mass[answer] = mass.get(answer, 0.0) + p.get(f"r{at:02d}", 0.0)
+    if not mass:
+        return False
+    best = min(mass, key=lambda answer: (-mass[answer], answers.index(answer)))
+    return bool(right[answers.index(best)])
+
+
+def gate(rows: list[dict], held: dict) -> dict:
+    """A run against its reference on the same questions: built (some listed answer right), the always-answering pick,
+    its wins and losses, and the unwarned wrong answers, each before and after."""
+    counts = {"built": 0, "reference_built": 0, "pick": 0, "reference_pick": 0, "wins": 0, "losses": 0, "unwarned_wrong": 0, "reference_unwarned_wrong": 0}
+    for row in rows:
+        theirs = held.get(row["id"])
+        if theirs is None:
+            continue
+        mine_pick, their_pick = pick_right(row), pick_right(theirs)
+        counts["built"] += any(row.get("listed_right") or [])
+        counts["reference_built"] += any(theirs.get("listed_right") or [])
+        counts["pick"] += mine_pick
+        counts["reference_pick"] += their_pick
+        counts["wins"] += mine_pick and not their_pick
+        counts["losses"] += their_pick and not mine_pick
+        counts["unwarned_wrong"] += row.get("label") == "wrong"
+        counts["reference_unwarned_wrong"] += theirs.get("label") == "wrong"
+    return counts
+
+
 def label_of(kind: str, right: bool) -> str:
     """The per-answer label; an answer most likely wrong (closed.ERRED, retried in serving) is "asked"."""
     if kind == ERRED:
@@ -438,7 +471,7 @@ def main() -> int:
                     book, tables = None, None
                     request.close()
                     row.update(kind=ERRED, label="asked", error=f"{type(error).__name__}: {str(error)[:160]}", listed_answer=[], choose_p=None, listed_right=[])
-                row["calls"] = list(replay.used)
+                row["calls"] = sorted(replay.used)     # the calls beside the reading call finish in any order
                 row["seconds"] = round(time.perf_counter() - clock, 3)
                 theirs = held.get(item.id)
                 differs = []
@@ -482,6 +515,7 @@ def main() -> int:
                 if (at + 1) % 25 == 0:
                     print(f"{name} {at + 1}/{len(items)} {round(time.time() - started)}s misses {counts['misses']} mismatches {counts['mismatches']}", flush=True)
         counts["seconds"] = round(time.time() - started, 1)
+        counts["gate"] = gate(measured, held)
         if query_replay is not None:
             counts["retry_tokens_sent"] = list(query_replay.tokens)
         totals[name] = counts

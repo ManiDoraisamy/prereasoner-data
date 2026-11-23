@@ -5,6 +5,20 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## A measure's spread, its highest less its lowest: dev picks 725 -> 727 (2 wins, 0 losses), unwarned wrong 65 -> 64; its training family 4 -> 6 right of 11 (2026-11-23)
+
+- "How long have they been playing?", "the difference between the highest and the lowest average": one column's
+  highest less its lowest over the kept lines had no program (every difference contrasted two lines, two columns or
+  two measures; SQUALL writes max(c) - min(c) for it, 10 of 2,100 training questions). The decoder offers
+  Calc(Agg(max), minus, Agg(min)) of one measure, with or without a condition, where the reading asks for a difference
+  of the highest and the lowest (`engine/program/decoder.py` calc_frames, `_spread`).
+- The 896 dev questions (`regress/run_dev_decisions.py --record --keep`, now from the committed sets): WikiTableQuestions
+  picks 230 -> 232 (2 wins, 0 losses), built 255 -> 257, unwarned wrong 29 -> 28; messy, fresh dev and DataBench
+  unchanged (two pools change, no outcome); all 896: built 790 -> 792, picked 725 -> 727, unwarned wrong 65 -> 64.
+  Demo: 84 right, 2 warned right, 4 erred, 1 wrong of 91, unchanged. Its training family (`regress/run_public.py
+  --set wtq-train --squall`, 11 questions): right 4 -> 6 (3 wins, 1 loss), built 5 -> 8. Decisions spend $0.01.
+- Not run for this change alone: Spider and the public sets (they run once, after the night's changes).
+
 ## A text column's figures read as numbers and lines taken by where they stand: the engine alone, no retry, 689 -> 703 of a fresh 1,000 WikiTableQuestions test questions (built 802 -> 823); on the 896 dev questions 717 -> 725 picked right, unwarned wrong 66 -> 65, demo unchanged; a side-by-side re-ask of close runners-up fails (2026-11-23)
 
 - The plan after the public benchmark (2026-11-22: the engine alone 69.8% of DataBench test within the upload limit

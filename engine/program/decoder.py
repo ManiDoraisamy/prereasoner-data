@@ -1118,6 +1118,11 @@ class _Search:
             frames.append(_Frame(head + aggregate + conditions(0), (left_measures, plain), lambda options, o=op: _two_measures(table, options, o)))
             for count, chosen in enumerate(selectors, 1):
                 frames.append(_Frame(head + aggregate + conditions(count), (left_measures, plain, chosen), lambda options, o=op: _two_measures(table, options, o)))
+        # one measure's spread, its highest less its lowest over the kept lines ("how long have they been playing", "the
+        # difference between the highest and the lowest average"): a contrast of two aggregates of one column
+        spread = base + s(coordinate(SLOT_CALC_OP, MINUS)) + self.type_score(A_NUMBER) + s(coordinate(SLOT_AGGREGATE, MAX)) + s(coordinate(SLOT_AGGREGATE, MIN))
+        frames.append(_Frame(spread + conditions(0), (plain,), lambda options: _spread(table, options)))
+        frames.append(_Frame(spread + conditions(1), (plain, selectors[0]), lambda options: _spread(table, options)))
         # a share: part over whole, and a over a plus b on one line
         share = base + s(coordinate(SLOT_CALC_OP, OVER)) + self.type_score(A_PERCENT) + conditions(1)
         parts = selectors[0]
@@ -1242,6 +1247,12 @@ def _two_measures(table, options, op):
         return None
     where = tuple(atom.condition for atom in chosen[0]) if chosen else ()
     return Calc(Agg(SUM, a, table.id, where), op, Agg(SUM, b, table.id, where))
+
+
+def _spread(table, options):
+    measure, *chosen = options
+    where = tuple(atom.condition for atom in chosen[0]) if chosen else ()
+    return Calc(Agg(MAX, measure, table.id, where), MINUS, Agg(MIN, measure, table.id, where))
 
 
 def _part_of_whole(table, options):
