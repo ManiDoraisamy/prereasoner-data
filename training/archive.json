@@ -1,5 +1,85 @@
 {
  "groups": {
+  "corpus-audit": {
+   "bytes": 53093827568,
+   "exclude": [],
+   "files": 1994,
+   "note": "the local corpus audit's recovered and indexed source databases",
+   "packed": "2026-11-23",
+   "packed_from": [
+    "training/readers/data/experiments/local-corpus-audit-20261107"
+   ],
+   "parts": [
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0000.tar.zst",
+     "revision": "57bb491c524394ec3c2c8ebbf6ddbb0d30ebbc75",
+     "sha256": "d84f6299c66bd62f925803675261887691744dd71a50ebaaf49babe2b4acd690"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0001.tar.zst",
+     "revision": "466d22db3c0c2854697cff938ae9d5026ec66baa",
+     "sha256": "c592339cb565a1ec99bdcfb84d82fa96b56440168edc20edc909e400a414edb9"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0002.tar.zst",
+     "revision": "57f794d6c5c0817106f6f44c3693780de926141e",
+     "sha256": "9126ec066698e7cf493c9f674514c1a46916808e7dfc3b2260e0b53a4d8089fc"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0003.tar.zst",
+     "revision": "3879e22d83ac8eb5dbd49d94b2b358569f923845",
+     "sha256": "9d22732fd1ca56437de95be0f55a42d4b86ed6e62ddd60cf07f23b87e8ed32a2"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0004.tar.zst",
+     "revision": "2f603daa6db65a9f15ced2a26a8dbf9dba042339",
+     "sha256": "44046647be8d5f1e0ab586d39a998f4428d549020b15e95e704867d0ae534ff8"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0005.tar.zst",
+     "revision": "135dc55f6ee51b75265616d31d7fe2a8c4d2d608",
+     "sha256": "1b46af1f56f524ba82740c12fab1f36405f7fc1730d91822c2b7d829534ad593"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0006.tar.zst",
+     "revision": "d72ba888b121ba0922d6d6f049ff74262cc11c20",
+     "sha256": "5276b1603c8c4c5903be5414d3514d4bfb3dc61cbe4de7b6bec572b459d8e0e9"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0007.tar.zst",
+     "revision": "b37a51f6aac241aed7627a656a1a7e21364d0ce6",
+     "sha256": "031018f7edba613f92bcd21d0cbadbf869cb927259e37b91f742b0760d87c87b"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0008.tar.zst",
+     "revision": "653dcd7dbfbf0205f503cd26aaee0015db982be1",
+     "sha256": "4891d339b9c654e6d1cda44e25af72f5c98015ecbde0f98383bb24dcbf781620"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "corpus-audit/part-0009.tar.zst",
+     "revision": "e92d8ec787a305197900b88544d601798c94b0cc",
+     "sha256": "d0e4b7ef363a581dec4e9af5b004dd4503d062de714095f0d7ef00b200943935"
+    },
+    {
+     "bytes": 365467109,
+     "path": "corpus-audit/part-0010.tar.zst",
+     "revision": "ef0e45e826256d81b9d75ffdcfafcb68f9c70016",
+     "sha256": "193bc455f7ba8c2b1d4d0c93a60085c48a212de7b0a728331e8a8c22d1885741"
+    }
+   ],
+   "restore": "repo",
+   "weights": "none"
+  },
   "enron-derived": {
    "bytes": 2908894536,
    "exclude": [
@@ -65,6 +145,54 @@
    ],
    "restore": "repo",
    "weights": "none"
+  },
+  "experiments-weights": {
+   "bytes": 11752041721,
+   "exclude": [],
+   "files": 67,
+   "note": "experiment checkpoints",
+   "packed": "2026-11-23",
+   "packed_from": [
+    "training/proposer/data/experiments",
+    "training/props/data/experiments",
+    "training/rank/data/experiments",
+    "training/readers/data/experiments",
+    "training/schema_org/data/experiments"
+   ],
+   "parts": [
+    {
+     "bytes": 2147483648,
+     "path": "experiments-weights/part-0000.tar.zst",
+     "revision": "a3392295f073c6a7f4a6060bb3ca0567a6c54df2",
+     "sha256": "47c8543e6b0c376d9d88e30734bac1e0f7dc6c82cf122a41b0b9d7bf3e73e6ec"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "experiments-weights/part-0001.tar.zst",
+     "revision": "56cfc8d5c0f7c1b659cc317380f8093e5658d607",
+     "sha256": "cb0e528163ac47b4ce27cea985672582886c29ca64026103bf6e1d11aa3097f6"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "experiments-weights/part-0002.tar.zst",
+     "revision": "e5b9b98684ef32e6832f61131bd1e715e423ea27",
+     "sha256": "3a6b7bb19a42efd6ad7881b472598f705b73d8ddb23543cbeb7f2f94581dd930"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "experiments-weights/part-0003.tar.zst",
+     "revision": "5128dc2e61046e0346b1fb84fc0677733fa8d42f",
+     "sha256": "e28ea821aaa16cdb8c5c55f66cd7401a1584556e993a57cdefd421854b81563c"
+    },
+    {
+     "bytes": 2087134612,
+     "path": "experiments-weights/part-0004.tar.zst",
+     "revision": "c16bc507694ab9c5ee05c38d5a26b297437aa753",
+     "sha256": "9ff441ec521bdf2a2b20eb23f8317d65d033a31dafdbd242aae93f40f774e256"
+    }
+   ],
+   "restore": "repo",
+   "weights": "only"
   },
   "local-code": {
    "bytes": 18576005,
