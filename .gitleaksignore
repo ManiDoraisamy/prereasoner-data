@@ -1,0 +1,24 @@
+# False positives of generic-api-key, checked by hand 2026-11-23: SAP BusinessObjects object ids (QueryResult
+# Key="UnivCUID=...") in two public FHWA workbooks' rendered text, and a browser storage key name in the frozen set's
+# review page. Each line is one finding's fingerprint (commit:file:rule:line); nothing broader is exempt.
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_public_road_length_2023.txt:generic-api-key:10
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_public_road_length_2023.txt:generic-api-key:11
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_public_road_length_2023.txt:generic-api-key:12
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_public_road_length_2023.txt:generic-api-key:13
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_public_road_length_2023.txt:generic-api-key:14
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_public_road_length_2023.txt:generic-api-key:16
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_public_road_length_2023.txt:generic-api-key:17
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_public_road_length_2023.txt:generic-api-key:9
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:10
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:11
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:12
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:13
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:14
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:15
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:16
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:17
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:18
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:19
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_dev/work/render/fhwa_vehicle_miles_by_functional_system_2023.txt:generic-api-key:9
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_frozen/scripts/build_outputs.py:generic-api-key:293
+6b0f1fc71ac8b5c5e050966fb3edaf341b0f0a59:regress/sets/fresh_frozen/verify.html:generic-api-key:7014

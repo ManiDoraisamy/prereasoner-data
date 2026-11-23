@@ -5,6 +5,35 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## Nothing lives only on one machine: what git cannot hold is in the archive, pinned by sha256 in the repository (2026-11-23)
+
+The owner's order, repeated the same morning: no artifact may live only in a local folder, and "I can't get it from
+GitHub" means it is pushed. A census of the machine found, outside the repository: the retired readers' artifacts,
+every gitignored experiment folder, two other checkouts' ignored training data, a scratch worktree's training data,
+the Enron-derived workbooks, the planted-text test runs, the sessions' working records, model checkpoints, 80 commits
+on two Codex branches and 11 of an experiment that no remote held, and the uncommitted work of 50 worktrees.
+
+- `training/archive.py` owns the archive: one private Hugging Face dataset (`manidoraisamy/prereasoner-archive`)
+  holding zstd tar parts of 2 GiB, each pinned in `training/archive.json` by sha256 and by the Hub commit that added
+  it. `python -m training.archive list` names the groups; `fetch GROUP` downloads, checks every digest, and restores the
+  group: experiment folders into the repository at their own paths, everything else under `PREREASONER_ARCHIVE`
+  (default: the folder that holds the clone) at the paths the documents cite (`prereasoner-readers-artifacts/...`,
+  `enron_corpus/...`, `prereasoner-injection-test/...`). Hardlinked files inside a group are stored once.
+- Private, not public: the archive holds workbooks extracted from the Enron emails and captures of the owner's own
+  account from the release gates. The weights already follow this pattern (`manidoraisamy/prereasoner-weights`).
+- Git keeps what is small and ours to publish: the evaluation's inputs and records (`regress/sets/`) and the Spider
+  runs' aggregate records (`spider/results/`). Spider's questions, gold SQL and per-example outputs stay out of git, as
+  the public release decided (2026-09-02, `tests/test_release.py:test_public_artifact_boundary`): the calibration split
+  is its 20 database names (`spider/calibration/databases.json`), which `fetch_data --calibration` turns into the
+  split from the official release, checked by digest; per-example records are archived. The archive keeps what is
+  large or not this repository's to publish. Public sources (the Enron emails on figshare, BIRD, Spider,
+  WikiTableQuestions, DataBench, SQUALL, the hub models) are fetched from their pinned sources, not archived.
+- Code that no remote held is in the archive's `local-code` group: a git bundle of each checkout's unpushed commits,
+  and each dirty checkout's diff with its untracked files.
+- `training/factory` and `training/named` read the archive's layout through `training.archive.archived` and the
+  repository itself, not `C:/work/...` folders; the factory's LLM runs go through this checkout's `engine/llm.py`.
+- Checkpoints are packed last, in their own groups (`*-weights`), so the records and data are safe first.
+
 ## Every measurement runs from a clone: the evaluation's inputs, records and recorded API answers are committed (2026-11-23)
 
 The owner's order: the project must be complete when someone checks it out and builds it; no artifact may live only
@@ -21,8 +50,8 @@ calibration split lived only on the owner's machine.
 - `regress/sets/` holds what only this project made: the fresh dev and frozen sets (their workbooks as downloaded,
   questions, method and scripts), the dev replay's reference, the demo request databases of 2026-11-18, every
   recorded Decisions answer (about 60 MB compressed, so every recorded measurement replays without spend), the
-  public benchmark's samples, per-question records and the written models' answers. `spider/calibration/` holds the
-  Spider calibration split.
+  public benchmark's samples, per-question records and the written models' answers. `spider/calibration/` names the
+  Spider calibration split (the entry above).
 - The dev replay's reference is no longer a stack of layers each re-measuring the questions a change touched: it is
   every question's record in the last kept measurement (`--keep` writes it, with the calls each question made), and
   the replay compares the served label directly, so the warned answer whose reading reads like another's no longer
@@ -34,9 +63,8 @@ calibration split lived only on the owner's machine.
 
 Accepted when a clean worktree of the change, with no `.env`, no local weights and no local datasets, fetched the
 weights, the datasets and bge-m3 by the repository's own commands (every file matching its pin) and replayed the 896
-dev and 91 demo questions at parity. What stays outside: the retired readers' artifacts (about 12 GB in
-`C:/work/prereasoner-readers-artifacts`, read only by the retired `training/factory` and `training/named` pipelines,
-whose local paths remain); where they go is the owner's decision.
+dev and 91 demo questions at parity. What stayed outside, the retired readers' artifacts and every other local folder, went to the archive the same
+day (the entry above).
 
 ## Never ask back for the engine's own uncertainty: every answer is marked, and an answer most likely wrong is retried by a written query (2026-11-21)
 
@@ -4991,7 +5019,7 @@ The readers lost most answers before the choice: on calibration the four release
 answer for 775 of 1,028 readable questions, and the first component of each reader's best reading that differed from
 gold's was the tables it read (203 to 230 of 984), then the shown columns. They had read 260 databases. This change
 widens what they have read, keeps the tables a question needs in their input, and adds a re-scorer trained on pools
-like the new readers' (`training/readers/README.md` 2e, 4e, 8b, 9; records `C:/work/prereasoner-readers-artifacts/`).
+like the new readers' (`training/readers/README.md` 2e, 4e, 8b, 9; records `prereasoner-readers-artifacts/` in the archive).
 
 - **SynSQL-2.5M** (Hugging Face `seeklhy/SynSQL-2.5M`, Apache-2.0, 16,583 synthetic SQLite databases) is a training
   source (`training/readers/synsql.py`, `sources.add_synsql`, `gold synsql`, `examples --synsql`). Its questions are

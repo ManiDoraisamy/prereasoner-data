@@ -10,9 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 
-from training.factory.paths import NEXT
+from training.factory.paths import REPO
 
-OUT = f"{NEXT}/engine/data/named_coordinates.json"
+OUT = f"{REPO}/engine/data/named_coordinates.json"
 
 DEFINITIONS = {
     "form": {"show": "reads a labelled cell, or lists the values on the kept lines", "agg": "one figure over the kept lines", "rank": "the top line, group or peer column", "calc": "the difference, sum or ratio of two one-number programs"},

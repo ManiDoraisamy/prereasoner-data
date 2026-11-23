@@ -376,10 +376,11 @@ on the training find set read for diagnosis; `--compare`, `--summary` and `--cen
 
 Planner behavior changes require a fresh serving-faithful `whole_db` run. The evaluator loads the
 runtime bundle from `engine/data` and calls the served selection (`TableQuery.select_query`); it has
-no model flags. The calibration split RESULTS.md reports is committed (`spider/calibration/`, its README):
+no model flags. The calibration split RESULTS.md reports is named in `spider/calibration/databases.json` and written
+from the official Spider release by `fetch_data --calibration` (its README):
 
 ```powershell
-python spider/probe/fetch_data.py --include-train
+python -m spider.probe.fetch_data --calibration
 python -m spider.probe.full_eval `
   --data spider/calibration `
   --dbs spider/data/dbs `

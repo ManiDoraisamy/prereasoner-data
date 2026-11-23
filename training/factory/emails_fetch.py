@@ -6,10 +6,14 @@ import http.client
 import json
 import os
 import shutil
+import sys
 import time
 import urllib.request
 
-FOLDER = "C:/work/enron_corpus/emails/parts/"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from training.factory.paths import EMAILS
+
+FOLDER = EMAILS + "parts/"
 FLOOR = 50 * 1024 ** 3
 
 

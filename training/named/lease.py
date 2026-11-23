@@ -1,6 +1,6 @@
 """The GPU lease recipe of one reader candidate, through training/readers/lease.py's one lease loop and training/tools/runpod_api.py. Nothing runs without --go: by default it prints the plan (steps, hours, dollars, what comes back and how long that may take). A paid run needs its experiment contract (design/phase4_contract.txt) and the owner's word.
 
-Before any paid lease: runpod_api must have the size-aware transfers (a transfer limit that scales with bytes, gzip on the pod, a kept pod when a finished run's download fails). Those live uncommitted in C:/work/prereasoner-phase0 and on main after they merge, not on this branch yet. ensure_size_aware refuses until they arrive: a 15-minute flat limit lost readers_v17b's weights.
+Before any paid lease: runpod_api must have the size-aware transfers (a transfer limit that scales with bytes, gzip on the pod, a kept pod when a finished run's download fails). They are on main; ensure_size_aware refuses a checkout without them: a 15-minute flat limit lost readers_v17b's weights.
 
 The lease's time limit is planned from the data, not a flat number (readers_v16a hit a flat 330 minutes at 50,000 steps and lost $3.24): steps at a conservative rate, evals, plus the download's own reserve for its size at the slowest link waited for.
 
@@ -87,7 +87,7 @@ def ensure_size_aware() -> None:
     """A paid lease waits for the fixed transfers."""
     missing = [name for name in ("_transfer_seconds", "_compress_outputs", "_download") if not hasattr(runpod_api, name)]
     if missing:
-        raise SystemExit(f"refused: training/tools/runpod_api.py lacks the size-aware transfers ({', '.join(missing)}): merge them from C:/work/prereasoner-phase0 before any paid lease")
+        raise SystemExit(f"refused: training/tools/runpod_api.py lacks the size-aware transfers ({', '.join(missing)}): update from main before any paid lease")
 
 
 PICKLED = ("engine/sheet/model.py", "engine/sheet/values.py")

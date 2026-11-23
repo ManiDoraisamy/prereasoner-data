@@ -1,6 +1,9 @@
 """Where the factory reads and writes, and the one pin of the engine code it reads.
 
 engine/sheet and engine/program are read as committed at one commit, recorded in the data folder's manifest, so a run that lasts days does not change under another agent's commit. Every stage calls pin() before it imports them; the rest of engine/ comes from the worktree.
+
+The factory's folders are archived (training/archive.py): `python -m training.archive fetch readers-artifacts enron-derived`
+restores them under PREREASONER_ARCHIVE; the Enron emails themselves come from figshare (emails_fetch.py).
 """
 from __future__ import annotations
 
@@ -8,15 +11,17 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
-NEXT = "C:/work/prereasoner-next"
-READERS = "C:/work/prereasoner-readers"
-FACTORY = "C:/work/prereasoner-readers-artifacts/factory/"
-DESIGN = "C:/work/prereasoner-readers-artifacts/evals/enron/design/"
-QUESTION_SET = "C:/work/prereasoner-readers-artifacts/evals/question_set/"
-FILES = "C:/work/enron_corpus/files/"
-EVAL = "C:/work/enron_corpus/eval/"
-EMAILS = "C:/work/enron_corpus/emails/"
+from training.archive import archived
+
+REPO = Path(__file__).resolve().parents[2].as_posix()
+FACTORY = archived("prereasoner-readers-artifacts/factory/")
+DESIGN = archived("prereasoner-readers-artifacts/evals/enron/design/")
+QUESTION_SET = archived("prereasoner-readers-artifacts/evals/question_set/")
+FILES = archived("enron_corpus/files/")
+EVAL = archived("enron_corpus/eval/")
+EMAILS = archived("enron_corpus/emails/")
 NEVER = "stacey_white__39035"
 SEED = 20261102
 AUDIT_SEED = 20261106
@@ -52,7 +57,7 @@ def commit_pinned() -> str:
     pinned = os.environ.get("FACTORY_ENGINE_COMMIT") or manifest().get("engine_commit")
     if pinned:
         return pinned
-    commit = subprocess.check_output(["git", "-C", NEXT, "rev-parse", "HEAD"], text=True).strip()
+    commit = subprocess.check_output(["git", "-C", REPO, "rev-parse", "HEAD"], text=True).strip()
     write_manifest({"engine_commit": commit})
     return commit
 
@@ -63,13 +68,13 @@ def pin() -> str:
     root = f"{FACTORY}engine_at/{commit[:7]}/"
     if not os.path.exists(root + "engine/program/__init__.py"):
         os.makedirs(root, exist_ok=True)
-        archive = subprocess.run(["git", "-C", NEXT, "archive", commit, "engine/sheet", "engine/program", "engine/data/sheet_line_model.json"], check=True, capture_output=True).stdout
+        archive = subprocess.run(["git", "-C", REPO, "archive", commit, "engine/sheet", "engine/program", "engine/data/sheet_line_model.json"], check=True, capture_output=True).stdout
         with open(root + "pinned.tar", "wb") as sink:
             sink.write(archive)
         subprocess.run(["tar", "-xf", "pinned.tar"], check=True, cwd=root)
     sys.dont_write_bytecode = True
-    if NEXT not in sys.path:
-        sys.path.insert(0, NEXT)
+    if REPO not in sys.path:
+        sys.path.insert(0, REPO)
     import engine
     if root + "engine" not in engine.__path__:
         engine.__path__.insert(0, root + "engine")

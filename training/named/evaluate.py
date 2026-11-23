@@ -41,13 +41,14 @@ from engine.program.semantics import fold
 from engine.program.store import RequestTables
 from engine.program.verifier import verify
 from engine.program.words import read_question
+from training.archive import archived
 from training.named.augment import SURVIVAL_OPS, mutate_catalog
 from training.named.choose import SUPPORT_ALL, SUPPORT_NO_LINKS, answer_key, calibrated, cross_fit, decision_of, fold_of, records_of
 
-ENRON = "C:/work/prereasoner-readers-artifacts/evals/enron/"
+ENRON = archived("prereasoner-readers-artifacts/evals/enron/")
 DESIGN = ENRON + "design/"
-FACTORY_OUT = "C:/work/prereasoner-readers-artifacts/factory/out/"
-FACTORY_MODELS = "C:/work/prereasoner-readers-artifacts/factory/models/"
+FACTORY_OUT = archived("prereasoner-readers-artifacts/factory/out/")
+FACTORY_MODELS = archived("prereasoner-readers-artifacts/factory/models/")
 STUDIED_SHEET_COMMIT = "584f9cce27f163bbea61bb557f3711c03837ffe4"
 MODE_WORDS = "words"
 RIGHT = "right"

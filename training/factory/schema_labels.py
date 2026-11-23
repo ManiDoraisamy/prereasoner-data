@@ -3,7 +3,7 @@
 The prompt lists the basis; a property outside it, or a value class outside the fine answer types' classes, is dropped and counted. Every column of a tab with factory rows is asked, none allowed, so a missing label is a column Gemini said none for, not one it skipped.
 
 usage: python -m training.factory.schema_labels plan --side train|val|pub_eia|pub_sec     FACTORY/staged/<side>/schema_labels.requests.jsonl
-       (cwd C:/work/prereasoner-readers: python C:/work/prereasoner-next/training/factory/llm_run.py <that file> schema_labels_<side>)
+       (from the repository root: python training/factory/llm_run.py <that file> schema_labels_<side>)
        python -m training.factory.schema_labels write --side S                         FACTORY/out/<side>.schema_labels.jsonl
        python -m training.factory.schema_labels measure                                FACTORY/out/schema_labels_coverage.json
 Prints counts only, never a cell, a header or a question.

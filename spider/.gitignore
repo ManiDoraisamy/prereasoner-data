@@ -7,3 +7,5 @@ results/*per_example*.json
 results/*_smoke*.json
 __pycache__/
 *.pyc
+calibration/dev.json
+calibration/tables.json

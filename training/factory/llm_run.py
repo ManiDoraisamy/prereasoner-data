@@ -1,6 +1,6 @@
-"""Send a file of requests to Gemini through engine/llm.py, each journalled with its token counts, so a restart never pays twice. Run from C:/work/prereasoner-readers, whose engine holds the one client.
+"""Send a file of requests to Gemini through engine/llm.py, each journalled with its token counts, so a restart never pays twice. Run from the repository root, whose engine/llm.py is the one client.
 
-usage (cwd C:/work/prereasoner-readers): python C:/work/prereasoner-next/training/factory/llm_run.py <requests.jsonl> <journal name> [--workers 12] [--stage-output N] [--timeout 150]
+usage (from the repository root): python training/factory/llm_run.py <requests.jsonl> <journal name> [--workers 12] [--stage-output N] [--timeout 150]
 
 A request: {"key", "system", "prompt", "max_output"}. A journal line: {"key", "reply"|"error", "prompt_tokens", "output_tokens", "thought_tokens", "finish", "seconds"}. Stops sending at --stop-share (97%) of the hard budget over all journals, or at --stage-output tokens of this run. Prints counts, never a prompt or a reply.
 """
@@ -60,8 +60,8 @@ def main():
     parser.add_argument("--tries", type=int, default=3)
     parser.add_argument("--stop-share", type=float, default=ledger.STOP_SHARE, help="the share of the hard budget at which sending stops; never above 1")
     args = parser.parse_args()
-    if not os.getcwd().replace("\\", "/").endswith("prereasoner-readers"):
-        sys.exit("run from C:/work/prereasoner-readers")
+    if not os.path.exists(os.path.join(os.getcwd(), "engine", "llm.py")):
+        sys.exit("run from the repository root")
     os.makedirs(paths.JOURNAL, exist_ok=True)
     journal_path = f"{paths.JOURNAL}{args.journal}.jsonl"
     done = set()

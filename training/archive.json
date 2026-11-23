@@ -1,0 +1,65 @@
+{
+ "groups": {
+  "enron-derived": {
+   "bytes": 2908894536,
+   "exclude": [
+    "emails"
+   ],
+   "files": 16178,
+   "note": "workbooks extracted from the public Enron corpus and their evaluation; the corpus itself (emails/) is public and not kept",
+   "packed": "2026-11-23",
+   "packed_from": [
+    "enron_corpus"
+   ],
+   "parts": [
+    {
+     "bytes": 2110217128,
+     "path": "enron-derived/part-0000.tar.zst",
+     "revision": "bcf1f1056a1559178e9291d2dbc86466b1f739dd",
+     "sha256": "8eb80de5981034b9b57b590566c4934ad2de9c69dae7e0e616a441bcf1c14890"
+    }
+   ],
+   "restore": "archive",
+   "weights": "none"
+  },
+  "local-code": {
+   "bytes": 18576005,
+   "exclude": [],
+   "files": 110,
+   "note": "commits no remote holds (git bundles) and dirty checkouts' diffs and untracked files, 2026-11-23",
+   "packed": "2026-11-23",
+   "packed_from": [
+    "prereasoner-local-code"
+   ],
+   "parts": [
+    {
+     "bytes": 1311775,
+     "path": "local-code/part-0000.tar.zst",
+     "sha256": "96cad91b237fd6b28e006fcda3a55df038129b303b24f02413525d27016ab890"
+    }
+   ],
+   "restore": "archive",
+   "weights": "all"
+  },
+  "readers-artifacts": {
+   "bytes": 3636997732,
+   "exclude": [],
+   "files": 36172,
+   "note": "the retired readers' records, evaluations, candidates, factory and training data (read by training/factory, training/named)",
+   "packed": "2026-11-23",
+   "packed_from": [
+    "prereasoner-readers-artifacts"
+   ],
+   "parts": [
+    {
+     "bytes": 824018411,
+     "path": "readers-artifacts/part-0000.tar.zst",
+     "sha256": "e9f8e61feb86bff1d3b71aaedf7d36c9a4f523a0511f39d1c4c72c699ae03e07"
+    }
+   ],
+   "restore": "archive",
+   "weights": "none"
+  }
+ },
+ "repo_id": "manidoraisamy/prereasoner-archive"
+}

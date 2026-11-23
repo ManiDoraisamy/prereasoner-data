@@ -1,0 +1,31 @@
+{
+ "databases": [
+  "match_season",
+  "college_2",
+  "insurance_and_eClaims",
+  "epinions_1",
+  "gymnast",
+  "wrestler",
+  "products_for_hire",
+  "local_govt_in_alabama",
+  "inn_1",
+  "news_report",
+  "behavior_monitoring",
+  "station_weather",
+  "college_1",
+  "mountain_photos",
+  "aircraft",
+  "local_govt_and_lot",
+  "workshop_paper",
+  "cre_Theme_park",
+  "customers_and_addresses",
+  "ship_1"
+ ],
+ "seed": 20261019,
+ "questions": 1053,
+ "sha256_canonical": {
+  "dev.json": "88429a08a89b18bd89345cd4c704cd68e9e4b51328becfcf6ec93775f2b73dd6",
+  "tables.json": "1ae061436b77d4b6529ba56a9ae8666ba084194f52b1a78695c383f5d4579201"
+ },
+ "note": "every train_spider question of these 20 databases, in Spider's order, and their tables.json entries; canonical digest = sha256 of json.dumps(sort_keys=True)"
+}

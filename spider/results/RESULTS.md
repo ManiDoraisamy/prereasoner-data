@@ -2,7 +2,9 @@
 
 Dated entries come newest first. Each records a run at the commit it names; the scripts, options, and models an older
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
-been removed, and that commit holds the code that ran.
+been removed, and that commit holds the code that ran. Records cited under `prereasoner-readers-artifacts/`,
+`enron_corpus/`, `prereasoner-injection-test/` and `training/*/data/experiments/` are in the archive
+(`training/archive.json` names each group; `python -m training.archive fetch GROUP`).
 
 
 ## The final fresh sample: on 1,000 WikiTableQuestions test questions no one had read, the engine alone 68.4%, with its retry 73.0%, Gemini 4 Neon 85.0%, Claude Opus 5.5 82.8% (2026-11-23)
@@ -42,7 +44,7 @@ been removed, and that commit holds the code that ran.
 - Spider calibration, 1,053 questions, `whole_db`, served, fresh (`--data spider/calibration`, at ca5dfb2e): answered
   836, strict 373, lenient 581, scalar gold 278 of 377, the same as fp1 (0 wins, 0 losses; 1,052 of 1,053 serve the
   same SQL); the Python and SQL programs verified alike on all 836; prediction median 1.7 s, p95 3.2 s. Records
-  `spider/results/full_eval_spread_ca5dfb2e.json`, `full_eval_per_example_spread_ca5dfb2e.json.gz`.
+  `spider/results/full_eval_spread_ca5dfb2e.json`; per-example records `prereasoner-scratch/spider-spread/` in the archive.
 
 ## A text column's figures read as numbers and lines taken by where they stand: the engine alone, no retry, 689 -> 703 of a fresh 1,000 WikiTableQuestions test questions (built 802 -> 823); on the 896 dev questions 717 -> 725 picked right, unwarned wrong 66 -> 65, demo unchanged; a side-by-side re-ask of close runners-up fails (2026-11-23)
 
@@ -107,9 +109,9 @@ been removed, and that commit holds the code that ran.
   the fp1 layer (`regress/sets/dev_decisions/records/fp1_demo/` and the references in
   `regress/sets/dev_decisions/reference/`).
 - Spider calibration, 1,053 questions, `whole_db`, served, fresh (`spider/probe/full_eval.py --config whole_db
-  --selection served`; records `spider/results/full_eval_fp1_e5b8332c_dirty.json`, `full_eval_per_example_fp1_e5b8332c_dirty.json.gz`): answered 836, strict **373** (35.4%),
+  --selection served`; records `spider/results/full_eval_fp1_e5b8332c_dirty.json`; per-example records `prereasoner-scratch/spider-fp1/` in the archive): answered 836, strict **373** (35.4%),
   lenient 581 (55.2%), scalar gold 278 of 377; the Python and SQL programs verified alike on all 836; prediction median
-  1.9 s, p95 3.4 s. Against v1 at `48abf835` (371 strict, 2026-11-21, `spider/results/full_eval_v1_48abf835.json`, `full_eval_per_example_v1_48abf835.json.gz`; the retry's commits lie between): 14 strict
+  1.9 s, p95 3.4 s. Against v1 at `48abf835` (371 strict, 2026-11-21, `spider/results/full_eval_v1_48abf835.json`; per-example records `prereasoner-scratch/spider-v1/` in the archive; the retry's commits lie between): 14 strict
   wins, 12 losses, 852 of 1,053 serving the same SQL.
 - Checks: tests (program 89, answer 26, SQL AST 90, connected 18, sheet compiler 72); the hermetic repository run, every
   suite passing (`tests.test_complex_datasets` reads the knowledgebase and passes 6 of 6 through the Cloud SQL proxy);
@@ -125,7 +127,7 @@ been removed, and that commit holds the code that ran.
 
 - Chrome on chat.prereasoner.com, production `b9b0fe50` (engine `00344-kip`, chat `00243-jar`), the 24 demo datasets'
   prompt.txt and eval.txt follow-ups, chat shorthand included, graded by `regress/browser_gold.py` (harness and
-  captures: `C:/work/prereasoner-readers-artifacts/gate_harness/b9b0fe50/`): fresh conversations **102 of 102** (v1: 101,
+  captures: `prereasoner-readers-artifacts/gate_harness/b9b0fe50/`): fresh conversations **102 of 102** (v1: 101,
   the formfacade-leads date range now 37,000); conversations made before the release **77 of 78**. The one miss is
   customer-orders' shorthand "in GBP for the whole of Europe?" read as the average (145.53 GBP) in a conversation whose
   last earlier turn asked for an average; the eval line expects the total (1,917.48), which it reads in a fresh one.
@@ -1328,7 +1330,7 @@ chooser is `named_picks_s0/out/candidate_chooser_oldslots` (a record, not promot
 **Step E launched.** bge-m3 (BAAI/bge-m3, pinned revision `5617a9f6`, an XLM-R large retrained for multilingual
 retrieval) is a third named backbone on next-engine (`7a4d9e0`). Its hub revision holds only `pytorch_model.bin`, which
 transformers will not load under the pods' torch 2.4; the same tensors are kept as safetensors in
-`C:/work/datasets/models/bge-m3` (hidden states bit-identical to the hub's, `bge-m3-20261113/local/convert.py`), and a
+a local copy of bge-m3 (hidden states bit-identical to the hub's, `bge-m3-20261113/local/convert.py`), and a
 lease uploads a backbone's local copy. Staged by contract: one-stage runs of 15,000 steps on bge-m3 and on bge-small
 (the same recipe: self-anchors, labels, corpus, gold links, CLEF's picks), capped at $10; the full two-stage recipe only
 if bge-m3 lists at least 18 more of the 583 with p90 under three times bge-small's. bge-small's measured step rate is
@@ -1749,7 +1751,7 @@ negation), filled or blank, a calculation's operation and a rank's entity come f
 lists alone. `reading_records.py` now has a `conditions` switch that offers CLEF those four as closed fields (off, a
 record is unchanged); it is unmeasured until a CLEF pod runs.
 
-**The dev twin of the fresh frozen set (`C:/work/datasets/fresh-dev-20261112`, built by an agent with the frozen set's
+**The dev twin of the fresh frozen set (`regress/sets/fresh_dev/`, built by an agent with the frozen set's
 own pipeline and none of its questions).** 52 public US government workbooks (35 xlsx, 17 csv, 26 health), 208
 questions, Gemini $6.44; 20 golds recomputed independently, all confirmed. No url, hash or table is shared with the
 frozen manifest; 8 workbooks from a publication the frozen set also draws on are left out of development by default
@@ -2612,7 +2614,7 @@ a share or a scale ("more than half of the orders", "half a million"); "half a y
 quarter" name no literal, and the decoder's context-free `number()` reads no lone fraction word. That question asks
 back again, as at Phase 0; it is the only messy question with such a word and no calibration question has one, so
 messy dev is **44 / 23 / 53** and Spider is unchanged by the fix. Per-example records:
-`C:/work/prereasoner-readers-artifacts/evals/codex_pull/spider-86bedc9/` and `evals/messy/messy_messy_served_86bedc9.json`.
+`prereasoner-readers-artifacts/evals/codex_pull/spider-86bedc9/` and `evals/messy/messy_messy_served_86bedc9.json`.
 
 ## Recursive ACE corpus and benchmark-input gates; no new accuracy score (2026-11-07)
 
@@ -2959,7 +2961,7 @@ different rendered query. A separate nine-projection/seven-condition/three-order
 weighted-average AST executed to the independently expected 8.6. Unknown nodes, extra SQL text and invalid
 COUNT(DISTINCT *) were rejected. No model was trained on these new targets and the named prediction slots
 were not replaced in serving. Prototype, schema, paired data and source hashes are under
-`C:/work/prereasoner-data/training/readers/data/experiments/clef-ast-20261105/`.
+`training/readers/data/experiments/clef-ast-20261105/`.
 
 ## Longer CLEF training: calibration 720/1,053 strict, versus 708 baseline and 551 at 512 steps (2026-11-05)
 
@@ -2987,7 +2989,7 @@ original-data match for 104/128 cases, but only 80/112 answerable programs survi
 Calendar predicates, repeated headers, medians and weighted averages remain unresolved. These are direct
 compiler/program checks, not served Enron accuracy or fresh model inference on the altered rows.
 
-Artifacts are in `training/readers/data/experiments/clef-exposure-20261105/` under `C:/work/prereasoner-data`.
+Artifacts are in `training/readers/data/experiments/clef-exposure-20261105/` (archived).
 The candidate manifest is `9ad9153b33a648958b5af7f1ce765726c12d6c71e0c73fad3c0d9f8201f87a5e`.
 All 11 recovered files match their hashes; the exact training serializer is retained alongside the manifest.
 Native predictions completed for 1,616 Spider routing requests, 186 Enron requests and 128 semantic requests,
@@ -3042,7 +3044,7 @@ deleted after results and all candidate files were recovered; the network volume
 ## Unpromoted CLEF joint-reader trial: calibration 545/1,053 strict; original-wording ablation 549/1,053 (2026-11-05)
 
 Commit `eb40c4c9144a926f0cc9260d9928fba343a0801f`, dirty worktree. Candidate provenance, file hashes, exact-input captures,
-and per-example results are in `C:/work/prereasoner-data/training/readers/data/experiments/clef-conversation-20261105/`.
+and per-example results are in `training/readers/data/experiments/clef-conversation-20261105/`.
 This is an offline dependency injection into the existing `TableQuery.select_query` and `spider.probe.full_eval`,
 not a promoted runtime. The baseline bundle is `4545a4810fa25f4b1fbff73a1c05fcb898958ade0aff3e29f76b876f3e44bdfc`.
 All headline runs use the same 1,053 database-held-out calibration questions, `whole_db`, served selection,
@@ -3099,7 +3101,7 @@ The longer-training trial remains separate; none of these diagnostics claims its
 Commit b52c7b0 plus the Phase 0 changes this entry ships with (`worktree_dirty: true`; the record carries each source file's hash).
 Shipped bundle: weights manifest 40605578..., `weight_bundle` 4545a4810fa25f4b, `encoder` 53fd3d37c64525be, dataset `dev`
 268103700b08b658, `tables` 1ae061436b77d4b6. Spider calibration, `whole_db`, `--selection served`, `--backend auto`, fresh, not a delta.
-Records: `C:/work/prereasoner-readers-artifacts/evals/sqlite/full_eval_{,per_example_}calibration_phase0.json`; logs in `evals/phase0/`.
+Records: `prereasoner-readers-artifacts/evals/sqlite/full_eval_{,per_example_}calibration_phase0.json`; logs in `evals/phase0/`.
 
 | Calibration (1,053) | 2941ae5 | this change |
 |---|---:|---:|
@@ -3130,7 +3132,7 @@ asked versus wrong, so production's own count after this release has yet to be m
 The evaluation of 2026-11-01, on production before these changes (b52c7b0, `prereasoner-api-00214-w54`, `prereasoner-chat-00168-r48`),
 through the add-on in Google Sheets: 100 Enron workbooks, 191 questions, 5 void from Google's import, 186 graded. Right / asked or
 declined / wrong or failed: **25 / 49 / 112** (25 right, 40 asked, 9 declined, 99 wrong, 13 failed). Report and per-question records:
-`C:/work/enron_corpus/eval/{REPORT.md,results.jsonl}`.
+`enron_corpus/eval/{REPORT.md,results.jsonl}` (archived).
 
 | Same 186 questions, offline replay | Right | Asked | Wrong |
 |---|---:|---:|---:|
@@ -3141,7 +3143,7 @@ declined / wrong or failed: **25 / 49 / 112** (25 right, 40 asked, 9 declined, 9
 
 The yardstick is a measure of what the questions allow, not a serving option: no model writes SQL here (CLAUDE.md). LLM agents wrote the
 questions and their expected answers after reading the sheets, so an LLM's score is a ceiling. These 100 workbooks are now studied dev
-data; a frozen set must be drawn fresh. Records: `C:/work/prereasoner-readers-artifacts/evals/enron/`.
+data; a frozen set must be drawn fresh. Records: `prereasoner-readers-artifacts/evals/enron/`.
 
 
 ## Messy questions at 3a34166: dev 44 right / 21 asked / 55 wrong of 120; the owner's two real sheets 6 / 0 / 8 of 14 (2026-10-31)
@@ -3197,7 +3199,7 @@ A fresh run is owed at the next promotion.
 Same bundle (all14fg, weights manifest 40605578...), same evaluator, the choice's threshold null; the selected query
 executes through the request's SQLite database (`engine/prepared.py`) by serving's policy (`--backend auto`: the
 generated Python program, SQL when the plan cannot be lowered or is too large), where the previous entry executed SQL
-on an in-memory copy (`--backend sql`). Records: `C:/work/prereasoner-readers-artifacts/evals/sqlite/`.
+on an in-memory copy (`--backend sql`). Records: `prereasoner-readers-artifacts/evals/sqlite/`.
 
 | | previous executor (fd91a87, `--backend sql`) | request database (4580c0c) | request database with fd63f2b's fix |
 |---|---|---|---|
@@ -3219,7 +3221,7 @@ Same bundle (all14fg, weights manifest 40605578...), same evaluator and options 
 (`spider/probe/full_eval.py --config whole_db --selection served --backend sql`, the choice's threshold null); only
 `engine/readers/models.load` differs (fd91a87: every computation in float32, the weights kept in bfloat16). Run on the
 development desktop, which has the bfloat16 instructions Cloud Run's CPUs lack. Records:
-`C:/work/prereasoner-readers-artifacts/evals/widened/`.
+`prereasoner-readers-artifacts/evals/widened/`.
 
 | | bfloat16 (f2d08f5) | float32 over bfloat16 weights (fd91a87) |
 |---|---|---|
@@ -3234,7 +3236,7 @@ bfloat16 natively); on Cloud Run the readers fell from 7.0 s to 2.7 s median (DE
 ## After the SynSQL release: more SynSQL per database, a re-scorer that reads the first row, and what the tie rule costs (2026-10-26)
 
 Calibration only (20 held-out Spider train databases); the frozen test was not run for any of these. Records:
-`C:/work/prereasoner-readers-artifacts/` (contracts `readers_v15.md`, `rescorer_h.md`; candidates `v15*cal.jsonl`;
+`prereasoner-readers-artifacts/` (contracts `readers_v15.md`, `rescorer_h.md`; candidates `v15*cal.jsonl`;
 evals `eval_v15.log`; contract `rescorer_i.md`). RunPod: $27.08 (v15 readers $14.30, "h" $1.61, v15b fold readers
 and "i" $11.17).
 
@@ -3281,7 +3283,7 @@ both (threshold 0.0862 matched on calibration), installed by `training/readers/p
 `cd8a03abb8fd443442f9a3e691f717f4285fd263`, in the readers worktree at `fd6d45e` plus this change
 (`worktree_dirty: true`); the stage-2 text drops a table's samples before the table, an ungrouped count of a
 referencing column counts each row once, and a listed date is not read as the question's stored form. Same evaluator
-and flags as the entry below, the threshold off. Records: `C:/work/prereasoner-readers-artifacts/evals/all14fg/`
+and flags as the entry below, the threshold off. Records: `prereasoner-readers-artifacts/evals/all14fg/`
 (per-example calibration; the test's totals only).
 
 **Calibration** (20 held-out Spider train databases, 1,053 questions):
@@ -3328,7 +3330,7 @@ installed by `training/readers/promote.py` at Hugging Face revision `999b50a9d70
 readers worktree at `cb30447` plus this change (`worktree_dirty: true`). Same evaluator and flags as the entry below,
 the threshold off. This change's layout-copy and shared-header rules reach no calibration or test question (no
 database of either holds layout copies, and Spider has no repeated headers). Records:
-`C:/work/prereasoner-readers-artifacts/evals/v13s/` (per-example calibration; the test's totals only). The test ran on
+`prereasoner-readers-artifacts/evals/v13s/` (per-example calibration; the test's totals only). The test ran on
 the code committed as `f58b839`, released as `304e19b` (a dependency-lock change only).
 
 **Calibration** (20 held-out Spider train databases, 1,053 questions):
@@ -3388,7 +3390,7 @@ data plus the grouped structure), the shipped stage 1 and re-scorer "f", and the
 (`worktree_dirty: true`). Same evaluator and flags as the entry below (`spider.probe.full_eval`, whole_db / served /
 SQL / cap 5,000 per table / 12 s soft budget / compose on / external models off), the threshold off. Calibration ran before the long-question rule of this change,
 which reaches no calibration question (the longest has 29 words). Records:
-`C:/work/prereasoner-readers-artifacts/evals/mixB/` (per-example calibration).
+`prereasoner-readers-artifacts/evals/mixB/` (per-example calibration).
 
 **Calibration** (20 held-out Spider train databases, 1,053 questions):
 
@@ -3413,7 +3415,7 @@ worktree at `01138b2` plus this change (`worktree_dirty: true`). `spider.probe.f
 cap 5,000 per table / 12 s soft budget / compose on / external models off; the threshold off for these runs, so each
 answer records its confidence. The readers trained on Spider train and dev, BIRD train, Spider-Syn and questions
 written on those training databases (`training/readers/README.md` step 2b), never on the 20 calibration or 40 test
-databases. Records: `C:/work/prereasoner-readers-artifacts/evals/v11/` (per-example calibration; the test's totals
+databases. Records: `prereasoner-readers-artifacts/evals/v11/` (per-example calibration; the test's totals
 only).
 
 **Calibration** (20 held-out Spider train databases, 1,053 questions):
@@ -3454,7 +3456,7 @@ flags as the entry below, at `b54e2a2` plus this change (`worktree_dirty: true`)
 617 strict / 714 lenient, unchanged, with no calibration answer's SQL changed. Frozen test (2,147, totals only): 1,351
 strict / 1,535 lenient, unchanged. The live demo-dataset gate on the three datasets it touches: "How many Intake
 Consent documents are there?" 1 → 6 (right); the other two datasets' failures are unchanged. Records:
-`C:/work/prereasoner-readers-artifacts/evals/g/`, `evals/gate_g_subset.log`.
+`prereasoner-readers-artifacts/evals/g/`, `evals/gate_g_subset.log`.
 
 ## Learned readers replace the lexical search: frozen Spider test 939 → 1,351 strict; calibration 418 → 617 (2026-10-21)
 
@@ -3464,7 +3466,7 @@ uncommitted migration (`worktree_dirty: true`). `spider.probe.full_eval`, whole_
 table / 12 s soft budget / compose on / external models off. The refusal threshold was off for these runs: each answer
 records its confidence, so the refusal's totals follow exactly. The readers trained on Spider train and dev and BIRD
 train, never on the 20 calibration databases or the 40 test databases; DEV is training data for them and is not
-reported. Records: `C:/work/prereasoner-readers-artifacts/evals/f/` (per-example calibration; the test's totals
+reported. Records: `prereasoner-readers-artifacts/evals/f/` (per-example calibration; the test's totals
 only).
 
 **Frozen Spider test** (2,147 questions, 40 databases; totals only, as at every milestone):
@@ -3523,7 +3525,7 @@ differ from the engine's, so this compares the task, not the models alone):
 | Sonnet 5.5 writing SQL | 1,806 (84.1%) | 1,950 (90.8%) | $6.08 |
 | Readers (no model writes SQL), refusal off | 1,351 (62.9%) | 1,535 (71.5%) | local CPU |
 
-Records: `C:/work/prereasoner-readers-artifacts/llm_bench/` (`bench.py`, summaries and per-question SQL).
+Records: `prereasoner-readers-artifacts/llm_bench/` (`bench.py`, summaries and per-question SQL).
 
 ## Independent October 16 review: current checkout 584 strict; matched Sonnet 5.5 and Gemini 3.8 Flash
 
