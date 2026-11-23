@@ -4,7 +4,10 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran. Records cited under `prereasoner-readers-artifacts/`,
 `enron_corpus/`, `prereasoner-injection-test/` and `training/*/data/experiments/` are in the archive
-(`training/archive.json` names each group; `python -m training.archive fetch GROUP`).
+(`training/archive.json` names each group; `python -m training.archive fetch GROUP`). On 2026-11-24, main's commits
+6b0f1fc7 through bdeaeb18 were rewritten to remove Spider data committed against the release rule; they cite their
+new hashes. A record archived before then may cite a commit by its earlier hash:
+`prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
 ## The choice reads a small table whole: pick 727 -> 733 with unwarned wrong level, not kept for one demo answer (2026-11-23)
