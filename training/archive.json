@@ -85,6 +85,52 @@
    "restore": "archive",
    "weights": "all"
   },
+  "meaning-worktree": {
+   "bytes": 5435399055,
+   "exclude": [],
+   "files": 1094,
+   "note": "the meaning worktree's ignored training data",
+   "packed": "2026-11-23",
+   "packed_from": [
+    "prereasoner-scratch/worktrees/prereasoner-meaning/training"
+   ],
+   "parts": [
+    {
+     "bytes": 839834087,
+     "path": "meaning-worktree/part-0000.tar.zst",
+     "revision": "05f84854476137e626d6b52b200a607107103c54",
+     "sha256": "aa3b3990e285deef99d6c91f78b6c76f7a5511cb78adaeb0555efe1f1d4ed4a5"
+    }
+   ],
+   "restore": "archive",
+   "weights": "none"
+  },
+  "next-checkout": {
+   "bytes": 4391837552,
+   "exclude": [],
+   "files": 15504,
+   "note": "the next-engine checkout's ignored training data and experiments",
+   "packed": "2026-11-23",
+   "packed_from": [
+    "prereasoner-next/training"
+   ],
+   "parts": [
+    {
+     "bytes": 2147483648,
+     "path": "next-checkout/part-0000.tar.zst",
+     "revision": "335132949aba645be885d988b0f6d7eb751db41e",
+     "sha256": "d1ab6e3f85f494ecb24a21ded3546b96e3d1689c72d8db0a7311185104fa05b3"
+    },
+    {
+     "bytes": 333718156,
+     "path": "next-checkout/part-0001.tar.zst",
+     "revision": "4e62084734e2d98c9d4b2ca8a7537270597bf3e1",
+     "sha256": "9658039f0a04ce1454ee0dd0f93dd4607856dc2afb20e2b7deb79f4f70cffb79"
+    }
+   ],
+   "restore": "archive",
+   "weights": "none"
+  },
   "readers-artifacts": {
    "bytes": 3636997732,
    "exclude": [],

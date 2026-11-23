@@ -7,6 +7,21 @@ been removed, and that commit holds the code that ran. Records cited under `prer
 (`training/archive.json` names each group; `python -m training.archive fetch GROUP`).
 
 
+## The choice asked in both orders, its probabilities averaged: pick 727 -> 725, not kept (2026-11-23)
+
+- Hypothesis: the choice reads its listings in decoder order, best first, and a listing's place moves its probability
+  (on the training find set the right listing was the choice's second choice on 57 of 197 misses). Change tried: the
+  choice asked again with its listings reversed (option r00 the last listing), each listing's probability and none's
+  the mean of the two calls; no listing, word or threshold otherwise changed.
+- Gate (the 896 and the 91 demo questions; 978 new choice calls, 4.6M tokens, $0.46): built 792 -> 792; pick
+  727 -> 725 (9 wins, 11 losses: messy 105 -> 108, fresh dev 127 -> 126, WikiTableQuestions 232 -> 231, DataBench
+  263 -> 260); unwarned wrong 64 -> 58; unmarked right 652 -> 627 (warned right 53 -> 78, erred 83 -> 89); demo 84 right
+  and 2 warned right -> 83 and 3, the same answers.
+- Not kept: the wins and losses are noise, so the listing's place is not what limits the choice. The fall in unwarned
+  wrong is the averaged probabilities' lower peaks crossing the thresholds (T_ERR, T_FLAG were set for one call), a
+  threshold shift bought with 25 right answers losing their clean mark, not accuracy.
+- Diff, records and recorded calls: `prereasoner-scratch/patches/both-orders-20261123/` in the archive.
+
 ## The choice's misses on the training find set, and a line pin that narrows an aggregate to one line: three forms, none kept (2026-11-23)
 
 - **Study** (no spend: the find set's 201 WikiTableQuestions training questions whose right reading the engine listed
