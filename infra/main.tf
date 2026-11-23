@@ -504,6 +504,15 @@ resource "google_cloud_run_v2_service" "api" {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
   }
 
+  # A release deploys its revision with `gcloud run deploy --no-traffic --tag`, then moves traffic to it
+  # (infra/README.md, "Releases deploy revisions with gcloud"). gcloud names the revision, stamps its client and
+  # adds the tag; those belong to the release, not to this file, so a plan does not undo them. Cloud Run refuses
+  # a template change that reuses an existing revision's name, so a template change on a gcloud-deployed service
+  # is made with gcloud too.
+  lifecycle {
+    ignore_changes = [client, client_version, template[0].revision, traffic]
+  }
+
   depends_on = [
     google_project_service.apis,
     google_secret_manager_secret_version.db_password,
@@ -593,6 +602,11 @@ resource "google_cloud_run_v2_job" "retention_cleanup" {
         }
       }
     }
+  }
+
+  # A release moves the job to its image with gcloud, which stamps its client (as on the engine service).
+  lifecycle {
+    ignore_changes = [client, client_version]
   }
 
   depends_on = [
@@ -723,6 +737,11 @@ resource "google_cloud_run_v2_job" "ecb_rates_refresh" {
         }
       }
     }
+  }
+
+  # A release moves the job to its image with gcloud, which stamps its client (as on the engine service).
+  lifecycle {
+    ignore_changes = [client, client_version]
   }
 
   depends_on = [

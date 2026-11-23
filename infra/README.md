@@ -266,6 +266,30 @@ Community deployment explicitly enables the reviewed `iana_country` dataset.
 > API re-materializes an all-zero service-level `scaling {}` block and every plan shows
 > `- scaling { manual_instance_count = 0 -> null ... }` for both services. Applying it is a
 > no-op that creates no revision; the block returns on the next gcloud service mutation.
+>
+> Releases deploy revisions with gcloud: the hosted deployment releases an image with
+> `gcloud run deploy --no-traffic --tag <tag>`, checks the tagged URL, moves traffic with
+> `gcloud run services update-traffic --to-latest`, and moves the jobs with `gcloud run jobs update
+> --image`. gcloud names each revision, stamps the `client` it was made with, and adds tags; the
+> services and jobs ignore those fields (`lifecycle.ignore_changes`), and the engine ignores its
+> traffic, so a plan neither renames a revision nor drops the tags a rollback uses. Pass the
+> released digests as `image` and `chat_image`, and the plan shows the services and jobs unchanged.
+> Cloud Run refuses a template change under an existing revision's name, so on a gcloud-released
+> service a template change (environment, secrets, limits) is made with gcloud as well, and its
+> plan must show no change afterwards.
+>
+> Upgrade note: the hosted deployment created `${service_name}-gemini-api-key` by hand on
+> 2026-11-20 (version 1 holds a Gemini API key from outside this project) and released the engine
+> with it before Terraform applied. Import the secret and the engine's accessor grant before the
+> next apply; the build's account reads it through the `gcloud secrets add-iam-policy-binding`
+> above, which Terraform does not manage:
+>
+> ```bash
+> terraform import google_secret_manager_secret.gemini_api_key \
+>   projects/<PROJECT>/secrets/prereasoner-api-gemini-api-key
+> terraform import google_secret_manager_secret_iam_member.run_gemini_api_key \
+>   "projects/<PROJECT>/secrets/prereasoner-api-gemini-api-key roles/secretmanager.secretAccessor serviceAccount:prereasoner-api-run@<PROJECT>.iam.gserviceaccount.com"
+> ```
 
 ### 6a. Bootstrap the serving role
 

@@ -155,6 +155,12 @@ resource "google_cloud_run_v2_service" "chat" {
     }
   }
 
+  # Released with gcloud as the engine is (main.tf, google_cloud_run_v2_service.api): the revision's name, client
+  # stamp and tags belong to the release. Traffic is not declared here, so the release owns it already.
+  lifecycle {
+    ignore_changes = [client, client_version, template[0].revision]
+  }
+
   depends_on = [
     google_project_service.apis,
     google_project_iam_member.chat_vertex_ai,
