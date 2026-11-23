@@ -22,6 +22,50 @@
    "restore": "archive",
    "weights": "none"
   },
+  "experiments": {
+   "bytes": 17127622291,
+   "exclude": [
+    "local-corpus-audit-20261107"
+   ],
+   "files": 76340,
+   "note": "every gitignored experiment folder's data, records, contracts and logs (checkpoints in experiments-weights)",
+   "packed": "2026-11-23",
+   "packed_from": [
+    "training/proposer/data/experiments",
+    "training/props/data/experiments",
+    "training/rank/data/experiments",
+    "training/readers/data/experiments",
+    "training/schema_org/data/experiments"
+   ],
+   "parts": [
+    {
+     "bytes": 2147483648,
+     "path": "experiments/part-0000.tar.zst",
+     "revision": "693a59b5fe7fbac1712513513bf7c92d20361bbb",
+     "sha256": "cb35f3ffe265600f8276f00184d1b6782f5f5df76a3edef947aced4eadfb263b"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "experiments/part-0001.tar.zst",
+     "revision": "6c9bbc1105748168363116bbbfc3302d6d6b16be",
+     "sha256": "302aa9a90f218562af061e7983cd2512880318fb5154b6eb32f3c26eb7021ea1"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "experiments/part-0002.tar.zst",
+     "revision": "c3bb8482f299d6dff7bc01c7af990d2f9dda5c23",
+     "sha256": "e9fae99f2c82e09fd2d26a8b6e3871f2c683c2507295028b7c6cb74ad088e57d"
+    },
+    {
+     "bytes": 1001310229,
+     "path": "experiments/part-0003.tar.zst",
+     "revision": "87384fd6b4eb1e50944690e1b93b1b92f18e8244",
+     "sha256": "56ee0b2b174913a3dce2b2881832c4c900124bc7545462258314e076e04f19d7"
+    }
+   ],
+   "restore": "repo",
+   "weights": "none"
+  },
   "local-code": {
    "bytes": 18576005,
    "exclude": [],
@@ -55,6 +99,26 @@
      "bytes": 824018411,
      "path": "readers-artifacts/part-0000.tar.zst",
      "sha256": "e9f8e61feb86bff1d3b71aaedf7d36c9a4f523a0511f39d1c4c72c699ae03e07"
+    }
+   ],
+   "restore": "archive",
+   "weights": "none"
+  },
+  "readers-checkout": {
+   "bytes": 3791743567,
+   "exclude": [],
+   "files": 746,
+   "note": "the readers checkout's ignored training data and experiments",
+   "packed": "2026-11-23",
+   "packed_from": [
+    "prereasoner-readers/training"
+   ],
+   "parts": [
+    {
+     "bytes": 392420581,
+     "path": "readers-checkout/part-0000.tar.zst",
+     "revision": "25b5ec725f80275b96a033dd8cd0b6ec37a81abe",
+     "sha256": "8e5699d70ed8bdaeb370276de2d19e474f30a208af7bf4ee25b3071ac9048f26"
     }
    ],
    "restore": "archive",
