@@ -5,14 +5,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding='utf-8')
-ROOT=Path('C:/work/datasets/fresh-frozen-20261110')
+ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
 sys.path.insert(0,str(ROOT/'work/audit'))
 import common
 from independent_audit import equivalent, QS
 
 common.PY=sys.executable
-common.USER_SITE=''
 original_rmtree=common.shutil.rmtree
 tmp_root=Path(common.TMP).resolve()
 assert tmp_root==ROOT.resolve()/'work'/'tmp'

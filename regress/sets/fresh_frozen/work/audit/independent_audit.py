@@ -14,7 +14,7 @@ from statistics import mean
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_boundaries, coordinate_to_tuple
 
-ROOT = Path('C:/work/datasets/fresh-frozen-20261110')
+ROOT = Path(__file__).resolve().parents[2]
 QS = [json.loads(s) for s in (ROOT/'questions.jsonl').read_text(encoding='utf-8').splitlines()]
 RESULTS = {}
 
@@ -539,7 +539,7 @@ def save():
         for field,item in replay_by_id[q['id']].items():
             assert item['program_sha256']==hashlib.sha256(q[field].encode()).hexdigest()
         RESULTS[q['id']]['supplied_program_replay']={k:{a:v for a,v in item.items() if a not in {'id','program'}} for k,item in replay_by_id[q['id']].items()}
-    repo=Path('C:/Users/manid/.codex/worktrees/8331/prereasoner-data')
+    repo=Path(__file__).resolve().parents[5]
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
     dirty=subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).splitlines()
     artifacts=['manifest.json','work/audit/independent_audit.py','work/audit/replay_programs.py',

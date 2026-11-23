@@ -5,7 +5,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_boundaries, get_column_letter
 
-ROOT = Path('C:/work/datasets/fresh-frozen-20261110')
+ROOT = Path(__file__).resolve().parents[2]
 QS = [json.loads(s) for s in (ROOT/'questions.jsonl').read_text(encoding='utf-8').splitlines()]
 
 def show_questions(start, end, programs=False):

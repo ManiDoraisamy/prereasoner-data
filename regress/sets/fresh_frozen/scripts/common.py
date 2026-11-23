@@ -4,12 +4,14 @@ import math
 import os
 import re
 import shutil
+import site
 import subprocess
+import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PY = "C:/Python314/python.exe"
-USER_SITE = "C:/Users/manid/AppData/Roaming/Python/Python314/site-packages"
+PY = sys.executable
+USER_SITE = site.getusersitepackages()
 TMP = os.path.join(ROOT, "work", "tmp")
 TIMEOUT = 90
 

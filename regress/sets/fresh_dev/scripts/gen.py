@@ -1,8 +1,8 @@
 """Gemini steps (Vertex AI through google-genai, with the same call settings as the repo's engine/llm.py generate_text:
 temperature 0, seed 0, JSON schema reply). The client is built here from the environment so that no .env file is read.
-Run from the dataset root with GOOGLE_CLOUD_PROJECT=prereasoner-inference EXTERNAL_LLM_ENABLED=true:
-  C:/work/prereasoner-data/.venv/Scripts/python.exe scripts/gen.py generate [ids...]   -> work/gen/<id>.json
-  C:/work/prereasoner-data/.venv/Scripts/python.exe scripts/gen.py verify   [ids...]   -> work/ver/<id>.json   (needs work/exec1/<id>.json)
+Run from regress/sets/fresh_dev with GOOGLE_CLOUD_PROJECT set:
+  python scripts/gen.py generate [ids...]   -> work/gen/<id>.json
+  python scripts/gen.py verify   [ids...]   -> work/ver/<id>.json   (needs work/exec1/<id>.json)
 Token use of every call is appended to work/usage.jsonl. Nothing here prints prompts, questions or answers."""
 import json
 import os
@@ -33,8 +33,6 @@ class _LLM:
         return self._instance
 
     def generate_text(self, *, system, prompt, max_output_tokens, json_schema=None, timeout_seconds=30.0):
-        if os.environ.get("EXTERNAL_LLM_ENABLED", "").strip().lower() not in {"1", "true", "yes"}:
-            raise self.LLMUnavailable("Gemini is not enabled (EXTERNAL_LLM_ENABLED)")
         from google.genai import types
         json_mode = ({"response_mime_type": "application/json", "response_json_schema": json_schema}
                      if json_schema is not None else {})

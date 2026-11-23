@@ -2,7 +2,6 @@
 usage: python -I peek.py <file> <sheet or -> <a-b[,c-d...] row ranges> [regex on any cell]"""
 import re
 import sys
-sys.path.append("C:/Users/manid/AppData/Roaming/Python/Python314/site-packages")
 import openpyxl  # noqa: E402
 
 path, sheet, ranges = sys.argv[1], sys.argv[2], sys.argv[3]

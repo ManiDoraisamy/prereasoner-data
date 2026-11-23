@@ -1,6 +1,5 @@
 """Probe candidate URLs: status, content type, size. Usage: python -I probe.py urls.txt"""
 import sys
-sys.path.append("C:/Users/manid/AppData/Roaming/Python/Python314/site-packages")
 import requests  # noqa: E402
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "

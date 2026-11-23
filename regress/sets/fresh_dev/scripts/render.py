@@ -8,7 +8,6 @@ import os
 import random
 import sys
 
-sys.path.append("C:/Users/manid/AppData/Roaming/Python/Python314/site-packages")
 
 SHEET_FULL_MAX = 90000      # characters: a sheet this small is shown whole
 TOTAL_MAX = 140000           # characters for the whole rendering

@@ -1,7 +1,6 @@
 """List popular Socrata datasets on a domain with license and column count.
 Usage: python -I socrata_list.py <domain> [query] [limit]"""
 import sys
-sys.path.append("C:/Users/manid/AppData/Roaming/Python/Python314/site-packages")
 import requests  # noqa: E402
 
 domain = sys.argv[1]

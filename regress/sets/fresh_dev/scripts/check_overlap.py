@@ -10,7 +10,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 from sources import records  # noqa: E402
 
-FROZEN_MANIFEST = "C:/work/datasets/fresh-frozen-20261110/manifest.json"
+FROZEN_MANIFEST = os.path.join(os.path.dirname(ROOT), "fresh_frozen", "manifest.json")
 
 
 def view_id(url):

@@ -3,9 +3,7 @@ usage: python -I -X utf8 work/independent_check/recompute.py   -> work/independe
 import json
 import os
 import re
-import sys
 
-sys.path.append("C:/Users/manid/AppData/Roaming/Python/Python314/site-packages")
 import warnings  # noqa: E402
 
 warnings.filterwarnings("ignore")

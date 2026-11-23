@@ -10,7 +10,6 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-sys.path.append("C:/Users/manid/AppData/Roaming/Python/Python314/site-packages")
 sys.path.insert(0, HERE)
 import requests  # noqa: E402
 from sources import records  # noqa: E402

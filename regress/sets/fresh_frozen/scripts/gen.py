@@ -1,7 +1,7 @@
 """Gemini steps through the repo's own client (engine/llm.py).
-Run from C:/work/prereasoner-data with GOOGLE_CLOUD_PROJECT=prereasoner-inference EXTERNAL_LLM_ENABLED=true:
-  .venv/Scripts/python.exe <this> generate [ids...]   -> work/gen/<id>.json
-  .venv/Scripts/python.exe <this> verify   [ids...]   -> work/ver/<id>.json   (needs work/exec1/<id>.json)
+Run with GOOGLE_CLOUD_PROJECT set:
+  python regress/sets/fresh_frozen/scripts/gen.py generate [ids...]   -> work/gen/<id>.json
+  python regress/sets/fresh_frozen/scripts/gen.py verify   [ids...]   -> work/ver/<id>.json   (needs work/exec1/<id>.json)
 Token use of every call is appended to work/usage.jsonl. Nothing here prints prompts, questions or answers."""
 import json
 import os
@@ -10,7 +10,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-REPO = "C:/work/prereasoner-data"
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(ROOT)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, HERE)
 from dotenv import load_dotenv  # noqa: E402
