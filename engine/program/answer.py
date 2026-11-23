@@ -8,7 +8,8 @@
   convert   when the request's money columns can be read in other currencies, one closed question over the currencies:
             the one the question wants its answer in, if any, adds those columns converted.
   answer    on the request's tables (store.py, on the request's database): the stock reading (stock.py) -> the reading
-            record (closed.py) -> one decide call, and a second over the value sets when the value question has an answer; beside them the said call over the question's own words ->
+            record (closed.py) -> one decide call, and a second over the value sets when the value question has an answer; beside them the said call over the question's own words and the order call over
+            the question alone (whether it takes the first or the last lines of a table) ->
             the fused reading -> the typed k-best decoder, top DECODE_K,
             every program verified on the request's tables -> the candidate order of the engine's prior chooser -> the
             candidates that returned rows -> the choice record -> one decide call -> the per-answer decision.
@@ -28,7 +29,7 @@ from engine.named.chooser import PRIOR, score_candidates
 from engine.named.units import Target
 from engine.program.catalog import Catalog
 from engine.program.closed import (ANSWERED, ERRED, WARNED, answer_key, choice_record, choose_answer, convert_choice, convert_record, fused_reading,
-                                   reading_record, said_record, value_set_question)
+                                   order_record, reading_record, said_record, value_set_question)
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
 from engine.program.language import Program, coordinates
@@ -127,17 +128,20 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
         named = stock_reader().read(question, catalog, prepared.decoder, prepared.targets)
         record = reading_record(question, named, catalog, in_view)
     said_state, said_questions, said_words = said_record(question)
-    with span("decisions_read"), ThreadPoolExecutor(max_workers=1) as beside:
-        # the said call reads the question alone, so it runs beside the reading call and the value-set call
+    order_state, order_questions = order_record(question)
+    with span("decisions_read"), ThreadPoolExecutor(max_workers=2) as beside:
+        # the said and order calls read the question alone, so they run beside the reading call and the value-set call
         said_call = beside.submit(contextvars.copy_context().run, decide, said_state, said_questions) if said_questions else None
+        order_call = beside.submit(contextvars.copy_context().run, decide, order_state, order_questions)
         reading = decide(record.state, record.questions)
         set_question, set_names = value_set_question(record, reading.fields)
         sets = decide(record.state, {"value_set": set_question}) if set_question else None
         said = said_call.result() if said_call is not None else None
-    tokens = reading.tokens + (sets.tokens if sets else 0) + (said.tokens if said else 0)
+        order = order_call.result()
+    tokens = reading.tokens + (sets.tokens if sets else 0) + (said.tokens if said else 0) + order.tokens
     with span("program_pool"):
         fused = fused_reading(named, record, reading.fields, set_names, sets.fields["value_set"] if sets else None,
-                              said_words, said.fields if said else None, prepared.linked)
+                              said_words, said.fields if said else None, prepared.linked, order.fields)
         decoded = prepared.decoder.decode(fused.reading, k=DECODE_K, weights=DEFAULT_WEIGHTS)
         verified = verify(decoded.programs, tables, fused.expected, top=DECODE_K)
         listed = [candidate for candidate in score_candidates(verified, fused, catalog, PRIOR) if candidate.rows]

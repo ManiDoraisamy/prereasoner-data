@@ -346,7 +346,7 @@ program. Only the retry (step 8 below) runs a query a model wrote.
 | `engine/prepared.py` | The workbook's preparation, once per content (`prepared_workbook`), and once per what a request's links reach (`connected_workbook`); the request's links (`RequestLinks`, built by the linker the world layer registers, `RequestDatabase.link_with` and `links`); the request database's program tables (`RequestDatabase.program_tables`), the request's answer to a question, once (`RequestDatabase.answered`) and the tab in view (`RequestDatabase.active_sheet`) |
 | `engine/program/connected.py` | The connected catalog: the request's links placed on the workbook (`links_on`), what each reaches on the request's database (`reach`) and the columns it adds (`connect`) |
 | `engine/knowledge_bridges.py` | The request's links (`request_links`: routes and their bridges, entity columns, keys, money columns and their rates) and their registration per served request (`link_request`) |
-| `engine/sheet/` | The sheet compiler: tabs to tables (headers, sections, printed lines, families of copies), the wire form a host sends (`payload.py`) |
+| `engine/sheet/` | The sheet compiler: tabs to tables (headers, sections, printed lines, families of copies, a text column's figures as number columns of their own: `Score #1`, `Score #2`), the wire form a host sends (`payload.py`) |
 | `engine/program/answer.py` | `prepare` and `answer`: the stock reading, the closed-question calls, the decoder, the verifier, the choice and the per-answer decision |
 | `engine/program/closed.py` | The sheet's description, the closed questions per slot and the added ones, the fused reading, the choice record and the per-answer decision (`choose_answer`, `T_ERR` 0.42, `T_FLAG` 0.575) |
 | `engine/program/stock.py` | The stock reading: the word reader plus stock bge-m3 similarity (the shortlist of options) |
@@ -386,7 +386,8 @@ program. Only the retry (step 8 below) runs a query a model wrote.
    on to the delegate.
 4. The stock reading scores the program language's coordinates; the reading record offers each slot its options and
    one Decisions call answers it (a second answers the value sets, and a third, beside them, reads which of the
-   question's own words name a comparison's two outcomes). The fused reading feeds the decoder's 50 most probable
+   question's own words name a comparison's two outcomes; a fourth, beside them too, whether the question takes lines
+   by where they stand in a table, the first ones or the last). The fused reading feeds the decoder's 50 most probable
    programs, each run by the verifier on the request's store tables.
 5. The programs that returned rows are listed. One Decisions call weighs them (each its read-as line and a preview
    of its answer, and "none of these"); per answer, a candidate's probability is summed over the candidates returning

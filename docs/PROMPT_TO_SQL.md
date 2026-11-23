@@ -22,7 +22,8 @@ structure the sheet compiler reads. Each table is one tab of the workbook, named
 
 [`engine/prepared.py:prepared_workbook`](../engine/prepared.py) prepares the workbook once per content and
 keeps it: [`engine/sheet`](../engine/sheet) compiles the tabs into tables (headers, sections, printed
-totals, families of copies), one Decisions call types the text dates
+totals, families of copies; a text column whose cells write figures, such as a score "3–2" or a season
+"1996–97", also gives each figure place a number column of its own, `Score #1` and `Score #2`), one Decisions call types the text dates
 ([`engine/program/dates.py`](../engine/program/dates.py)), the decoder's indexes are warmed and each
 table's targets are listed for the stock reading.
 
@@ -36,7 +37,8 @@ It is a shortlist: it decides which options the reading record offers.
 per slot a closed question over those options, plus the added questions on stated numbers, periods,
 written days, years, value counts and row formulas) and one Decisions call answers it; a second answers
 the value sets when the value question has an answer, and a third, beside them, reads the words the
-question offers as a comparison's two outcomes. The fused reading weighs each API probability against the
+question offers as a comparison's two outcomes, and a fourth, beside them too, reads whether it takes lines
+by where they stand in a table ("the first venue", "the last three entries"). The fused reading weighs each API probability against the
 stock reading.
 
 ## Stage 3 - the decoder builds programs, the verifier runs them

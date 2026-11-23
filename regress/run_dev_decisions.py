@@ -74,16 +74,18 @@ PROBE = EXPERIMENTS / "decisions-probe-20261118"
 # kept stack before those two, since no workbook of it has two tabs and no question of it reads a word pair), then each
 # kept change's rerun of the questions it touches (gs1, af1, wm1 and DataBench's wm1b; cf1 and cf1b, the cell as the sheet
 # wrote it; fg1 and fg1b, a prose column's word counts; ol1 and ol1b, each cell on one line; to1 and to1b, tied lines in
-# sheet order), a later measurement of a question replacing an earlier one
-REFERENCE_TAGS = {"messy": ("eor1", "to1", "pl1b", "vt1", "ec2"), "freshdev": ("eor1", "gs1", "wm1", "cf1", "fg1", "ol1", "to1", "vt1"),
-                  "wtq": ("eor1", "af1", "wm1", "cf1", "fg1", "ol1", "to1", "pl1b", "ec2"),
-                  "databench": ("pgd1", "wm1", "wm1b", "cf1", "cf1b", "fg1", "fg1b", "ol1", "ol1b", "to1", "to1b", "pl1", "pl1b", "vt1b", "ec2")}
+# sheet order; fp1, every question again: a text column's figures read as numbers and lines taken by where they stand),
+# a later measurement of a question replacing an earlier one
+REFERENCE_TAGS = {"messy": ("eor1", "to1", "pl1b", "vt1", "ec2", "fp1"), "freshdev": ("eor1", "gs1", "wm1", "cf1", "fg1", "ol1", "to1", "vt1", "fp1"),
+                  "wtq": ("eor1", "af1", "wm1", "cf1", "fg1", "ol1", "to1", "pl1b", "ec2", "fp1"),
+                  "databench": ("pgd1", "wm1", "wm1b", "cf1", "cf1b", "fg1", "fg1b", "ol1", "ol1b", "to1", "to1b", "pl1", "pl1b", "vt1b", "ec2", "fp1")}
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
 # The demo set against vtdemo (results/e2e_vtdemo_con_stock.jsonl.gz): the stock arm on the connected catalog (place,
 # entity, currency and key links with each key's identities, the kept closed questions, the tab in view named, the
 # value targets' token bound), read on the request databases production built for the demo datasets on 2026-11-18 (the
-# day their money columns with no date convert on).
-DEMO_REFERENCE = "e2e_vtdemo_con_stock.jsonl.gz"
+# day their money columns with no date convert on); then fp1, every demo question again with a text column's figures read
+# as numbers and lines taken by where they stand (five pools of eval-neartail-ecommerce change, no outcome).
+DEMO_REFERENCE = ("e2e_vtdemo_con_stock.jsonl.gz", "e2e_fp1_stock_demo.jsonl.gz")
 DEMO_AS_OF = "2026-11-18"
 CENT = 0.01                 # run_connected.py: a scalar within one cent, a row's cells to the cent
 
@@ -258,7 +260,7 @@ def label_of(kind: str, right: bool) -> str:
 
 def reference(name: str, probe: Path = PROBE) -> dict:
     """Each question's measured outcome: the last of its set's layers (REFERENCE_TAGS, in order) that measured it."""
-    targets = [DEMO_REFERENCE] if name == "demo" else [f"e2e_{tag}_stock_{name}.jsonl.gz" for tag in REFERENCE_TAGS[name]]
+    targets = list(DEMO_REFERENCE) if name == "demo" else [f"e2e_{tag}_stock_{name}.jsonl.gz" for tag in REFERENCE_TAGS[name]]
     held = {}
     for target in targets:
         with gzip.open(probe / "results" / target, "rt", encoding="utf-8") as source:

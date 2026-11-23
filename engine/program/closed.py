@@ -14,7 +14,9 @@ its header, kind and three example cells; on a workbook of several tabs, the tab
                    date is restricted to it, a year compared with a column of year numbers, how many cell values are
                    named, and whether a line's figure is a percent of a rate. A second call asks which set of the value
                    question's likeliest values the question names. The said call, over the question alone, asks which
-                   of its own words answer a versus when one figure is above the other and which when below.
+                   of its own words answer a versus when one figure is above the other and which when below. The order
+                   call, over the question alone, asks whether it takes lines by where they stand in a table: the
+                   first ones or the last.
   choice record    one question over the candidates that ran (at most CHOOSE_K, decoder order): each one's read-as
                    sentence and a preview of the answer it returns, and none.
 
@@ -47,7 +49,8 @@ from engine.program.catalog import KIND_FAMILY, KIND_TABLE, Catalog
 from engine.program.decoder import table_reach
 from engine.program.index import index_of
 from engine.program.language import PeriodSpan, period_from_name
-from engine.program.names import EVERY_COLUMN, PERCENT_OP, SAID_ABOVE, SAID_BELOW, SLOT_ANSWER_TYPE, SLOT_LISTING, SLOT_NUMBER, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SAID, SLOT_SHOWN, coarse_type, coordinate
+from engine.program.names import (EVERY_COLUMN, FIRST, LAST, PERCENT_OP, SAID_ABOVE, SAID_BELOW, SLOT_ANSWER_TYPE, SLOT_LISTING, SLOT_NUMBER, SLOT_ORDER, SLOT_PERIOD,
+                                  SLOT_ROW_OP, SLOT_SAID, SLOT_SHOWN, coarse_type, coordinate)
 from engine.program.scoring import Reading
 from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
@@ -743,10 +746,11 @@ def said_scores(scores: Mapping[str, float], mapping: Mapping[str, str], fields:
 def fused_reading(named: NamedReading, record: ReadingRecord, fields: Mapping[str, Mapping[str, float]],
                   set_names: Sequence[str] = (), set_probabilities: Mapping[str, float] | None = None,
                   said_words: Mapping[str, str] | None = None, said_fields: Mapping[str, Mapping[str, float]] | None = None,
-                  linked: frozenset[tuple[str, str]] = frozenset()) -> NamedReading:
+                  linked: frozenset[tuple[str, str]] = frozenset(), order_fields: Mapping[str, Mapping[str, float]] | None = None) -> NamedReading:
     """The stock reading with the API's answers in it, applied in order: the slots' terms, the percent operator, the
     stated number, period and year, the value set (a value read as one across the columns a key links), the counted
-    values, the composed period, the question's own two words; and the closed heads."""
+    values, the composed period, the question's own two words, the end of the table it takes its lines from; and the
+    closed heads."""
     scores = api_scores(named.reading.scores, record, fields)
     scores = percent_scores(scores, record.percent, fields.get("row_formula"))
     scores = added_scores(scores, record.numbers, fields.get("stated_number"))
@@ -758,9 +762,41 @@ def fused_reading(named: NamedReading, record: ReadingRecord, fields: Mapping[st
     scores = composed_period_scores(scores, record, fields)
     if said_words and said_fields:
         scores = said_scores(scores, said_words, said_fields)
+    if order_fields:
+        scores = order_scores(scores, order_fields)
     reading = Reading(scores)
     read = replace(named.read, closed=api_closed(record, fields, named.read.closed))
     return replace(named, read=read, reading=reading, reach=table_reach(reading))
+
+
+# --------------------------------------------------------------------------------------------------- the order call
+ORDER_QUESTION = ("Does the question take rows by where they stand in the table as it is listed, rather than by a value "
+                  "they hold: its first rows, or its last rows?")
+ORDER_OPTIONS = {"o00": "its first rows, as the table lists them", "o01": "its last rows, as the table lists them"}
+ORDER_ENDS_OF = {"o00": FIRST, "o01": LAST}
+
+
+def order_record(question: str) -> tuple[dict, dict]:
+    """The order call: one closed question over the question alone (no sheet is needed to read it), whether it takes the
+    first or the last lines of a table as the sheet lists them ("the first venue", "the last 3 entries"), or neither.
+    It is a call of its own, so the reading call's body is the same whether it is asked or not."""
+    return {"question": question}, {"line_order": {"instructions": ORDER_QUESTION, "criteria": {**ORDER_OPTIONS, NONE: "neither"}}}
+
+
+def order_scores(scores: Mapping[str, float], fields: Mapping[str, Mapping[str, float]]) -> dict[str, float]:
+    """Each end the API holds likelier than neither joins the reading as order:first or order:last, at W * (log p - log
+    p(none)), as said_scores reads its spans; the decoder ranks lines by where they stand only where one is set
+    (engine/program/decoder.py table_frames)."""
+    out = dict(scores)
+    probabilities = fields.get("line_order") or {}
+    if not probabilities:
+        return out
+    none = max(probabilities.get(NONE, 0.0), P_FLOOR)
+    for key, end in ORDER_ENDS_OF.items():
+        term = W * (_log(probabilities.get(key, 0.0)) - math.log(none))
+        if term > 0:
+            out[coordinate(SLOT_ORDER, end)] = round(term, SCORE_DIGITS)
+    return out
 
 
 # ------------------------------------------------------------------------------------------------ the convert record
@@ -877,6 +913,6 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
     return AnswerChoice(kind, int(served[1:]), alike if alike is not None else runner_up, mass[best], none, alike)
 
 
-__all__ = ["ANSWERED", "CHOOSE_K", "ERRED", "T_ERR", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses",
+__all__ = ["ORDER_QUESTION", "order_record", "order_scores", "ANSWERED", "CHOOSE_K", "ERRED", "T_ERR", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses",
            "choice_record", "choose_answer", "convert_choice", "convert_record", "fused_reading", "reading_record", "said_record", "sheet_state",
            "value_set_question", "value_set_scores"]

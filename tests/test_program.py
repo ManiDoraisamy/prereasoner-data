@@ -10,7 +10,7 @@ from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, POLICY, _Checks, _Conditions, _Option
 from engine.program.execute import run, run_dual
 from engine.program.index import Atom, TableIndex
-from engine.program.language import (Absent, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, Words, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name, shown_together)
+from engine.program.language import (Absent, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, LineOrder, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, Words, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name, shown_together)
 from engine.program.lowering import plan_schema, to_query
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
                                   EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PLUS, SEMANTICS, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of, GRAIN_MONTH)
@@ -1355,6 +1355,55 @@ def test_a_column_stating_its_currency_is_not_split_by_currency():
     assert not any(p == mixed_net for p in Decoder(catalog).enumerate(Reading({name: 1.0 for name in coordinates(mixed_net, catalog.column_kind)}), k=50)[0])
 
 
+def test_a_text_column_of_figures_reads_each_figure_as_a_number():
+    """A score ("3–2", "W 1-0"), a season written short ("1996–97") and a place ("1st") are text cells the compiler
+    kept whole, so no program could add, rank or compare their figures: on WikiTableQuestions' training tables every
+    score column and most span and place columns compiled as text. Each figure place that 4 in 5 cells write is its own
+    number column, named by the column and the place ("Score #1"), traced to the cell it was read from and not the
+    sheet's own; the cell itself is unchanged. A code that only ends in a figure ("p1") and a title holding one
+    ("Apollo 13") get none, and both emitters read a part like any number column."""
+    rows = [["Team", "Score", "Season", "Place", "Code", "Title"], ["A", "3–2", "1996–97", "1st", "p1", "Apollo 13"],
+            ["B", "W 1-0", "1997–98", "2nd", "p2", "Rocky"], ["C", "2-2", "1998–99", "3rd", "p3", "Star Wars"], ["D", "0–4", "1999–00", "4th", "p4", "Up"]]
+    catalog, table, tables = _setup(rows)
+    names = [column.name for column in table.columns]
+    assert names == ["Team", "Score", "Season", "Place", "Code", "Title", "Score #1", "Score #2", "Season #1", "Season #2", "Place #1"], names
+    parts = {column.name: column for column in table.columns[6:]}
+    assert all(column.col == -1 and column.kind == "number" for column in parts.values())
+    assert table.numbers[names.index("Season #2")] == [1997.0, 1998.0, 1999.0, 2000.0], "a span written short reads its second year whole"
+    assert table.texts[names.index("Score")] == ["3–2", "W 1-0", "2-2", "0–4"], "the cell itself is unchanged"
+    assert table.lines[1].cells[names.index("Score #1")].address == table.lines[1].cells[1].address, "a part traces to its cell"
+    team, first, second = Col(table.id, 0), Col(table.id, names.index("Score #1")), Col(table.id, names.index("Score #2"))
+    assert _one(_answer(Agg(SUM, first, table.id), tables)) == 6.0
+    assert _answer(Rank(ENTITY_LINE, table.id, HIGHEST, (), second, (team,)), tables) == (("D", 4.0),)
+    assert _answer(Show(table.id, (team,), (CompareColumns(first, ">", second),), listing=True), tables) == (("A",), ("B",))
+    assert read_as(Agg(SUM, first, table.id), catalog) == 'the total of Score #1 on "Sheet1"'
+
+
+def test_lines_are_taken_by_where_they_stand():
+    """"The first venue", "the last 3 entries", "the page counts of the first five books": a question that takes lines
+    by where they stand in the table as listed had no program, since every rank read a column (8.5% of
+    WikiTableQuestions' training queries take a line by its place). LineOrder ranks lines by their place in the sheet:
+    lowest takes the first lines, highest the last, conditions keep lines first; no figure of it is shown, both
+    emitters agree, and the decoder offers it only where the order slot is read (the order call, never the stock
+    reading), so a question asking nothing of it lists none."""
+    rows = [["Year", "Venue", "Books"], [2001, "Paris", 498.0], [2002, "Rome", 640.0], [2003, "Oslo", 80.0], [2004, "Rome", 300.0], [2005, "Lima", 120.0]]
+    catalog, table, tables = _setup(rows)
+    year, venue, books = (Col(table.id, position) for position in range(3))
+    first = Rank(ENTITY_LINE, table.id, LOWEST, (), LineOrder(table.id), (venue,))
+    assert _answer(first, tables) == (("Paris",),)
+    assert _answer(Rank(ENTITY_LINE, table.id, HIGHEST, (), LineOrder(table.id), (venue,), count=2), tables) == (("Lima",), ("Rome",))
+    assert _answer(Rank(ENTITY_LINE, table.id, LOWEST, (), LineOrder(table.id), (books,), count=3), tables) == (("498",), ("640",), ("80",))
+    assert _answer(Rank(ENTITY_LINE, table.id, LOWEST, (Equals(venue, "Rome"),), LineOrder(table.id), (year,)), tables) == (("2002",),)
+    assert read_as(first, catalog) == 'Venue of the first line on "Sheet1"'
+    assert coordinates(first, catalog.column_kind).count("order:first") == 1 and not any(name.startswith("direction:") for name in coordinates(first, catalog.column_kind))
+    def placed(reading):
+        return [p for p in Decoder(catalog).enumerate(reading, k=50)[0] if isinstance(p, Rank) and isinstance(p.measure, LineOrder)]
+    asked = Reading({name: 1.0 for name in coordinates(first, catalog.column_kind)})
+    assert first in placed(asked)
+    unread = Reading({name: 1.0 for name in coordinates(Rank(ENTITY_LINE, table.id, LOWEST, (), books, (venue,)), catalog.column_kind)})
+    assert not placed(unread), "lines by their place only where the order slot is read"
+
+
 def test_a_rate_column_gives_a_percent_share_of_a_measure():
     """A payments table reaching a commission-rate table ("card 2.9", "digital wallet 1.7") asks "total commission
     amount for card payments" (9.28) and "the amount after subtracting commission"; with no percent calculation the
@@ -1991,7 +2040,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_lines_are_taken_by_where_they_stand, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

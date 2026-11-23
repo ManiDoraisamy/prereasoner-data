@@ -191,6 +191,57 @@ def parse_period(text: str) -> Period | None:
     return None
 
 
+# ------------------------------------------------------------------------------------------------- figures in a text
+_FIGURE = re.compile(r"(?<![\d.,])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\d])")
+_SPAN_MARK = frozenset("-–—/")     # what joins a span written short ("1996–97", "2010/11")
+_TIME_MARK = re.compile(r"\d:\d")
+FIGURE_SHARE = 0.3                 # a cell is figures, not prose that holds one, when this share of its marks are digits
+
+
+def figures_of(text: str) -> tuple[float, ...]:
+    """The figures a text cell writes, in order, read by digits and marks only: "3–2" is (3, 2), "W 55-7" (55, 7),
+    "12.9 (55.2)" (12.9, 55.2), "1st" (1,), "1,370" (1370,). A minus is a sign only where a figure opens the cell or a
+    bracket; between two figures it joins them. A span written short ("1996–97", "2010/11") reads its second figure
+    whole (1997, 2011), as a later year of the same century. A time ("2:05.19") holds no figures here: its reading is
+    a duration's (engine/program/semantics.py duration_seconds)."""
+    if _TIME_MARK.search(text):
+        return ()
+    out: list[float] = []
+    previous = None
+    for match in _FIGURE.finditer(text):
+        body, start = match.group(1), match.start(1)
+        value = float(body.replace(",", ""))
+        before = text[start - 1] if start else ""
+        if before in ("-", MINUS_SIGN) and (start == 1 or text[:start - 1].rstrip() == "" or text[start - 2] == "("):
+            value = -value
+        if previous is not None and len(out) == 1:
+            first, between = previous, text[previous.end(1):start].strip()
+            whole = first.group(1)
+            if (between in _SPAN_MARK and len(whole) == 4 and whole.isdigit() and body.isdigit() and len(body) <= 2):
+                century = int(whole[:2]) * 100
+                value = float(century + int(body) if century + int(body) > int(whole) else century + 100 + int(body))
+        out.append(value)
+        previous = match
+    return tuple(out)
+
+
+_OPENING = re.compile(r"^[\s(]*[-−]?\s*\d")
+
+
+def cell_figures(text: str) -> tuple[float, ...]:
+    """The figures a cell is written in: figures_of where the cell opens with a figure ("1st", "65m", "3–2",
+    "12.9 (55.2)") or writes two or more ("W 55-7", "September 26, 1959"); none for a code that only ends in one
+    ("p1", "A-123", "Apollo 13"), whose figure names it rather than measures it."""
+    figures = figures_of(text)
+    return figures if len(figures) >= 2 or (figures and _OPENING.match(text)) else ()
+
+
+def figure_share(text: str) -> float:
+    """The share of a text's marks (spaces aside) that are digits."""
+    marks = [mark for mark in text if not mark.isspace()]
+    return sum(mark.isdigit() for mark in marks) / len(marks) if marks else 0.0
+
+
 def year_number(value: float) -> bool:
     """A number that reads as a year when it sits where a label sits."""
     return float(value).is_integer() and 1900 <= value <= 2100

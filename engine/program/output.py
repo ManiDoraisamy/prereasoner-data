@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.language import (LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
 from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
@@ -114,6 +114,8 @@ def _where_words(catalog: Catalog, where: tuple[Condition, ...]) -> str:
 def _measure_words(catalog: Catalog, measure: Measure) -> str:
     if isinstance(measure, Col):
         return _name(catalog, measure)
+    if isinstance(measure, LineOrder):
+        return "where the line stands"
     if isinstance(measure, Words):
         return f"the number of words of {_name(catalog, measure.column)}"
     if isinstance(measure, DateOf):
@@ -246,6 +248,11 @@ def read_as(program: Program, catalog: Catalog) -> str:
     tail = f" where {where}" if where else ""
     if program.entity == ENTITY_LINE and not program.shown:
         return f"the {program.count} {way} of {_measure_words(catalog, program.measure)} {place}{tail}"
+    if program.entity == ENTITY_LINE and isinstance(program.measure, LineOrder):     # the first or the last lines as the sheet lists them
+        end = "first" if program.direction != HIGHEST else "last"
+        shown = ", ".join(_name(catalog, column) for column in program.shown)
+        lines = f"the {end} {program.count} lines" if program.count > 1 else f"the {end} line"
+        return f"{shown} of {lines} {place}{tail}"
     if program.entity == ENTITY_LINE:
         shown = ", ".join(_name(catalog, column) for column in program.shown)
         lines = f"the {program.count} lines" if program.count > 1 else "the line"
@@ -284,6 +291,8 @@ def answer_columns(program: Program, catalog: Catalog) -> tuple[str, ...]:
         keys = _headers(catalog, program.groups)
         return tuple(f"month of {key}" if program.grain is not None and at == 0 else key for at, key in enumerate(keys)) + (_figure_name(program, catalog),)
     if program.entity == ENTITY_LINE:
+        if isinstance(program.measure, LineOrder):     # where the lines stand picked them; no figure of it is shown
+            return _headers(catalog, program.shown)
         return _headers(catalog, program.shown) + (_measure_words(catalog, program.measure),)
     if program.entity == ENTITY_GROUP:
         return (header(catalog, program.key), _figure_name(program, catalog))
@@ -383,6 +392,11 @@ def cells_used(program: Program, tables: RequestTables, rows: tuple[tuple, ...])
                 add(i, column.position)
             if not columns and table.lines[i].cells:
                 add(i, min(table.lines[i].cells))      # a count: one cell of each line it counts
+    elif program.entity == ENTITY_LINE and isinstance(program.measure, LineOrder):     # the first or last kept lines, as listed
+        data = [i for i in kept if table.is_data[i]]
+        for i in (data[:program.count] if program.direction != HIGHEST else data[-program.count:]):
+            for column in program.shown:
+                add(i, column.position)
     elif program.entity == ENTITY_LINE:
         columns = measure_columns(program.measure)
         reads = {column.position: table.words(column.position) if isinstance(program.measure, Words) else table.numbers[column.position] for column in columns}
@@ -704,6 +718,11 @@ def _rank_formula(program: Rank, table: CatalogTable, tables: RequestTables) -> 
     way = "MAX" if program.direction == HIGHEST else "MIN"
     if program.entity == ENTITY_LINE and not program.shown:      # the figures themselves, the top ones first
         return f"=TAKE(SORT({_range_terms(program.measure, table)},1,{-1 if program.direction == HIGHEST else 1}),{program.count})"
+    if program.entity == ENTITY_LINE and isinstance(program.measure, LineOrder):     # the first or last lines of the range
+        if program.where or program.shown[0].position == SECTION or not _plain_range(table):
+            return "=NA()"
+        shown = _range(table, program.shown[0].position)
+        return f"=TAKE({shown},{program.count if program.direction != HIGHEST else -program.count})"
     if program.entity == ENTITY_LINE:
         shown = _range(table, program.shown[0].position) if program.shown[0].position != SECTION else "Section"
         if isinstance(program.measure, Col):

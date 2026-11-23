@@ -19,7 +19,7 @@ from engine.sheet.names import (AXIS_FLAG, AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENC
                                 P_YEAR, PEER, PERIOD, PRINTED_ROLES, RECORD, ROW_TOTAL, S_DATA_LINE, S_FILLED_DOWN, S_GROUP_TIE, S_REPEATED_HEADER, S_RULE_LINE, S_STRAY_KEY, S_TOTAL_OTHER_BLOCK, SECTION_LABEL, SHEET_CHART, SPACER, STRAY_DATE,
                                 STRAY_ERROR, STRAY_LABEL, STRAY_MARKER, STRAY_NOTE, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, SUBTOTAL, TITLE, TOTAL, V_BLANK, V_BOOL, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT)
 from engine.sheet.payload import TabPayload
-from engine.sheet.values import Period, number_with_word, parse_period, quantity_of, year_number
+from engine.sheet.values import FIGURE_SHARE, Period, cell_figures, figure_share, number_with_word, parse_period, quantity_of, year_number
 
 _UNIT_IN_NAME = re.compile(r"\(([^()]{1,12})\)\s*$")
 _DATE_IN_TEXT = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b")     # a date written in digits; a month in words is no date here
@@ -33,6 +33,8 @@ _STRAY_KEY_DATED = 0.7
 _KEYS_ALONE = 0.6
 _FLAG_VALUES = 3
 _FLAG_LENGTH = 3
+PART_MARK = "#"      # a part column's name: its column's name, the mark and the figure's place ("Score #1")
+_PARTS_MOST = 3
 
 
 @dataclass(slots=True)
@@ -452,6 +454,54 @@ def _type_column(column: Column, cells: list[Cell], strays: list[Stray], tab: st
         column.role = KEY if column.distinct * 10 >= len(cells) * 9 else LABEL
 
 
+def _part_columns(columns: list[Column], records: list[Line], printed: list[Line]) -> list[Column]:
+    """A text column whose cells write figures ("3–2", "W 55-7", "1996–97", "1st", "12.9 (55.2)") gets one number column
+    per figure place that at least 4 in 5 of its counted data cells hold: "Score #1" holds each cell's first figure,
+    "Score #2" its second (engine/sheet/values.py cell_figures: digits and marks only, no word; a code that only ends in
+    a figure, "p1", holds none). Each part cell traces to
+    the cell it was read from; the column itself is unchanged, and the parts are not the sheet's own columns (col -1).
+    A column of prose that holds a figure ("Apollo 13", "10 Main St") gets none: its typical cell must be figures,
+    FIGURE_SHARE of its marks digits."""
+    parts: list[Column] = []
+    names = {column.name for column in columns}
+    for column in columns:
+        if column.kind not in (V_TEXT, MIXED) or column.role == SECTION_LABEL:
+            continue
+        cells = [line.cells[column.position] for line in records if column.position in line.cells and line.cells[column.position].row == line.row]
+        counted = [cell for cell in cells if cell.kind not in (V_MARKER, V_ERROR, V_BLANK)]
+        texts = [str(cell.value) for cell in counted if cell.kind == V_TEXT]
+        if len(counted) < 3 or not texts:
+            continue
+        shares = sorted(figure_share(text) for text in texts)
+        if shares[len(shares) // 2] < FIGURE_SHARE:
+            continue
+        held = [len(cell_figures(str(cell.value))) if cell.kind == V_TEXT else 1 if cell.kind == V_NUMBER else 0 for cell in counted]
+        for place in range(1, _PARTS_MOST + 1):
+            if sum(count >= place for count in held) * 5 < len(counted) * 4:
+                break
+            name = f"{column.name} {PART_MARK}{place}"
+            if name in names:
+                continue
+            position = len(columns) + len(parts)
+            filled, seen = 0, set()
+            for line in (*records, *printed):
+                cell = line.cells.get(column.position)
+                if cell is None or cell.row != line.row:
+                    continue
+                figures = cell_figures(str(cell.value)) if cell.kind == V_TEXT else (float(cell.value),) if cell.kind == V_NUMBER and not isinstance(cell.value, bool) else ()
+                if len(figures) < place:
+                    continue
+                value = figures[place - 1]
+                line.cells[position] = Cell(row=cell.row, col=cell.col, raw=f"{value:g}" if abs(value) < 1e15 else str(value), kind=V_NUMBER, value=value)
+                if line.role not in PRINTED_ROLES:
+                    filled += 1
+                    seen.add(value)
+            names.add(name)
+            parts.append(Column(position=position, col=-1, letter="", name=name, path=(*(column.path or (column.name,)), f"{PART_MARK}{place}"),
+                                role=MEASURE, kind=V_NUMBER, format_kind=F_GENERAL, filled=filled, distinct=len(seen)))
+    return parts
+
+
 def _unit_of(column: Column) -> str:
     if column.format_kind == F_CURRENCY:
         return "$"
@@ -853,6 +903,7 @@ def _table_of(grid: Grid, tab: str, index: int, block_number: int, region: _Regi
             column.role = SECTION_LABEL
         column.unit = _unit_of(column) or column.unit
     strays.sort(key=lambda s: (s.row, s.position))
+    columns = columns + _part_columns(columns, records, printed)
     header_grain: dict[int, str | None] = {}
     sequence: dict[int, float] = {}
     for column in columns:

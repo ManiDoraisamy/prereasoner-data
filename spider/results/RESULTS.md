@@ -5,6 +5,83 @@ entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection ar
 been removed, and that commit holds the code that ran.
 
 
+## A text column's figures read as numbers and lines taken by where they stand: the engine alone, no retry, 689 -> 703 of a fresh 1,000 WikiTableQuestions test questions (built 802 -> 823); on the 896 dev questions 717 -> 725 picked right, unwarned wrong 66 -> 65, demo unchanged; a side-by-side re-ask of close runners-up fails (2026-11-23)
+
+- The plan after the public benchmark (2026-11-22: the engine alone 69.8% of DataBench test within the upload limit
+  and 70.1% of a 1,000 WikiTableQuestions test sample, Gemini 4 Neon 88.7% and 85.9%; the right query built for 79.3%
+  of the in-limit questions): raise the engine itself, without a model writing queries, in three steps, each kept only
+  if picks rise and unwarned wrong does not. Diagnosed on training questions only (the find set: a seeded 600 of
+  WikiTableQuestions' training questions that SQUALL annotates with a human-written query, and 400 of DataBench
+  train), gated on the 896 dev questions in aggregate, confirmed once on a fresh test sample.
+- **Step 1, a text column's figures (kept).** SQUALL's queries read a number inside a text cell in 41% of training
+  questions (`c5_number1`, `c1_year`, `c4_first_number`); the compiler read a column of scores ("3–2"), seasons
+  ("1996–97"), places ("1st") or bracketed figures as text. `engine/sheet/values.py` reads a cell's figures by digits
+  and separators only (a sign at the cell's start or after "(", a season's span completed: "1996–97" is 1996 and 1997,
+  a time "2:10" none), and only where a figure opens the cell or it writes two or more ("p1", "A-123", "Apollo 13"
+  none); `engine/sheet/compiler.py:_part_columns` gives a text column whose cells mostly write figures a number column
+  per place that four in five of its cells hold (`Score #1`, `Score #2`, at most three), each cell traced to its source
+  cell, so a program totals, ranks and compares them like any number column.
+- **Step 2, lines by where they stand (kept).** "The first venue", "the last 3 entries", "the page counts of the first
+  five books" (8.5% of SQUALL's training queries take a line by its place) had no program: every rank read a column.
+  `LineOrder` ranks lines by their place in the sheet (lowest the first lines, highest the last, conditions first); its
+  read-as is "Venue of the first line on ...", its formula `=TAKE(range, ±n)`, both emitters agree. A slot only its own
+  closed question fills (`closed.order_record`: the question alone, "first rows", "last rows" or none, beside the said
+  call), so the decoder offers it only where that call reads it, and every other call's body is unchanged.
+- **Step 3, a head-to-head re-ask (failed, removed).** Of the 69 dev questions whose right answer was built but not
+  picked, 47 had it second. A second choice call over the likeliest answer and runners-up within a quarter of its
+  probability (each its reading and a fuller preview), its answer served warned or erred when it differed: served
+  answers 11 better and 17 worse than the plain choice, and 16 right answers turned to erred ones (erred 87 -> 121),
+  the retry growing rather than shrinking. Not kept; the choice stays as it was.
+- **The 896 dev questions** (`regress/run_dev_decisions.py`, three processes as eor1 ran, new bodies recorded):
+
+  | | Listed right | Picked right | Right | Warned right | Warned wrong | Unwarned wrong | Erred |
+  |---|---|---|---|---|---|---|---|
+  | HEAD e5b8332c (neon2) | 786 | 717 | 648 | 48 | 46 | 66 | 88 |
+  | Step 1 | 790 | 722 | 643 | 54 | 47 | 65 | 87 |
+  | Steps 1+2 (fp1) | 790 | 725 | 649 | 54 | 45 | 65 | 83 |
+  | Steps 1+2+3 | 790 | 725 (served 719) | 634 | 45 | 32 | 64 | 121 |
+
+  Steps 1+2 against HEAD: 11 wins, 3 losses, listed +4 -0. By set: WikiTableQuestions +5 picks, messy 0, fresh dev
+  +1, DataBench +2. The dev sets hold few such questions; the gain shows where they are common:
+- **The find set (training questions)**, the engine alone: WikiTableQuestions 600: right 447 -> 474 (28 wins, 1 loss),
+  built 524 -> 541; DataBench 400: 319 -> 321 (4 wins, 2 losses), built 351 -> 349 (the two lost are reading shifts on
+  workbooks whose new part columns change the reading call's sheet).
+- **Public sets, the engine alone (no retry), Decisions calls only** (`engine-reach-20261122/local/public_set.py`,
+  graded as `public-bench-20261122/local/run_bench.py` grades: WikiTableQuestions' official evaluator, DataBench's
+  `default_compare`):
+
+  | Set | HEAD | Steps 1+2 | Wins / losses | Built (HEAD -> 1+2) |
+  |---|---|---|---|---|
+  | **Fresh WikiTableQuestions test, 1,000** (seed 20261123, of the 3,344 the benchmark sample left out; unseen) | 689 | **703** | 29 / 15 (sign p 0.049) | 802 -> 823 |
+  | WikiTableQuestions test, the benchmark's 1,000 | 701 | 715 | 26 / 12 (p 0.034) | 783 -> 806 |
+  | DataBench test, 450 within the upload limit (72 refused) | 314 | 317 | 4 / 1 | 367 -> 369 |
+
+  The benchmark sample and DataBench test misses were read on 2026-11-22, before this work (first lines in sheet order
+  among them), so those two rows are test-informed; the fresh sample is the confirmation. On it, served per answer:
+  right 590 -> 608, warned right 75 -> 73, warned wrong 67 -> 78, unwarned wrong 131 -> 129, erred (retried in
+  serving) 137 -> 112. Against Gemini 4 Neon's 85.9% on the benchmark sample the engine alone moves from 70.1% to
+  71.5%; the gap stays, and its bulk is still the right query not built (19% of the fresh sample) and not picked (12%).
+- **Demo gate** (`--sets demo --demo-maps`): HEAD at parity; steps 1+2: 84 right, 2 warned right, 4 erred, 1 wrong of
+  91, unchanged; five pools of eval-neartail-ecommerce change, no outcome. Parity replay of fp1 on this commit: all 896
+  and the 91 demo questions cache hits, every outcome equal (the three label-only mismatches HEAD also shows: the warned
+  answer whose reading reads like another's, which the probe's labeler does not know). The dev replay's reference adds
+  the fp1 layer (`decisions-probe-20261118/results/e2e_fp1_stock_{set}.jsonl.gz`, the demo's
+  `e2e_fp1_stock_demo.jsonl.gz`).
+- Spider calibration, 1,053 questions, `whole_db`, served, fresh (`spider/probe/full_eval.py --config whole_db
+  --selection served`; records in `C:/work/prereasoner-scratch/spider-fp1/`): answered 836, strict **373** (35.4%),
+  lenient 581 (55.2%), scalar gold 278 of 377; the Python and SQL programs verified alike on all 836; prediction median
+  1.9 s, p95 3.4 s. Against v1 at `48abf835` (371 strict, 2026-11-21; the retry's commits lie between): 14 strict
+  wins, 12 losses, 852 of 1,053 serving the same SQL.
+- Checks: tests (program 89, answer 26, SQL AST 90, connected 18, sheet compiler 72); the hermetic repository run, every
+  suite passing (`tests.test_complex_datasets` reads the knowledgebase and passes 6 of 6 through the Cloud SQL proxy);
+  the offline regression gate, 8 passed and the 5 known limitations as at v1; `tests.test_datasets` live, PASS; ruff
+  F/E9, bandit on tracked code, the dependency locks.
+- Provenance: base `e5b8332c`, dirty with this change; the runners and records are in
+  `training/readers/data/experiments/engine-reach-20261122/` (gitignored); Decisions endpoint `gemini-decision-1`, no
+  model artifact changed (`engine/data/weights_manifest.json` untouched). Decisions spend $5.03 (recorded calls), of
+  the $30 the owner allowed.
+
+
 ## Browser gate on b9b0fe50: 102 of 102 fresh, 77 of 78 existing; Sheets add-on v35 end to end; Prereasoner as served 88 of 100 against Gemini 4 Neon alone 81 (2026-11-22)
 
 - Chrome on chat.prereasoner.com, production `b9b0fe50` (engine `00344-kip`, chat `00243-jar`), the 24 demo datasets'

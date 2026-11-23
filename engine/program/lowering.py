@@ -9,7 +9,7 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Absent, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.language import (Absent, LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
 from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (DATE, INTEGER, LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, REAL, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, TEXT, day_column, fold_column,
@@ -111,6 +111,8 @@ def _words(column: Col) -> ColumnRef:
 def _measure(measure: Measure):
     if isinstance(measure, Col):
         return _number(measure)
+    if isinstance(measure, LineOrder):
+        return ColumnRef(sql_table(measure.table), LINE, SQLType.INTEGER)
     if isinstance(measure, Words):
         return _words(measure.column)
     if isinstance(measure, DateOf):
@@ -135,6 +137,8 @@ def _present(measure: Measure):
     """The lines a measure reads: a blank is skipped, in + and - only when both sides are, and a zero denominator leaves its line out."""
     if isinstance(measure, Col):
         return _is_null(_number(measure), negated=True)
+    if isinstance(measure, LineOrder):     # every line stands somewhere
+        return None
     if isinstance(measure, Words):
         return _is_null(_words(measure.column), negated=True)
     if isinstance(measure, DateOf):
@@ -241,7 +245,9 @@ def _rank_query(program: Rank, catalog: Catalog) -> SelectQuery:
     order = _order(program.direction)
     if program.entity == ENTITY_LINE:
         value = _measure(program.measure)
-        select = tuple(SelectItem(_shown(column), f"shown_{at}") for at, column in enumerate(program.shown)) + (SelectItem(value, VALUE),)
+        select = tuple(SelectItem(_shown(column), f"shown_{at}") for at, column in enumerate(program.shown))
+        if not isinstance(program.measure, LineOrder):     # where a line stands decides which it is; it is no figure of the answer
+            select += (SelectItem(value, VALUE),)
         where = _where(None if printed else _data_lines(table), *map(_condition, program.where), _present(program.measure))
         if program.count > 1:      # exactly that many lines, a tie broken by sheet order
             return SelectQuery(select, sql_table(table), where=where, order_by=(OrderTerm(value, order), OrderTerm(ColumnRef(sql_table(table), LINE, SQLType.INTEGER))), limit=program.count)

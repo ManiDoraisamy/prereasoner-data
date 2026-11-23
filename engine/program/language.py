@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAIN_MONTH, PERCENT_OP, coordinate)
 from engine.program.semantics import fold, number_text
@@ -81,12 +81,21 @@ class Words:
     column: Col
 
 
-Measure: TypeAlias = Col | RowArithmetic | PercentOf | Size | DateOf | Across | Words
+@dataclass(frozen=True, slots=True)
+class LineOrder:
+    """Where a line stands in its table, as the sheet lists it: ranked lowest, a rank takes the first lines ("the first
+    venue", "the first five books"), highest the last ones. No column holds it, and no answer shows it."""
+    table: str
+
+
+Measure: TypeAlias = Col | RowArithmetic | PercentOf | Size | DateOf | Across | Words | LineOrder
 
 
 def measure_columns(measure: Measure) -> tuple[Col, ...]:
     if isinstance(measure, Col):
         return (measure,)
+    if isinstance(measure, LineOrder):
+        return ()
     if isinstance(measure, (DateOf, Words)):
         return (measure.column,)
     if isinstance(measure, Across):
@@ -624,6 +633,8 @@ def conditions_of(program: Program) -> tuple[Condition, ...]:
 def measure_coordinates(measure: Measure) -> list[str]:
     if isinstance(measure, Col):
         return [coordinate(SLOT_MEASURE, measure.name)]
+    if isinstance(measure, LineOrder):     # where lines stand is read by the order slot, with the end it takes (_body_coordinates)
+        return []
     if isinstance(measure, (DateOf, Words)):
         return [coordinate(SLOT_MEASURE, measure.column.name)]
     if isinstance(measure, Across):
@@ -690,7 +701,10 @@ def _body_coordinates(program: Program) -> list[str]:
         names.extend(coordinate(SLOT_KEY, key.name) for key in program.keys)
     else:
         names.append(coordinate(SLOT_ENTITY, program.entity))
-        names.append(coordinate(SLOT_DIRECTION, program.direction))
+        if isinstance(program.measure, LineOrder):     # the first or the last lines: which end is the order slot's, not a direction's
+            names.append(coordinate(SLOT_ORDER, FIRST if program.direction == LOWEST else LAST))
+        else:
+            names.append(coordinate(SLOT_DIRECTION, program.direction))
         if program.function is not None:
             names.append(coordinate(SLOT_AGGREGATE, program.function))
         if program.measure is not None:
@@ -760,5 +774,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Absent", "Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size", "Words",
+__all__ = ["Absent", "Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "LineOrder", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size", "Words",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]
