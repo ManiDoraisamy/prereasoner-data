@@ -41,7 +41,8 @@ been removed, and that commit holds the code that ran.
   --set wtq-train --squall`, 11 questions): right 4 -> 6 (3 wins, 1 loss), built 5 -> 8. Decisions spend $0.01.
 - Spider calibration, 1,053 questions, `whole_db`, served, fresh (`--data spider/calibration`, at ca5dfb2e): answered
   836, strict 373, lenient 581, scalar gold 278 of 377, the same as fp1 (0 wins, 0 losses; 1,052 of 1,053 serve the
-  same SQL); the Python and SQL programs verified alike on all 836; prediction median 1.7 s, p95 3.2 s.
+  same SQL); the Python and SQL programs verified alike on all 836; prediction median 1.7 s, p95 3.2 s. Records
+  `spider/results/full_eval_spread_ca5dfb2e.json`, `full_eval_per_example_spread_ca5dfb2e.json.gz`.
 
 ## A text column's figures read as numbers and lines taken by where they stand: the engine alone, no retry, 689 -> 703 of a fresh 1,000 WikiTableQuestions test questions (built 802 -> 823); on the 896 dev questions 717 -> 725 picked right, unwarned wrong 66 -> 65, demo unchanged; a side-by-side re-ask of close runners-up fails (2026-11-23)
 
@@ -84,8 +85,8 @@ been removed, and that commit holds the code that ran.
 - **The find set (training questions)**, the engine alone: WikiTableQuestions 600: right 447 -> 474 (28 wins, 1 loss),
   built 524 -> 541; DataBench 400: 319 -> 321 (4 wins, 2 losses), built 351 -> 349 (the two lost are reading shifts on
   workbooks whose new part columns change the reading call's sheet).
-- **Public sets, the engine alone (no retry), Decisions calls only** (`engine-reach-20261122/local/public_set.py`,
-  graded as `public-bench-20261122/local/run_bench.py` grades: WikiTableQuestions' official evaluator, DataBench's
+- **Public sets, the engine alone (no retry), Decisions calls only** (`regress/run_public.py --system engine`, records
+  `regress/sets/public/records/2026-11-23-{head,fp1}/`; graded by WikiTableQuestions' official evaluator and DataBench's
   `default_compare`):
 
   | Set | HEAD | Steps 1+2 | Wins / losses | Built (HEAD -> 1+2) |
@@ -103,19 +104,19 @@ been removed, and that commit holds the code that ran.
   91, unchanged; five pools of eval-neartail-ecommerce change, no outcome. Parity replay of fp1 on this commit: all 896
   and the 91 demo questions cache hits, every outcome equal (the three label-only mismatches HEAD also shows: the warned
   answer whose reading reads like another's, which the probe's labeler does not know). The dev replay's reference adds
-  the fp1 layer (`decisions-probe-20261118/results/e2e_fp1_stock_{set}.jsonl.gz`, the demo's
-  `e2e_fp1_stock_demo.jsonl.gz`).
+  the fp1 layer (`regress/sets/dev_decisions/records/fp1_demo/` and the references in
+  `regress/sets/dev_decisions/reference/`).
 - Spider calibration, 1,053 questions, `whole_db`, served, fresh (`spider/probe/full_eval.py --config whole_db
-  --selection served`; records in `C:/work/prereasoner-scratch/spider-fp1/`): answered 836, strict **373** (35.4%),
+  --selection served`; records `spider/results/full_eval_fp1_e5b8332c_dirty.json`, `full_eval_per_example_fp1_e5b8332c_dirty.json.gz`): answered 836, strict **373** (35.4%),
   lenient 581 (55.2%), scalar gold 278 of 377; the Python and SQL programs verified alike on all 836; prediction median
-  1.9 s, p95 3.4 s. Against v1 at `48abf835` (371 strict, 2026-11-21; the retry's commits lie between): 14 strict
+  1.9 s, p95 3.4 s. Against v1 at `48abf835` (371 strict, 2026-11-21, `spider/results/full_eval_v1_48abf835.json`, `full_eval_per_example_v1_48abf835.json.gz`; the retry's commits lie between): 14 strict
   wins, 12 losses, 852 of 1,053 serving the same SQL.
 - Checks: tests (program 89, answer 26, SQL AST 90, connected 18, sheet compiler 72); the hermetic repository run, every
   suite passing (`tests.test_complex_datasets` reads the knowledgebase and passes 6 of 6 through the Cloud SQL proxy);
   the offline regression gate, 8 passed and the 5 known limitations as at v1; `tests.test_datasets` live, PASS; ruff
   F/E9, bandit on tracked code, the dependency locks.
-- Provenance: base `e5b8332c`, dirty with this change; the runners and records are in
-  `training/readers/data/experiments/engine-reach-20261122/` (gitignored); Decisions endpoint `gemini-decision-1`, no
+- Provenance: base `e5b8332c`, dirty with this change; the runners are `regress/run_public.py` and
+  `regress/run_dev_decisions.py`, the records `regress/sets/public/records/` and `regress/sets/dev_decisions/records/`; Decisions endpoint `gemini-decision-1`, no
   model artifact changed (`engine/data/weights_manifest.json` untouched). Decisions spend $5.03 (recorded calls), of
   the $30 the owner allowed.
 
