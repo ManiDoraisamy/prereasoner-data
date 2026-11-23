@@ -13,7 +13,8 @@ clone names exactly what to fetch and checks what it got. Git holds what is smal
 A group restores either into the repository (``repo``: gitignored experiment folders, at their own paths) or under the
 archive root (``archive``: PREREASONER_ARCHIVE, default the folder that holds this clone, at the path the group was
 packed from relative to its base). Hardlinked files inside one group are stored once. Reading and packing need
-HF_TOKEN with access to the dataset.
+HF_TOKEN with access to the dataset, and Python 3.14 or later (the standard library's zstd); ``archived`` alone, which
+the training code imports, runs on any supported Python.
 """
 from __future__ import annotations
 
@@ -29,8 +30,6 @@ import tempfile
 import time
 from pathlib import Path
 
-from compression import zstd
-
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = Path(__file__).with_name("archive.json")
 REPO_ID = "manidoraisamy/prereasoner-archive"
@@ -41,6 +40,15 @@ WEIGHTS = frozenset({".pt", ".pth", ".bin", ".safetensors", ".ckpt", ".gguf", ".
                      ".msgpack", ".model"})
 SKIP_DIRS = frozenset({".git", "__pycache__", "node_modules", ".venv"})
 RESTORES = ("repo", "archive")
+
+
+def _zstd():
+    """The standard library's zstd (Python 3.14+), which packing and fetching need."""
+    try:
+        from compression import zstd
+    except ImportError:
+        raise SystemExit("training.archive pack and fetch need Python 3.14 or later (compression.zstd)") from None
+    return zstd
 
 
 def archive_root() -> Path:
@@ -149,6 +157,7 @@ def pack(group: str, sources: list[Path], base: Path, restore: str, weights: str
     parts: list[dict] = []
     counted = {"files": 0, "bytes": 0}
     started = time.time()
+    zstd = _zstd()
 
     def done(index: int, path: Path, sha: str, size: int) -> None:
         name = f"{group}/part-{index:04d}.tar.zst"
@@ -202,6 +211,7 @@ class Chain(io.RawIOBase):
 def fetch(group: str) -> Path:
     """Download a group's parts, check every sha256 against the manifest, and unpack it where it restores."""
     from huggingface_hub import hf_hub_download
+    zstd = _zstd()
     entry = manifest()["groups"][group]
     local = []
     for part in entry["parts"]:
