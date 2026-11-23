@@ -39,7 +39,9 @@ been removed, and that commit holds the code that ran.
   unchanged (two pools change, no outcome); all 896: built 790 -> 792, picked 725 -> 727, unwarned wrong 65 -> 64.
   Demo: 84 right, 2 warned right, 4 erred, 1 wrong of 91, unchanged. Its training family (`regress/run_public.py
   --set wtq-train --squall`, 11 questions): right 4 -> 6 (3 wins, 1 loss), built 5 -> 8. Decisions spend $0.01.
-- Not run for this change alone: Spider and the public sets (they run once, after the night's changes).
+- Spider calibration, 1,053 questions, `whole_db`, served, fresh (`--data spider/calibration`, at ca5dfb2e): answered
+  836, strict 373, lenient 581, scalar gold 278 of 377, the same as fp1 (0 wins, 0 losses; 1,052 of 1,053 serve the
+  same SQL); the Python and SQL programs verified alike on all 836; prediction median 1.7 s, p95 3.2 s.
 
 ## A text column's figures read as numbers and lines taken by where they stand: the engine alone, no retry, 689 -> 703 of a fresh 1,000 WikiTableQuestions test questions (built 802 -> 823); on the 896 dev questions 717 -> 725 picked right, unwarned wrong 66 -> 65, demo unchanged; a side-by-side re-ask of close runners-up fails (2026-11-23)
 
