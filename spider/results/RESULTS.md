@@ -7,6 +7,25 @@ been removed, and that commit holds the code that ran. Records cited under `prer
 (`training/archive.json` names each group; `python -m training.archive fetch GROUP`).
 
 
+## The choice reads a small table whole: pick 727 -> 733 with unwarned wrong level, not kept for one demo answer (2026-11-23)
+
+- Hypothesis: the choice saw each column's header and three example cells, so readings that only the lines tell apart
+  ("which game had the greatest score difference", "the line after Pegasus") read alike to it, while the written models
+  it is measured against read the whole table. Change tried: a table of at most 600 cells shown to the choice line by
+  line (cells to 40 characters; the reading call unchanged), the instruction saying so only when one is shown, so a
+  choice over larger tables is asked byte for byte as before.
+- Gate (the 896 and the 91 demo questions; 978 new choice calls, 6.4M tokens, $0.64, the later runs replayed):
+  built 792 -> 792; pick 727 -> 733 (10 wins, 4 losses: WikiTableQuestions 232 -> 237, 8 / 3; fresh dev 127 -> 129;
+  messy 105 -> 104; DataBench unchanged, no table small enough); unwarned wrong 64 -> 64 (WikiTableQuestions 28 -> 25,
+  fresh dev 17 -> 21, messy 2 -> 1); unmarked right 652 -> 655; erred 83 -> 77. The first form, the instruction changed
+  for every choice, measured 730 and 65.
+- Demo: 86 answered right and 1 wrong as before, but two answers swapped: customer-orders #1 (Europe's total in GBP)
+  from unwarned wrong to right, and formfacade-bank-deposits #2, a release-gated question ("which country has the most
+  deposits?" => Switzerland), from warned right to warned wrong: with the lines in view the choice took the country of
+  the single largest deposit over the largest total. The gate keeps demo answers unchanged, as on 2026-11-18, so it is
+  not kept; it is the one form today that moved the pick.
+- Diff, records and recorded calls: `prereasoner-scratch/patches/whole-tables-20261123/` in the archive.
+
 ## The choice asked in both orders, its probabilities averaged: pick 727 -> 725, not kept (2026-11-23)
 
 - Hypothesis: the choice reads its listings in decoder order, best first, and a listing's place moves its probability
