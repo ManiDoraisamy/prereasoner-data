@@ -10,6 +10,24 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Every dash read as a no-value mark: on the 178 WikiTableQuestions tables holding one, the training questions 676 -> 670 right of 943; not kept (2026-11-24)
+
+- Hypothesis: a typeset table writes "no value" as an en or em dash where a typed one writes a hyphen, and only the
+  hyphen read as a marker. Read as text, the dashes made a first record look unlike the line under it (six tables
+  kept a record in their header) and mixed text into number columns. Change tried: the figure, en and em dashes, the
+  horizontal bar and the minus sign join the markers (`engine/sheet/values.py`), with a regression test.
+- Its family: 178 tables hold a dash-only cell, carrying 1,089 training questions (943 in the find sets) and 412
+  test questions. Records `prereasoner-scratch/patches/dash-markers-20261124/public/` in the archive.
+  - Annotated: right 611 -> 611 (13 wins, 13 losses), built 691 -> 696, unmarked wrong 90 -> 88.
+  - Unannotated: right 65 -> 59 (1 win, 7 losses), unmarked wrong 46 -> 49.
+  - About 110 answers changed their mark: a marker shows no text to the reading and choice calls, and readings
+    moved both ways ("the last single on the NZ charts" read as the lines where NZ is filled, which counts the dashes).
+- Dev, before stopping: WikiTableQuestions picks 233 -> 235 (2 wins, 0 losses), unwarned wrong 28 -> 27; demo and
+  messy at parity; fresh dev one warned wrong to warned right. These are within the churn the family shows.
+- Not kept. The diff, records and the change's calls are in `prereasoner-scratch/patches/dash-markers-20261124/` in
+  the archive, and the before-run's calls (today's code) are under `regress/sets/calls/`. Decisions spend $0.90.
+
+
 ## A short last line under a record is a record: the states that only observe stay in the table; on the 7 WikiTableQuestions tables it changes, the training questions 16 -> 18 right of 23 (2026-11-24)
 
 - Members, then three states that only observe, their other columns blank. The last lines held no figure and few
