@@ -9,13 +9,14 @@ from dataclasses import dataclass
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
 from engine.program.language import (LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
-from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
+from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
 from engine.program.store import RequestTables
 from engine.sheet.formulas import column_letter
 
-_AGG_WORDS = {SUM: "total", AVG: "average", MIN: "lowest", MAX: "highest", COUNT: "number of lines", COUNT_DISTINCT: "number of different"}
+_AGG_WORDS = {SUM: "total", AVG: "average", MIN: "lowest", MAX: "highest", COUNT: "number of lines", COUNT_DISTINCT: "number of different",
+              LONGEST_RUN: "most lines in a row"}
 _COMPARE_WORDS = {EQ: "equal to", GE: "at least", GT: "above", LE: "at most", LT: "below", NE: "other than"}
 _OP_WORDS = {PLUS: "plus", MINUS: "minus", TIMES: "times", OVER: "over"}
 _VERDICT_WORDS = {GT: "above", GE: "at least", LT: "below", LE: "at most", EQ: "equal to", NE: "different from"}
@@ -234,8 +235,8 @@ def read_as(program: Program, catalog: Catalog) -> str:
         return f"{head} for each {each} {place}" + (f" where {where}" if where else "")
     if isinstance(program, Agg):
         where = _where_words(catalog, program.where)
-        if program.function == COUNT:
-            head = f"the number of lines {place}"
+        if program.function in (COUNT, LONGEST_RUN):
+            head = f"the {_AGG_WORDS[program.function]} {place}"
         elif program.function == COUNT_DISTINCT:
             head = f"the number of different {_name(catalog, program.measure)} {place}"
         else:
@@ -271,8 +272,8 @@ def read_as(program: Program, catalog: Catalog) -> str:
 
 
 def _figure_name(program: Agg | Breakdown | Rank, catalog: Catalog) -> str:
-    if program.function == COUNT:
-        return _AGG_WORDS[COUNT]
+    if program.function in (COUNT, LONGEST_RUN):
+        return _AGG_WORDS[program.function]
     if program.function == COUNT_DISTINCT:
         return f"{_AGG_WORDS[COUNT_DISTINCT]} {_name(catalog, program.measure)}"
     return f"{_AGG_WORDS[program.function]} {_measure_words(catalog, program.measure)}"
@@ -635,6 +636,12 @@ def _breakdown_formula(program: Breakdown, table: CatalogTable, tables: RequestT
 
 def _agg_formula(program: Agg, table: CatalogTable, tables: RequestTables) -> str:
     catalog = tables.catalog
+    if program.function == LONGEST_RUN:     # the longest run of kept lines: FREQUENCY counts the kept rows between misses
+        tests = _filter_array(catalog, program.where)
+        if not tests or not _plain_range(table):
+            return "=NA()"
+        rows = f"ROW({_range(table, 0)})"
+        return f"=MAX(FREQUENCY(IF({tests},{rows}),IF(NOT({tests}),{rows})))"
     criteria = _criteria(catalog, program.where)
     plain = criteria is not None and _plain_range(table)
     if program.function == COUNT:

@@ -10,6 +10,54 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Lines in a row: "how many consecutive wins" gets a program of its own; the engine alone 684 -> 691 of the final fresh 1,000 WikiTableQuestions test questions (7 wins, 0 losses), the 896 unchanged; a verdict said "Yes" or "No" loses three dev picks, not kept (2026-11-24)
+
+- **Where the unbuilt questions are.** The find set (`wtq-train`) holds only the training questions SQUALL annotates,
+  9,070 of the 11,321 outside dev. The engine builds the right query for 89% of those but for 79% of the test sample, so
+  the fifth that SQUALL leaves out (the questions its SQL could not write) carries much of the gap. A new diagnosis set,
+  `wtq-train-open` (`regress/eval_sets.py` `wtq_train(annotated=False)`, `regress/run_public.py --set wtq-train-open`):
+  600 of those 2,251, the engine alone right on 232 (38.7%), built 347 (57.8%); records
+  `regress/sets/public/records/2026-11-24-open/`. Its 253 unbuilt questions, read one by one, fall into a long tail of
+  families. The largest: an unbroken run of lines ("how many consecutive wins", 41 of the 600: 212 of the 11,321
+  training questions, 180 of them among the unannotated); an "A or B?" answered with a whole cell where the question
+  names part of it ("The Price to Pay 五個醒覺的少年" for "the price to pay", about 15); a country or place inside a
+  cell ("Felix Loch (GER)", "Calgary, Alberta, Canada", about 18); a decade or century ("in the 1970's", 44 of the
+  training questions); durations printed as seconds; the climate tables' months as columns.
+- **Kept: the longest run.** The language had no run: every count counted all the kept lines. `Agg` with the function
+  `LONGEST_RUN` counts the most data lines in a row, as the sheet lists them, that every condition keeps: a line a
+  condition does not keep, or a blank cell, ends a run, and none kept is 0. The typed query renders it as gaps and
+  islands (`engine/sql_ast.py` `LongestRun`, window functions); the plan carries it as `RunView`, which both
+  deterministic emitters implement (the Python program sorts the lines and counts), checked alike in
+  `tests/test_program.py`; its read-as is "the most lines in a row on ... where ...", its formula
+  `=MAX(FREQUENCY(IF(kept,ROW(r)),IF(NOT(kept),ROW(r))))`. The decoder offers it beside a count only where the order
+  call reads a run: that call (`engine/program/closed.py` `order_record`) asks a second closed question over the
+  question alone, `line_run`, which joins the reading as `order:run`; every question's order call asks it, and the
+  reading call's body is unchanged.
+- **Gate** (`regress/run_dev_decisions.py --record`, then each set's records kept as its reference): the 896 built
+  792, picked 727, unwarned wrong 64, all unchanged; the demo's 91 at parity (84 right, 2 warned right, 4 erred, 1
+  wrong); every set at parity but one WikiTableQuestions listing (nt-9583, "how many consecutive floor exercise gold
+  medals", right before and after: the dev sets hold two such questions, both counts of all their lines). Its family,
+  on training questions: `wtq-train-open` 232 -> 241 (11 wins, 2 losses, every change a run question: 16 -> 25 of 41;
+  built 347 -> 357; the two losses ask "consecutive" of lines that are all the kept ones, where the count was right).
+  **Confirmation on the final fresh sample** (`wtq-fresh2`, 1,000 test questions, records
+  `regress/sets/public/records/2026-11-24-streak/`): the engine alone 684 -> **691** (7 wins, 0 losses, sign p 0.008),
+  built 792 -> 797. Against Gemini 4 Neon's 850 on the same sample, the gap is 159 questions.
+- **Not kept: a verdict said "Yes" or "No".** WikiTableQuestions writes a yes-or-no answer as "yes" or "no" (147 of
+  the training questions; "true" or "false" on 4, each asking "true or false"), which the engine's "True" never
+  matches under the official evaluator. Rendering a verdict "Yes"/"No" (`engine/program/execute.py`), with the
+  DataBench dev comparison reading yes as true as its official grader does: `wtq-train-open` 0 -> 5 of its 7 yes-or-no
+  questions, but on the 896 picks 727 -> 724 with unwarned wrong level (WikiTableQuestions 1 win, 1 loss on "true or
+  false?"; DataBench 1 loss; fresh dev 1 win, 3 losses; messy and demo level): the choice reads its candidates'
+  answers, and with "Yes"/"No" in them it picks worse on yes-or-no questions than with "True"/"False". The diff,
+  records and calls: `prereasoner-scratch/patches/verdict-20261124/` and `regress/sets/calls/2026-11-24-verdict.jsonl.gz`,
+  `2026-11-24-run.jsonl.gz` (with the run), records `regress/sets/public/records/2026-11-24-open-run/`.
+- Decisions spend $0.70 (the open set's first run $0.64), of the $30 the owner allowed.
+- Checks: tests (program 91, answer 26, SQL AST 91, deterministic emitters 75, decomposition 16); the hermetic
+  repository run, every suite passing (`tests.test_complex_datasets` reads the knowledgebase and passes 6 of 6 through
+  the Cloud SQL proxy); the offline regression gate PASS; `tests.test_enrichment` 37 of 37; ruff F/E9, bandit, Python
+  3.11 compile. Spider calibration on this commit is the next entry's.
+
+
 ## The choice reads a small table whole: pick 727 -> 733 with unwarned wrong level, not kept for one demo answer (2026-11-23)
 
 - Hypothesis: the choice saw each column's header and three example cells, so readings that only the lines tell apart

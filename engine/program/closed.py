@@ -49,7 +49,7 @@ from engine.program.catalog import KIND_FAMILY, KIND_TABLE, Catalog
 from engine.program.decoder import table_reach
 from engine.program.index import index_of
 from engine.program.language import PeriodSpan, period_from_name
-from engine.program.names import (EVERY_COLUMN, FIRST, LAST, PERCENT_OP, SAID_ABOVE, SAID_BELOW, SLOT_ANSWER_TYPE, SLOT_LISTING, SLOT_NUMBER, SLOT_ORDER, SLOT_PERIOD,
+from engine.program.names import (EVERY_COLUMN, FIRST, LAST, PERCENT_OP, RUN, SAID_ABOVE, SAID_BELOW, SLOT_ANSWER_TYPE, SLOT_LISTING, SLOT_NUMBER, SLOT_ORDER, SLOT_PERIOD,
                                   SLOT_ROW_OP, SLOT_SAID, SLOT_SHOWN, coarse_type, coordinate)
 from engine.program.scoring import Reading
 from engine.program.semantics import fold, number_text
@@ -774,28 +774,35 @@ ORDER_QUESTION = ("Does the question take rows by where they stand in the table 
                   "they hold: its first rows, or its last rows?")
 ORDER_OPTIONS = {"o00": "its first rows, as the table lists them", "o01": "its last rows, as the table lists them"}
 ORDER_ENDS_OF = {"o00": FIRST, "o01": LAST}
+RUN_QUESTION = ("Does the question ask how many rows stand in an unbroken run, one right after another as the table lists "
+                "them, all meeting what it says (consecutive ones, in a row), rather than how many there are in all?")
+RUN_OPTIONS = {"r00": "the most rows in an unbroken run, one right after another"}
 
 
 def order_record(question: str) -> tuple[dict, dict]:
-    """The order call: one closed question over the question alone (no sheet is needed to read it), whether it takes the
-    first or the last lines of a table as the sheet lists them ("the first venue", "the last 3 entries"), or neither.
-    It is a call of its own, so the reading call's body is the same whether it is asked or not."""
-    return {"question": question}, {"line_order": {"instructions": ORDER_QUESTION, "criteria": {**ORDER_OPTIONS, NONE: "neither"}}}
+    """The order call: two closed questions over the question alone (no sheet is needed to read them): whether it takes
+    the first or the last lines of a table as the sheet lists them ("the first venue", "the last 3 entries"), or
+    neither; and whether it counts the most lines in a row ("how many consecutive wins"), or not. It is a call of its
+    own, so the reading call's body is the same whether it is asked or not."""
+    return {"question": question}, {"line_order": {"instructions": ORDER_QUESTION, "criteria": {**ORDER_OPTIONS, NONE: "neither"}},
+                                    "line_run": {"instructions": RUN_QUESTION, "criteria": {**RUN_OPTIONS, NONE: "neither"}}}
 
 
 def order_scores(scores: Mapping[str, float], fields: Mapping[str, Mapping[str, float]]) -> dict[str, float]:
-    """Each end the API holds likelier than neither joins the reading as order:first or order:last, at W * (log p - log
-    p(none)), as said_scores reads its spans; the decoder ranks lines by where they stand only where one is set
-    (engine/program/decoder.py table_frames)."""
+    """Each end the API holds likelier than neither joins the reading as order:first or order:last, and a run it holds
+    likelier than neither as order:run, at W * (log p - log p(none)), as said_scores reads its spans; the decoder ranks
+    lines by where they stand, or counts the most in a row, only where one is set (engine/program/decoder.py
+    table_frames)."""
     out = dict(scores)
-    probabilities = fields.get("line_order") or {}
-    if not probabilities:
-        return out
-    none = max(probabilities.get(NONE, 0.0), P_FLOOR)
-    for key, end in ORDER_ENDS_OF.items():
-        term = W * (_log(probabilities.get(key, 0.0)) - math.log(none))
-        if term > 0:
-            out[coordinate(SLOT_ORDER, end)] = round(term, SCORE_DIGITS)
+    for field, read in (("line_order", ORDER_ENDS_OF), ("line_run", {"r00": RUN})):
+        probabilities = fields.get(field) or {}
+        if not probabilities:
+            continue
+        none = max(probabilities.get(NONE, 0.0), P_FLOOR)
+        for key, value in read.items():
+            term = W * (_log(probabilities.get(key, 0.0)) - math.log(none))
+            if term > 0:
+                out[coordinate(SLOT_ORDER, value)] = round(term, SCORE_DIGITS)
     return out
 
 

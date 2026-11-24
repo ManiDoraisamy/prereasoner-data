@@ -11,6 +11,8 @@ Sets (regress/eval_sets.py loads them; a sample is a committed list of ids, regr
   wtq-<name>       any further sample made with --new-sample (its seed and the samples it leaves out are recorded)
   wtq-train        seeded WikiTableQuestions training questions SQUALL annotates, with SQUALL's human-written query (the
                    find set, read for diagnosis; --skip and --size choose which); never a gate
+  wtq-train-open   seeded training questions SQUALL does not annotate (a fifth of training, the questions its SQL did not
+                   write; test questions are not screened so): read for diagnosis, never a gate
   databench-train  DataBench train 001-049 (at most 60,000 rows), 400 seeded questions; never a gate
 Systems:
   engine       the Decisions path alone (engine/tables.py TableQuery.select_query): the erred answer's likeliest pick
@@ -248,8 +250,8 @@ def items_of(name: str, size: int | None, skip: int) -> tuple[list, dict, dict]:
         items = sorted((item for item in eval_sets.databench("train", max_rows=60000) if item.label == "gold"), key=lambda item: item.id)
         random.Random(DATABENCH_TRAIN_SEED).shuffle(items)
         return sorted(items[skip:skip + (size or DATABENCH_TRAIN)], key=lambda item: (item.book, item.id)), {}, {}
-    if name == "wtq-train":
-        items, sql = eval_sets.wtq_train(size or 600, skip)
+    if name in ("wtq-train", "wtq-train-open"):
+        items, sql = eval_sets.wtq_train(size or 600, skip, annotated=name == "wtq-train")
         return items, {}, sql
     if name.startswith("wtq-"):
         return eval_sets.wtq_test(sample(name)["ids"]), {}, {}

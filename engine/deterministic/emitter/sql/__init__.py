@@ -32,6 +32,7 @@ from engine.deterministic.plan import (
     PredicateValue,
     ProjectedView,
     ReducedView,
+    RunView,
     SortedView,
     SpanValue,
     Value,
@@ -234,6 +235,25 @@ class SQLEmitter:
                     view, available_tables, available_values, item(view.source)
                 )
                 available_values.add(view.output)
+            elif isinstance(view, RunView):
+                # Gaps and islands: a row's place among the rows less its place among the rows kept alike is the same
+                # along each unbroken run; the kept runs are counted and the longest answers, 0 when none is kept.
+                available_tables = set(tables_by_view[view.source])
+                available_values = set(values_by_view[view.source])
+                keep = self._predicate(view.predicate, available_tables, available_values)
+                order = self._value(view.order, available_tables, available_values)
+                hit = f"CASE WHEN {keep} THEN 1 ELSE 0 END"
+                lines = (
+                    f"SELECT {hit} AS {_q('hit')}, ROW_NUMBER() OVER (ORDER BY {order}) - ROW_NUMBER() OVER "
+                    f"(PARTITION BY {hit} ORDER BY {order}) AS {_q('run')} FROM {relation(view.source)}"
+                )
+                sql = (
+                    f"SELECT COALESCE(MAX({_q('length')}), 0) AS {_q(view.output)} FROM (SELECT COUNT(*) AS "
+                    f"{_q('length')} FROM ({lines}) AS {_q('lines')} WHERE {_q('hit')} = 1 GROUP BY {_q('run')}) "
+                    f"AS {_q('runs')}"
+                )
+                available_tables = set()
+                available_values = {view.output}
             else:
                 raise TypeError(f"unsupported SQL view: {type(view).__name__}")
             statements.append(f"CREATE TEMP VIEW {_q(view.name)} AS {sql}")

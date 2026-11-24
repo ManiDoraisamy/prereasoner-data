@@ -18,7 +18,7 @@ from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
 from engine.program.language import (Absent, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, LineOrder, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (FIRST, LAST, LOWEST, SLOT_ORDER, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.names import (FIRST, LAST, LONGEST_RUN, LOWEST, RUN, SLOT_ORDER, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, GRAIN_MONTH, PERCENT_OP, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -871,6 +871,8 @@ class _Search:
         # "the US and Jamaica combined", "members from Lawton and Oklahoma City": a total or a count over a choice of named
         # values is one figure over both; an average, a lowest or a highest of a choice is a rank's question
         frames += self.condition_frames(count, (), lambda options, where: Agg(COUNT, None, table.id, where), table, index, atoms, choices=True)
+        if s(coordinate(SLOT_ORDER, RUN)) > 0:     # the most lines in a row ("how many consecutive wins"): only where the order call reads a run
+            frames += self.condition_frames(count + s(coordinate(SLOT_ORDER, RUN)), (), lambda options, where: _longest_run(table.id, where), table, index, atoms, min_conditions=1, choices=True)
         distinct = agg + s(coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)) + self.type_score(A_COUNT)
         keys = self.column_options(table, all_positions, SLOT_MEASURE)
         frames += self.condition_frames(distinct, (keys,), lambda options, where: Agg(COUNT_DISTINCT, options[0], table.id, where), table, index, atoms, max_policy=2)
@@ -1221,6 +1223,14 @@ def _versus_aggregate(table_id, options, where, function, op, said=None):
     if a == b:
         return None
     return Check(VERSUS, Agg(function, a, table_id, where), op=op, right=Agg(function, b, table_id, where), said=said)
+
+
+def _longest_run(table_id, where):
+    """The most lines in a row the conditions keep, or None where a longest run cannot read them (a printed line)."""
+    try:
+        return Agg(LONGEST_RUN, None, table_id, where)
+    except ValueError:
+        return None
 
 
 def _same_lines(table_id, options, where, first, second):

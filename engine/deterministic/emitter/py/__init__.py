@@ -32,6 +32,7 @@ from engine.deterministic.plan import (
     PredicateValue,
     ProjectedView,
     ReducedView,
+    RunView,
     SortedView,
     SpanValue,
     TableSpec,
@@ -506,6 +507,9 @@ class PythonEmitter:
             elif isinstance(view, WindowView):
                 current_tables = dict(stage_tables[view.source])
                 current_values = stage_values[view.source] | {view.output}
+            elif isinstance(view, RunView):
+                current_tables = {}
+                current_values = {view.output}
             elif isinstance(view, ProjectedView):
                 current_tables = {}
                 current_values = {value.name for value in view.values}
@@ -726,6 +730,23 @@ class PythonEmitter:
                         stage_tables[view.source],
                         stage_values[view.source],
                     )
+                )
+            elif isinstance(view, RunView):
+                keep = self._python_predicate(
+                    plan, view.predicate, "row", stage_tables[view.source], stage_values[view.source]
+                )
+                order = self._python_value(
+                    plan, view.order, "row", stage_tables[view.source], stage_values[view.source]
+                )
+                lines.extend(
+                    [
+                        f"        {view.name} = {view.source}.longest_run(",
+                        f"            name={view.name!r},",
+                        f"            order=lambda row: {order},",
+                        f"            keep=lambda row: {keep},",
+                        f"            emit=lambda length: {row_classes[view.name]}({view.output}=length),",
+                        "        )",
+                    ]
                 )
             lines.append("")
             view_sources[view.name] = "\n".join(lines[stage_start : len(lines) - 1])
@@ -1339,6 +1360,9 @@ def _operator_imports(plan: AnalysisPlan) -> tuple[str, ...]:
                     add_value(aggregate.operand)
         elif isinstance(view, WindowView):
             names.update({"SUM", "EQ", "LE", "ADD", "SUBTRACT", "DIVIDE"})
+        elif isinstance(view, RunView):
+            add_predicate(view.predicate)
+            add_value(view.order)
     return tuple(sorted(names))
 
 

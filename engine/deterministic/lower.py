@@ -30,6 +30,7 @@ from engine.deterministic.plan import (
     ProjectedView,
     ReducedView,
     RelationshipSpec,
+    RunView,
     SelectedValue,
     SortedView,
     SortValue,
@@ -52,6 +53,7 @@ from engine.sql_ast import (
     InPredicate,
     Lower,
     Literal,
+    LongestRun,
     ScalarSubquery,
     SelectItem,
     SelectQuery,
@@ -308,6 +310,17 @@ def lower_select_query(
                 _predicate(query.where, bound),
             )
         )
+    # The longest run of the rows the filter keeps, in order (engine/sql_ast.py LongestRun): one value, selected alone.
+    if any(isinstance(item.expression, LongestRun) for item in query.select):
+        run = query.select[0].expression
+        if len(query.select) != 1 or not isinstance(run, LongestRun) or bound or query.group_by or query.order_by or query.distinct:
+            raise UnsupportedDeterministicPlan("a longest run is selected alone")
+        views.append(RunView(f"{slug}_run", views[-1].name, _select_names(query.select)[0],
+                             _predicate(run.predicate), _value(run.order)))
+        try:
+            return AnalysisPlan(slug, table_specs, tuple(views))
+        except (ValueError, TypeError) as exc:
+            raise UnsupportedDeterministicPlan(str(exc)) from exc
 
     # A share (sql_ast.share_of) is its part, aggregated with the rest, over the same aggregate of every
     # row the query reads: the whole, crossed in after the reduction and divided out.

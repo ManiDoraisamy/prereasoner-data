@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, LONGEST_RUN, RUN, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAIN_MONTH, PERCENT_OP, coordinate)
 from engine.program.semantics import fold, number_text
@@ -387,7 +387,8 @@ class Show:
 
 @dataclass(frozen=True, slots=True)
 class Agg:
-    """f of a measure over the data lines the conditions keep. Blanks and text cells are skipped; count takes no measure, a distinct count a column. magnitude states the result by its size."""
+    """f of a measure over the data lines the conditions keep. Blanks and text cells are skipped; count takes no measure, a distinct count a column. magnitude states the result by its size.
+    The longest run (LONGEST_RUN) counts too, but only the most data lines in a row, as the sheet lists them, that all the conditions keep: a line they do not keep ends a run ("how many consecutive wins"), and 0 when none does."""
     function: str
     measure: Measure | None
     table: str
@@ -395,6 +396,10 @@ class Agg:
     magnitude: bool = False
 
     def __post_init__(self):
+        if self.function == LONGEST_RUN:
+            if self.measure is not None or not self.where or self.magnitude or addresses_printed(self.where):
+                raise ValueError("a longest run counts data lines a condition keeps, and nothing else")
+            return
         if self.function not in AGGREGATES:
             raise ValueError(f"unknown aggregate: {self.function}")
         if (self.function == COUNT) != (self.measure is None):
@@ -689,7 +694,10 @@ def _body_coordinates(program: Program) -> list[str]:
             for condition in program.absent.where:
                 names.extend(condition_coordinates(condition))
     elif isinstance(program, Agg):
-        names.append(coordinate(SLOT_AGGREGATE, program.function))
+        if program.function == LONGEST_RUN:     # a count of lines in a row: the count's aggregate, the run the order slot's
+            names.extend((coordinate(SLOT_AGGREGATE, COUNT), coordinate(SLOT_ORDER, RUN)))
+        else:
+            names.append(coordinate(SLOT_AGGREGATE, program.function))
         if program.measure is not None:
             names.extend(measure_coordinates(program.measure))
         if program.magnitude:
@@ -747,7 +755,7 @@ def answer_type_of(program: Program, column_kind) -> str:
     if isinstance(program, Calc):
         return A_PERCENT if program.op == OVER else A_NUMBER
     if isinstance(program, Agg):
-        return A_COUNT if program.function in (COUNT, COUNT_DISTINCT) else A_NUMBER
+        return A_COUNT if program.function in (COUNT, COUNT_DISTINCT, LONGEST_RUN) else A_NUMBER
     if isinstance(program, Breakdown):      # a figure for each group: the figure's type
         return A_COUNT if program.function == COUNT else A_NUMBER
     if isinstance(program, Show):

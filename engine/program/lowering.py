@@ -10,12 +10,12 @@ from dataclasses import replace
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
 from engine.program.language import (Absent, LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
-from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
+from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (DATE, INTEGER, LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, REAL, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, TEXT, day_column, fold_column,
                                   number_column, peers_table, sql_table, table_columns, table_id_of, text_column, words_column)
 from engine.sheet.names import RECORD
-from engine.sql_ast import (Abs, Aggregate, BinaryExpr, BlankAsZero, BooleanExpr, ColumnRef, Comparison, DatePart, InPredicate, Join, Literal, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SQLType, Star, and_predicates, column_refs)
+from engine.sql_ast import (Abs, Aggregate, BinaryExpr, BlankAsZero, BooleanExpr, ColumnRef, Comparison, DatePart, InPredicate, Join, Literal, LongestRun, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SQLType, Star, and_predicates, column_refs)
 
 _FUNCTIONS = {SUM: "SUM", AVG: "AVG", MIN: "MIN", MAX: "MAX"}
 VALUE = "value"
@@ -208,6 +208,9 @@ def _reads_printed(measure: Measure, table) -> bool:
 
 def _agg_query(program: Agg, catalog: Catalog) -> SelectQuery:
     table = program.table
+    if program.function == LONGEST_RUN:     # every data line stands in line; the conditions keep the run's lines
+        run = LongestRun(_where(*map(_condition, program.where)), ColumnRef(sql_table(table), LINE, SQLType.INTEGER))
+        return SelectQuery((SelectItem(run, VALUE),), sql_table(table), where=_data_lines(table))
     guard = None
     if program.function == COUNT:
         value = Aggregate("COUNT", Star())

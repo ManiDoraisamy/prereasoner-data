@@ -434,6 +434,23 @@ class WindowView:
 
 
 @dataclass(frozen=True)
+class RunView:
+    """The longest run of the source's rows, as ``order`` lists them, that ``predicate`` keeps: one row whose one value
+    (``output``) counts the most rows in a row the predicate holds for, 0 when it holds for none; a row it does not hold
+    for, or reads as unknown, ends a run ("how many consecutive wins", engine/program LONGEST_RUN)."""
+
+    name: str
+    source: str
+    output: str
+    predicate: "PredicateValue | JunctionValue"
+    order: Value
+
+    def __post_init__(self):
+        for value in (self.name, self.source, self.output):
+            _require_identifier(value, "run identifier")
+
+
+@dataclass(frozen=True)
 class MergeKey:
     """One output-column equality used by a derived-relation merge."""
 
@@ -516,6 +533,7 @@ ViewStep: TypeAlias = (
     | ReducedView
     | SortedView
     | WindowView
+    | RunView
     | CrossView
     | AntiJoinView
 )
@@ -822,6 +840,12 @@ class AnalysisPlan:
                     }:
                         raise ValueError("window output shadows a preceding value")
                     stage_values.add(view.output)
+                elif isinstance(view, RunView):
+                    self._validate_predicate(view.predicate, stage_tables, stage_values)
+                    self._validate_value(view.order, stage_tables, stage_values)
+                    stage_text = set()
+                    stage_tables = set()
+                    stage_values = {view.output}
             emitted.add(view.name)
             tables_by_view[view.name] = set(stage_tables)
             values_by_view[view.name] = set(stage_values)
@@ -934,6 +958,8 @@ class AnalysisPlan:
             return current + tuple(value.name for value in view.values)
         if isinstance(view, WindowView):
             return current + (view.output,)
+        if isinstance(view, RunView):
+            return (view.output,)
         if isinstance(view, ProjectedView):
             return tuple(value.name for value in view.values)
         if isinstance(view, ReducedView):
@@ -996,6 +1022,8 @@ class AnalysisPlan:
                     }
                 elif isinstance(view, ReducedView):
                     columns = {value.name for value in view.group_by if carried(value.value, current)}
+                elif isinstance(view, RunView):         # a count of rows carries no reference
+                    columns = set()
                 else:                                   # filtered, sorted and window stages keep their rows' columns
                     columns = set(current)
             out[view.name] = frozenset(columns)
@@ -1058,6 +1086,8 @@ class AnalysisPlan:
                     }
                 elif isinstance(view, WindowView):
                     numbers = set(current) | {view.output}
+                elif isinstance(view, RunView):
+                    numbers = {view.output}
                 elif isinstance(view, SortedView) and view.shown:
                     numbers = set(current) & set(view.shown)
                 else:                                   # filtered and sorted stages keep their rows' columns
@@ -1135,6 +1165,7 @@ class AnalysisPlan:
             ReducedView: "group_agg",
             SortedView: "sort",
             WindowView: "window",
+            RunView: "run",
             CrossView: "cross",
             AntiJoinView: "anti_join",
         }

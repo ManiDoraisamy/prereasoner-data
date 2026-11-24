@@ -32,6 +32,7 @@ from engine.sql_ast import (
     InPredicate,
     Join,
     Literal,
+    LongestRun,
     OrderTerm,
     SQLType,
     ScalarSubquery,
@@ -357,6 +358,33 @@ def test_world_aggregate_currency_binding_is_typed_and_unambiguous():
     assert KnowledgeTableQuery._currency_conversion_binding(
         "total amount in US dollars", aggregate, duplicate_schema, [edge, duplicate_edge]
     ) is None
+
+
+def test_a_longest_run_renders_alone_and_counts_unbroken_runs():
+    """The longest run (engine/program LONGEST_RUN, "how many consecutive wins") renders as gaps and islands over the
+    rows its WHERE reads, ordered by a number column; it is selected alone, and a row its predicate does not keep, or
+    reads as unknown, ends a run."""
+    import sqlite3
+
+    line, result = ColumnRef("games", "line", SQLType.INTEGER), ColumnRef("games", "result", SQLType.TEXT)
+    won = Comparison(result, "=", Literal("w", SQLType.TEXT))
+    query = SelectQuery((SelectItem(LongestRun(won, line), "value"),), "games",
+                        where=Comparison(ColumnRef("games", "kind", SQLType.TEXT), "=", Literal("game", SQLType.TEXT)))
+    connection = sqlite3.connect(":memory:")
+    connection.execute("CREATE TABLE games (line INTEGER, kind TEXT, result TEXT)")
+    played = [("game", "w"), ("game", "w"), ("game", "l"), ("note", "w"), ("game", "w"), ("game", "w"), ("game", "w"), ("game", None), ("game", "w")]
+    connection.executemany("INSERT INTO games VALUES (?, ?, ?)", [(at, kind, outcome) for at, (kind, outcome) in enumerate(played)])
+    assert connection.execute(render_query(query)).fetchall() == [(3,)]
+    connection.execute("DELETE FROM games")
+    assert connection.execute(render_query(query)).fetchall() == [(0,)]
+    for wrong in (SelectQuery((SelectItem(LongestRun(won, line), "value"), SelectItem(line)), "games"),
+                  SelectQuery((SelectItem(LongestRun(won, line), "value"),), "games", limit=1, order_by=(OrderTerm(line),)),
+                  SelectQuery((SelectItem(LongestRun(won, result), "value"),), "games")):
+        try:
+            validate_query(wrong)
+        except ASTValidationError:
+            continue
+        raise AssertionError(f"accepted {wrong}")
 
 
 def test_arithmetic_expression_validation():
@@ -2443,6 +2471,7 @@ def test_an_uploaded_sheets_grid_keeps_its_structure():
 
 
 TESTS = [
+    test_a_longest_run_renders_alone_and_counts_unbroken_runs,
     test_the_selection_is_the_decisions_paths_listed_candidates,
     test_an_answer_most_likely_wrong_is_retried_never_asked_back,
     test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alone,

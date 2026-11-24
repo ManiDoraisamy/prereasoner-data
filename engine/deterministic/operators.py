@@ -223,6 +223,24 @@ class View(Generic[T]):
             return View(name, (finalize(result),), output_limit, origins)
         return View(name, (result,), output_limit, origins)
 
+    def longest_run(
+        self,
+        name: str,
+        order: Callable[[T], object],
+        keep: Callable[[T], bool | None],
+        emit: Callable[[int], U],
+    ) -> View[U]:
+        """The most rows in a row, as ``order`` lists them, that ``keep`` holds for: one row, 0 when it holds for none.
+        A row it does not hold for, or reads as unknown (None), ends a run. The SQL program counts the same runs by
+        gaps and islands (engine/deterministic/emitter/sql)."""
+        ranked = self.sort(name, lambda row: (order(row),), (False,))
+        best = current = 0
+        for row in ranked.rows:
+            current = current + 1 if keep(row) is True else 0
+            best = max(best, current)
+        output_limit = None if self.row_limit is None else max(1, self.row_limit)
+        return View(name, (emit(best),), output_limit, (_merge_sources(self.source_rows),))
+
     def group_reduce(
         self,
         name: str,

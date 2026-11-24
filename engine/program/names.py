@@ -25,6 +25,9 @@ COUNT = "count"
 COUNT_DISTINCT = "countd"
 AGGREGATES = (SUM, AVG, MIN, MAX, COUNT, COUNT_DISTINCT)
 NUMBER_AGGREGATES = (SUM, AVG, MIN, MAX)
+# The most lines in a row, as the sheet lists them, that the conditions keep ("how many consecutive wins"): a count no
+# reading's aggregate slot names (it is not in AGGREGATES); only the order call's run question offers it (RUN below).
+LONGEST_RUN = "run"
 
 # Which way a rank runs.
 HIGHEST = "highest"
@@ -82,6 +85,7 @@ NEIGHBOURS = (AFTER, BEFORE)
 FIRST = "first"        # the lines at the top of the table, as the sheet lists them
 LAST = "last"          # the lines at its bottom
 ORDER_ENDS = (FIRST, LAST)
+RUN = "run"            # order:run, lines in an unbroken row as the sheet lists them: the same call's run question
 
 # Arithmetic on one line, and between two programs.
 PLUS = "+"
@@ -174,7 +178,7 @@ SLOT_CONDITIONS = "conditions"
 SLOT_QUANTIFIER = "quantifier"
 SLOT_NEIGHBOUR = "neighbour"
 SLOT_SAID = "said"         # a versus answered in the question's own words: said:above=<word>, said:below=<word>
-SLOT_ORDER = "order"       # lines taken by where they stand in their table: order:first, order:last
+SLOT_ORDER = "order"       # lines taken by where they stand in their table: order:first, order:last, order:run
 SLOTS = (SLOT_FORM, SLOT_AGGREGATE, SLOT_DIRECTION, SLOT_SIZE, SLOT_ENTITY, SLOT_COMPARISON, SLOT_ROW_OP, SLOT_CALC_OP, SLOT_CALC_LEFT, SLOT_ANSWER_TYPE, SLOT_TABLE, SLOT_MEASURE, SLOT_KEY, SLOT_SHOWN, SLOT_FILTER, SLOT_VALUE,
          SLOT_CONTAINS, SLOT_LINE, SLOT_SECTION, SLOT_PERIOD, SLOT_NUMBER, SLOT_BLANK, SLOT_PEERS, SLOT_LISTING, SLOT_CONDITIONS, SLOT_QUANTIFIER, SLOT_NEIGHBOUR, SLOT_SAID, SLOT_ORDER)
 

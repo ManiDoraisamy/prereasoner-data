@@ -6,6 +6,7 @@ Our own sets and records are tracked under regress/sets/ (sets/README.md); the p
 
   wtq_dev_sample()            WikiTableQuestions dev (random-split-1-dev), the seeded 300 of the dev measurement
   wtq_train(n, skip)          seeded training questions (training.tsv minus dev) that SQUALL annotates, with its SQL
+                              (annotated=False: the ones it leaves out, no SQL)
   wtq_test(ids)               test questions (pristine-unseen-tables) by id: the public benchmark's samples only
   wtq_test_sample(n, seed, exclude)  a seeded sample of the test ids, leaving out the ids already sampled
   databench(split)            DataBench train 001-049, dev 050-065 (graded as the dev measurement graded), test 066-080
@@ -190,17 +191,19 @@ def wtq_dev_sample(n: int = WTQ_DEV_SAMPLE, seed: int = WTQ_DEV_SEED) -> list[It
     return _wtq_items([r for r in rows if r["id"] in keep], _wtq_canon("training.tagged"))
 
 
-def wtq_train(n: int = 600, skip: int = 0, seed: int = WTQ_TRAIN_SEED) -> tuple[list[Item], dict[str, str]]:
+def wtq_train(n: int = 600, skip: int = 0, seed: int = WTQ_TRAIN_SEED, annotated: bool = True) -> tuple[list[Item], dict[str, str]]:
     """Seeded training questions outside random-split-1-dev that SQUALL annotates (n after skipping the first skip of
-    its order), with SQUALL's human-written query for each: the find set, read for diagnosis."""
+    its order), with SQUALL's human-written query for each: the find set, read for diagnosis. With annotated=False, the
+    ones SQUALL leaves out instead (a fifth of training: the questions its SQL did not write), with no query."""
     squall = {entry["nt"]: entry for entry in json.loads(_need(datasets() / SOURCES["squall"]["path"]).read_text(encoding="utf-8"))}
     dev = {r["id"] for r in _wtq_rows("random-split-1-dev.tsv")}
-    rows = sorted((r for r in _wtq_rows("training.tsv") if r["id"] not in dev and r["id"] in squall), key=lambda r: (r["context"], r["id"]))
+    rows = sorted((r for r in _wtq_rows("training.tsv") if r["id"] not in dev and (r["id"] in squall) == annotated),
+                  key=lambda r: (r["context"], r["id"]))
     items = _wtq_items(rows, _wtq_canon("training.tagged"))
     items.sort(key=lambda item: item.id)
     random.Random(seed).shuffle(items)
     chosen = sorted(items[skip:skip + n], key=lambda item: (item.book, item.id))
-    return chosen, {item.id: " ".join(token[1] for token in squall[item.id]["sql"]) for item in chosen}
+    return chosen, {item.id: " ".join(token[1] for token in squall[item.id]["sql"]) for item in chosen if item.id in squall}
 
 
 def wtq_test_ids() -> list[str]:

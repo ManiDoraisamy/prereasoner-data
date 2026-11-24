@@ -167,8 +167,17 @@ class BlankAsZero:
     operand: "ColumnRef"
 
 
+@dataclass(frozen=True)
+class LongestRun:
+    """The most rows in a row, as ``order`` lists them, that ``predicate`` keeps: the longest unbroken run of the rows
+    the query's WHERE reads, every one of them kept, and 0 when none is ("how many consecutive wins": the sheet programs
+    of engine/program). A row the predicate does not keep, or reads as unknown, ends a run. A query selects it alone."""
+    predicate: "Predicate"
+    order: ColumnRef
+
+
 ScalarExpr: TypeAlias = (ColumnRef | Star | Literal | Aggregate | ScalarSubquery | BinaryExpr | DatePart | Lower
-                         | DateSpan | Abs | BlankAsZero)
+                         | DateSpan | Abs | BlankAsZero | LongestRun)
 
 
 @dataclass(frozen=True)
@@ -381,6 +390,8 @@ def expression_type(expr: ScalarExpr) -> SQLType:
         return expression_type(expr.operand)
     if isinstance(expr, Literal):
         return expr.type
+    if isinstance(expr, LongestRun):
+        return SQLType.INTEGER
     if isinstance(expr, Aggregate):
         if expr.function == "COUNT":
             return SQLType.INTEGER
@@ -455,6 +466,10 @@ def _validate_query(query: Query, outer_scope: frozenset[str]) -> None:
         joined.add(qualifier)
 
     visible = frozenset(joined) | outer_scope
+    if any(isinstance(item.expression, LongestRun) for item in query.select) and (
+            len(query.select) != 1 or query.joins or query.group_by or query.having is not None or query.order_by
+            or query.limit is not None or query.distinct or isinstance(query.from_table, SubquerySource)):
+        raise ASTValidationError("a longest run is selected alone, over one table's rows")
     for item in query.select:
         _validate_expr(item.expression, visible, allow_star=item.alias is None)
     for group in query.group_by:
@@ -558,11 +573,28 @@ def share_output(query: Query) -> bool:
 def _render_query(query: Query, dialect: str = "standard") -> str:
     if isinstance(query, SetQuery):
         return f"{_render_query(query.left, dialect)} {query.operator} {_render_query(query.right, dialect)}"
+    if isinstance(query.select[0].expression, LongestRun):
+        return _render_longest_run(query, dialect)
     if query.with_ties:
         return _render_with_ties(query, dialect)
 
     select = ", ".join(_render_select(item, dialect) for item in query.select)
     return "SELECT " + ("DISTINCT " if query.distinct else "") + select + _render_rows(query, dialect)
+
+
+def _render_longest_run(query: SelectQuery, dialect: str) -> str:
+    """The longest run (LongestRun) as gaps and islands: within the rows the WHERE reads, a row's place among them less
+    its place among the rows kept alike (all kept, or all not) is the same along each unbroken run; the kept runs are
+    counted and the longest one answers, 0 when no row is kept. Window functions: SQLite 3.25 and PostgreSQL."""
+    item = query.select[0]
+    run = item.expression
+    hit = f"CASE WHEN {_render_predicate(run.predicate, dialect)} THEN 1 ELSE 0 END"
+    order = _render_expr(run.order, dialect)
+    lines = (f"SELECT {hit} AS {_qident('__hit')}, ROW_NUMBER() OVER (ORDER BY {order}) - ROW_NUMBER() OVER "
+             f"(PARTITION BY {hit} ORDER BY {order}) AS {_qident('__run')}" + _render_rows(query, dialect))
+    return (f"SELECT COALESCE(MAX({_qident('__n')}), 0) AS {_qident(item.alias or 'run')} FROM (SELECT COUNT(*) AS "
+            f"{_qident('__n')} FROM ({lines}) AS {_qident('__lines')} WHERE {_qident('__hit')} = 1 GROUP BY "
+            f"{_qident('__run')}) AS {_qident('__runs')}")
 
 
 def _render_with_ties(query: SelectQuery, dialect: str) -> str:
@@ -670,6 +702,14 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str], *, allow_star: boo
             if not isinstance(column, ColumnRef) or column.type != SQLType.DATE:
                 raise ASTValidationError("a span reads date columns")
             _validate_expr(column, visible)
+        return
+    if isinstance(expr, LongestRun):
+        if not isinstance(expr.order, ColumnRef) or not expr.order.type.numeric:
+            raise ASTValidationError("a longest run orders its rows by a number column")
+        _validate_expr(expr.order, visible)
+        _validate_predicate(expr.predicate, visible)
+        if _predicate_has_aggregate(expr.predicate):
+            raise ASTValidationError("a longest run keeps rows by their own cells")
         return
     if isinstance(expr, ScalarSubquery):
         _validate_query(expr.query, visible)
@@ -978,6 +1018,8 @@ def _predicate_has_aggregate(predicate: Predicate | None) -> bool:
 def _expr_tables(expr: ScalarExpr) -> set[str]:
     if isinstance(expr, ColumnRef):
         return {expr.table}
+    if isinstance(expr, LongestRun):
+        return {expr.order.table} | _predicate_tables(expr.predicate)
     if isinstance(expr, (Aggregate, DatePart, Lower, Abs, BlankAsZero)):
         return _expr_tables(expr.operand)
     if isinstance(expr, BinaryExpr):
@@ -1009,6 +1051,8 @@ def _predicate_tables(predicate: Predicate | None) -> set[str]:
 def _expr_query_tables(expr: ScalarExpr) -> set[str]:
     if isinstance(expr, ScalarSubquery):
         return set(expr.query.referenced_tables())
+    if isinstance(expr, LongestRun):
+        return _predicate_query_tables(expr.predicate)
     return set()
 
 
