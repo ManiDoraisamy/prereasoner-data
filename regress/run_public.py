@@ -39,6 +39,7 @@ usage: python -X utf8 -m regress.run_public --run NAME --set SET --system SYSTEM
        python -X utf8 -m regress.run_public --oracle RUN [--boost 4]   (wtq-train: what a reading naming SQUALL's columns builds)
        python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 2100 --squall "max .* - min"   (one SQUALL family)
        python -X utf8 -m regress.run_public --run NAME --set wtq-train-open --size 2251 --match "PATTERN"   (one family by its text)
+       python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 9070 --books FILE   (the questions on the tables a reading change touches)
 """
 from __future__ import annotations
 
@@ -54,6 +55,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import engine.llm as llm
 from engine.request_validation import MAX_UPLOAD_CELLS, MAX_UPLOAD_COLUMNS, MAX_UPLOAD_ROWS
@@ -642,6 +644,7 @@ def main() -> int:
     parser.add_argument("--redo-errors", action="store_true", help="rerun the rows recorded as errors or provider failures")
     parser.add_argument("--squall", help="wtq-train: only the questions whose SQUALL query matches this pattern (one family, for diagnosis)")
     parser.add_argument("--match", help="training sets: only the questions whose text matches this pattern (one family, for diagnosis; never a gate)")
+    parser.add_argument("--books", type=Path, help="training sets: only the questions on the workbooks this file lists, one per line (the tables a reading change touches, for diagnosis; never a gate)")
     parser.add_argument("--new-sample")
     parser.add_argument("--compare", nargs=2, metavar=("RUN_A", "RUN_B"))
     parser.add_argument("--summary")
@@ -681,6 +684,11 @@ def main() -> int:
         if not args.set.startswith(("wtq-train", "databench-train")):
             parser.error("--match reads training questions only")
         items = [item for item in items if re.search(args.match, item.question)]
+    if args.books:
+        if not args.set.startswith(("wtq-train", "databench-train")):
+            parser.error("--books reads training questions only")
+        books = {line.strip() for line in args.books.read_text(encoding="utf-8").splitlines() if line.strip()}
+        items = [item for item in items if item.book in books]
     items = items[:args.limit]
     target = WORK / args.run / args.set / f"{args.system}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)

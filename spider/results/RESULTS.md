@@ -10,6 +10,37 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A table's first record is no second header line: on the 13 WikiTableQuestions tables it changes, the training questions 21 -> 35 right of 59, the 896 unchanged (2026-11-24)
+
+- "What is the total number of nations?" answered 15 for 16. The sheet compiler read the first record of some lists as
+  a second header line, through the line model or a block growing down over a name line. "Nation Argentina" and "Club
+  Bundoora Football Club" then named the columns, and every count, first line and rank on the table missed a line.
+  Of WikiTableQuestions' 2,108 tables, 34 had their second line read as a header.
+- Rule (`engine/sheet/line_roles.py` `_records_under_the_header`, after the blocks grow). A block's lowest header line
+  is a record when three things hold. The block's top line names each column it fills apart: a two-level header's
+  upper line repeats its name over the columns its lower line splits, or is merged over them. The line is shaped as
+  the record directly under it, column by column: a year apart from other figures, and a marker or error saying
+  nothing. No mark sets it apart. It is checked from the bottom of each block up. The filter's top line and the last
+  frozen line are never moved. No word is read.
+- Real sheets. On the line model's 2,077 labelled Enron tabs (`training/sheet/line_labels.json`) it takes out 2
+  lines, both labelled records, and no labelled header. The first form compared with the record below even across a
+  blank line, and took out one labelled header ("Market | Market"). The messy, fresh dev and DataBench dev workbooks
+  compile exactly as before.
+- WikiTableQuestions: 13 tables change (`regress/sets/public/records/2026-11-24-header/books.txt`). Their training
+  questions (`regress/run_public.py --books`, a new diagnosis filter; records `2026-11-24-header-before`, run on
+  fa68180f, and `2026-11-24-header`):
+  - annotated: right 14 -> 24 (10 wins, 0 losses), built 17 -> 26, unmarked wrong 10 -> 3;
+  - unannotated: right 7 -> 11 (5 wins, 1 loss), built 13 -> 15, unmarked wrong 8 -> 5;
+  - the loss: on a table with no header line of its own, a conference held "-" (not held) in 2003 now reads as a value.
+- Gate (`regress/run_dev_decisions.py --record`): built 793, picked 728 and unwarned wrong 64, all unchanged. The two
+  dev questions on a changed table differ only in their listings, with the same labels. Demo at parity. Decisions
+  spend about $0.12.
+- Left as they were: 21 tables still read a second header line. Some are right: a units line, or "Encodings |
+  decimal | hex" under a repeated name. Others are records shaped unlike the line under them: a dash "–" or "—" reads
+  as text where "-" is a marker (689, 779, 835). Separately, a record repeating one text across its columns ("did not
+  play", a web table's spanned cell) is read as a header further down (about 10 tables).
+
+
 ## A date column ranked by its year: "which year had the most stamps issued" groups the lines by the year of their date; its training family 3 -> 10 right of 26, dev picks 727 -> 728 with unwarned wrong level (2026-11-24)
 
 - A group rank over a date column grouped by the whole date, each day its own group, so "during which year were the

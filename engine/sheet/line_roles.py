@@ -6,7 +6,9 @@ from engine.sheet.grid import Grid
 from engine.sheet.line_facts import LineFacts, line_facts
 from engine.sheet.line_model import final_scores, line_features, load_model
 from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_AFTER_TOTAL, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
-                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_GROUP_TIE, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL, V_TEXT)
+                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_GROUP_TIE, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL,
+                                V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT)
+from engine.sheet.values import year_number
 
 
 
@@ -80,6 +82,68 @@ def grow_blocks(heads: dict[int, list[str]], facts: dict[int, LineFacts], printe
             heads[x] = [S_MERGED_OVER_COLUMNS if f.filled == 1 else S_JOINED_ABOVE]
             lines += 1
             r, x = x, f.prev
+    return heads
+
+
+_PROTECTED = (S_AUTOFILTER_TOP, S_FROZEN_LAST)
+
+
+def _cell_shape(cell) -> str | None:
+    """What a cell holds, as a record's column holds it: a year apart from other figures (a year names a column as
+    often as it fills one); a marker or an error says nothing of its column."""
+    if cell.kind in (V_MARKER, V_ERROR):
+        return None
+    if cell.kind == V_NUMBER:
+        return "year" if year_number(cell.value) else V_NUMBER
+    return V_DATE if cell.kind in (V_DATE, V_PERIOD) else cell.kind
+
+
+def _names_apart(grid: Grid, head: int, r: int) -> bool:
+    """The header line head names every column line r fills, each by a name of its own: the upper line of a two-level
+    header spans the columns its lower line splits, repeating its name over them or leaving them blank (merged)."""
+    named = grid.rows[head]
+    for c in grid.rows[r]:
+        cell = named.get(c)
+        if cell is None or (head, c) in grid.spans and grid.spans[(head, c)] != (head, c):
+            return False
+        if any(c + step in named and str(named[c + step].value) == str(cell.value) for step in (-1, 1)):
+            return False
+    return True
+
+
+def _shaped_like_the_record_below(grid: Grid, facts: dict[int, LineFacts], r: int, below: int) -> bool:
+    """Line r holds what the line under it holds, column by column: the same shape of cell wherever both say something,
+    on most of the columns r fills, and no mark set it apart."""
+    line, under = grid.rows[r], grid.rows[below]
+    compared = 0
+    for c, cell in line.items():
+        mine, theirs = _cell_shape(cell), (_cell_shape(under[c]) if c in under else None)
+        if mine is None or theirs is None:
+            continue
+        if mine != theirs:
+            return False
+        compared += 1
+    f, g = facts[r], facts[below]
+    if (f.bold >= 0.5) != (g.bold >= 0.5) or (f.fill >= 0.5) != (g.fill >= 0.5):
+        return False
+    return compared >= 2 and compared * 2 >= len(line)
+
+
+def _records_under_the_header(heads: dict[int, list[str]], grid: Grid, facts: dict[int, LineFacts], printed: dict[int, list[str]]) -> dict[int, list[str]]:
+    """A block's lowest header line, when the block's top line already names each column it fills apart and it is shaped
+    as the record directly under it, is that table's first record (a list's first line read as a second header line holds
+    a record's cells: the club, its founding year, its nickname). From the bottom of each block up, while the rule
+    holds. On the line model's 2,077 labelled tabs it takes out 2 lines, both labelled records, and no labelled header."""
+    heads = dict(heads)
+    for r in sorted(heads, reverse=True):
+        below = facts[r].next
+        if below != r + 1 or below in heads or below in printed or any(signal in _PROTECTED for signal in heads[r]):
+            continue
+        top = r
+        while facts[top].prev in heads and top - facts[top].prev <= 2:
+            top = facts[top].prev
+        if top != r and _names_apart(grid, top, r) and _shaped_like_the_record_below(grid, facts, r, below):
+            del heads[r]
     return heads
 
 
@@ -259,6 +323,7 @@ def header_lines(grid: Grid, facts: dict[int, LineFacts], printed: dict[int, lis
         heads[tab.frozen_rows] = [S_FROZEN_LAST]     # the last frozen line, when it holds names, is a header outright, as the autofilter's top is
     _name_unnamed_bodies(heads, facts, printed, scores)
     heads = grow_blocks(heads, facts, printed, scores)
+    heads = _records_under_the_header(heads, grid, facts, printed)
     _clear_filter_range(heads, grid)
     return heads
 

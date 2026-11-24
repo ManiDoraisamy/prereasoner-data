@@ -421,6 +421,40 @@ def test_style_alone_never_moves_the_first_header():
     assert model.tables[0].header_rows == (1,)
 
 
+def test_a_first_record_shaped_like_the_next_is_no_second_header_line():
+    # A list's first line, read as a second header line (the club, its founding year, its nickname), took a name into
+    # every column and left the table one record short: every count on it read one less.
+    def kept(rows, heads, **more):
+        grid = Grid(tab_from_json({"name": "Sheet1", "rows": rows, **more}))
+        facts = line_facts(grid)
+        return sorted(line_roles._records_under_the_header({r: list(s) for r, s in heads.items()}, grid, facts, line_roles._printed_signals(facts)))
+
+    clubs = [["Club", "Founded", "Nickname", "Ground"], ["Bundoora", 1974, "Bulls", "Yulong"], ["Eltham", 1909, "Panthers", "Central"], ["Lalor", 1955, "Bloods", "Lalor"], ["Macleod", 1946, "Kangaroos", "De Winton"]]
+    assert kept(clubs, {1: [names.S_MODEL], 2: [names.S_JOINED_BELOW]}) == [1]
+    assert kept(clubs, {1: [names.S_MODEL], 2: [names.S_MODEL], 3: [names.S_MODEL]}) == [1]     # from the bottom of the block up
+    # A marker says nothing of its column: a dash over a place in the line below is no difference.
+    places = [["Nation", "1986", "1989", "Years"], ["Argentina", "4th", "-", 10], ["Brazil", "3rd", "3rd", 11], ["Canada", "2nd", "1st", 7]]
+    assert kept(places, {1: [names.S_MODEL], 2: [names.S_MODEL]}) == [1]
+    # A two-level header's upper line spans the columns its lower line splits, repeating its name or merged: kept.
+    split = [["", "Volume", "Volume", "Price", "Price"], ["Pipe", "In", "Out", "Bid", "Ask"], ["A", "x", "y", "z", "w"], ["B", "x", "y", "z", "w"]]
+    assert kept(split, {1: [], 2: []}) == [1, 2]
+    merged = [["", "Volume", "", "Price", ""], ["Pipe", "In", "Out", "Bid", "Ask"], ["A", "x", "y", "z", "w"], ["B", "x", "y", "z", "w"]]
+    assert kept(merged, {1: [], 2: []}, merges=[{"s": {"r": 0, "c": 1}, "e": {"r": 0, "c": 2}}, {"s": {"r": 0, "c": 3}, "e": {"r": 0, "c": 4}}]) == [1, 2]
+    # A units line, or years naming the columns of figures, holds what the records do not: kept.
+    assert kept([["Revenue", "Cost"], ["$", "$"], [10.0, 20.0], [30.0, 40.0]], {1: [], 2: []}) == [1, 2]
+    assert kept([["City", "Census", "Estimate"], ["", 2010, 2020], ["Boston", 617594, 650706], ["Lynn", 90329, 101253]], {1: [], 2: []}) == [1, 2]
+    # Set apart by its author's marks, or the filter's own top line: kept.
+    assert kept(clubs, {1: [], 2: []}, rowStyles=[[2, 4, 4, 0, 0]]) == [1, 2]
+    assert kept(clubs, {1: [], 2: [names.S_AUTOFILTER_TOP]}) == [1, 2]
+    # Compiled whole, the list keeps every record (WikiTableQuestions csv/204-csv/959.csv: the line model and the block's
+    # growth read its first record as a second header line).
+    listed = _tab([["Club", "Founded", "Nickname", "Location", "Home Ground", "Entered Competition", "Most recent Promotion"],
+                   ["Bundoora Football Club", 1974, "Bulls", "Bundoora", "Yulong Reserve", 1981, 1982], ["Eltham Football Club", 1909, "Panthers", "Eltham", "Central Park", 1922, 2003],
+                   ["Greensborough Football Club", 1905, "Boro", "Greensborough", "War Memorial Park", 1922, 2007], ["Heidelberg Football Club", 1876, "Tigers", "Heidelberg", "Warringal Park", 1923, 1983],
+                   ["Lalor Football Club", 1955, "Bloods", "Lalor", "Lalor Reserve", 1968, 2011]]).tables[0]
+    assert listed.header_rows == (1,) and len(listed.lines) == 5
+
+
 def _every_data_cell_is_held(model):
     """The invariant behind F4: every filled cell on a data line belongs to a table."""
     held = {(cell.row, cell.col) for table in model.tables for line in table.lines + table.printed for cell in line.cells.values()}
@@ -940,7 +974,7 @@ TESTS = [
     test_an_axis_holds_one_grain_and_no_totals, test_a_group_axis_needs_one_format, test_a_tall_merge_over_a_number_is_one_figure, test_a_name_keeps_what_the_sheet_wrote, test_running_balance_is_not_a_total, test_a_groups_subtotal_is_printed_wherever_it_stands, test_bands_give_sections,
     test_sparse_label_column_fills_down_and_traces_to_its_source, test_stacked_tables_split, test_repeated_header_continues_its_table, test_side_by_side_blocks_split, test_spacer_columns_do_not_split_one_table,
     test_repeated_blocks_merge_into_one_family, test_months_across_are_an_axis, test_sequence_and_group_axes, test_stray_cells_are_set_apart_by_kind, test_a_number_with_a_bracketed_aside_reads_as_its_number, test_a_column_of_one_unit_reads_as_numbers, test_hidden_lines_and_columns_are_kept_and_flagged,
-    test_label_value_notes, test_tab_family_merges_with_the_tab_name_as_a_column, test_direct_markers_name_the_header, test_style_alone_never_moves_the_first_header, test_a_chart_tab_and_empty_tabs_do_not_crash,
+    test_label_value_notes, test_tab_family_merges_with_the_tab_name_as_a_column, test_direct_markers_name_the_header, test_style_alone_never_moves_the_first_header, test_a_first_record_shaped_like_the_next_is_no_second_header_line, test_a_chart_tab_and_empty_tabs_do_not_crash,
     test_origin_shifts_addresses, test_compile_is_deterministic, test_every_fact_traces_to_a_cell, test_header_decision_is_a_sum_over_named_features, test_xlsx_reader_builds_the_wire_payload,
 ]
 
