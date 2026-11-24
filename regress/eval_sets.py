@@ -545,11 +545,13 @@ class CallStore:
 
 def pack(folder: Path = CALLS) -> None:
     """Each plain batch of ``folder`` compressed to .jsonl.gz (sorted by hash, no timestamp, so the same answers give
-    the same bytes), the plain file removed."""
+    the same bytes), the plain file removed. A batch packed before keeps its lines: a run still writing it starts the
+    plain file again, and the next pack adds those lines to the packed ones rather than replacing them."""
     for path in sorted(Path(folder).glob("*.jsonl")):
-        lines = sorted({line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()},
-                       key=lambda line: json.loads(line)["hash"])
         target = path.with_name(path.name + ".gz")
+        held = gzip.decompress(target.read_bytes()).decode("utf-8").splitlines() if target.exists() else []
+        lines = sorted({line for line in [*held, *path.read_text(encoding="utf-8").splitlines()] if line.strip() and line.endswith("}")},
+                       key=lambda line: json.loads(line)["hash"])
         with open(target, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=9) as sink:
             for line in lines:
                 sink.write((line + "\n").encode("utf-8"))

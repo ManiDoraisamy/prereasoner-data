@@ -455,6 +455,25 @@ def test_a_batch_another_run_is_writing_is_read_to_its_last_whole_line() -> None
         assert store.get("a1") == {"answers": {}, "tokens": 3} and store.get("b2") is None
 
 
+def test_packing_a_batch_again_keeps_what_was_packed() -> None:
+    """On 2026-11-24 the calls were packed while a long run was still writing its batch: the run started the plain file
+    again, and packing it later would have replaced the packed lines with the new ones alone. Packing adds to them."""
+    import gzip
+    import tempfile
+    from pathlib import Path
+    from regress import eval_sets
+    with tempfile.TemporaryDirectory() as folder:
+        batch = Path(folder, "run-7.jsonl")
+        batch.write_bytes(b'{"hash": "b2", "answers": {}, "tokens": 2}\n{"hash": "a1", "answers": {}, "tokens": 1}\n')
+        eval_sets.pack(Path(folder))
+        batch.write_bytes(b'{"hash": "c3", "answers": {}, "tokens": 3}\n')
+        eval_sets.pack(Path(folder))
+        packed = gzip.decompress(Path(folder, "run-7.jsonl.gz").read_bytes()).decode("utf-8").splitlines()
+        assert [line[10:12] for line in packed] == ["a1", "b2", "c3"] and not batch.exists()
+        store = eval_sets.CallStore(Path(folder))
+        assert store.get("c3") == {"answers": {}, "tokens": 3} and store.get("a1") is not None
+
+
 def test_the_dev_replay_runs_from_a_clean_clone() -> None:
     """The dev replay's reference and the Decisions answers it reads are committed (regress/sets): each set's reference
     holds every one of its questions once, a served label each, and the recorded answers hold every call the reference
@@ -480,7 +499,7 @@ TESTS = [
     test_value_sets_ask_about_the_likeliest_values, test_choice_record_lists_each_candidate_with_its_answer_and_none,
     test_the_request_body_is_sorted_and_hashable, test_answer_reads_decodes_and_chooses_through_its_calls, test_said_spans_are_the_questions_own_words,
     test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_a_failed_call_reaches_the_caller,
-    test_a_batch_another_run_is_writing_is_read_to_its_last_whole_line, test_text_dates_are_typed_when_the_workbook_loads, test_digit_dates_ask_the_order_only_when_the_column_never_shows_it,
+    test_a_batch_another_run_is_writing_is_read_to_its_last_whole_line, test_packing_a_batch_again_keeps_what_was_packed, test_text_dates_are_typed_when_the_workbook_loads, test_digit_dates_ask_the_order_only_when_the_column_never_shows_it,
     test_the_dev_replay_runs_from_a_clean_clone,
 ]
 
