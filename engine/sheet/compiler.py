@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from engine.sheet.formulas import column_letter
 from engine.sheet.grid import Grid, clean
-from engine.sheet.line_roles import read_roles, repeats_line
+from engine.sheet.line_roles import read_roles, repeats_line, spanned_columns
 from engine.sheet.model import Axis, Cell, Column, Context, Line, Note, Stray, TabModel, Table
 from engine.sheet.names import (AXIS_FLAG, AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENCE, BAND, BLANK, DATE, DERIVED, F_CURRENCY, F_GENERAL, F_NUMBER, F_PERCENT, FX_AGG_COLUMN, FX_AGG_ROW, FX_ROW_ARITH, FX_VOLATILE, HEADER, KEY, LABEL, MEASURE, MIXED, NOTE,
                                 P_YEAR, PEER, PERIOD, PRINTED_ROLES, RECORD, ROW_TOTAL, S_DATA_LINE, S_FILLED_DOWN, S_GROUP_TIE, S_REPEATED_HEADER, S_RULE_LINE, S_STRAY_KEY, S_TOTAL_OTHER_BLOCK, SECTION_LABEL, SHEET_CHART, SPACER, STRAY_DATE,
@@ -104,9 +104,13 @@ def _kind_group(kind: str) -> str:
 
 
 def _fits_body(grid: Grid, r: int, region: _Region, roles: dict[int, tuple[str, tuple[str, ...]]]) -> bool:
-    """A lone line called a header that holds figures and whose cells fit the columns of the table open above it: a data line. A header names columns; this one's cells are what those columns hold."""
+    """A line called a header that holds figures, or a value spanning columns, and whose other cells fit the columns of the table open above it: a data line. A header names columns; this one's cells are what those columns hold, and a value spanning columns says one thing of each."""
     line = grid.rows[r]
-    if not any(cell.kind == V_NUMBER and not year_number(cell.value) for cell in line.values()):
+    spanned = spanned_columns(line)
+    if not spanned and not any(cell.kind == V_NUMBER and not year_number(cell.value) for cell in line.values()):
+        return False
+    own = {c: cell for c, cell in line.items() if c not in spanned}
+    if not own:
         return False
     recent = [x for x in region.body if roles[x][0] == RECORD][-_FILTER_RECENT:]
     if len(recent) < 3:
@@ -116,11 +120,11 @@ def _fits_body(grid: Grid, r: int, region: _Region, roles: dict[int, tuple[str, 
     if any(marks) and sum(1 for x in recent if _style_of(grid, x) == marks) * 2 < len(recent):
         return False
     fit = 0
-    for c, cell in line.items():
+    for c, cell in own.items():
         kinds = Counter(_kind_group(grid.rows[x][c].kind) for x in recent if c in grid.rows[x])
         if kinds and min(kinds, key=lambda k: (-kinds[k], k)) == _kind_group(cell.kind):
             fit += 1
-    return fit >= _FIT_SHARE * len(line)
+    return fit >= _FIT_SHARE * len(own)
 
 
 def _names_its_columns(grid: Grid, header: list[int], block: list[int]) -> bool:
@@ -155,9 +159,10 @@ def _regions(grid: Grid, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[
                 for x in block[repeated:]:
                     roles[x] = (RECORD, (S_DATA_LINE,))
                     current.body.append(x)
-            elif current is not None and len(block) == 1 and _fits_body(grid, r, current, roles):
-                roles[r] = (RECORD, (S_DATA_LINE,))
-                current.body.append(r)
+            elif current is not None and (len(block) == 1 or all(spanned_columns(grid.rows[x]) for x in block)) and all(_fits_body(grid, x, current, roles) for x in block):
+                for x in block:
+                    roles[x] = (RECORD, (S_DATA_LINE,))
+                    current.body.append(x)
             else:
                 # A band directly over a header names the table under it, not the end of the one above.
                 while current is not None and current.body and roles[current.body[-1]][0] == BAND:

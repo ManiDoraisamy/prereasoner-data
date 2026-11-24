@@ -85,7 +85,24 @@ def grow_blocks(heads: dict[int, list[str]], facts: dict[int, LineFacts], printe
     return heads
 
 
+_SPAN_LEAST = 3
 _PROTECTED = (S_AUTOFILTER_TOP, S_FROZEN_LAST)
+
+
+def spanned_columns(line: dict) -> set[int]:
+    """The columns of each run of one text written into _SPAN_LEAST or more adjacent cells: one value spanning them, as a
+    web table's merged cell reads when its text is written into every column it covers ("did not play" across a
+    season's won, lost and tied)."""
+    cols = sorted(line)
+    out: set[int] = set()
+    start = 0
+    for i in range(1, len(cols) + 1):
+        if i < len(cols) and cols[i] == cols[i - 1] + 1 and line[cols[i]].kind == line[cols[i - 1]].kind == V_TEXT and line[cols[i]].value == line[cols[i - 1]].value:
+            continue
+        if i - start >= _SPAN_LEAST:
+            out.update(cols[start:i])
+        start = i
+    return out
 
 
 def _cell_shape(cell) -> str | None:
@@ -102,7 +119,10 @@ def _names_apart(grid: Grid, head: int, r: int) -> bool:
     """The header line head names every column line r fills, each by a name of its own: the upper line of a two-level
     header spans the columns its lower line splits, repeating its name over them or leaving them blank (merged)."""
     named = grid.rows[head]
+    spanned = spanned_columns(grid.rows[r])
     for c in grid.rows[r]:
+        if c in spanned:
+            continue
         cell = named.get(c)
         if cell is None or (head, c) in grid.spans and grid.spans[(head, c)] != (head, c):
             return False
@@ -113,10 +133,13 @@ def _names_apart(grid: Grid, head: int, r: int) -> bool:
 
 def _shaped_like_the_record_below(grid: Grid, facts: dict[int, LineFacts], r: int, below: int) -> bool:
     """Line r holds what the line under it holds, column by column: the same shape of cell wherever both say something,
-    on most of the columns r fills, and no mark set it apart."""
+    on most of the columns r fills (a value spanning columns says one thing of each, and is passed over), and no mark
+    set it apart."""
     line, under = grid.rows[r], grid.rows[below]
+    spanned = spanned_columns(line)
+    own = {c: cell for c, cell in line.items() if c not in spanned}
     compared = 0
-    for c, cell in line.items():
+    for c, cell in own.items():
         mine, theirs = _cell_shape(cell), (_cell_shape(under[c]) if c in under else None)
         if mine is None or theirs is None:
             continue
@@ -126,7 +149,7 @@ def _shaped_like_the_record_below(grid: Grid, facts: dict[int, LineFacts], r: in
     f, g = facts[r], facts[below]
     if (f.bold >= 0.5) != (g.bold >= 0.5) or (f.fill >= 0.5) != (g.fill >= 0.5):
         return False
-    return compared >= 2 and compared * 2 >= len(line)
+    return bool(own) and compared >= (1 if spanned else 2) and compared * 2 >= len(own)
 
 
 def _records_under_the_header(heads: dict[int, list[str]], grid: Grid, facts: dict[int, LineFacts], printed: dict[int, list[str]]) -> dict[int, list[str]]:

@@ -10,6 +10,42 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A value spanning columns is one record's value: a season that "did not play" no longer splits its table; on the 9 WikiTableQuestions tables it changes, the training questions 15 -> 22 right of 41 (2026-11-24)
+
+- A web table's merged cell writes its text into every column it covers. A season that "did not play", or a driver
+  listed as "Test driver" across the result columns, read as a header line mid-table and split the table. Read as a
+  second header line on the first record ("1963 | Did not enter ..."), it took names.
+  - A run of one text in three or more adjacent cells is now one value spanning them (`engine/sheet/line_roles.py`
+    `spanned_columns`). It says one thing of each column.
+  - So it fits any column a data line is checked against (`engine/sheet/compiler.py` `_fits_body`, now also for a
+    block whose every line holds a span), and it is passed over when a header line is compared with the record
+    under it.
+  - A line of nothing but spanned text is no record, and two cells alike are no span.
+- Real sheets: on the 2,077 labelled Enron tabs, 18 header lines become records (2 labelled records, none labelled a
+  header), and 6 tabs' tables change.
+  - Data lines of "na" or "FULL" across their columns rejoin their tables.
+  - On one tab, a data line leaves the header it was joined to, and a repeated header block further down now opens a
+    table of its own.
+  - The first form also let a one-cell line with no span pass on one compared cell. It took out two labelled header
+    lines ("Total", "# of hours") and was narrowed to lines with a span.
+  - Fresh dev: two workbooks change. On FAA airmen, stray header lines rejoin; on organ donation, 100 tables become
+    63.
+- WikiTableQuestions: 9 tables change (`regress/sets/public/records/2026-11-24-spans/books.txt`). Training questions
+  (records `2026-11-24-spans-before`, run on e5b5c2dd, and `2026-11-24-spans`):
+  - annotated: right 10 -> 13 (4 wins, 1 loss);
+  - unannotated: right 5 -> 9 (5 wins, 1 loss);
+  - unmarked wrong 10 -> 7;
+  - a units line repeating "Amount" under the staples' names is now a record, as WikiTableQuestions reads it ("Yam"
+    for "Yam Amount", 4 wins).
+- Gate: the 896 picked 732 -> 733 (1 win, 0 losses), built 797, unwarned wrong 63, unchanged.
+  - Fresh dev 131 -> 132. On organ donation, "did female living donors outnumber male living donors" goes from warned
+    wrong to warned right, and "the three organs with the most deceased-donor recipients in 2023" from warned wrong to
+    asked. One right answer is now warned.
+  - WikiTableQuestions: the one question on a changed table has new listings and the same label.
+  - Messy, DataBench and the demo's 91 are at parity.
+  - References kept. Decisions spend about $0.09 with the family runs.
+
+
 ## Three sheet readings: a year line opens its section, a column's label-and-value texts are its records' content, a units line set apart by blank lines joins its header (2026-11-24)
 
 - **A year over its section.** Homeownership rates by area put each year on a line of its own, after a blank line,
