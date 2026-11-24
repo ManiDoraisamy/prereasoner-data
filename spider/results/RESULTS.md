@@ -55,7 +55,11 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 - Checks: tests (program 91, answer 26, SQL AST 91, deterministic emitters 75, decomposition 16); the hermetic
   repository run, every suite passing (`tests.test_complex_datasets` reads the knowledgebase and passes 6 of 6 through
   the Cloud SQL proxy); the offline regression gate PASS; `tests.test_enrichment` 37 of 37; ruff F/E9, bandit, Python
-  3.11 compile. Spider calibration on this commit is the next entry's.
+  3.11 compile. Spider calibration, 1,053 questions, `whole_db`, served, fresh (`--data spider/calibration`, at
+  88bed54a): answered 836, strict 373, lenient 581, scalar gold 278 of 377, every question serving the same SQL as at
+  ca5dfb2e (0 wins, 0 losses); the Python and SQL programs verified alike on all 836; prediction median 2.1 s, p95
+  3.7 s (live Decisions calls). Records `spider/results/full_eval_streak_88bed54a.json`; per-example records
+  `prereasoner-scratch/spider-streak/` in the archive.
 
 
 ## The choice reads a small table whole: pick 727 -> 733 with unwarned wrong level, not kept for one demo answer (2026-11-23)
