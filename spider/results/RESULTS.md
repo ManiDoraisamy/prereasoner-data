@@ -10,6 +10,23 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release b36044aa (the day's sheet readings: a year line, a record's first line, spans, last lines; the year grain and decades) live; Chrome gate 102 of 102 fresh, 77 of 78 existing (2026-11-24)
+
+- Engine `prereasoner-api-00348-koy` (`engine@sha256:74626d86...`, Cloud Build bdc04c57: build, offline regression
+  gate, runtime server smoke, live product suites), deployed with no traffic under tag `sheets`, healthz 200, release
+  smoke job ok, then 100%; both engine jobs on the image. Chat and Hosting unchanged (no orchestrator or web change
+  since b9b0fe50). Rollback: `prereasoner-api-00346-cup` (2af5bf2d). It carries every change kept since 2af5bf2d:
+  decades (6e494a13), the run question without cue words, the year grain, the header's first record, the three sheet
+  readings, spans and last lines; on the final fresh sample the engine alone 691 -> 695 of 1,000 against the release.
+- Chrome gate on chat.prereasoner.com, all 24 demo datasets, prompt.txt then every eval.txt follow-up, chat shorthand
+  included (captures in `prereasoner-scratch/gate-b36044aa/` in the archive): fresh conversations **102 of 102**
+  graded by `regress/browser_gold.py`, 86 byte-identical to 2af5bf2d's pass and 16 currency amounts moved by the day's
+  ECB rates; the conversations 2af5bf2d's pass made, asked their follow-ups again, **77 of 78**, every answer but one
+  identical to the fresh pass's. The one miss is the old one: "in GBP for the whole of Europe?" after an average
+  question is read as an average (145.49 GBP). One fresh turn failed in the chat orchestrator (its Vertex call stalled
+  85 s, the engine never called) and passed when its dataset was run again in a new conversation.
+
+
 ## The final fresh sample at 4b674537: the engine alone 693 -> 695 of 1,000 (2 wins, 0 losses), unmarked wrong 147 -> 143 (2026-11-24)
 
 - The sheet readings kept since 09f0a0e5, on the 1,000 WikiTableQuestions test questions no one reads (records
