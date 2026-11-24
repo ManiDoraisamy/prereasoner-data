@@ -783,7 +783,7 @@ ORDER_QUESTION = ("Does the question take rows by where they stand in the table 
 ORDER_OPTIONS = {"o00": "its first rows, as the table lists them", "o01": "its last rows, as the table lists them"}
 ORDER_ENDS_OF = {"o00": FIRST, "o01": LAST}
 RUN_QUESTION = ("Does the question ask how many rows stand in an unbroken run, one right after another as the table lists "
-                "them, all meeting what it says (consecutive ones, in a row), rather than how many there are in all?")
+                "them, all meeting what it says, rather than how many there are in all?")
 RUN_OPTIONS = {"r00": "the most rows in an unbroken run, one right after another"}
 
 

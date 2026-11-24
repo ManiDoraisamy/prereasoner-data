@@ -83,6 +83,11 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
   records and calls: `prereasoner-scratch/patches/verdict-20261124/` and `regress/sets/calls/2026-11-24-verdict.jsonl.gz`,
   `2026-11-24-run.jsonl.gz` (with the run), records `regress/sets/public/records/2026-11-24-open-run/`.
 - Decisions spend $0.70 (the open set's first run $0.64), of the $30 the owner allowed.
+- **The run question in its meaning alone** (after this release): the run question's instruction named cue words
+  ("consecutive ones, in a row") for the API; they are removed, so it states the meaning only. On all 212 training run
+  questions (`regress/run_public.py --match`, before on 2af5bf2d and after; records `2026-11-24-runcue-before` and
+  `2026-11-24-runcue`): right 126 -> 126, built 158 -> 158, no question changed; the 896 and the demo at parity (one
+  WikiTableQuestions listing moves, no outcome), references kept. Decisions spend $0.40.
 - Checks: tests (program 91, answer 26, SQL AST 91, deterministic emitters 75, decomposition 16); the hermetic
   repository run, every suite passing (`tests.test_complex_datasets` reads the knowledgebase and passes 6 of 6 through
   the Cloud SQL proxy); the offline regression gate PASS; `tests.test_enrichment` 37 of 37; ruff F/E9, bandit, Python
