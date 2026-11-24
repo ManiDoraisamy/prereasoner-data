@@ -10,6 +10,30 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A short last line under a record is a record: the states that only observe stay in the table; on the 7 WikiTableQuestions tables it changes, the training questions 16 -> 18 right of 23 (2026-11-24)
+
+- Members, then three states that only observe, their other columns blank. The last lines held no figure and few
+  cells, so they read as notes under the table, and the count of countries fell by three. A line under the records,
+  holding no figure, is now a record when all of these hold (`engine/sheet/line_roles.py` `_fills_table`):
+  - it sits directly under a record, with no blank line and no note between;
+  - its first cell is in the table's first column;
+  - it holds two cells or more, none a sentence or a label set beside its value.
+  A note under a table stands apart, writes a sentence or sets a label.
+- The first form did not ask what stands above. On the line model's 2,077 labelled Enron tabs it also took a
+  signature block ("Approved: ___", then "Marketer | Trader") and a comments line into their tables. Under a note, a
+  short line is now that note's. Now 3 lines change, all list records (two utilities and a bid).
+- WikiTableQuestions: 7 tables change, 12 lines become records (`regress/sets/public/records/2026-11-24-lastlines/books.txt`).
+  Training questions (records `2026-11-24-lastlines-before`, run on af2d415d, and `2026-11-24-lastlines`):
+  - annotated: right 13 -> 14 (2 wins, 1 loss);
+  - unannotated: right 3 -> 4 (1 win);
+  - unmarked wrong 4 -> 1;
+  - "what is the total number of states?" 11 -> 12;
+  - the loss: "the last recorded opening date of an observatory" now reads the last line, which has no date.
+- Gate: the 896 unchanged: built 797, picked 733, unwarned wrong 63. The one dev question on a changed table has new
+  listings and the same label; messy, fresh dev, DataBench and the demo's 91 are at parity, and no real-sheet dev
+  workbook compiles differently. WikiTableQuestions reference kept. Decisions spend about $0.05 with the family runs.
+
+
 ## A value spanning columns is one record's value: a season that "did not play" no longer splits its table; on the 9 WikiTableQuestions tables it changes, the training questions 15 -> 22 right of 41 (2026-11-24)
 
 - A web table's merged cell writes its text into every column it covers. A season that "did not play", or a driver

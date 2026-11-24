@@ -517,6 +517,22 @@ def test_a_value_spanning_columns_is_a_record_not_a_header():
     assert not line_roles.spanned_columns(Grid(tab_from_json({"name": "S", "rows": [["Argentina", "4th", "4th", "3rd"]]})).rows[1])
 
 
+def test_short_last_lines_under_their_records_are_records():
+    # Members, then the states that only observe, their other columns blank: the last lines held no figure and read
+    # as notes under the table, so the count of countries fell by three.
+    head = ["Country", "Status", "Joined", "Votes", "Seats", "Budget"]
+    members = [[f"Country {i}", "Member", 1990.0 + i, float(i), float(i % 3), 10.0 * i] for i in range(1, 8)]
+    observers = [["Estonia", "Observers"], ["Latvia", "Observers"], ["Lithuania", "Observers"]]
+    table = _tab([head] + members + observers).tables[0]
+    assert len(table.lines) == 10
+    # Under a note, a short line is that note's: a signature block stays out of the table.
+    signed = _tab([head] + members + [["Approved: ____", "Approved: ____"], ["Marketer", "Trader"]])
+    assert len(signed.tables[0].lines) == 7 and _roles(signed)[10] == NOTE
+    # A short line set apart by a blank line stays a note.
+    apart = _tab([head] + members + [[], ["Prepared by", "J. Smith"]])
+    assert len(apart.tables[0].lines) == 7
+
+
 def _every_data_cell_is_held(model):
     """The invariant behind F4: every filled cell on a data line belongs to a table."""
     held = {(cell.row, cell.col) for table in model.tables for line in table.lines + table.printed for cell in line.cells.values()}
@@ -1037,7 +1053,7 @@ TESTS = [
     test_sparse_label_column_fills_down_and_traces_to_its_source, test_stacked_tables_split, test_repeated_header_continues_its_table, test_side_by_side_blocks_split, test_spacer_columns_do_not_split_one_table,
     test_repeated_blocks_merge_into_one_family, test_months_across_are_an_axis, test_sequence_and_group_axes, test_stray_cells_are_set_apart_by_kind, test_a_number_with_a_bracketed_aside_reads_as_its_number, test_a_column_of_one_unit_reads_as_numbers, test_hidden_lines_and_columns_are_kept_and_flagged,
     test_label_value_notes, test_tab_family_merges_with_the_tab_name_as_a_column, test_direct_markers_name_the_header, test_style_alone_never_moves_the_first_header, test_a_first_record_shaped_like_the_next_is_no_second_header_line, test_a_lone_year_after_a_gap_opens_a_section,
-    test_a_label_and_value_the_records_hold_in_their_column_is_no_note, test_a_header_set_apart_from_its_units_line_by_blank_lines_is_one_header, test_a_value_spanning_columns_is_a_record_not_a_header, test_a_chart_tab_and_empty_tabs_do_not_crash,
+    test_a_label_and_value_the_records_hold_in_their_column_is_no_note, test_a_header_set_apart_from_its_units_line_by_blank_lines_is_one_header, test_a_value_spanning_columns_is_a_record_not_a_header, test_short_last_lines_under_their_records_are_records, test_a_chart_tab_and_empty_tabs_do_not_crash,
     test_origin_shifts_addresses, test_compile_is_deterministic, test_every_fact_traces_to_a_cell, test_header_decision_is_a_sum_over_named_features, test_xlsx_reader_builds_the_wire_payload,
 ]
 

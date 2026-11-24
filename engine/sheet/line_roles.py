@@ -199,7 +199,7 @@ def _a_year_over_the_key(grid: Grid, top: int, r: int) -> bool:
     return len(named) >= 2 and c == min(named) and (r, c + 1) not in grid.spans
 
 
-def _fills_table(grid: Grid, r: int, f: LineFacts, heads: dict[int, list[str]]) -> bool:
+def _fills_table(grid: Grid, r: int, f: LineFacts, heads: dict[int, list[str]], after_record: bool = False) -> bool:
     """A line standing under the columns of the header above it, and filling enough of them, is a record short of figures, not a note."""
     above = [h for h in heads if h < r]
     if not above or f.filled < 2 or _sets_a_label(grid, r, f, max(above)):
@@ -209,7 +209,11 @@ def _fills_table(grid: Grid, r: int, f: LineFacts, heads: dict[int, list[str]]) 
         return False
     if f.filled >= 3 or (f.filled * 2 >= len(named) and not f.wordy and f.longest <= 60):
         return True
-    return f.filled * 2 >= len(named) and _shares_a_value(grid, r, max(above))
+    if f.filled * 2 >= len(named) and _shares_a_value(grid, r, max(above)):
+        return True
+    # Short cells directly under a record, the first in the table's first column: a record short of its other cells (a
+    # member state that only observes), where a note under a table stands apart, writes a sentence or sets a label.
+    return after_record and not f.gap_above and not f.wordy and f.longest <= 60 and min(grid.rows[r]) == min(named)
 
 
 def _sets_a_label(grid: Grid, r: int, f: LineFacts, head: int | None) -> bool:
@@ -299,7 +303,7 @@ def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[
             else:
                 roles[r] = (RECORD, (S_TEXT_LINE,))
             continue
-        if last_figures is not None and r > last_figures and figures == 0 and (f.filled <= 2 or f.wordy) and not _fills_table(grid, r, f, heads):
+        if last_figures is not None and r > last_figures and figures == 0 and (f.filled <= 2 or f.wordy) and not _fills_table(grid, r, f, heads, roles.get(f.prev, (None,))[0] == RECORD):
             roles[r] = (NOTE, (S_LABEL_VALUE,) if _sets_a_label(grid, r, f, max((h for h in heads if h < r), default=None)) else (S_BELOW_TABLE,))
             continue
         roles[r] = (RECORD, (S_FIGURES if figures else S_TEXT_LINE,))
