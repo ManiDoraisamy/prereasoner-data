@@ -38,6 +38,7 @@ usage: python -X utf8 -m regress.run_public --run NAME --set SET --system SYSTEM
        python -X utf8 -m regress.run_public --census RUN          (wtq-train: the misses by SQUALL query family)
        python -X utf8 -m regress.run_public --oracle RUN [--boost 4]   (wtq-train: what a reading naming SQUALL's columns builds)
        python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 2100 --squall "max .* - min"   (one SQUALL family)
+       python -X utf8 -m regress.run_public --run NAME --set wtq-train-open --size 2251 --match "PATTERN"   (one family by its text)
 """
 from __future__ import annotations
 
@@ -640,6 +641,7 @@ def main() -> int:
     parser.add_argument("--cap", type=float, default=30.0)
     parser.add_argument("--redo-errors", action="store_true", help="rerun the rows recorded as errors or provider failures")
     parser.add_argument("--squall", help="wtq-train: only the questions whose SQUALL query matches this pattern (one family, for diagnosis)")
+    parser.add_argument("--match", help="training sets: only the questions whose text matches this pattern (one family, for diagnosis; never a gate)")
     parser.add_argument("--new-sample")
     parser.add_argument("--compare", nargs=2, metavar=("RUN_A", "RUN_B"))
     parser.add_argument("--summary")
@@ -675,6 +677,10 @@ def main() -> int:
     items, limits, sql = items_of(args.set, args.size, args.skip)
     if args.squall:
         items = [item for item in items if re.search(args.squall, " ".join(sql.get(item.id, "").lower().split()))]
+    if args.match:
+        if not args.set.startswith(("wtq-train", "databench-train")):
+            parser.error("--match reads training questions only")
+        items = [item for item in items if re.search(args.match, item.question)]
     items = items[:args.limit]
     target = WORK / args.run / args.set / f"{args.system}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)

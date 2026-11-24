@@ -243,6 +243,23 @@ def test_written_day_questions_need_a_year_and_a_day_number() -> None:
     assert record.days["d000"] == "2024-01-10" and len(record.days) == 12
 
 
+def test_a_year_written_with_letters_offers_the_ten_or_hundred_years_it_begins() -> None:
+    """"How many orders in the 1970s", "parishes founded in the 1800's": 44 of WikiTableQuestions' 11,321 training
+    questions outside dev name ten or a hundred years by the year they begin, written with letters glued on, which read
+    as an amount (1970) or nothing (1800 is no year the reader reads alone). Such a year reads as a period, never an
+    amount, and the stated period offers the ten years it begins and, ending in 00, the hundred, for the API to choose;
+    a year written alone is offered no span of years it begins."""
+    catalog = _catalog()
+    def spans(question):
+        named = _stock_reading(question, catalog)
+        assert not any(name.startswith(f"{SLOT_NUMBER}:") and name.split(":", 1)[1][:2] in ("18", "19") for name in named.reading.scores), "no amount"
+        return set(reading_record(question, named, catalog).periods.values())
+    assert coordinate(SLOT_PERIOD, "1970-01-01..1979-12-31") in spans("how many orders were placed in the 1970s?")
+    eighteen = spans("how many orders in the 1800's?")
+    assert {coordinate(SLOT_PERIOD, "1800-01-01..1809-12-31"), coordinate(SLOT_PERIOD, "1800-01-01..1899-12-31")} <= eighteen
+    assert not any(name.endswith("..2029-12-31") or name.endswith("..2119-12-31") for name in spans("orders in 2020"))
+
+
 def test_a_sheet_without_days_or_years_asks_no_period() -> None:
     rows = [[row[0], row[1], row[2]] for row in ROWS]
     catalog = _catalog(rows)
@@ -446,7 +463,7 @@ TESTS = [
     test_none_likelier_than_the_best_answer_errs, test_nothing_listed_errs, test_answer_key_tells_rows_apart,
     test_sheet_state_describes_every_column_with_three_examples, test_sheet_state_names_a_family_table_by_all_its_tabs, test_a_workbook_of_several_tabs_names_the_tab_in_view,
     test_reading_record_offers_each_slot_its_coordinates, test_written_day_questions_need_a_year_and_a_day_number,
-    test_a_sheet_without_days_or_years_asks_no_period, test_fused_reading_reads_the_api_against_the_uniform_share_and_values_against_none,
+    test_a_year_written_with_letters_offers_the_ten_or_hundred_years_it_begins, test_a_sheet_without_days_or_years_asks_no_period, test_fused_reading_reads_the_api_against_the_uniform_share_and_values_against_none,
     test_value_sets_ask_about_the_likeliest_values, test_choice_record_lists_each_candidate_with_its_answer_and_none,
     test_the_request_body_is_sorted_and_hashable, test_answer_reads_decodes_and_chooses_through_its_calls, test_said_spans_are_the_questions_own_words,
     test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_a_failed_call_reaches_the_caller,

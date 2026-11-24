@@ -53,6 +53,7 @@ from engine.program.names import (EVERY_COLUMN, FIRST, LAST, PERCENT_OP, RUN, SA
                                   SLOT_ROW_OP, SLOT_SAID, SLOT_SHOWN, coarse_type, coordinate)
 from engine.program.scoring import Reading
 from engine.program.semantics import fold, number_text
+from engine.program.words import YEARS_FROM
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
 
 W = 2.0                    # an API probability's weight on the decoder's reading
@@ -328,12 +329,14 @@ def stated_number_question(questions: dict) -> dict[str, str]:
     return mapping
 
 
-def stated_period_question(questions: dict, scores: Mapping[str, float], catalog: Catalog) -> dict[str, str]:
+def stated_period_question(questions: dict, scores: Mapping[str, float], catalog: Catalog, question: str = "") -> dict[str, str]:
     """A period the question writes in words. The word reader reads days, months and years written in digits; a month's
     name, a quarter, "between", "before" and "since" are read by nothing, though the language holds each (PeriodSpan)
     and the decoder builds a date condition from any positive period coordinate. Options from the years and days the
     question writes in digits: each year's months and quarters, everything before, through, from and after each year or
-    day, the range between two of them, and (with none stated) each month of any year. Asked of a workbook holding a
+    day, the range between two of them, the ten years and, ending in 00, the hundred years that a year written with
+    letters glued on begins ("the 1970s", "the 1800's": words.YEARS_FROM), and (with none stated) each month of any
+    year. Asked of a workbook holding a
     column of days or a column of year numbers (a span of whole years tests those, InYears). Returns {option: coordinate}."""
     if not _has_days(catalog) and not any(index_of(table).year_columns for table in catalog.tables):
         return {}
@@ -341,6 +344,7 @@ def stated_period_question(questions: dict, scores: Mapping[str, float], catalog
     spans = [period_from_name(name.split(":", 1)[1]) for name in stated]
     years = sorted({span.start[:4] for span in spans if span.kind == P_YEAR and span.start})[:PERIODS_STATED_MOST]
     days = sorted({span.start for span in spans if span.kind == P_DAY and span.start})[:PERIODS_STATED_MOST]
+    decades = {match.group(1) for match in YEARS_FROM.finditer(question.lower())}
     options: list[tuple[str, str]] = []
 
     def ranged(first: str, last: str, words: str) -> None:
@@ -354,6 +358,10 @@ def stated_period_question(questions: dict, scores: Mapping[str, float], catalog
         ranged(PERIOD_FIRST, f"{year}-12-31", f"up to {year}, {year} included")
         ranged(f"{year}-01-01", PERIOD_LAST, f"from {year} on, {year} included")
         ranged(f"{y + 1:04d}-01-01", PERIOD_LAST, f"after {year}, {year} not included")
+        if year in decades:     # "the 1970s" names the ten years 1970 begins; "the 1800s" maybe the hundred 1800 begins
+            ranged(f"{year}-01-01", f"{y + 9:04d}-12-31", f"the ten years {year} to {y + 9}, both included")
+            if y % 100 == 0:
+                ranged(f"{year}-01-01", f"{y + 99:04d}-12-31", f"the hundred years {year} to {y + 99}, both included")
     if len(years) == 2:
         ranged(f"{years[0]}-01-01", f"{years[1]}-12-31", f"{years[0]} to {years[1]}, both included")
     for day in days:
@@ -477,7 +485,7 @@ def reading_record(question: str, named: NamedReading, catalog: Catalog, active_
     _one_value_each(questions, options)
     scores = named.reading.scores
     numbers = stated_number_question(questions)
-    periods = stated_period_question(questions, scores, catalog)
+    periods = stated_period_question(questions, scores, catalog, question)
     days = written_day_questions(questions, question, scores, catalog)
     years = stated_year_question(questions, scores, catalog)
     counted = value_count_question(questions, options)

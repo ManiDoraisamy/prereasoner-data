@@ -28,6 +28,9 @@ from engine.sheet.values import parse_period
 
 _TOKEN = re.compile(r"[^\W_]+")      # a word of any script, as index.words_of reads the sheet's words
 _YEAR = re.compile(r"(?<![\w.,/:-])((?:19|20)\d{2})(?![\w.,/:-])")
+# A year ending in 0 written with letters glued on ("the 1970s", "1800's", "1970er", "1970年代"): the ten or hundred years
+# it begins, which the stated period question offers (engine/program/closed.py); its digits are no amount.
+YEARS_FROM = re.compile(r"(?<![\w.,/:-])((?:1\d|20)\d0)['’]?(?=[^\W\d_])")
 _DATE_FORMS = re.compile(r"(?<![\w/.-])(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-](?:\d{4}|\d{2})|\d{4}[-/]\d{1,2}|\d{1,2}/\d{4})(?![\w/.-])")
 _NUMBER = re.compile(r"(?<![\w/.-])[$€£¥]?\d[\d,]*(?:\.\d+)?\s*%?")
 _TIME_STATED = re.compile(r"(?<![\w.:])" + DURATION.pattern + r"(?![\w:])")
@@ -59,7 +62,7 @@ def _periods(low: str, out: dict[str, float]) -> None:
         period = parse_period(match.group(0))
         if period is not None and period.start is not None:
             _span_score(period, out, 1.0)
-    for match in _YEAR.finditer(low):
+    for match in (*_YEAR.finditer(low), *YEARS_FROM.finditer(low)):
         out.setdefault(coordinate(SLOT_PERIOD, match.group(1)), 0.9)
 
 
@@ -70,7 +73,7 @@ def _span_score(period, out: dict[str, float], score: float) -> None:
 
 def _numbers(low: str, out: dict[str, float]) -> None:
     """Numbers and times the question writes in digits. A date's digits and a year state no amount."""
-    taken = [match.span() for match in _DATE_FORMS.finditer(low)] + [match.span() for match in _YEAR.finditer(low)]
+    taken = [match.span() for match in (*_DATE_FORMS.finditer(low), *_YEAR.finditer(low), *YEARS_FROM.finditer(low))]
     for match in _TIME_STATED.finditer(low):     # "35:00": a time, read as a sheet's time cells are
         taken.append(match.span())
         out[coordinate(SLOT_NUMBER, number_text(duration_seconds(match.group(0))))] = NUMBER_ALONE

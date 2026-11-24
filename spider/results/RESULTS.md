@@ -10,6 +10,23 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Ten or a hundred years named by the year they begin: "in the 1970's" reads as 1970 to 1979; its training family 21 -> 30 right of 44, the 896 unchanged (2026-11-24)
+
+- "How many orders in the 1970s", "parishes founded in the 1800's": 44 of WikiTableQuestions' 11,321 training
+  questions outside dev (13 annotated, 31 not) name ten or a hundred years by the year they begin, written with letters
+  glued on. The word reader read "1970s" as the amount 1970 and "1800s" as nothing (a year reads alone only from 1900).
+  A year ending in 0 with letters glued on (`engine/program/words.py` `YEARS_FROM`: digits then any letters, as in
+  "1970s", "1800's", "1970er", "1970年代"; no word is named) now reads as a period and no amount, and the stated period
+  question (`engine/program/closed.py`) offers the ten years it begins and, ending in 00, the hundred, for the API to
+  choose. A year written alone is offered no such span.
+- Gate (`regress/run_dev_decisions.py --record`): the 896 and the demo's 91 at full parity (no dev question writes such
+  a year; no body changed). Its family (`regress/run_public.py --match`, a new diagnosis filter on the training
+  questions' text, run before on the commit without the change and after; records `2026-11-24-decades-before` and
+  `2026-11-24-decades` under `regress/sets/public/records/`): right 21 -> 30 (11 wins, 2 losses), built 25 -> 35;
+  annotated 11 -> 10 (1 win, 2 losses: "films produced in the 2000s" and "the last team played in the 1990s" read the
+  span and pick another listing), unannotated 10 -> 20 (10 wins, 0 losses). Decisions spend $0.12.
+
+
 ## Lines in a row: "how many consecutive wins" gets a program of its own; the engine alone 684 -> 691 of the final fresh 1,000 WikiTableQuestions test questions (7 wins, 0 losses), the 896 unchanged; a verdict said "Yes" or "No" loses three dev picks, not kept (2026-11-24)
 
 - **Where the unbuilt questions are.** The find set (`wtq-train`) holds only the training questions SQUALL annotates,
