@@ -455,6 +455,45 @@ def test_a_first_record_shaped_like_the_next_is_no_second_header_line():
     assert listed.header_rows == (1,) and len(listed.lines) == 5
 
 
+def test_a_lone_year_after_a_gap_opens_a_section():
+    # A table of rates by area with a line for each year: the first year was read as a second header line ("Year and
+    # Area 1964") and every later year as a record, so no line knew its year.
+    rows = [["Homeownership rates by area"], [], ["Year and Area", "First Quarter", "Second Quarter"], [], [1964.0], ["United States", 63.1, 63.3], ["Midwest", 69.1, 68.6],
+            [], [1965.0], ["United States", 62.9, 62.9], ["Midwest", 68.1, 68.7], [], [1966.0], ["United States", 63.5, 63.2], ["Midwest", 68.9, 69.0]]
+    table = _tab(rows).tables[0]
+    assert table.header_rows == (3,) and [c.name for c in table.columns] == ["Year and Area", "First Quarter", "Second Quarter"]
+    assert [line.section for line in table.lines] == [("1964",)] * 2 + [("1965",)] * 2 + [("1966",)] * 2
+    # A year alone on a line among the years of its column, with no gap, is a record whose other cells are blank.
+    series = _tab([["Year", "Deaths", "Rate"], [1905.0, 10.0, 1.5], [1906.0], [1907.0, 12.0, 1.25], [1908.0, 9.0, 1.0], [1909.0, 11.0, 1.75]]).tables[0]
+    assert len(series.lines) == 5 and not any(line.section for line in series.lines)
+
+
+def test_a_label_and_value_the_records_hold_in_their_column_is_no_note():
+    # An album list whose details column reads "Released: ..." on every line: its last line, short of figures, was
+    # read as a note under the table and the count of albums fell by one.
+    details = "Released: June {}, 20{:02d} Label: Universal Format: CD, digital download"
+    rows = [["Title", "Album details", "Peak position", "Certifications"]] + [[f"Album {i}", details.format(i, i), float(i), "Gold" if i % 2 else ""] for i in range(1, 7)] + [["Last Album", details.format(24, 11), "—", ""]]
+    model = _tab(rows)
+    assert len(model.tables[0].lines) == 7 and _roles(model)[8] == names.RECORD
+    # A label set beside its value in a column whose records hold none is a note under the table.
+    noted = _tab([["Region", "Sales", "Units"], ["East", 10.0, 1.0], ["West", 20.0, 2.0], ["North", 30.0, 3.0], ["Source: company filings", "", ""]])
+    assert len(noted.tables[0].lines) == 3 and _roles(noted)[5] == NOTE
+
+
+def test_a_header_set_apart_from_its_units_line_by_blank_lines_is_one_header():
+    # Names, two blank lines, then a units line over the figures: the units line opened a table of its own, so the
+    # names owned a table with no line and every figure was named "-- Pounds --".
+    rows = [["Year", "Population", "Beef", "Pork"], [], [], ["", "-- Millions --", "-- Pounds --", "-- Pounds --"]] + [[1909.0 + i, 90.5 + i, 74.2 - i, 67.0 + i] for i in range(6)]
+    model = _tab(rows, styleRead=False)
+    assert len(model.tables) == 1
+    table = model.tables[0]
+    assert table.header_rows == (1, 4) and len(table.lines) == 6
+    assert [c.name for c in table.columns][:3] == ["Year", "Population -- Millions --", "Beef -- Pounds --"]
+    # A table with lines under its header still closes at the next header.
+    stacked = _tab([["Year", "Beef"], [1909.0, 74.2], [1910.0, 70.4], [1911.0, 68.5], [], [], ["Region", "Pork"], ["East", 67.0], ["West", 62.3], ["North", 69.1]])
+    assert [t.header_rows for t in stacked.tables] == [(1,), (7,)]
+
+
 def _every_data_cell_is_held(model):
     """The invariant behind F4: every filled cell on a data line belongs to a table."""
     held = {(cell.row, cell.col) for table in model.tables for line in table.lines + table.printed for cell in line.cells.values()}
@@ -974,7 +1013,8 @@ TESTS = [
     test_an_axis_holds_one_grain_and_no_totals, test_a_group_axis_needs_one_format, test_a_tall_merge_over_a_number_is_one_figure, test_a_name_keeps_what_the_sheet_wrote, test_running_balance_is_not_a_total, test_a_groups_subtotal_is_printed_wherever_it_stands, test_bands_give_sections,
     test_sparse_label_column_fills_down_and_traces_to_its_source, test_stacked_tables_split, test_repeated_header_continues_its_table, test_side_by_side_blocks_split, test_spacer_columns_do_not_split_one_table,
     test_repeated_blocks_merge_into_one_family, test_months_across_are_an_axis, test_sequence_and_group_axes, test_stray_cells_are_set_apart_by_kind, test_a_number_with_a_bracketed_aside_reads_as_its_number, test_a_column_of_one_unit_reads_as_numbers, test_hidden_lines_and_columns_are_kept_and_flagged,
-    test_label_value_notes, test_tab_family_merges_with_the_tab_name_as_a_column, test_direct_markers_name_the_header, test_style_alone_never_moves_the_first_header, test_a_first_record_shaped_like_the_next_is_no_second_header_line, test_a_chart_tab_and_empty_tabs_do_not_crash,
+    test_label_value_notes, test_tab_family_merges_with_the_tab_name_as_a_column, test_direct_markers_name_the_header, test_style_alone_never_moves_the_first_header, test_a_first_record_shaped_like_the_next_is_no_second_header_line, test_a_lone_year_after_a_gap_opens_a_section,
+    test_a_label_and_value_the_records_hold_in_their_column_is_no_note, test_a_header_set_apart_from_its_units_line_by_blank_lines_is_one_header, test_a_chart_tab_and_empty_tabs_do_not_crash,
     test_origin_shifts_addresses, test_compile_is_deterministic, test_every_fact_traces_to_a_cell, test_header_decision_is_a_sum_over_named_features, test_xlsx_reader_builds_the_wire_payload,
 ]
 

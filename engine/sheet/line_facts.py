@@ -9,7 +9,7 @@ from engine.sheet.grid import Grid
 from engine.sheet.names import F_CURRENCY, FX_AGG_COLUMN, FX_AGG_ROW, FX_COLUMN_ARITH, FX_LINK_COLUMN, V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT
 from engine.sheet.values import parse_number, year_number
 
-_LABEL_VALUE = re.compile(r"^[^:]{2,40}:(\s|$)")
+LABEL_VALUE = re.compile(r"^[^:]{2,40}:(\s|$)")
 _STYLE_WINDOW = 8
 _BELOW_WINDOW = 14
 
@@ -352,6 +352,6 @@ def line_facts(grid: Grid) -> dict[int, LineFacts]:
             arith_ties=ties.get(r, 0), block_ties=blocks.get(r, 0), group_ties=groups.get(r, 0), bold=style[r][0], fill=style[r][1], under=style[r][2],
             bold_next=apart(r, 0, 1), fill_next=apart(r, 1, 1), under_next=apart(r, 2, 1), bold_prev=apart(r, 0, -1), fill_prev=apart(r, 1, -1),
             repeated=r in repeats, real_figures=real_figures, sequence=sequence, gap_above=prev_row is None or prev_row != r - 1, gap_below=next_row is None or next_row != r + 1,
-            prev=prev_row, next=next_row, wide_merge=wide[1] - wide[0] + 1 if wide else 0, label_value=any(_LABEL_VALUE.match(t) for t in texts),
+            prev=prev_row, next=next_row, wide_merge=wide[1] - wide[0] + 1 if wide else 0, label_value=any(LABEL_VALUE.match(t) for t in texts),
             value_score=score, named=named, typed_below=typed_share, overlap_below=overlap, over_figures=over_figures)
     return facts

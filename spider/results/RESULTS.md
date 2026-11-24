@@ -10,6 +10,59 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Three sheet readings: a year line opens its section, a column's label-and-value texts are its records' content, a units line set apart by blank lines joins its header (2026-11-24)
+
+- **A year over its section.** Homeownership rates by area put each year on a line of its own, after a blank line,
+  over the areas rated in it. The first year was read as a second header line ("Year and Area 1964"), and every
+  later year as a record, so no line knew its year.
+  - A lone year over a text in its column on the line under it now reads as a line alone. After a gap it is a band,
+    and its records take it as their section (`engine/sheet/line_roles.py` `_a_year_over_texts`).
+  - A lone unmerged year under the first column a header names is no header line (`_a_year_over_the_key`).
+  - A lone year among the figures of its column is one of them: a subtotal of 1,946 stays a record.
+- **A column's label-and-value texts.** A line holding no figure under a table was a note when one of its cells read
+  "label: value" ("Released: June 24, 2011 Label: ..."), even where every record above held such a text in that
+  column. A label-and-value text now marks a note only in a column where no line between the header and it holds one
+  (`_sets_a_label`; the pattern is `engine/sheet/line_facts.py` `LABEL_VALUE`, now shared).
+- **A units line set apart.** Three header lines, two blank lines, then "-- Millions -- | ---- Pounds ----": the units
+  line opened a table of its own. The names owned a table with no line, and 113 lines of figures were named
+  "---- Pounds ----". Header lines with only blank lines between them and nothing under the first are one header
+  when the later lines fill no column the first leaves unnamed (`engine/sheet/compiler.py` `_names_its_columns`).
+  The first form joined any such blocks, and on real sheets it prefixed a title read as a header to the next table's
+  names ("Summary of El Paso Capacity Award Mmbtu"); not kept.
+- Real sheets: on the line model's 2,077 labelled Enron tabs, 9 tabs' tables change and no labelled header line is
+  lost.
+  - Three years open sections: over a months header, over a rate-case header, between a header and its records.
+  - Three notes become records.
+  - Three header blocks join the empty header above them, which now names their columns.
+- WikiTableQuestions: the label-and-value reading changes 6 tables (23 lines become records), and the year and units
+  readings change none (a csv has no blank line). Training questions on the 6 tables
+  (`regress/sets/public/records/2026-11-24-labels{,-before}`): annotated right 12 -> 17 (5 wins, 0 losses),
+  unannotated 2 -> 2.
+- Gate: the 896 picked 728 -> 732 (4 wins, 0 losses), built 793 -> 797, unwarned wrong 64 -> 63.
+  - Fresh dev: picked 127 -> 131, built 137 -> 141, unwarned wrong 17 -> 16. All 8 questions on the two changed
+    workbooks moved. The homeownership quarters, 4 of 4: wrong, flagged wrong, flagged right and asked -> right. The
+    red-meat availability, 4: asked -> right, flagged right -> right, flagged wrong -> asked, and one unchanged.
+  - WikiTableQuestions: one question on a changed table has new listings and the same label.
+  - Messy, DataBench and the demo's 91 are at parity.
+  - References kept. Decisions spend about $0.10 with the family runs.
+
+
+## The final fresh sample at 09f0a0e5: the engine alone 691 -> 693 of 1,000 (2 wins, 0 losses) (2026-11-24)
+
+- Today's kept changes up to the header rule, on the 1,000 WikiTableQuestions test questions no one reads
+  (`regress/run_public.py --set wtq-fresh2`, run in a clean checkout of 09f0a0e5; records
+  `regress/sets/public/records/2026-11-24-head`), against the release's record (`2026-11-24-streak`). The changes:
+  the decade reading, the run question without cue words, the year grain, and the first record kept out of the
+  header.
+  - Right 691 -> 693, built 797 -> 800.
+  - Wins: "were more episodes aired in 1967 or 1968?" (the year grain) and "what is the total number of wins between
+    2012 and 2014?" (a tennis table whose first record was a header line).
+  - Unmarked wrong 145 -> 147. One answer is now erred, and three warned or erred answers are now answered, two of
+    them with the same reading under probabilities that moved with the new calls. One is "matches played in the
+    1990's", now read as 1990 to 1999 with a total where the gold counts lines.
+  - Decisions spend $0.04. Gemini 4 Neon on the same sample: 850.
+
+
 ## A table's first record is no second header line: on the 13 WikiTableQuestions tables it changes, the training questions 21 -> 35 right of 59, the 896 unchanged (2026-11-24)
 
 - "What is the total number of nations?" answered 15 for 16. The sheet compiler read the first record of some lists as

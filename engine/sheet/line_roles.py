@@ -3,7 +3,7 @@ from __future__ import annotations
 
 
 from engine.sheet.grid import Grid
-from engine.sheet.line_facts import LineFacts, line_facts
+from engine.sheet.line_facts import LABEL_VALUE, LineFacts, line_facts
 from engine.sheet.line_model import final_scores, line_features, load_model
 from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_AFTER_TOTAL, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
                                 S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_GROUP_TIE, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL,
@@ -142,15 +142,44 @@ def _records_under_the_header(heads: dict[int, list[str]], grid: Grid, facts: di
         top = r
         while facts[top].prev in heads and top - facts[top].prev <= 2:
             top = facts[top].prev
-        if top != r and _names_apart(grid, top, r) and _shaped_like_the_record_below(grid, facts, r, below):
+        if top != r and (_a_year_over_the_key(grid, top, r) or _names_apart(grid, top, r) and _shaped_like_the_record_below(grid, facts, r, below)):
             del heads[r]
     return heads
+
+
+def _lone_year(grid: Grid, r: int) -> bool:
+    """A line holding one cell, a number that reads as a year."""
+    line = grid.rows[r]
+    if len(line) != 1:
+        return False
+    cell = next(iter(line.values()))
+    return cell.kind == V_NUMBER and year_number(cell.value)
+
+
+def _a_year_over_texts(grid: Grid, r: int, below: int | None) -> bool:
+    """A lone year over a text in its column on the line under it: a section's label (a line for each year over the
+    areas rated in it), where a lone year among figures is one of them (a subtotal of 1,946)."""
+    if below is None or not _lone_year(grid, r):
+        return False
+    (c, _), = grid.rows[r].items()
+    under = grid.rows[below].get(c)
+    return under is not None and under.kind == V_TEXT
+
+
+def _a_year_over_the_key(grid: Grid, top: int, r: int) -> bool:
+    """A lone year, unmerged, under the first column a header names: the label of the section of records it opens (a
+    table of rates by area with a line for each year), not a name of that column."""
+    if not _lone_year(grid, r):
+        return False
+    (c, _), = grid.rows[r].items()
+    named = grid.rows[top]
+    return len(named) >= 2 and c == min(named) and (r, c + 1) not in grid.spans
 
 
 def _fills_table(grid: Grid, r: int, f: LineFacts, heads: dict[int, list[str]]) -> bool:
     """A line standing under the columns of the header above it, and filling enough of them, is a record short of figures, not a note."""
     above = [h for h in heads if h < r]
-    if not above or f.filled < 2 or f.label_value:
+    if not above or f.filled < 2 or _sets_a_label(grid, r, f, max(above)):
         return False
     named = grid.rows[max(above)]
     if not all(c in named for c in grid.rows[r]):
@@ -158,6 +187,21 @@ def _fills_table(grid: Grid, r: int, f: LineFacts, heads: dict[int, list[str]]) 
     if f.filled >= 3 or (f.filled * 2 >= len(named) and not f.wordy and f.longest <= 60):
         return True
     return f.filled * 2 >= len(named) and _shares_a_value(grid, r, max(above))
+
+
+def _sets_a_label(grid: Grid, r: int, f: LineFacts, head: int | None) -> bool:
+    """A line that sets a label beside its value ("Source: ..."), as a note under a table does: a label: value text in a
+    column where no line between the header head and it holds one. Where the records above hold such texts in that
+    column (an album's "Released: ..." details, a route's "H3: weekday service"), they are that column's content."""
+    if not f.label_value:
+        return False
+    if head is None:
+        return True
+    for c, cell in grid.rows[r].items():
+        if cell.kind == V_TEXT and LABEL_VALUE.match(str(cell.value)) and not any(
+                head < x < r and c in grid.rows[x] and grid.rows[x][c].kind == V_TEXT and LABEL_VALUE.match(str(grid.rows[x][c].value)) for x in grid.filled):
+            return True
+    return False
 
 
 def _shares_a_value(grid: Grid, r: int, head: int) -> bool:
@@ -191,7 +235,7 @@ def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[
             roles[r] = (TOTAL, tuple(printed[r]))
             continue
         styled = f.bold >= 0.5 or f.fill >= 0.5 or f.under >= 0.5 or f.wide_merge > 1
-        alone = f.filled == 1 and f.text + f.period == 1 and f.longest <= 60
+        alone = f.filled == 1 and (f.text + f.period == 1 or _a_year_over_texts(grid, r, f.next)) and f.longest <= 60
         figures = f.number + f.date
         if first_head is None:
             if figures == 0 and f.label_value:
@@ -233,7 +277,7 @@ def assign_roles(grid: Grid, facts: dict[int, LineFacts], heads: dict[int, list[
                 roles[r] = (RECORD, (S_TEXT_LINE,))
             continue
         if last_figures is not None and r > last_figures and figures == 0 and (f.filled <= 2 or f.wordy) and not _fills_table(grid, r, f, heads):
-            roles[r] = (NOTE, (S_LABEL_VALUE,) if f.label_value else (S_BELOW_TABLE,))
+            roles[r] = (NOTE, (S_LABEL_VALUE,) if _sets_a_label(grid, r, f, max((h for h in heads if h < r), default=None)) else (S_BELOW_TABLE,))
             continue
         roles[r] = (RECORD, (S_FIGURES if figures else S_TEXT_LINE,))
     return roles

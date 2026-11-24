@@ -123,8 +123,14 @@ def _fits_body(grid: Grid, r: int, region: _Region, roles: dict[int, tuple[str, 
     return fit >= _FIT_SHARE * len(line)
 
 
+def _names_its_columns(grid: Grid, header: list[int], block: list[int]) -> bool:
+    """The header lines name at least two columns, and every column the block's lines fill among them."""
+    named = {c for r in header for c in grid.rows[r]}
+    return len(named) >= 2 and all(c in named for r in block for c in grid.rows[r])
+
+
 def _regions(grid: Grid, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[_Region]:
-    """Walk the filled lines: a new header block closes the table above it, unless it repeats that table's own header or its one line is a line of that table; lines with no header above them form a table of their own. A header line found to be data takes the record role here."""
+    """Walk the filled lines: a new header block closes the table above it, unless it repeats that table's own header, its one line is a line of that table, or that table has no line yet (then it continues that header); lines with no header above them form a table of their own. A header line found to be data takes the record role here."""
     regions: list[_Region] = []
     current: _Region | None = None
     pending_titles: list[int] = []
@@ -139,7 +145,12 @@ def _regions(grid: Grid, roles: dict[int, tuple[str, tuple[str, ...]]]) -> list[
                 i += 1
                 block.append(filled[i])
             repeated = _repeated_lines(grid, block, current, roles) if current is not None and current.header_rows else 0
-            if repeated:
+            if current is not None and current.header_rows and not current.body and not pending_titles and _names_its_columns(grid, current.header_rows, block):
+                # Header lines with only blank lines between them and nothing under the first, the later naming no column
+                # the first leaves unnamed: one table's header (a units line, "-- Millions -- | -- Pounds --", set two
+                # lines below the names it measures). A title read as a header names no such columns.
+                current.header_rows.extend(block)
+            elif repeated:
                 current.repeats.append(block[:repeated])
                 for x in block[repeated:]:
                     roles[x] = (RECORD, (S_DATA_LINE,))
