@@ -515,7 +515,40 @@ def _part_columns(columns: list[Column], records: list[Line], printed: list[Line
             names.add(name)
             parts.append(Column(position=position, col=-1, letter="", name=name, path=(*(column.path or (column.name,)), f"{PART_MARK}{place}"),
                                 role=MEASURE, kind=V_NUMBER, format_kind=F_GENERAL, filled=filled, distinct=len(seen)))
+        mark = _mark_part(column, counted, records, printed, len(columns) + len(parts), names) if any(held) else None
+        if mark is not None:
+            names.add(mark.name)
+            parts.append(mark)
     return parts
+
+
+_OPENING_LETTERS = re.compile(r"^\W*([^\W\d_]+)")     # the run of letters, of any script, a cell opens with
+_MARKS_MOST = 3
+
+
+def _mark_part(column: Column, counted: list[Cell], records: list[Line], printed: list[Line], position: int, names: set[str]) -> Column | None:
+    """A column of figure cells that open with a few letters the lines share gets them as a text part: "Result #" holds
+    "W" of "W 13–7" and "L" of "L 28–3", what each game's result was, beside "Result #1" and "Result #2", its scores; a
+    cell with no figure ("Bye") holds its own letters. Only where at least 4 in 5 counted cells open with letters, at
+    least two different ones (lines told apart, not one word every line writes) and no more than _MARKS_MOST or one for
+    every five such cells, and each held by two cells on average (a mark lines share, not a name, a month, a place or a
+    code each line writes)."""
+    name = f"{column.name} {PART_MARK}"
+    opening = [m.group(1) for cell in counted if cell.kind == V_TEXT and (m := _OPENING_LETTERS.match(str(cell.value)))]
+    distinct = {word.casefold() for word in opening}
+    if name in names or len(opening) * 5 < len(counted) * 4 or not 2 <= len(distinct) <= min(max(_MARKS_MOST, len(opening) // 5), len(opening) // 2):
+        return None
+    filled, seen = 0, set()
+    for line in (*records, *printed):
+        cell = line.cells.get(column.position)
+        if cell is None or cell.row != line.row or cell.kind != V_TEXT or not (m := _OPENING_LETTERS.match(str(cell.value))):
+            continue
+        line.cells[position] = Cell(row=cell.row, col=cell.col, raw=m.group(1), kind=V_TEXT, value=m.group(1))
+        if line.role not in PRINTED_ROLES:
+            filled += 1
+            seen.add(m.group(1).casefold())
+    return Column(position=position, col=-1, letter="", name=name, path=(*(column.path or (column.name,)), PART_MARK),
+                  role=LABEL, kind=V_TEXT, format_kind=F_GENERAL, filled=filled, distinct=len(seen))
 
 
 def _unit_of(column: Column) -> str:

@@ -10,6 +10,40 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A score's opening mark as its own part: "how many games did the 1981 Atlanta Falcons win?" counts the lines whose result is W; on the 148 WikiTableQuestions tables it changes, the training questions 439 -> 456 right of 624 (2026-11-24)
+
+- A result column of "W 13–7" and "L 28–3" compiled as text with two number parts, its scores ("Result #1", "Result
+  #2"), but the W or L each line opens with was in no column a value could name: "how many wins did the red raiders
+  have?" counted the lines whose result was filled, or those of one score ("W 12-0"). A column of figure cells that
+  open with a few letters the lines share now gets them as a text part beside its figure parts
+  (`engine/sheet/compiler.py` `_mark_part`): "Result #" holds W, L, T or Bye. Only where at least 4 in 5 counted cells
+  open with letters, at least two different ones, no more than three or one for every five such cells, and each held
+  by two cells on average: a mark lines share, not one word every line writes ("Missouri 30–16–6") nor a name, place,
+  month or code each line writes. The last bound came from the demo's three assets, whose codes ("HLGF", "S", "ET")
+  the first form took for marks; it changes none of the tables below. The reading then names the value: "the number of
+  lines where Result # is W".
+- WikiTableQuestions: 148 of the 2,108 tables gain a part (`regress/sets/public/records/2026-11-24-marks/books.txt`):
+  63 "Result #", 11 "Score #", 19 "Date #" on dates written in words (the workbook's loading types those as dates
+  before a question reads them, so the part is gone from the served table), the rest engine codes, schools and places.
+  No header, line or other column changes.
+- Its family (`regress/run_public.py --set wtq-train --size 9070 --books`): the 624 training questions on those 148
+  tables, run on 28276f55 (records `2026-11-24-marks-before`) and with the change (`2026-11-24-marks`). Right 439 ->
+  456 (29 wins, 12 losses), built 506 -> 516, unmarked wrong 91 -> 86. Seventeen wins count or rank by the mark ("how
+  many games did the 1981 atlanta falcons win?" 7, which had answered 16, every game). Of the 12 losses, one reads the
+  mark where it should not ("the least number of points scored in a win" takes the loser's score); the others are
+  questions on these tables whose reading the new column moves ("the next game after november 17th" shows its time),
+  as the 12 other wins are. Decisions spend about $1.10 for both runs.
+- Gate (`regress/run_dev_decisions.py --record --tag marks`, the demo again with the final rule as `marks2`; the
+  references kept from their records). The 896: built 798 -> 798, picked 734 -> 735, unwarned wrong 63 -> 63.
+  WikiTableQuestions picks 234 -> 235 (2 wins, 1 loss): "how many wins" (nt-1538) is counted by the mark, and a
+  home-or-away count by it is now warned wrong instead of asked. DataBench picks level (1 win, 1 loss), all on one
+  survey (`058_US`), whose "age_by_gender" cells ("Female 65+") gain a Female or Male part: its 20 questions' listings
+  move and five labels with them, unwarned wrong level. The demo's 91 answers are unchanged (86 right); one workbook
+  gains a part (procurement.xlsx's reference codes open with DN, C or ERFX) and its four questions' listings move.
+  Messy and fresh dev are unchanged. A cache-hit replay of every set on the final code is at parity with the kept
+  references.
+
+
 ## A date column ranked by its month of any year, named as the sheet writes it: "what month were the most games played" answers October; on the 370 training questions whose SQUALL query ranks groups, right 288 -> 294 (2026-11-24)
 
 - A group rank over a date column grouped by the whole date, or (the attempt kept out earlier today) by year and
