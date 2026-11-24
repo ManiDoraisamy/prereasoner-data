@@ -10,6 +10,18 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## The final fresh sample at 4b674537: the engine alone 693 -> 695 of 1,000 (2 wins, 0 losses), unmarked wrong 147 -> 143 (2026-11-24)
+
+- The sheet readings kept since 09f0a0e5, on the 1,000 WikiTableQuestions test questions no one reads (records
+  `regress/sets/public/records/2026-11-24-head2`, run in a clean checkout): the year lines, the label-and-value
+  texts, the units line, spanned values and short last lines.
+  - Right 693 -> 695, built 800 -> 801, unmarked wrong 147 -> 143.
+  - Both wins sit on one table whose seasons with "No Team" across every column split it in two: "what is the total
+    wins?" and "which year did the team have their most total wins?".
+- Against the release's record (`2026-11-24-streak`): 691 -> 695 (4 wins, 0 losses), unmarked wrong 145 -> 143.
+  Gemini 4 Neon on the same sample: 850. Decisions spend $0.01.
+
+
 ## Every dash read as a no-value mark: on the 178 WikiTableQuestions tables holding one, the training questions 676 -> 670 right of 943; not kept (2026-11-24)
 
 - Hypothesis: a typeset table writes "no value" as an en or em dash where a typed one writes a hyphen, and only the
