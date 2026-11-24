@@ -20,7 +20,7 @@ from engine.program.semantics import fold
 from engine.program.language import (Absent, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, LineOrder, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
 from engine.program.names import (FIRST, LAST, LONGEST_RUN, LOWEST, RUN, SLOT_ORDER, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
-                                  SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, GRAINS, GRAIN_YEAR, PERCENT_OP, coordinate, slot_of)
+                                  SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, BREAKDOWN_GRAINS, GRAIN_CALENDAR_MONTH, GRAIN_YEAR, PERCENT_OP, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
 from engine.sheet.names import PRINTED_ROLES
 
@@ -893,11 +893,12 @@ class _Search:
             frames += self.condition_frames(sized, (group_keys, plain), lambda options, where, d=direction: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=SUM, by_size=True), table, index, atoms, rank=True, max_policy=2)
             counted = group + s(coordinate(SLOT_AGGREGATE, COUNT))
             frames += self.condition_frames(counted, (group_keys,), lambda options, where, d=direction: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT), table, index, atoms, rank=True, max_policy=2, choices=True)
-            # a date key's year as the group ("which year had the most hires"): offered beside the day's own groups, under
-            # the same scores, for a count and a total. Not its year-month: a group cell '2009-10' answers "which month"
-            # as no one asks it (the month's name), and was answered unwarned wrong where the day's groups had erred.
+            # a date key's year or month of any year as the group ("which year had the most hires", "which month were
+            # the most games played"): offered beside the day's own groups, under the same scores, for a count and a
+            # total. Not its year-month: a group cell '2009-10' answers "which month" as no one asks it (the month's
+            # name), and was answered unwarned wrong where the day's groups had erred.
             dated_keys = [option for option in group_keys if option.payload.position in index.date_columns]
-            for grain in (GRAIN_YEAR,) if dated_keys else ():
+            for grain in (GRAIN_YEAR, GRAIN_CALENDAR_MONTH) if dated_keys else ():
                 frames += self.condition_frames(counted, (dated_keys,), lambda options, where, d=direction, g=grain: Rank(ENTITY_GROUP, table.id, d, where, None, key=options[0], function=COUNT, grain=g), table, index, atoms, rank=True, max_policy=2)
                 summed_by = group + s(coordinate(SLOT_AGGREGATE, SUM))
                 frames += self.condition_frames(summed_by, (dated_keys, measures), lambda options, where, d=direction, g=grain: Rank(ENTITY_GROUP, table.id, d, where, options[1], key=options[0], function=SUM, grain=g), table, index, atoms, rank=True, max_policy=2)
@@ -958,7 +959,7 @@ class _Search:
         # a date key grouped by its month or year ("orders per month", "hires per year"): offered beside the day's own
         # groups, under the same scores
         dated = [option for option in grouped if option.payload.position in index.date_columns]
-        for grain in GRAINS if dated else ():
+        for grain in BREAKDOWN_GRAINS if dated else ():
             for function in NUMBER_AGGREGATES:
                 base = each + s(coordinate(SLOT_AGGREGATE, function)) + self.type_score(A_NUMBER)
                 figures = measures if function == SUM else plain

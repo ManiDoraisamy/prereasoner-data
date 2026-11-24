@@ -13,7 +13,7 @@ from engine.program.index import Atom, TableIndex
 from engine.program.language import (Absent, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, LineOrder, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, Words, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name, shown_together)
 from engine.program.lowering import plan_schema, to_query
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, LONGEST_RUN, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
-                                  EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PLUS, SEMANTICS, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of, GRAIN_MONTH, GRAIN_YEAR)
+                                  EV_REPEATED_LINES, EV_ROW_COUNT_FOR_AMOUNT, EV_SHAPE_AGREES, EV_TOO_LARGE_FOR_SHARE, EV_TYPE_AGREES, EV_WRONG_KIND, EVIDENCE, FORMS, GE, GT, HIGHEST, LOWEST, MAX, MIN, MINUS, OVER, PLUS, SEMANTICS, SLOT_AGGREGATE, SLOT_FORM, SLOTS, STARTS, SUM, TIMES, coarse_type, coordinate, slot_of, GRAIN_CALENDAR_MONTH, GRAIN_MONTH, GRAIN_YEAR)
 from engine.program.output import cells_used, compress, explain, formula, read_as
 from engine.program.scoring import Reading, Weights, score_program
 from engine.program.semantics import (SEMANTIC_COUNTS, cell_day, exact_wins, fold, share_forms, stated_number)
@@ -1551,6 +1551,39 @@ def test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down():
         raise AssertionError("only a group rank groups a date key by its month or year")
 
 
+def test_a_date_key_groups_by_its_month_of_any_year_named_as_the_column_writes_it():
+    """"Which month were the most games played?" (October) grouped the lines by each day, and a year-month grain answered
+    '1978-10', a month no one names that way. A group rank's grain GRAIN_CALENDAR_MONTH groups a date key by its month of
+    any year (sql_ast.DatePart "month", both emitters alike), every October together; the group's cell is the month as
+    the column writes it, the one run of letters every cell of that month holds and no other month's cell does, and its
+    number where none does (dates in digits, a lone cell's weekday). The decoder offers it beside the year; a breakdown
+    keeps its year-month."""
+    days = {"September 3, 1978": "1978-09-03", "Sun, September 10, 1978": "1978-09-10", "October 1, 1978": "1978-10-01",
+            "Sun, October 8, 1978": "1978-10-08", "October 14, 1979": "1979-10-14", "Thursday, November 1, 1979": "1979-11-01"}
+    rows = [["Week", "Date", "Attendance"]] + [[str(at), text, 1000.0 * at] for at, text in enumerate(days, 1)]
+    workbook = workbook_from_json({"name": "book", "tabs": [{"name": "Sheet1", "rows": rows}]})
+    catalog = Catalog.from_model(compile_workbook(workbook, days))
+    table = catalog.tables[0]
+    tables = RequestTables(catalog)
+    day, crowd = Col(table.id, 1), Col(table.id, 2)
+    busiest = Rank(ENTITY_GROUP, table.id, HIGHEST, (), None, key=day, function=COUNT, grain=GRAIN_CALENDAR_MONTH)
+    assert _answer(busiest, tables) == (("October", 3),)
+    assert _answer(Rank(ENTITY_GROUP, table.id, LOWEST, (), None, key=day, function=COUNT, grain=GRAIN_CALENDAR_MONTH), tables) == ((11, 1),),         "a lone November cell's weekday is in no other month's cells: two runs, so the month stays its number"
+    assert _answer(Rank(ENTITY_GROUP, table.id, HIGHEST, (), crowd, key=day, function=SUM, grain=GRAIN_CALENDAR_MONTH), tables) == (("October", 12000.0),)
+    assert read_as(busiest, catalog) == 'the calendar month of Date with the most lines on "Sheet1"'
+    listed = Decoder(catalog).enumerate(Reading({name: 1.0 for name in coordinates(busiest, catalog.column_kind)}), k=50)[0]
+    assert busiest in listed
+    digits = [["Track", "Recorded"], ["1", "1958-03-14"], ["2", "1958-04-01"], ["3", "1958-04-01"], ["4", "1959-04-20"]]
+    catalog, table, tables = _setup(digits)
+    assert _answer(Rank(ENTITY_GROUP, table.id, HIGHEST, (), None, key=Col(table.id, 1), function=COUNT, grain=GRAIN_CALENDAR_MONTH), tables) == ((4, 3),)
+    try:
+        Breakdown(COUNT, None, table.id, (Col(table.id, 1),), grain=GRAIN_CALENDAR_MONTH)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a breakdown runs by year-month or year")
+
+
 def test_a_period_of_whole_years_tests_a_column_of_year_numbers():
     """"Total births between 2015 and 2020" over a Year column of plain numbers kept only one bound: a period tested only
     a column of days, and a year read as a number gives one comparison. A period of whole years over a column whose every
@@ -2120,7 +2153,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
-    test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down, test_the_most_lines_in_a_row, test_a_measures_spread_is_its_highest_less_its_lowest, test_lines_are_taken_by_where_they_stand, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down, test_a_date_key_groups_by_its_month_of_any_year_named_as_the_column_writes_it, test_the_most_lines_in_a_row, test_a_measures_spread_is_its_highest_less_its_lowest, test_lines_are_taken_by_where_they_stand, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

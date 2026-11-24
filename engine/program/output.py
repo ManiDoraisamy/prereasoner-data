@@ -9,13 +9,13 @@ from dataclasses import dataclass
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
 from engine.program.language import (LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
-from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, GRAIN_MONTH, GRAIN_YEAR, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
+from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, GRAIN_CALENDAR_MONTH, GRAIN_MONTH, GRAIN_YEAR, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
 from engine.program.store import RequestTables
 from engine.sheet.formulas import column_letter
 
-_GRAIN_WORDS = {GRAIN_MONTH: "month", GRAIN_YEAR: "year"}
+_GRAIN_WORDS = {GRAIN_MONTH: "month", GRAIN_YEAR: "year", GRAIN_CALENDAR_MONTH: "calendar month"}
 _AGG_WORDS = {SUM: "total", AVG: "average", MIN: "lowest", MAX: "highest", COUNT: "number of lines", COUNT_DISTINCT: "number of different",
               LONGEST_RUN: "most lines in a row"}
 _COMPARE_WORDS = {EQ: "equal to", GE: "at least", GT: "above", LE: "at most", LT: "below", NE: "other than"}

@@ -97,7 +97,9 @@ PERCENT_OP = "%"   # a rate's percent of a measure (PercentOf): a row operator a
                    # classes stay ROW_OPS and only a reading that scores it offers a percent
 GRAIN_MONTH = "year_month"     # a date key grouped by its year-month (sql_ast.DatePart's part of that name)
 GRAIN_YEAR = "year"            # a date key grouped by its year
-GRAINS = (GRAIN_MONTH, GRAIN_YEAR)
+GRAIN_CALENDAR_MONTH = "month"     # a date key grouped by its month of any year, every October together (DatePart "month")
+GRAINS = (GRAIN_MONTH, GRAIN_YEAR, GRAIN_CALENDAR_MONTH)
+BREAKDOWN_GRAINS = (GRAIN_MONTH, GRAIN_YEAR)     # a breakdown's: "orders per month" runs month by month
 CALC_OPS = (MINUS, PLUS, OVER)
 
 # What the answer is. The fine list is what the question reads as (answer_location.txt); a program states a coarse type, since a sheet does not say whether a name is a person's or a company's.

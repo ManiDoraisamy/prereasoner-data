@@ -10,6 +10,35 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A date column ranked by its month of any year, named as the sheet writes it: "what month were the most games played" answers October; on the 370 training questions whose SQUALL query ranks groups, right 288 -> 294 (2026-11-24)
+
+- A group rank over a date column grouped by the whole date, or (the attempt kept out earlier today) by year and
+  month, so "what month were the most games played" answered a stadium or a day, and "which month had the most
+  performers" 2009-10. A group rank now also takes the month of any year (`engine/program/names.py`
+  `GRAIN_CALENDAR_MONTH`, the typed AST's existing `DatePart` "month" and the plan's `FunctionValue("MONTH")`, both
+  emitters alike): every October of every year is one group. Only a group rank takes it; a breakdown keeps its
+  year-month and year (`BREAKDOWN_GRAINS`). The decoder offers it beside the year, under the same scores. The read-as
+  line says "the calendar month of Date with the most lines".
+- The group's cell is the month as the column writes it (`engine/program/execute.py` `month_words`): the one run of
+  letters every cell of that month holds and no cell of another month does ("October" in "October 1, 1978";
+  "Apr" in "Apr 16, 1989"). A month the cells write in digits alone, or whose cells share more than one such run (a
+  lone cell's weekday), stays its number. No month name is written in the code: the words are the sheet's, read
+  where the workbook's loading typed the column as dates (`engine/program/dates.py`).
+- Its family (`regress/run_public.py --set wtq-train --size 9070 --squall "group by .* order by"`): the 370
+  annotated training questions whose SQUALL query ranks groups, run on b36044aa (records
+  `2026-11-24-months-before`) and with the change (`2026-11-24-months`). Right 288 -> 294 (6 wins, 0 losses), built
+  332 -> 338, unmarked wrong 40 -> 41. The wins are six month questions ("which month had the least amount of
+  games?" March). The one more unmarked wrong is two answers that name the right month as the sheet does, "Apr"
+  (written "Apr 16, 1989") and 4 (written 1958-04-01), where the gold says April, less one wrong answer turned
+  right. Decisions spend about $0.45 for both runs.
+- Gate (`regress/run_dev_decisions.py --record --tag months`; the references kept from its records, every answer
+  recorded). The 896: built 797 -> 798, picked 733 -> 734, 1 win and 0 losses, unwarned wrong 63 -> 63. The win is
+  "which month had the most performers?" (February), which the year-month attempt had answered 2009-10 unwarned. Every
+  other set's picks and marks are unchanged, and so are the demo's 91 (86 right). Listings differ on 2
+  WikiTableQuestions, 1 fresh dev and 1 DataBench question. A cache-hit replay of every set on the final code is at
+  parity with the kept references.
+
+
 ## Release b36044aa (the day's sheet readings: a year line, a record's first line, spans, last lines; the year grain and decades) live; Chrome gate 102 of 102 fresh, 77 of 78 existing (2026-11-24)
 
 - Engine `prereasoner-api-00348-koy` (`engine@sha256:74626d86...`, Cloud Build bdc04c57: build, offline regression

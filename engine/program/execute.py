@@ -1,6 +1,7 @@
 """Running a program on the request's tables: through the typed AST for the candidates the verifier reads, and through the dual deterministic emitters, both programs checked against each other, for a chosen one."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -10,9 +11,10 @@ from sqlalchemy.pool import StaticPool
 from engine.deterministic import DeterministicAnalysis, ExecutionMode
 from engine.numeric import canonical_decimal
 from engine.prepared import SharedConnection
+from engine.program.catalog import CatalogTable
 from engine.program.language import Breakdown, Calc, Check, Col, Program, Rank, Show, tables_of
 from engine.program.lowering import to_plan, to_query
-from engine.program.names import ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER
+from engine.program.names import ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, GRAIN_CALENDAR_MONTH
 from engine.program.store import RequestTables
 from engine.sql_ast import render_query
 
@@ -40,6 +42,31 @@ def prepare(program: Program, tables: RequestTables) -> None:
         tables.ensure_peers(table_id)
 
 
+_LETTERS = re.compile(r"[^\W\d_]+")     # a run of letters of any script
+
+
+def month_words(table: CatalogTable, position: int) -> dict[int, str]:
+    """Each month of any year a date column holds, as its cells write it: the one run of letters that every cell of that
+    month holds and no cell of another month does ("October" in "October 5, 1978" and "Sun, October 12, 1978"; "Sept"
+    in "Sept. 28"). A month whose cells share no such run, or more than one, is not named: written in digits alone, or
+    a lone cell whose weekday is in no other month's cells."""
+    every: dict[int, set[str]] = {}     # the runs each of the month's cells holds
+    some: dict[int, set[str]] = {}      # the runs any of its cells holds
+    for line, day in zip(table.lines, table.days[position]):
+        cell = line.cells.get(position)
+        if cell is None or not isinstance(cell.raw, str) or not day or len(day) < 7:     # the text as written, a typed day's too
+            continue
+        month, runs = int(day[5:7]), set(_LETTERS.findall(cell.raw))
+        every[month] = every[month] & runs if month in every else runs
+        some[month] = some.get(month, set()) | runs
+    named = {}
+    for month, runs in every.items():
+        alone = runs.difference(*(held for at, held in some.items() if at != month))
+        if len(alone) == 1:
+            named[month] = alone.pop()
+    return named
+
+
 def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ...]:
     """Rows with the sheet's spelling back, and no row at all for a result that says nothing: a sum over no lines is one row of NULL."""
     if isinstance(program, Rank) and program.entity == ENTITY_LINE and program.count == 1:
@@ -55,6 +82,9 @@ def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ..
         spellings = [tables.catalog.table(column.table).written_spelling[column.position] for column in program.groups]
         width = len(spellings)
         return tuple(tuple(words.get(cell, cell) for words, cell in zip(spellings, row[:width])) + tuple(row[width:]) for row in rows)
+    if isinstance(program, Rank) and program.grain == GRAIN_CALENDAR_MONTH:     # the month as the column writes it
+        words = month_words(tables.catalog.table(program.key.table), program.key.position)
+        return tuple((words.get(int(row[0]), row[0]) if row[0] is not None else None, *row[1:]) for row in rows)
     keyed: Col | None = None
     if isinstance(program, Show) and program.every:     # the lines' own text, as stored
         return tuple(tuple(row) for row in rows)
