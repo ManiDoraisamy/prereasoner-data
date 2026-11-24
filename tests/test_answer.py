@@ -442,6 +442,19 @@ def test_digit_dates_ask_the_order_only_when_the_column_never_shows_it() -> None
     assert _with_transport(transport, lambda: typed_dates(catalog)) == {"1999/07/01": "1999-07-01", "2001/12/25": "2001-12-25", "2003/01/09": "2003-01-09"}
 
 
+def test_a_batch_another_run_is_writing_is_read_to_its_last_whole_line() -> None:
+    """Two runs on one checkout share the recorded answers: one reads every batch while another appends to its own. On
+    2026-11-24 a run started while the dev gate was writing, read a half-written last line, and failed all 180 of its
+    questions with a JSON error. A line not yet ended is a write in progress and is read once it is whole."""
+    import tempfile
+    from regress import eval_sets
+    with tempfile.TemporaryDirectory() as folder:
+        from pathlib import Path
+        Path(folder, "batch.jsonl").write_bytes(b'{"hash": "a1", "answers": {}, "tokens": 3}\n{"hash": "b2", "answ')
+        store = eval_sets.CallStore(Path(folder))
+        assert store.get("a1") == {"answers": {}, "tokens": 3} and store.get("b2") is None
+
+
 def test_the_dev_replay_runs_from_a_clean_clone() -> None:
     """The dev replay's reference and the Decisions answers it reads are committed (regress/sets): each set's reference
     holds every one of its questions once, a served label each, and the recorded answers hold every call the reference
@@ -467,7 +480,7 @@ TESTS = [
     test_value_sets_ask_about_the_likeliest_values, test_choice_record_lists_each_candidate_with_its_answer_and_none,
     test_the_request_body_is_sorted_and_hashable, test_answer_reads_decodes_and_chooses_through_its_calls, test_said_spans_are_the_questions_own_words,
     test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_a_failed_call_reaches_the_caller,
-    test_text_dates_are_typed_when_the_workbook_loads, test_digit_dates_ask_the_order_only_when_the_column_never_shows_it,
+    test_a_batch_another_run_is_writing_is_read_to_its_last_whole_line, test_text_dates_are_typed_when_the_workbook_loads, test_digit_dates_ask_the_order_only_when_the_column_never_shows_it,
     test_the_dev_replay_runs_from_a_clean_clone,
 ]
 

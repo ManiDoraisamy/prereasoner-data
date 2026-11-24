@@ -523,7 +523,7 @@ class CallStore:
                 opener = gzip.open if path.suffix == ".gz" else open
                 with opener(path, "rt", encoding="utf-8") as source:
                     for line in source:
-                        if line.strip():
+                        if line.strip() and line.endswith("\n"):     # a last line without its end is another run's write in progress
                             record = json.loads(line)
                             held[record.pop("hash")] = record
             self.held = held

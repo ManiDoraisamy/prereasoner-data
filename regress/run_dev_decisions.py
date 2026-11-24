@@ -17,7 +17,7 @@ move a vector in its last bits, so a run keeps the reference's history by its or
 regress/results/dev_decisions/<tag>/<set>.jsonl and summary_<sets>.json.
 
 A kept change is measured with --record (a body the store lacks is sent to the Decisions API, with the deployment's
-GOOGLE_API_KEY, and kept in regress/sets/calls/<date>-<tag>.jsonl) and --keep (the run's records become the sets'
+GOOGLE_API_KEY, and kept in regress/sets/calls/<date>-<tag>-<sets>-<pid>.jsonl, one batch per process) and --keep (the run's records become the sets'
 references); then python -m regress.eval_sets pack compresses the new calls, and the references and calls are
 committed with the change.
 
@@ -44,6 +44,7 @@ import datetime
 import gzip
 import json
 import math
+import os
 import sys
 import time
 from dataclasses import dataclass
@@ -413,7 +414,8 @@ def main() -> int:
     torch.set_num_threads(args.threads)
     out = ROOT / "regress" / "results" / "dev_decisions" / args.tag
     out.mkdir(parents=True, exist_ok=True)
-    batch = f"{datetime.date.today().isoformat()}-{args.tag}"
+    # one batch per process: the sets of one tag run in parallel processes, and two appending to one file interleave
+    batch = f"{datetime.date.today().isoformat()}-{args.tag}-{'_'.join(args.sets.split(','))}-{os.getpid()}"
     replay = Replay(eval_sets.CallStore(eval_sets.CALLS, batch), out / "misses", args.record)
     llm.DECISIONS_TRANSPORT = replay
     query_replay = None
