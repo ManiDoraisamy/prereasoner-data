@@ -10,6 +10,20 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release 2af5bf2d (the longest run, with 11-23's text figures, lines by place and spread) live; Chrome gate 102 of 102 fresh, 77 of 78 existing (2026-11-24)
+
+- Engine `prereasoner-api-00346-cup` (`engine@sha256:d0c2fb9d...`, Cloud Build 06fb6ad0: build, offline regression
+  gate, runtime server smoke, live product suites incl. every dataset's prompt and standalone follow-ups against
+  disposable PostgreSQL), deployed with no traffic under tag `streak`, healthz 200, release smoke job ok, then 100%;
+  both engine jobs on the image. Chat `prereasoner-chat-00243-jar` and Hosting unchanged (no orchestrator or web
+  change since b9b0fe50). Rollback: `prereasoner-api-00344-kip`. The decade reading (6e494a13) is not in this release.
+- Chrome gate on chat.prereasoner.com, all 24 demo datasets, prompt.txt then every eval.txt follow-up, chat shorthand
+  included, graded by `regress/browser_gold.py` (captures in `prereasoner-scratch/gate-2af5bf2d/` in the archive):
+  fresh conversations **102 of 102**; conversations made before this release **77 of 78**. The one miss is
+  b9b0fe50's: in the old customer-orders conversation "in GBP for the whole of Europe?" follows an average question and
+  is read as an average (145.47 GBP for 1,917.48).
+
+
 ## Ten or a hundred years named by the year they begin: "in the 1970's" reads as 1970 to 1979; its training family 21 -> 30 right of 44, the 896 unchanged (2026-11-24)
 
 - "How many orders in the 1970s", "parishes founded in the 1800's": 44 of WikiTableQuestions' 11,321 training
