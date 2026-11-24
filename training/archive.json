@@ -194,6 +194,26 @@
    "restore": "repo",
    "weights": "only"
   },
+  "injection-test": {
+   "bytes": 407535027,
+   "exclude": [],
+   "files": 3256,
+   "note": "the planted-text (prompt injection) test runs that release-review/planted-text-test.md cites",
+   "packed": "2026-11-24",
+   "packed_from": [
+    "prereasoner-injection-test"
+   ],
+   "parts": [
+    {
+     "bytes": 204208148,
+     "path": "injection-test/part-0000.tar.zst",
+     "revision": "edb63c1956a39bc1e12a7031139f35a7e74b278a",
+     "sha256": "debe69f792a69a836ce0e2afd78e23f33ac333231da68b4a1810436e6f1e5bfb"
+    }
+   ],
+   "restore": "archive",
+   "weights": "all"
+  },
   "local-code": {
    "bytes": 18576005,
    "exclude": [],
@@ -233,6 +253,38 @@
    "restore": "archive",
    "weights": "none"
   },
+  "meaning-worktree-weights": {
+   "bytes": 12924281597,
+   "exclude": [],
+   "files": 12,
+   "note": "checkpoints",
+   "packed": "2026-11-24",
+   "packed_from": [
+    "prereasoner-scratch/worktrees/prereasoner-meaning/training"
+   ],
+   "parts": [
+    {
+     "bytes": 2147483648,
+     "path": "meaning-worktree-weights/part-0000.tar.zst",
+     "revision": "2ad30492d837909a96561ffd44996b6d5a9412a5",
+     "sha256": "a2e5679d0e6152641db18fe44e6b498ba05bbffb7dd1dbb504a6aff1e5ea948e"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "meaning-worktree-weights/part-0001.tar.zst",
+     "revision": "41c5af3c0a7317aa5ac47ea2ea6856aa1154f213",
+     "sha256": "b784c73871a8230d9b4b534c67d0200a63b81928ae4a3ba97673e205af55c12c"
+    },
+    {
+     "bytes": 1387841125,
+     "path": "meaning-worktree-weights/part-0002.tar.zst",
+     "revision": "cfd07c086e8407a6b6eeb12c7047ad512997e824",
+     "sha256": "dad00675b0dfce23acd172f8a5a4ab64ff95d33921d46132473bbaaaffad620d"
+    }
+   ],
+   "restore": "archive",
+   "weights": "only"
+  },
   "next-checkout": {
    "bytes": 4391837552,
    "exclude": [],
@@ -259,6 +311,50 @@
    "restore": "archive",
    "weights": "none"
   },
+  "next-checkout-weights": {
+   "bytes": 17442278064,
+   "exclude": [],
+   "files": 28,
+   "note": "checkpoints",
+   "packed": "2026-11-24",
+   "packed_from": [
+    "prereasoner-next/training"
+   ],
+   "parts": [
+    {
+     "bytes": 2147483648,
+     "path": "next-checkout-weights/part-0000.tar.zst",
+     "revision": "d63684d679654109785fcce7b027e8152180cb23",
+     "sha256": "0a9f3721738e68d4d2a095a0c5426b339fc75e44bfb2f4a428ad7590f25785ff"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "next-checkout-weights/part-0001.tar.zst",
+     "revision": "5f516bea85049f933bbe0d91585d979ce0e793d2",
+     "sha256": "d87a4e93778847c604b98ad0062060ae540b3809b457c4188ce497b240b74994"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "next-checkout-weights/part-0002.tar.zst",
+     "revision": "7ff18a22a17cecff5ef7dbc78b5d89fb03090b8a",
+     "sha256": "da62594fd7ea35e2dd86814e9597edc874726b64f8987edb8aad79608e76add2"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "next-checkout-weights/part-0003.tar.zst",
+     "revision": "23916c80431954eddb8cb646b10ce1c46ab902aa",
+     "sha256": "d23215775daf4bfb92594da654e5c287f15af6ce0d4f79ae05fa8fd3986e551e"
+    },
+    {
+     "bytes": 1816185546,
+     "path": "next-checkout-weights/part-0004.tar.zst",
+     "revision": "146dc8319b1c1331212fb24bc9a50658272c7944",
+     "sha256": "6be200bb37e36af99a9f16699e1ef702e4b8e31846cbc8036ddd09fc70685833"
+    }
+   ],
+   "restore": "archive",
+   "weights": "only"
+  },
   "readers-artifacts": {
    "bytes": 3636997732,
    "exclude": [],
@@ -277,6 +373,44 @@
    ],
    "restore": "archive",
    "weights": "none"
+  },
+  "readers-artifacts-weights": {
+   "bytes": 29410560374,
+   "exclude": [],
+   "files": 190,
+   "note": "checkpoints",
+   "packed": "2026-11-24",
+   "packed_from": [
+    "prereasoner-readers-artifacts"
+   ],
+   "parts": [
+    {
+     "bytes": 2147483648,
+     "path": "readers-artifacts-weights/part-0000.tar.zst",
+     "revision": "4508f35cc5c11e24da7e41c469a0226f1eedef9f",
+     "sha256": "9c3faaa6b8bdf465dc50d118e5c3219425c83bd90f705ec5bc9a571671e5b6a2"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "readers-artifacts-weights/part-0001.tar.zst",
+     "revision": "44820138dc6a9b8a30f7f5818802dd98b3565436",
+     "sha256": "838a9764f1458feaaa878442b3b2fe5aeeb5fe886386ec88d63a34343a1e5f87"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "readers-artifacts-weights/part-0002.tar.zst",
+     "revision": "91d627d9e2beac0e35095825e4588bd68c93493d",
+     "sha256": "6ec085e8670c171651a3b73fc9ea5be7c1546502417e56d574324cc44deeedf0"
+    },
+    {
+     "bytes": 98325285,
+     "path": "readers-artifacts-weights/part-0003.tar.zst",
+     "revision": "c6ff1a0d380561ada2822d4e156f2f8ba8f81953",
+     "sha256": "2f94595547a9aed237987b9f013afa3b9fb3c21f45a34ed2649c12bc6324a549"
+    }
+   ],
+   "restore": "archive",
+   "weights": "only"
   },
   "readers-checkout": {
    "bytes": 3791743567,
@@ -297,6 +431,117 @@
    ],
    "restore": "archive",
    "weights": "none"
+  },
+  "readers-checkout-weights": {
+   "bytes": 29332456772,
+   "exclude": [],
+   "files": 30,
+   "note": "checkpoints",
+   "packed": "2026-11-24",
+   "packed_from": [
+    "prereasoner-readers/training"
+   ],
+   "parts": [
+    {
+     "bytes": 2147483648,
+     "path": "readers-checkout-weights/part-0000.tar.zst",
+     "revision": "02fb5a057ebd3be0b7c96424a98fa5404960ba65",
+     "sha256": "ca8612e8dce47bdf94ad9ff9441663005c270dceadd8d42559626d754b7abba9"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "readers-checkout-weights/part-0001.tar.zst",
+     "revision": "796c8725355d784381bac43b66074bc029b7d412",
+     "sha256": "619a0835f91f8df8beb7a9fd125f4d0073e89a4864e9f3208da7d225f6ef4fc9"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "readers-checkout-weights/part-0002.tar.zst",
+     "revision": "884b024fb82e2855941e3fc6a66d4a2545b079e7",
+     "sha256": "097c852a2bbc75bb5c952a03812182e3e7510f74c1edeb696ffa3033d09306d4"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "readers-checkout-weights/part-0003.tar.zst",
+     "revision": "246a720f469bfabcbe13f48c3027c2c4001ebb01",
+     "sha256": "9794d9301a308a4988d0c5cb9fb2196068a164eb83b3338d3f8346bc07ed2c2a"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "readers-checkout-weights/part-0004.tar.zst",
+     "revision": "bf66cb83466a5ff16ab73cbaacc7dcfc180bcecb",
+     "sha256": "7a5315c38aeba1b50d901d13b7289ea836d21daf4b700a8c1fb75a120ca8f213"
+    },
+    {
+     "bytes": 2147483648,
+     "path": "readers-checkout-weights/part-0005.tar.zst",
+     "revision": "fd35daaff621ee9437d75ad918aa45f776133b59",
+     "sha256": "4a6fdcfd17ed15b6b18f04307d43a6e11d17060a553458b3981cee5b13c72029"
+    },
+    {
+     "bytes": 484087899,
+     "path": "readers-checkout-weights/part-0006.tar.zst",
+     "revision": "9af06f96f203f458eb9357b61c5f815bcb1ab3c0",
+     "sha256": "582636cecbdc1efe9e414eceba3a1a29e3679375bd3299cde1b331d3dc55951f"
+    }
+   ],
+   "restore": "archive",
+   "weights": "only"
+  },
+  "scratch-records": {
+   "bytes": 166194353,
+   "exclude": [
+    "archive",
+    "worktrees",
+    "release-1a442963",
+    "release-1d9929b2",
+    "release-2af5bf2d",
+    "release-48abf835",
+    "release-6d239ad1",
+    "release-b9b0fe50",
+    "chat-1a442963",
+    "chat-1d9929b2",
+    "chat-48abf835",
+    "chat-6d239ad1",
+    "chat-b9b0fe50"
+   ],
+   "files": 3586,
+   "note": "working records of the 2026-11 sessions: accuracy and parity runs, patches, cutover scripts, gate logs (release and chat build copies are code at their commits, not kept)",
+   "packed": "2026-11-24",
+   "packed_from": [
+    "prereasoner-scratch",
+    "prereasoner-scratch/worktrees/cutover/regress/results"
+   ],
+   "parts": [
+    {
+     "bytes": 36093207,
+     "path": "scratch-records/part-0000.tar.zst",
+     "revision": "5a390033b5a36d6842ff6d6fe6dffbab409b96b8",
+     "sha256": "c39a3946a7b59e15dabfd4333e503fc6eab425685a94fb39aa505961a830829c"
+    }
+   ],
+   "restore": "archive",
+   "weights": "all"
+  },
+  "semantic-pilot": {
+   "bytes": 125315,
+   "exclude": [],
+   "files": 17,
+   "note": "the semantic pilot experiment",
+   "packed": "2026-11-24",
+   "packed_from": [
+    "prereasoner-experiments"
+   ],
+   "parts": [
+    {
+     "bytes": 32428,
+     "path": "semantic-pilot/part-0000.tar.zst",
+     "revision": "be63c59c3171175b56d1301e9ff0d77e1f3d453b",
+     "sha256": "d81e1b4b3cd6dba908f8abe8f51a4621c6ec113890cce8cc1d0e539cde4505e1"
+    }
+   ],
+   "restore": "archive",
+   "weights": "all"
   }
  },
  "repo_id": "manidoraisamy/prereasoner-archive"
