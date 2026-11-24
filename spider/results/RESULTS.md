@@ -10,6 +10,30 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A date column ranked by its year: "which year had the most stamps issued" groups the lines by the year of their date; its training family 3 -> 10 right of 26, dev picks 727 -> 728 with unwarned wrong level (2026-11-24)
+
+- A group rank over a date column grouped by the whole date, each day its own group, so "during which year were the
+  most ships completed" answered a day (1937-01-07, 2 ships). A group rank now takes a grain (`engine/program/language.py`
+  `Rank.grain`, group ranks only), as a breakdown already did, and either takes the month or the year
+  (`names.GRAINS`). The year is a date part of the typed AST (`engine/sql_ast.py` `year_of_date_sql`), the plan's
+  `FunctionValue("YEAR")` in both deterministic emitters, and `operators.YEAR`. The decoder offers a breakdown by the
+  month or the year of a date key and a count or total rank by its year. The read-as line says "the year of Stamp issue
+  date with the highest total of Qty" and the answer column is named for the year.
+- A rank by month was tried and is not offered. On "which month had the most performers", the month grain groups by
+  year and month (2009-10) and was chosen over asking, leaving one more wrong answer with no warning (WikiTableQuestions
+  dev unwarned wrong 28 -> 29). The calendar month across years is a reading of its own. Its records are in
+  `prereasoner-scratch/patches/month-rank-20261124/` in the archive, and its calls are under `regress/sets/calls/`.
+- Gate (`regress/run_dev_decisions.py --record`, then `--keep` on the final code with every answer recorded). The 896:
+  built 792 -> 793, picked 727 -> 728, 1 win ("which year had the most stamps issued") and 0 losses, unwarned wrong
+  64 -> 64. Every other set's picks and marks are unchanged, and so are the demo's 91 (86 right). Listings differ on 2
+  WikiTableQuestions, 4 messy, 1 fresh dev, 1 DataBench and 1 demo question, so the references were kept.
+- Its family (`regress/run_public.py --squall "group by c[0-9]+_(year|month)"`): the 26 find-set questions whose
+  SQUALL query groups by a column's year or month, run on the commit without the change and after; records
+  `2026-11-24-periods-before` and `2026-11-24-periods` under `regress/sets/public/records/`. Right 3 -> 10 (7 wins,
+  0 losses), built 3 -> 10, unmarked wrong 4 -> 2. The month questions ("what month were the most games played")
+  stay unbuilt. Decisions spend about $0.05.
+
+
 ## The reading call sees a small table whole: WikiTableQuestions dev 232 -> 240 picks, but unwarned wrong 64 -> 66 and one demo answer turns wrong; not kept (2026-11-24)
 
 - Hypothesis: the reading call saw each column's header and three example cells, so which column holds what a question

@@ -63,7 +63,7 @@ def _displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ..
         return tuple(tuple(words.get(cell, cell) for words, cell in zip(spellings, row)) for row in rows)
     if isinstance(program, Show) and program.listing:
         keyed = program.shown[0]
-    elif isinstance(program, Rank) and program.entity == ENTITY_GROUP:
+    elif isinstance(program, Rank) and program.entity == ENTITY_GROUP and program.grain is None:     # a month or year is its own text
         keyed = program.key
     if keyed is None:
         return tuple(tuple(row) for row in rows)

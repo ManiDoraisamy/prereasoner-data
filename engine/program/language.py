@@ -10,7 +10,7 @@ from typing import TypeAlias
 
 from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, LONGEST_RUN, RUN, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
-                                  SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAIN_MONTH, PERCENT_OP, coordinate)
+                                  SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAINS, PERCENT_OP, coordinate)
 from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR, PERIOD_KINDS
 
@@ -419,6 +419,8 @@ class Rank:
     by_size ranks groups and peers by size, the sign dropped; a line's size is a Size measure.
     count  how many lines or groups the question asks for ("the 5 oldest"): one keeps every tied top; more keeps exactly
            that many, ties broken by sheet order (a line) or by the key (a group).
+    grain  a group rank's key is a date column grouped by its year-month or its year (GRAINS: "which month had the most
+           orders", "which year had the most hires"), the group's cell '2026-08' or 2026; None groups by the key's values.
     """
     entity: str
     table: str
@@ -432,8 +434,11 @@ class Rank:
     by_size: bool = False
     mark: str | None = None
     count: int = 1
+    grain: str | None = None
 
     def __post_init__(self):
+        if self.grain is not None and (self.grain not in GRAINS or self.entity != ENTITY_GROUP):
+            raise ValueError("only a group rank groups a date key by its year-month or year")
         if not isinstance(self.count, int) or self.count < 1 or (self.count > 1 and self.entity == ENTITY_PEER):
             raise ValueError("a rank keeps one or more lines or groups, and one peer column")
         if self.entity not in RANK_ENTITIES:
@@ -549,8 +554,8 @@ class Breakdown:
     keys   the columns whose values make the groups ("visits per department"); none when only the unit splits a figure.
     unit   the column naming the unit each line's figure is in (a currency code column): figures in different units do
            not add, so each group's figure is given per unit, the unit's cell after the keys'.
-    grain  GRAIN_MONTH: the first key is a date column whose lines group by their year-month ("orders per month"), the
-           group's cell the year-month as '2026-08'; None groups by the key's own values."""
+    grain  GRAIN_MONTH or GRAIN_YEAR: the first key is a date column whose lines group by their year-month ("orders per
+           month") or year ("hires per year"), the group's cell '2026-08' or 2026; None groups by the key's own values."""
     function: str
     measure: Measure | None
     table: str
@@ -571,8 +576,8 @@ class Breakdown:
         groups = (*self.keys, *((self.unit,) if self.unit is not None else ()))
         if len(self.keys) > 2 or len(set(groups)) != len(groups) or any(column.table != self.table for column in groups):
             raise ValueError("a breakdown groups by one or two distinct key columns of its table, its unit none of them")
-        if self.grain is not None and (self.grain != GRAIN_MONTH or not self.keys):
-            raise ValueError("a breakdown's grain is the year-month of its first key")
+        if self.grain is not None and (self.grain not in GRAINS or not self.keys):
+            raise ValueError("a breakdown's grain is the year-month or the year of its first key")
 
     @property
     def groups(self) -> tuple[Col, ...]:

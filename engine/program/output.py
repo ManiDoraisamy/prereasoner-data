@@ -9,12 +9,13 @@ from dataclasses import dataclass
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
 from engine.program.language import (LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
-from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
+from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, GRAIN_MONTH, GRAIN_YEAR, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
 from engine.program.store import RequestTables
 from engine.sheet.formulas import column_letter
 
+_GRAIN_WORDS = {GRAIN_MONTH: "month", GRAIN_YEAR: "year"}
 _AGG_WORDS = {SUM: "total", AVG: "average", MIN: "lowest", MAX: "highest", COUNT: "number of lines", COUNT_DISTINCT: "number of different",
               LONGEST_RUN: "most lines in a row"}
 _COMPARE_WORDS = {EQ: "equal to", GE: "at least", GT: "above", LE: "at most", LT: "below", NE: "other than"}
@@ -231,7 +232,7 @@ def read_as(program: Program, catalog: Catalog) -> str:
     if isinstance(program, Breakdown):
         where = _where_words(catalog, program.where)
         head = "the number of lines" if program.function == COUNT else f"the {_AGG_WORDS[program.function]} of {_measure_words(catalog, program.measure)}"
-        each = " and ".join(f"month of {_name(catalog, column)}" if program.grain is not None and at == 0 else _name(catalog, column) for at, column in enumerate(program.groups))
+        each = " and ".join(f"{_GRAIN_WORDS[program.grain]} of {_name(catalog, column)}" if program.grain is not None and at == 0 else _name(catalog, column) for at, column in enumerate(program.groups))
         return f"{head} for each {each} {place}" + (f" where {where}" if where else "")
     if isinstance(program, Agg):
         where = _where_words(catalog, program.where)
@@ -262,7 +263,8 @@ def read_as(program: Program, catalog: Catalog) -> str:
         what = "the most lines" if program.function == COUNT and program.direction == HIGHEST else "the fewest lines" if program.function == COUNT else f"the {way} {_AGG_WORDS[program.function]} of {_measure_words(catalog, program.measure)}"
         if program.by_size:
             what += " by size"
-        which = f"the {program.count} values of {_name(catalog, program.key)}" if program.count > 1 else f"the {_name(catalog, program.key)}"
+        keyed = f"{_GRAIN_WORDS[program.grain]} of {_name(catalog, program.key)}" if program.grain is not None else _name(catalog, program.key)
+        which = f"the {program.count} values of the {keyed}" if program.count > 1 and program.grain is not None else f"the {program.count} values of {keyed}" if program.count > 1 else f"the {keyed}"
         return f"{which} with {what} {place}{tail}"
     names = [table.columns[position].name for position in program.peers]
     span = f"{names[0]} to {names[-1]}" if len(names) > 3 else ", ".join(names)
@@ -290,13 +292,14 @@ def answer_columns(program: Program, catalog: Catalog) -> tuple[str, ...]:
         return (_figure_name(program, catalog),)
     if isinstance(program, Breakdown):
         keys = _headers(catalog, program.groups)
-        return tuple(f"month of {key}" if program.grain is not None and at == 0 else key for at, key in enumerate(keys)) + (_figure_name(program, catalog),)
+        return tuple(f"{_GRAIN_WORDS[program.grain]} of {key}" if program.grain is not None and at == 0 else key for at, key in enumerate(keys)) + (_figure_name(program, catalog),)
     if program.entity == ENTITY_LINE:
         if isinstance(program.measure, LineOrder):     # where the lines stand picked them; no figure of it is shown
             return _headers(catalog, program.shown)
         return _headers(catalog, program.shown) + (_measure_words(catalog, program.measure),)
     if program.entity == ENTITY_GROUP:
-        return (header(catalog, program.key), _figure_name(program, catalog))
+        key = header(catalog, program.key)
+        return (f"{_GRAIN_WORDS[program.grain]} of {key}" if program.grain is not None else key, _figure_name(program, catalog))
     return ("column", f'count of "{program.mark}"' if program.mark is not None else "total")
 
 
@@ -749,6 +752,8 @@ def _rank_formula(program: Rank, table: CatalogTable, tables: RequestTables) -> 
             return f"=INDEX({shown},MATCH({way}({a}{program.measure.op}{b}),{a}{program.measure.op}{b},0))"
         ranged = _range_terms(program.measure, table)
         return f"=INDEX({shown},MATCH({way}({ranged}),{ranged},0))"
+    if program.entity == ENTITY_GROUP and program.grain is not None:     # a date key's month or year: stated by its read-as and cells
+        return "=NA()"
     if program.entity == ENTITY_GROUP:
         key = _range(table, program.key.position) if program.key.position != SECTION else "Section"
         criteria = _criteria(tables.catalog, program.where) or []

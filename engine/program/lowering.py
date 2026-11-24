@@ -257,8 +257,8 @@ def _rank_query(program: Rank, catalog: Catalog) -> SelectQuery:
         # every tied line, in sheet order: its line number leads the row, so both programs order tied lines by it
         tied = SelectItem(ColumnRef(sql_table(table), LINE, SQLType.INTEGER), TIED_LINE)
         return SelectQuery((tied, *select), sql_table(table), where=where, order_by=(OrderTerm(value, order),), limit=1, with_ties=True)
-    if program.entity == ENTITY_GROUP:
-        key = _fold(program.key)
+    if program.entity == ENTITY_GROUP:     # a date key may group by its year-month or year (grain)
+        key = DatePart(program.grain, _day(program.key)) if program.grain is not None else _fold(program.key)
         if program.function == COUNT:
             value, guard = Aggregate("COUNT", Star()), None
         else:

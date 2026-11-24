@@ -738,7 +738,7 @@ def _value(value, bound: Mapping = _UNBOUND) -> Value:
     if isinstance(value, BinaryExpr):
         return BinaryValue(_value(value.left, bound), value.operator, _value(value.right, bound))
     if isinstance(value, DatePart):
-        return FunctionValue("YEAR_MONTH" if value.part == "year_month" else "MONTH", _value(value.operand, bound))
+        return FunctionValue({"year_month": "YEAR_MONTH", "year": "YEAR"}.get(value.part, "MONTH"), _value(value.operand, bound))
     if isinstance(value, Lower):
         return FunctionValue("LOWER", _value(value.operand, bound))
     if isinstance(value, Abs):

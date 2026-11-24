@@ -83,8 +83,8 @@ class BinaryExpr:
 
 @dataclass(frozen=True)
 class DatePart:
-    """One calendar field or period of a date column: the ``month`` of '2026-08-04' is the integer 8, and its
-    ``year_month`` the text '2026-08'.
+    """One calendar field or period of a date column: the ``month`` of '2026-08-04' is the integer 8, its ``year`` the
+    integer 2026, and its ``year_month`` the text '2026-08'.
 
     "How many transfers were signed in August?" compares the month of each date, and "total amount by month"
     groups by the year-month (2026-10-02). Both SQLite and PostgreSQL read them from the date's ISO text
@@ -102,7 +102,7 @@ class DatePart:
         return self.operand.name
 
 
-DATE_PARTS = frozenset({"month", "year_month"})
+DATE_PARTS = frozenset({"month", "year", "year_month"})
 
 
 @dataclass(frozen=True)
@@ -340,9 +340,15 @@ def year_month_of_date_sql(operand: str) -> str:
     return f"SUBSTR(CAST({operand} AS TEXT), 1, 7)"
 
 
+def year_of_date_sql(operand: str) -> str:
+    """The year of an ISO date as one SQL expression SQLite and PostgreSQL both run: '2026-08-04' -> 2026. The typed
+    AST renders DatePart with it and the deterministic SQL emitter renders YEAR with it."""
+    return f"CAST(SUBSTR(CAST({operand} AS TEXT), 1, 4) AS INTEGER)"
+
+
 def date_part_sql(part: str, operand: str) -> str:
-    """A DatePart's SQL: the month or the year-month of an ISO date."""
-    return year_month_of_date_sql(operand) if part == "year_month" else month_of_date_sql(operand)
+    """A DatePart's SQL: the month, the year or the year-month of an ISO date."""
+    return {"year_month": year_month_of_date_sql, "year": year_of_date_sql}.get(part, month_of_date_sql)(operand)
 
 
 def day_number(text: str) -> int:

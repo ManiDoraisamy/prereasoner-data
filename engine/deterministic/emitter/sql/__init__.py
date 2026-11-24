@@ -40,7 +40,7 @@ from engine.deterministic.plan import (
     WindowView,
 )
 from engine.numeric import canonical_decimal
-from engine.sql_ast import date_span_sql, month_of_date_sql, year_month_of_date_sql
+from engine.sql_ast import date_span_sql, month_of_date_sql, year_month_of_date_sql, year_of_date_sql
 
 
 def _function(function: str, operand: str) -> str:
@@ -50,6 +50,8 @@ def _function(function: str, operand: str) -> str:
         return month_of_date_sql(operand)
     if function == "YEAR_MONTH":
         return year_month_of_date_sql(operand)
+    if function == "YEAR":
+        return year_of_date_sql(operand)
     if function == "ABS":
         return f"decimal_abs({operand})"
     if function == "BLANK_ZERO":
