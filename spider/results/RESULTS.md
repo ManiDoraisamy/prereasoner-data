@@ -10,6 +10,20 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## The reading call sees a small table whole: WikiTableQuestions dev 232 -> 240 picks, but unwarned wrong 64 -> 66 and one demo answer turns wrong; not kept (2026-11-24)
+
+- Hypothesis: the reading call saw each column's header and three example cells, so which column holds what a question
+  names, or how the lines stand, was beyond it. Change tried: a table of at most 600 cells shown to the reading call
+  line by line (cells to 40 characters), the choice unchanged (the 2026-11-23 form showed it to the choice instead).
+- Gate (the 896 and the demo's 91; new bodies recorded): built 792 -> 799, picked 727 -> 734 (16 wins, 9 losses), but
+  unwarned wrong 64 -> 66. By set: WikiTableQuestions picks 232 -> 240 (12 wins, 4 losses), built 257 -> 263, unwarned
+  wrong 28 -> 26; messy 105 -> 103 (unwarned wrong 2 -> 3); fresh dev 127 -> 128 (unwarned wrong 17 -> 20);
+  DataBench unchanged (no table small enough). Demo: formfacade-leads "How many leads were submitted after August 10,
+  2026?" right -> warned wrong (and hospital-transfers' country question warned right -> right). The small tables of
+  WikiTableQuestions gain and the real sheets do not. Not kept; the diff, records and calls are in
+  `prereasoner-scratch/patches/whole-reading-20261124/` in the archive. Decisions spend about $0.6.
+
+
 ## Release 2af5bf2d (the longest run, with 11-23's text figures, lines by place and spread) live; Chrome gate 102 of 102 fresh, 77 of 78 existing (2026-11-24)
 
 - Engine `prereasoner-api-00346-cup` (`engine@sha256:d0c2fb9d...`, Cloud Build 06fb6ad0: build, offline regression
