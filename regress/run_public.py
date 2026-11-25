@@ -548,7 +548,10 @@ SQUALL_COLUMN = re.compile(r"\bc(\d+)(?:_(\w+))?\b")
 SQUALL_LITERAL = re.compile(r"'((?:[^']|'')*)'")
 SQUALL_OPERATIONS = ((r"\bcount \(", "aggregate", "count"), (r"\bsum \(", "aggregate", "sum"), (r"\bavg \(", "aggregate", "avg"),
                      (r"\bmax \(", "aggregate", "max"), (r"\bmin \(", "aggregate", "min"), (r"\bdesc\b", "direction", "highest"),
-                     (r"order by [^)]*?(?<!desc)\blimit\b", "direction", "lowest"), (r"\) - \(| - ", "calc_op", "-"))
+                     (r"order by [^)]*?(?<!desc)\blimit\b", "direction", "lowest"), (r"\) - \(| - ", "calc_op", "-"),
+                     (r"\bcount \( distinct\b", "aggregate", "countd"),
+                     (r"\border by id( asc)? limit\b", "order", "first"), (r"\border by id desc limit\b", "order", "last"),
+                     (r"\bid = \( select id\b.*\) \+ 1\b", "neighbour", "after"), (r"\bid = \( select id\b.*\) - 1\b", "neighbour", "before"))
 
 
 def oracle_reading(sql: str, table) -> list[str]:
@@ -572,7 +575,18 @@ def oracle_reading(sql: str, table) -> list[str]:
     names = [f"{table.id}.{position}" for position in sorted(named)]
     out = [coordinate(slot, name) for name in names for slot in ("measure", "shown", "key", "filter")]
     for literal in SQUALL_LITERAL.findall(low):
-        out.extend(coordinate("value", name, fold(literal.replace("''", "'"))) for name in names)
+        text = literal.replace("''", "'")
+        if "%" in text:     # a written query's like pattern: the partial match, anchored as the pattern is
+            core = text.strip("%")
+            anchor = ("anywhere" if text.startswith("%") and text.endswith("%") else "starts" if text.endswith("%") else "ends")
+            if core and "%" not in core:
+                out.extend((coordinate("contains", name, fold(core)) if anchor == "anywhere" else coordinate("contains", name, fold(core), anchor))
+                           for name in names)
+            continue
+        out.extend(coordinate("value", name, fold(text)) for name in names)
+    from engine.program.semantics import number_text
+    for number in re.findall(r"(?:=|!=) (\d+(?:\.\d+)?)(?![\w.'])", low):     # a number a cell is: Equals on a number column
+        out.extend(coordinate("value", name, fold(number_text(float(number)))) for name in names)
     out.extend(coordinate(slot, value) for pattern, slot, value in SQUALL_OPERATIONS if re.search(pattern, low))
     top = low.split(" from ", 1)[0]
     form = ("calc" if re.search(r"\) [-+] \(", low) else "rank" if re.search(r"\border by\b.*\blimit\b", low)
@@ -765,6 +779,7 @@ def stages(run: str, set_name: str = "wtq-train", teacher: str | None = None) ->
     stage and, within each, by family."""
     rows = records(run, set_name, "engine")
     items, written = written_queries(set_name, teacher)
+    taught_rows = records(teacher, set_name, "neon") if teacher else {}
     path = WORK / run / set_name / "oracle.jsonl"
     oracle_of = {row["id"]: row for row in map(json.loads, filter(str.strip, path.read_text(encoding="utf-8").splitlines()))} if path.exists() else {}
     shapes: dict[str, tuple[int, int]] = {}
@@ -814,6 +829,11 @@ def stages(run: str, set_name: str = "wtq-train", teacher: str | None = None) ->
             parts = {(int(k), part) for k, part in SQUALL_COLUMN.findall(low) if part}
             if set_name != "wtq-train" and not sql:
                 stage = "teacher wrong"
+                theirs = (taught_rows.get(key) or {}).get("answer") or []
+                ours = row.get("answer") or []
+                detail = ("the same answer as the engine's (the gold in doubt)" if theirs and ours and
+                          str(theirs[0][0]).strip().lower().rstrip("0").rstrip(".") == str(ours[0][0]).strip().lower().rstrip("0").rstrip(".")
+                          else "another answer")
             elif len(tables) != 1 or main["lines"] + main["printed"] != data_rows or len(sources) != width or (used and max(used) > len(sources)):
                 stage, detail = "table", ("tables" if len(tables) != 1 else "lines" if main["lines"] + main["printed"] != data_rows else "columns")
             elif oracle_row.get("oracle") == "built":

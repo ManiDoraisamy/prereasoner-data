@@ -10,6 +10,46 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## The stage map: given a human query's reading, the engine builds about one question in a hundred more; what it misses on unseen tables is cells and language it lacks, and a tenth of every set is lost in the choice (2026-11-26)
+
+- Owner's plan, step 1 (2026-11-25): each miss at the first stage that loses it, through the one selection
+  (`regress/run_public.py`; each engine record now holds the choice's probability of the shown and the likeliest right
+  listing, both programs' coordinates and the compiled tables). Two sets at `7bf1b3f1`: 3,125 WikiTableQuestions
+  training questions with SQUALL's human-written query (`--run 2026-11-25-map`, shards `-map-a` all 2,268 and
+  `-map-b` its first 857 in book order), and the 1,000 test questions of the 2026-11-22 benchmark sample (`wtq-test`,
+  unseen tables, its numbers already published, so read for diagnosis from now on; `--run 2026-11-25-map-test`), where
+  the teacher is Gemini 4 Neon's recorded query where Neon was right (`--teacher 2026-11-22-benchmark`, put in
+  SQUALL's form by `squall_form`). `--oracle` raises the human query's columns, values, operations, line places and
+  partial matches in the reading and decodes and verifies again, no choice call; `--stages` assigns each question.
+  Decisions spend $0.54 (most bodies recorded before).
+
+  | Stage (the first that loses the question) | Training, SQUALL | Unseen tables, Neon |
+  |---|---|---|
+  | right | 2,515 (80.5%) | 728 (72.8%) |
+  | choice: a right answer was listed, another picked | 316 (10.1%) | 92 (9.2%) |
+  | table: the compiled table's lines or columns differ from the csv | 12 (0.4%) | 2 (0.2%) |
+  | reading: the human query's reading builds it | 40 (1.3%) | 11 (1.1%) |
+  | cell part: the query reads a part of a cell the compiled table holds whole | 85 (2.7%) | 34 (3.4%) |
+  | operation: no reading builds it | 157 (5.0%) | 54 (5.4%) |
+  | the teacher wrong too | (none: SQUALL's query is the gold's) | 78 (7.8%); 36 the engine's own answer |
+  | unmeasured | 0 | 1 |
+
+- The reading is not what limits the engine: with the human query's reading raised, 40 of 294 unbuilt training
+  questions and 11 of 102 unseen ones build. On unseen tables the misses Neon answers are cells and language: a cell
+  holding several values (lines a line break sets apart, "Grant Hackett (1:45.2)", "AM, FM, DAB", "Osaka, Japan"),
+  days written without a year, ranges read as their length, magnitudes in words; and yes-or-no answers, either-or
+  answers in the question's own words, partial matches and three or more named values. The training set's cell parts
+  are SQUALL's list (11), length (12), first (8), second (3) and address (6) in 45 of 85.
+- The choice loses a tenth of every set, nearly all on tables of at most 600 cells (307 of 316, 89 of 92), a quarter
+  with readings that take lines by where they stand (70, 20); in half of them (148, 46) the choice gave the right
+  listing under 5%, and on unseen tables many right listings are right by accident (a line pinned by its label that
+  holds the gold).
+- 36 unseen questions Neon and the engine answer alike and the gold does not: about half want a part of the cell
+  ("John" for "John O'Flynn", "Japan" for "Tokyo, Japan", "270" for "270 Spaces"), the rest look like label noise.
+- On the tables its rules were written on the engine stands at 80.5%, on unseen ones at 72.8%: the gap is in what it
+  builds (90.6% against 82.0%), not in the choice. Steps 2 to 4 follow from it: lines for the choice, a cell's parts
+  and answers in the question's terms, then the fitted pick.
+
 ## Release 6216c9ab (numbers in a choice, the spanning footer, lines before or after a named line) live; Chrome gate 102 of 102 fresh, 77 of 78 existing (2026-11-25)
 
 - Engine `prereasoner-api-00352-qeg` (`engine@sha256:0d73bddc...`, Cloud Build 27d26fbc: build, offline regression
