@@ -10,6 +10,32 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release 6216c9ab (numbers in a choice, the spanning footer, lines before or after a named line) live; Chrome gate 102 of 102 fresh, 77 of 78 existing (2026-11-25)
+
+- Engine `prereasoner-api-00352-qeg` (`engine@sha256:0d73bddc...`, Cloud Build 27d26fbc: build, offline regression
+  gate, runtime server smoke, live product suites, 58 min), deployed with no traffic under tag `place`, healthz 200,
+  release smoke job ok, then 100%; both engine jobs on the image. Chat and Hosting unchanged. Rollback:
+  `prereasoner-api-00350-nuj` (8699ca47). It carries the three changes kept since 8699ca47: a choice among numbers the
+  question writes (c6b3023d), a label spanning a line's key beside a figure as a printed line (2bbf60e7) and lines
+  listed before or after a line a value names (0cc66ff3); dev picks 735 -> 737 of 896, unwarned wrong 63 -> 61, demo
+  86 of 91.
+- Chrome gate on chat.prereasoner.com, all 24 demo datasets, prompt.txt then every eval.txt follow-up, chat shorthand
+  included (captures in `prereasoner-scratch/gate-6216c9ab/` in the archive): the conversations 8699ca47's pass made,
+  asked their follow-ups again, **77 of 78**; 63 answers byte-identical to that pass, 13 moved only with the ECB rates
+  refreshed since (same columns, currency and conversion status), 2 differ only in status; the one miss is the old
+  one ("in GBP for the whole of Europe?" after an average question is read as an average, 145.52 GBP). Fresh
+  conversations **102 of 102** graded by `regress/browser_gold.py`: 85 byte-identical to 8699ca47's pass, 16 moved
+  only with the ECB rates, 1 differs only in status.
+- Production latency over the four days before the release (2026-11-21 16:54 to 2026-11-25 04:43 UTC, the `[timing]`
+  lines of 743 chat turns and 803 engine requests on 00340 to 00350, mostly the gates' demo questions): a chat turn
+  5.4 s at the median, 12.7 s at p90, 76 s at p99 (Gemini's chat round 1.9 s median); an own-data engine request 3.4 s
+  median, 7.7 s p90 (the Decisions reading 0.6 s and choice 0.3 s at the median); a world or compose request 1.5 s; a
+  retry adds 6.1 s (5 retries). The tail is the stock reading (`program_read`, bge-m3 on the engine's 4 vCPU): of the
+  24 turns over 30 s, 11 are multi-part questions whose decomposition reads each leaf, 10 are one question whose
+  reading alone took 22 to 77 s, 2 are Gemini chat-round stalls (48 and 85 s) and 1 is neither; of the 23 engine
+  requests whose reading took over 15 s, 10 were an instance's first or second request. The Hosting proxy ends a turn
+  at 60 s and the page reads the answer back from the analysis.
+
 ## Lines listed before or after a line a value names: "how many movies was she in before Vampire Family?" counts the lines above that line; on the 28 training questions whose SQUALL query compares a line's place, right 14 -> 19 (2026-11-25)
 
 - "More medals than Canada" compares a number column with that column on the line a value names (`CompareLine`);
