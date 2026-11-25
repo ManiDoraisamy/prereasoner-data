@@ -296,6 +296,31 @@ def _first(rows, at: int = 3) -> list:
     return [[str(cell)[:60] for cell in row[:4]] for row in list(rows)[:at]]
 
 
+def _stage_fields(selection, shown, listed_right) -> dict:
+    """What the stage map (--stages) reads of a selection beyond its grade: the choice's probability of the shown
+    listing and of the likeliest right one, that listing's read-as line, both programs' coordinates
+    (engine/program/language.py coordinates), and each compiled table's lines and columns (name, kind, source column)."""
+    from engine.program.language import coordinates
+    probabilities = selection.probabilities or {}
+
+    def chance(at):
+        return round(float(probabilities.get(f"r{at:02d}", 0.0)), 4)
+
+    right = [at for at, flag in enumerate(listed_right) if flag]
+    best = max(right, key=lambda at: (chance(at), -at)) if right else None
+    out = {"none_p": round(float(probabilities.get("none", 0.0)), 4)}
+    if shown is not None:
+        out.update(shown_at=shown, shown_p=chance(shown), shown_coordinates=list(coordinates(selection.programs[shown])))
+    if best is not None:
+        out.update(right_at=best, right_p=chance(best), right_read_as=selection.pool[best].evidence[0],
+                   right_coordinates=list(coordinates(selection.programs[best])))
+    if selection.catalog is not None:
+        out["tables"] = [{"id": table.id, "lines": sum(table.is_data), "printed": len(table.lines) - sum(table.is_data),
+                          "columns": [[column.name[:40], column.kind, column.col] for column in table.columns]}
+                         for table in selection.catalog.tables]
+    return out
+
+
 # ------------------------------------------------------------------------------------------------------------- runs
 def run_engine(system: str, items, limits, sql, sink, done, ledger: Ledger, batch: str, threads: int) -> None:
     import torch
@@ -337,6 +362,7 @@ def run_engine(system: str, items, limits, sql, sink, done, ledger: Ledger, batc
                     row.update(kind=kind, engine=right, served=right, confidence=selection.confidence, answer=_first(rows),
                                listed=len(selection.rows), listed_right=[bool(dev.graded(item, listed)) for listed in selection.rows],
                                read_as=selection.pool[shown].evidence[0] if shown is not None else "")
+                    row.update(_stage_fields(selection, shown, row["listed_right"]))
                     if system == "prereasoner" and kind == ERRED:
                         retried = dev.retry_row(planner, item, selection)
                         row["retry"] = retried
@@ -491,7 +517,7 @@ def families(sql: str) -> list[str]:
         out.append("part:" + "+".join(parts))
     for name, pattern in (("nested", None), ("line position (id)", r"\border by\s+id\b|\bid\s*[<>=]"),
                           ("nth", r"\blimit\s+\d+\s*,|\boffset\b"), ("having", r"\bgroup by\b.*\bhaving\b"),
-                          ("group by", r"\bgroup by\b"), ("arithmetic", r"(?<![<>!=])\s[-+*/]\s"), ("abs", r"\babs\s*\("),
+                          ("group by", r"\bgroup by\b"), ("arithmetic", r"(?<![<>!=(])\s[-+*/]\s(?!\))"), ("abs", r"\babs\s*\("),
                           ("set operation", r"\b(union|intersect|except)\b"), ("in list", r"\bnot in\b|\bin \("), ("count", r"\bcount\s*\(")):
         if (low.count("select") > 1) if pattern is None else re.search(pattern, low):
             out.append(name)
@@ -563,11 +589,86 @@ def oracle_reading(sql: str, table) -> list[str]:
     return out
 
 
-def oracle(run: str, boost: float, limit: int | None) -> None:
-    """How many of a run's unbuilt training questions a reading naming SQUALL's columns, values and operations builds:
-    each one is read again with those coordinates raised by ``boost``, decoded and verified, and stopped before the
-    choice (no new API call: the reading's calls are recorded). An upper bound on what a better reading reaches; the
-    rest needs language the engine lacks, or a compiled table SQUALL's columns do not map onto."""
+WRITTEN_IDENTIFIER = re.compile(r'"((?:[^"]|"")+)"')
+WRITTEN_PARSE = re.compile(r"\b(substr|substring|instr|replace|trim|ltrim|rtrim|length|strftime|julianday|date|cast)\s*\(", re.I)
+
+
+def squall_form(sql: str, header: list[str]) -> str:
+    """A query a model wrote over the raw table (raw_tables: one table, its csv header as column names) in SQUALL's
+    form, so oracle_reading, families and the stage map read it as they read SQUALL's: each quoted column name the
+    csv's k-th column, c<k>; c<k>_number where the query casts it, c<k>_parsed where it reads it through a function
+    that takes a cell apart (a substring, a replace, a date function); every parenthesis spaced, as SQUALL writes them."""
+    positions = {name.lower(): at + 1 for at, name in enumerate(header)}
+    out, depth_parsing = [], []      # each open parsing function: [its name, the parentheses opened inside it]
+    text = re.sub(r"\s+", " ", sql)
+    at = 0
+    while at < len(text):
+        match = WRITTEN_PARSE.match(text, at)
+        if match and (at == 0 or not (text[at - 1].isalnum() or text[at - 1] == "_")):
+            depth_parsing.append([match.group(1).lower(), 0])
+            out.append(match.group(1).lower() + " ( ")
+            at = match.end()
+            continue
+        char = text[at]
+        if char == '"':
+            end = at + 1
+            while end < len(text) and not (text[end] == '"' and text[end + 1:end + 2] != '"'):
+                end += 2 if text[end] == '"' else 1
+            name = text[at + 1:end].replace('""', '"')
+            k = positions.get(name.lower())
+            part = "" if not depth_parsing else "_number" if all(name == "cast" for name, _ in depth_parsing) else "_parsed"
+            out.append(f"c{k}{part}" if k else "w")
+            at = end + 1
+            continue
+        if char == "'":
+            end = at + 1
+            while end < len(text) and not (text[end] == "'" and text[end + 1:end + 2] != "'"):
+                end += 2 if text[end] == "'" else 1
+            out.append(text[at:end + 1])
+            at = end + 1
+            continue
+        if char == "(":
+            if depth_parsing:
+                depth_parsing[-1][1] += 1
+            out.append(" ( ")
+        elif char == ")":
+            if depth_parsing:
+                if depth_parsing[-1][1] == 0:
+                    depth_parsing.pop()
+                else:
+                    depth_parsing[-1][1] -= 1
+            out.append(" ) ")
+        else:
+            out.append(char.lower())
+        at += 1
+    return " ".join("".join(out).split())
+
+
+def written_queries(set_name: str, teacher: str | None) -> tuple[list, dict[str, str]]:
+    """(the set's items, each question's query in SQUALL's form): SQUALL's own for wtq-train; for a test sample, the
+    query the teacher run's model wrote (neon, recorded with its grade) where it was graded right, in SQUALL's form
+    (squall_form over the csv's header as raw_tables names it). A question the teacher got wrong has none."""
+    if set_name == "wtq-train":
+        items, _, sql = items_of("wtq-train", 100000, 0)
+        return items, sql
+    items, _, _ = items_of(set_name, None, 0)
+    if not teacher:
+        return items, {}
+    taught = records(teacher, set_name, "neon")
+    by_id = {item.id: item for item in items}
+    out = {}
+    for key, row in taught.items():
+        if row.get("outcome") == "right" and row.get("sql") and key in by_id:
+            out[key] = squall_form(row["sql"], raw_tables(by_id[key])[0]["columns"])
+    return items, out
+
+
+def oracle(run: str, boost: float, limit: int | None, set_name: str = "wtq-train", teacher: str | None = None) -> None:
+    """How many of a run's unbuilt questions a reading naming a human-written query's columns, values and operations
+    builds (SQUALL's for wtq-train; on a test sample, the teacher run's Neon query where it was right): each one is read
+    again with those coordinates raised by ``boost``, decoded and verified, and stopped before the choice (no new API
+    call: the reading's calls are recorded). An upper bound on what a better reading reaches; the rest needs language
+    the engine lacks, or a compiled table the query's columns do not map onto."""
     import regress.run_dev_decisions as dev
     import engine.program.answer as answer_module
     from engine.prepared import scratch_database
@@ -578,10 +679,10 @@ def oracle(run: str, boost: float, limit: int | None) -> None:
     class Stop(Exception):
         pass
 
-    held = records(run, "wtq-train", "engine")
+    held = records(run, set_name, "engine")
     targets = {key for key, row in held.items() if not any(row.get("listed_right") or [])}
-    items, _, sql = items_of("wtq-train", 100000, 0)     # every annotated training question; the run's are kept below
-    items = [item for item in items if item.id in targets][:limit]
+    items, sql = written_queries(set_name, teacher)       # every question with a query; the run's unbuilt are kept below
+    items = [item for item in items if item.id in targets and item.id in sql][:limit]
     llm.DECISIONS_TRANSPORT = dev.Replay(eval_sets.CallStore(), WORK / "oracle_misses")
     state: dict = {}
     real_decode, real_verify = Decoder.decode, answer_module.verify
@@ -596,26 +697,150 @@ def oracle(run: str, boost: float, limit: int | None) -> None:
 
     Decoder.decode, answer_module.verify = decode, verify
     planner, reached, mapped, outcome = TableQuery(), 0, 0, collections.Counter()
+    sink_path = WORK / run / set_name / "oracle.jsonl"
+    sink_path.parent.mkdir(parents=True, exist_ok=True)
+    done = {row["id"] for row in map(json.loads, filter(str.strip, sink_path.read_text(encoding="utf-8").splitlines()))} if sink_path.exists() else set()
     try:
-        for item in items:
-            tables = dev.tables_of(item)
-            catalog = item.load()
-            state.update(boost=oracle_reading(sql[item.id], catalog.tables[0]), verified=None)
-            mapped += bool(state["boost"])
-            with scratch_database():
-                try:
-                    planner.select_query(item.question, tables)
-                except Stop:
-                    pass
-                except Exception as error:       # a reading call the store lacks: the question is not measured
-                    outcome[type(error).__name__] += 1
+        with open(sink_path, "a", encoding="utf-8") as sink:
+            for item in items:
+                if item.id in done:
                     continue
-            right = any(candidate.result.rows and dev.graded(item, candidate.result.rows) for candidate in state["verified"] or ())
-            reached += right
-            outcome["built" if right else "still not built"] += 1
+                tables = dev.tables_of(item)
+                catalog = item.load()
+                state.update(boost=oracle_reading(sql[item.id], catalog.tables[0]), verified=None)
+                mapped += bool(state["boost"])
+                with scratch_database():
+                    try:
+                        planner.select_query(item.question, tables)
+                    except Stop:
+                        pass
+                    except Exception as error:       # a reading call the store lacks: the question is not measured
+                        outcome[type(error).__name__] += 1
+                        sink.write(json.dumps({"id": item.id, "oracle": "unmeasured", "error": type(error).__name__}) + "\n")
+                        continue
+                right = any(candidate.result.rows and dev.graded(item, candidate.result.rows) for candidate in state["verified"] or ())
+                reached += right
+                outcome["built" if right else "still not built"] += 1
+                sink.write(json.dumps({"id": item.id, "oracle": "built" if right else "not built", "mapped": bool(state["boost"])}) + "\n")
+                sink.flush()
     finally:
         Decoder.decode, answer_module.verify = real_decode, real_verify
     print(f"{run}: {len(items)} unbuilt training questions, {mapped} with SQUALL columns mapped; with SQUALL's reading raised by {boost}: {dict(outcome)}")
+
+
+STAGES = ("right", "choice", "table", "reading", "cell part", "operation", "teacher wrong", "unmeasured")
+
+
+def _choice_difference(shown: list[str], right: list[str]) -> str:
+    """How the shown listing's reading differs from the likeliest right one, by the first coordinate kind they differ
+    in (engine/program/names.py): its form, table, a line pinned by its label, the measure or shown column, a
+    condition, a direction, aggregate or calc operator, else something else."""
+    a, b = set(shown), set(right)
+    differ = {name.split(":", 1)[0] for name in a ^ b}
+    for kind, slots in (("form", {"form"}), ("table", {"table"}), ("line pin", {"line"}), ("column read", {"measure", "shown", "key", "peers"}),
+                        ("condition", {"filter", "value", "comparison", "number", "period", "conditions", "said"}),
+                        ("operation", {"aggregate", "direction", "calc_op", "entity", "size", "row_op"})):
+        if differ & slots:
+            return kind
+    return "other"
+
+
+def _wtq_shape(book: str) -> tuple[int, int]:
+    """(data rows, columns) of a WikiTableQuestions csv as the dataset ships it, its header row aside."""
+    import csv
+    with open(eval_sets._wtq_root() / book, encoding="utf-8") as source:
+        rows = [row for row in csv.reader(source, escapechar="\\", doublequote=False)]
+    return max(0, len(rows) - 1), max((len(row) for row in rows), default=0)
+
+
+def stages(run: str, set_name: str = "wtq-train", teacher: str | None = None) -> dict:
+    """The stage map of a wtq-train run (owner's plan, 2026-11-25): each question at the first stage that loses it.
+    right; choice (a listed answer was right, another was picked); and of the unbuilt: table (the compiled table's data
+    lines or columns differ from the csv SQUALL reads: a line or column gained or lost), reading (SQUALL's reading
+    builds it: --oracle RUN first), cell part (SQUALL reads a part of a cell, c4_number, c2_year, and the compiled
+    table holds that source column as text with no figure of its own), operation (the rest: language the engine lacks,
+    or what the decoder does not compose), unmeasured (the oracle could not replay it). On a test sample the query is
+    the teacher run's (written_queries); an unbuilt question the teacher got wrong too is "teacher wrong" (a hard
+    question, or its gold in doubt). Writes regress/results/public/<run>/<set>/stages.jsonl and returns the counts by
+    stage and, within each, by family."""
+    rows = records(run, set_name, "engine")
+    items, written = written_queries(set_name, teacher)
+    path = WORK / run / set_name / "oracle.jsonl"
+    oracle_of = {row["id"]: row for row in map(json.loads, filter(str.strip, path.read_text(encoding="utf-8").splitlines()))} if path.exists() else {}
+    shapes: dict[str, tuple[int, int]] = {}
+    loaders = {item.book: item.load for item in items}
+    catalogs: dict = {}
+
+    def unread_parts(book: str, parts: set[tuple[int, str]]) -> set[str]:
+        """The parts SQUALL reads of source columns the compiled table holds as plain text: no figure column of its own
+        (c4_number over "3-1" read as "Score #1"), not a number column, not a date column for a date's part."""
+        if book not in catalogs:
+            catalogs[book] = loaders[book]()
+        table = catalogs[book].tables[0]
+        columns = table.table.columns
+        sources = [column for column in columns if column.col >= 0]
+        out = set()
+        for k, part in parts:
+            if not 0 < k <= len(sources):
+                continue
+            source = sources[k - 1]
+            figures = [column for column in columns if column.col < 0 and column.path[:-1] == (source.path or (source.name,))]
+            dated = table.is_date_column(source.position)
+            if figures or (source.kind == "number" and "number" in part) or (dated and part in ("year", "month", "day", "parsed")):
+                continue
+            out.add(part)
+        return out
+    out, counts, within = [], collections.Counter(), collections.defaultdict(collections.Counter)
+    for key, row in sorted(rows.items()):
+        sql = written.get(key) or row.get("squall") or ""
+        low = " ".join(sql.lower().split())
+        built = any(row.get("listed_right") or [])
+        tables = row.get("tables") or []
+        detail = ""
+        if row.get("kind") in ("error", "refused") and not built:
+            stage = "unmeasured"
+        elif row.get("engine"):
+            stage = "right"
+        elif built:
+            stage, detail = "choice", _choice_difference(row.get("shown_coordinates") or [], row.get("right_coordinates") or [])
+        else:
+            if row["book"] not in shapes:
+                shapes[row["book"]] = _wtq_shape(row["book"])
+            data_rows, width = shapes[row["book"]]
+            main = tables[0] if tables else {"lines": 0, "printed": 0, "columns": []}
+            sources = [column for column in main["columns"] if column[2] is not None and column[2] >= 0]
+            used = {int(k) for k, _part in SQUALL_COLUMN.findall(low)}
+            oracle_row = oracle_of.get(key, {})
+            parts = {(int(k), part) for k, part in SQUALL_COLUMN.findall(low) if part}
+            if set_name != "wtq-train" and not sql:
+                stage = "teacher wrong"
+            elif len(tables) != 1 or main["lines"] + main["printed"] != data_rows or len(sources) != width or (used and max(used) > len(sources)):
+                stage, detail = "table", ("tables" if len(tables) != 1 else "lines" if main["lines"] + main["printed"] != data_rows else "columns")
+            elif oracle_row.get("oracle") == "built":
+                stage = "reading"
+            elif oracle_row.get("oracle") in (None, "unmeasured"):
+                stage = "unmeasured"
+            elif unread := unread_parts(row["book"], parts):
+                stage, detail = "cell part", "+".join(sorted(unread))
+            else:
+                stage = "operation"
+        if not detail and stage not in ("right", "unmeasured"):
+            detail = ", ".join(families(sql))
+        counts[stage] += 1
+        within[stage][detail or "-"] += 1
+        out.append({"id": key, "stage": stage, "detail": detail, "question": row["question"], "squall": sql,
+                    "read_as": row.get("read_as", ""), "right_read_as": row.get("right_read_as", "")})
+    with open(WORK / run / set_name / "stages.jsonl", "w", encoding="utf-8") as sink:
+        for row in out:
+            sink.write(json.dumps(row, ensure_ascii=False) + "\n")
+    total = sum(counts.values())
+    print(f"{run}: {total} training questions")
+    for stage in STAGES:
+        if counts[stage]:
+            print(f"  {stage:12} {counts[stage]:5} ({100 * counts[stage] / total:.1f}%)")
+            for detail, n in within[stage].most_common(12 if stage != "right" else 0):
+                print(f"      {n:5}  {detail[:110]}")
+    return {stage: counts[stage] for stage in STAGES}
 
 
 def keep(run: str) -> None:
@@ -652,6 +877,9 @@ def main() -> int:
     parser.add_argument("--show")
     parser.add_argument("--keep", help="pack a run's records into regress/sets/public/records")
     parser.add_argument("--oracle", help="wtq-train: how many of a run's unbuilt questions SQUALL's reading builds")
+    parser.add_argument("--stages", help="wtq-train, or a test sample with --teacher: each question of a run at the first stage that loses it (after --oracle RUN)")
+    parser.add_argument("--teacher", help="with --oracle or --stages on a test sample: the run whose neon records hold the written queries")
+    parser.add_argument("--merge", nargs="+", metavar="RUN", help="with --run and --set: the shards' records of a set gathered into one run")
     parser.add_argument("--boost", type=float, default=4.0)
     args = parser.parse_args()
     if args.new_sample:
@@ -670,8 +898,22 @@ def main() -> int:
     if args.keep:
         keep(args.keep)
         return 0
+    if args.stages:
+        stages(args.stages, args.set or "wtq-train", args.teacher)
+        return 0
+    if args.merge:
+        target = WORK / args.run / args.set / f"{args.system}.jsonl"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        gathered = {}
+        for shard in args.merge:
+            gathered.update(records(shard, args.set, args.system))
+        with open(target, "w", encoding="utf-8") as sink:
+            for key in sorted(gathered):
+                sink.write(json.dumps(gathered[key], ensure_ascii=False, default=str) + "\n")
+        print(f"{args.run}: {len(gathered)} records of {args.set} / {args.system} from {', '.join(args.merge)}")
+        return 0
     if args.oracle:
-        oracle(args.oracle, args.boost, args.limit)
+        oracle(args.oracle, args.boost, args.limit, args.set or "wtq-train", args.teacher)
         return 0
     if not (args.run and args.set):
         parser.error("--run and --set are required")
