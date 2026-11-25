@@ -489,7 +489,7 @@
    "weights": "only"
   },
   "scratch-records": {
-   "bytes": 269661840,
+   "bytes": 272008037,
    "exclude": [
     "archive",
     "worktrees",
@@ -498,6 +498,7 @@
     "release-2af5bf2d",
     "release-48abf835",
     "release-6d239ad1",
+    "release-8699ca47",
     "release-b36044aa",
     "release-b9b0fe50",
     "chat-1a442963",
@@ -507,7 +508,7 @@
     "chat-b9b0fe50",
     "open-20261124/sheetcache"
    ],
-   "files": 3826,
+   "files": 3901,
    "note": "working records of the 2026-11 sessions: accuracy and parity runs, patches, cutover scripts, gate logs, the 2026-11-24 sheet-reading diagnosis scripts (release and chat build copies are code at their commits, not kept)",
    "packed": "2026-11-25",
    "packed_from": [
@@ -516,10 +517,10 @@
    ],
    "parts": [
     {
-     "bytes": 45071027,
+     "bytes": 45301595,
      "path": "scratch-records/part-0000.tar.zst",
-     "revision": "7c0822220b666ae0eb8f080421f5659568eb547e",
-     "sha256": "3dbe3f3cd93b87390d94d4287d791d1af7c118e577d89689d616cfff03181c73"
+     "revision": "05a29e2fd44f3bd1604357ed65961672e4b45db8",
+     "sha256": "d1e0fe4c23681d07fd308f60a238c853064450cebf216f42b54f6e1897fd26c7"
     }
    ],
    "restore": "archive",
