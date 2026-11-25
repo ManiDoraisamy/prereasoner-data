@@ -1170,12 +1170,12 @@ def main():
     DIM_MODEL = startup_phase("dimension model (shared world encoder)",
                               lambda: DimensionModel(shared_encoder=MODEL.qw))
     # The Decisions path reads every own-data question with stock bge-m3 (engine/program/stock.py). Loaded on the
-    # first question it would hold that question for its load, so an instance is ready only with it. It loads after
-    # the world reasoner, never beside it: a model build touches process-wide torch state (a bfloat16 build set the
-    # default dtype for the whole process, and a world encoder built meanwhile came out in bfloat16: 3fa1b46,
-    # 2026-10-27).
+    # first question it would hold that question for its load, so an instance is ready only with it, its weights in
+    # the process's own memory and its first encoding done (StockReader.warm). It loads after the world reasoner,
+    # never beside it: a model build touches process-wide torch state (a bfloat16 build set the default dtype for the
+    # whole process, and a world encoder built meanwhile came out in bfloat16: 3fa1b46, 2026-10-27).
     from engine.program.stock import stock_reader
-    startup_phase("stock reader", stock_reader)
+    startup_phase("stock reader", lambda: stock_reader().warm())
     # spaCy is lazy and is only needed by entity extraction on a subset of queries.
     # It is not part of model readiness: loading it synchronously here can consume
     # the last seconds of Cloud Run's startup-probe budget after the Qwen encoder and

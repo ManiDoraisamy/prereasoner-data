@@ -490,7 +490,43 @@ def test_the_dev_replay_runs_from_a_clean_clone() -> None:
         assert not missing, f"{name}: {len(missing)} calls of the reference are not recorded"
 
 
+def test_a_warmed_reader_owns_its_weights_and_reads_the_same() -> None:
+    # 2026-11-25: an instance's first question spent about 8 s on each stock reading (24 and 37 s on its first request)
+    # and later questions 0.2 s: the backbone's weights stay mapped from their file until first read. warm() copies
+    # them into the process's own memory and encodes once at every length, into no cache, and reads nothing new.
+    class Backbone(torch.nn.Module):
+        dim = 4
+
+        def __init__(self):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.arange(16, dtype=torch.float32).reshape(4, 4) / 16)
+            self.register_buffer("offset", torch.ones(4))
+            self.lengths = []
+
+        def encode_texts(self, texts, *, max_tokens=32, batch=32):
+            distinct = sorted(set(texts), key=lambda text: (len(text), text))
+            self.lengths.extend(len(text.split()) for text in distinct)
+            rows = [torch.tensor([float(len(text)), float(sum(map(ord, text)) % 7), 1.0, 0.0]) for text in distinct]
+            return distinct, (torch.stack(rows) @ self.weight + self.offset) if rows else torch.zeros((0, self.dim))
+
+        def text_tokens(self, texts, *, max_tokens=32):
+            return [len(text.split()) + 2 for text in texts]
+
+    backbone = Backbone()
+    reader = stock.StockReader(backbone)
+    before = reader.encode(["total amount", "Paris"])
+    reader.cache.clear()
+    storages = (backbone.weight.data_ptr(), backbone.offset.data_ptr())
+    assert reader.warm() is reader
+    assert backbone.weight.data_ptr() != storages[0], "the weights were not copied"
+    assert backbone.offset.data_ptr() != storages[1], "the buffers were not copied"
+    assert set(backbone.lengths) >= set(range(1, stock.TEXT_TOKENS + 1)), "a token length was never encoded"
+    assert not reader.cache, "warming wrote the cache"
+    assert torch.allclose(torch.from_numpy(reader.encode(["total amount", "Paris"])), torch.from_numpy(before)), "warming changed a reading"
+
+
 TESTS = [
+    test_a_warmed_reader_owns_its_weights_and_reads_the_same,
     test_a_candidates_probability_is_summed_over_the_same_answer, test_the_answer_is_served_by_the_reading_the_choice_preferred, test_an_answer_worded_like_another_is_warned_never_asked_back, test_ties_go_to_the_earlier_listing, test_thresholds_err_warn_and_answer,
     test_none_likelier_than_the_best_answer_errs, test_nothing_listed_errs, test_answer_key_tells_rows_apart,
     test_sheet_state_describes_every_column_with_three_examples, test_sheet_state_names_a_family_table_by_all_its_tabs, test_a_workbook_of_several_tabs_names_the_tab_in_view,

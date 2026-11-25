@@ -101,6 +101,23 @@ class StockReader:
         """Each text's tokens as encode reads it."""
         return self.backbone.text_tokens(texts, max_tokens=TEXT_TOKENS)
 
+    def warm(self) -> StockReader:
+        """Ready the reader before an instance takes questions: the backbone's weights copied into the process's own
+        memory and one encoding of a text at every token length a text can take, read into no cache. A load maps the
+        weights file and reads its pages on first use; served on Cloud Run, the first question of an instance spent
+        about 8 s on each of its stock readings (24 and 37 s on its first request) and later questions 0.2 s
+        (2026-11-25). Returns the reader."""
+        with torch.no_grad():
+            for module in self.backbone.modules():
+                for _name, tensor in list(module.named_parameters(recurse=False)) + list(module.named_buffers(recurse=False)):
+                    if tensor is not None:
+                        tensor.data = tensor.data.clone()
+        with torch.inference_mode():
+            lengths = [" ".join(["warm"] * words) for words in range(1, TEXT_TOKENS + 1)]
+            self.backbone.encode_texts(lengths, max_tokens=TEXT_TOKENS, batch=ENCODE_BATCH)
+            self.backbone.encode_texts(lengths[:1], max_tokens=TEXT_TOKENS, batch=ENCODE_BATCH)
+        return self
+
     def vectors(self, texts: list[str]) -> tuple[list[str], np.ndarray]:
         """(the distinct texts, their float16 vectors as the cache holds them), encoding those not yet read KEEP_CHUNK
         at a time, so a question's encoding waits for one chunk of a background encoding, never all of it."""

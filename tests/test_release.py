@@ -125,6 +125,9 @@ def test_the_engine_loads_the_stock_reader_before_it_serves():
         assert loading.acquire(blocking=False), "the stock reader loaded while the world reasoner was being built"
         loading.release()
         order.append("stock reader")
+        # 2026-11-25: an instance's first question spent about 8 s on each stock reading while the weights it had
+        # mapped were read on first use; the reader is warmed before the server serves (StockReader.warm).
+        return SimpleNamespace(warm=lambda: order.append("warmed"))
 
     def world():
         with loading:
@@ -151,7 +154,7 @@ def test_the_engine_loads_the_stock_reader_before_it_serves():
             server.main()
     finally:
         server.MODEL, server.DIM_MODEL, server.ENRICHMENT = saved
-    assert order == ["world", "stock reader", "serve"], order
+    assert order == ["world", "stock reader", "warmed", "serve"], order
 
 
 def test_vendored_xlsx_parser_has_the_reviewed_identity():
