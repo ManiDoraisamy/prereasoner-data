@@ -10,6 +10,19 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## One stated number read as a rank's count and a condition both: DataBench picks 263 -> 259; not kept (2026-11-25)
+
+- "Which game had a bigger crowd, week 4 or week 9?" was read as the 4 lines with the highest attendance where Week
+  is 4, and "the 3 states with the highest income" as the 3 highest where the income is above 3: a rank keeping N
+  lines under a condition on that same N scores the question's one number twice (a rank's count and a condition
+  both state it). On the dev references 37 picks were such programs (20 fresh dev, 17 DataBench), 9 of them wrong.
+- Tried: such a rank unsound (`engine/program/language.py` `is_sound`). Gate (`regress/run_dev_decisions.py
+  --record --tag stated`): WikiTableQuestions, messy, fresh dev and the demo picks unchanged; DataBench picks 263 ->
+  259 (1 win, 5 losses) and unwarned wrong 17 -> 19. Where the doubled threshold was harmless the double reading was
+  right, and without it the choice took another reading. Not kept. Its diff and records are in
+  `prereasoner-scratch/patches/stated-number-20261125/` in the archive; its calls are under `regress/sets/calls/`.
+
+
 ## A score's opening mark as its own part: "how many games did the 1981 Atlanta Falcons win?" counts the lines whose result is W; on the 148 WikiTableQuestions tables it changes, the training questions 439 -> 456 right of 624 (2026-11-24)
 
 - A result column of "W 13–7" and "L 28–3" compiled as text with two number parts, its scores ("Result #1", "Result
