@@ -10,6 +10,20 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## The final fresh sample at a4e5d814 (the calendar month and the score's mark): the engine alone 695 -> 696 of 1,000 (2 wins, 1 loss), unmarked wrong 143 -> 145 (2026-11-25)
+
+- The 1,000 WikiTableQuestions test questions, run in a clean checkout of a4e5d814 (records
+  `regress/sets/public/records/2026-11-25-marks-fresh`) against 4b674537's (`2026-11-24-head2`).
+  - Right 695 -> 696, built 801 -> 803, unmarked wrong 143 -> 145.
+  - Both wins are the score's mark: "how many wins were there in total?" (7, the lines whose result is W) and "the
+    most games the vikings consecutively won" (4, the longest run of W).
+  - The loss: "what was the last game of the season?" shows the last line's opponent without its date.
+  - The other unmarked wrong answer is one the engine gave before ("what is next after chuchillo-2?"), now served
+    where it had erred.
+  - No question of the sample asks for a month of any year.
+- Gemini 4 Neon on the same sample: 850. Decisions spend $0.03.
+
+
 ## One stated number read as a rank's count and a condition both: DataBench picks 263 -> 259; not kept (2026-11-25)
 
 - "Which game had a bigger crowd, week 4 or week 9?" was read as the 4 lines with the highest attendance where Week
