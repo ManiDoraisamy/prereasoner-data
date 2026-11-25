@@ -10,6 +10,21 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release 8699ca47 (the calendar month, the score's mark, times compared in seconds) live; Chrome gate 102 of 102 fresh, 77 of 78 existing (2026-11-25)
+
+- Engine `prereasoner-api-00350-nuj` (`engine@sha256:2c1d2de3...`, Cloud Build eba67e72: build, offline regression
+  gate, runtime server smoke, live product suites), deployed with no traffic under tag `seconds`, healthz 200, release
+  smoke job ok, then 100%; both engine jobs on the image. Chat and Hosting unchanged (no orchestrator or web change
+  since b9b0fe50). Rollback: `prereasoner-api-00348-koy` (b36044aa). It carries the three changes kept since b36044aa:
+  the calendar month (28276f55), a score's opening mark as its own part (a4e5d814) and a number compared with times
+  in their seconds (8699ca47); dev picks 733 -> 735 of 896, unwarned wrong 63 throughout, demo 86 of 91.
+- Chrome gate on chat.prereasoner.com, all 24 demo datasets, prompt.txt then every eval.txt follow-up, chat shorthand
+  included (captures in `prereasoner-scratch/gate-8699ca47/` in the archive): the conversations b36044aa's pass made,
+  asked their follow-ups again, **77 of 78**, every answer but one identical to that pass's; the one miss is the old
+  one ("in GBP for the whole of Europe?" after an average question is read as an average, 145.49 GBP). Fresh
+  conversations **102 of 102** graded by `regress/browser_gold.py`, 101 byte-identical to b36044aa's pass and one whose
+  last turn returned a chat 502 at 79 s and was read back from the analysis with the same rows.
+
 ## A number compared with times, offered in their seconds: "how many films had a duration below 5 minutes?" keeps the films under 5:00; on the 30 training questions whose SQUALL query reads minutes or seconds, right 11 -> 24 (2026-11-25)
 
 - A column of times ("3:36", "2:05:31") reads its numbers in seconds (`engine/program/semantics.py`
