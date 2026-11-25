@@ -13,7 +13,7 @@ from functools import cached_property
 import numpy as np
 
 from engine.program.catalog import CatalogTable
-from engine.program.language import Col, Compare, CompareLine, Condition, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, OnLine, OneOf, PercentOf, RowArithmetic, Size, condition_coordinates
+from engine.program.language import Col, Compare, CompareLine, Condition, LineOrder, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, OnLine, OneOf, PercentOf, RowArithmetic, Size, condition_coordinates
 from engine.program.names import ENDS, EQ, GE, GT, LE, LT, MINUS, NE, PLUS, STARTS
 from engine.program.semantics import CURRENCY_CODES, fold
 from engine.sheet.values import parse_number
@@ -318,7 +318,7 @@ class TableIndex:
             anchor = self.table.line_number(condition)
             if anchor is None:
                 return 0
-            numbers = self.number_arrays[condition.column.position]
+            numbers = np.arange(size, dtype=float) if isinstance(condition.column, LineOrder) else self.number_arrays[condition.column.position]
             named = bitmask(self.value_lines[condition.key.position].get(fold(condition.value), []), size)
             return _as_mask(COMPARE_ARRAYS[condition.op](numbers, anchor) & ~np.isnan(numbers)) & ~named
         if isinstance(condition, InPeriod):

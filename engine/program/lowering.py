@@ -76,10 +76,12 @@ def _condition(condition: Condition):
         return Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, _number(condition.other))
     if isinstance(condition, CompareLine):     # against the first data line the value names; that line's key kept out
         table, key, named = sql_table(condition.column.table), _fold(condition.key), Literal(fold_text(condition.value), SQLType.TEXT)
-        anchor = ScalarSubquery(SelectQuery((SelectItem(_number(condition.column), VALUE),), table, where=_where(_data_lines(condition.column.table), Comparison(key, "=", named)),
+        # a line's place is its line as the sheet lists it; any other side is the column's number
+        figure = ColumnRef(table, LINE, SQLType.INTEGER) if isinstance(condition.column, LineOrder) else _number(condition.column)
+        anchor = ScalarSubquery(SelectQuery((SelectItem(figure, VALUE),), table, where=_where(_data_lines(condition.column.table), Comparison(key, "=", named)),
                                             order_by=(OrderTerm(ColumnRef(table, LINE, SQLType.INTEGER)),), limit=1))
         other = BooleanExpr("OR", (_is_null(key), Comparison(key, "!=", named)))
-        return BooleanExpr("AND", (Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, anchor), other))
+        return BooleanExpr("AND", (Comparison(figure, "!=" if condition.op == NE else condition.op, anchor), other))
     if isinstance(condition, IsBlank):
         return _is_null(_fold(condition.column), negated=condition.filled)
     if isinstance(condition, IsNumber):

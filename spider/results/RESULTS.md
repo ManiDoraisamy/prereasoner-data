@@ -10,6 +10,38 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Lines listed before or after a line a value names: "how many movies was she in before Vampire Family?" counts the lines above that line; on the 28 training questions whose SQUALL query compares a line's place, right 14 -> 19 (2026-11-25)
+
+- "More medals than Canada" compares a number column with that column on the line a value names (`CompareLine`);
+  a count of the lines the sheet lists before or after a named line had no reading, and a number column stood in
+  for it (years out of order). `CompareLine` now takes the line's place (`LineOrder`) as its column, before (<) or
+  after (>) only (`engine/program/language.py`): the lines whose place is before or after the first data line the
+  value names, that line's key kept out, the same in the typed SQL (the line number against the named line's, an
+  existing subquery shape; `engine/program/lowering.py`), the catalog and the index; read "listed before the line
+  where Title is ..." (`engine/program/output.py`). The decoder offers it beside the number columns' comparisons
+  for a comparison and a value one line holds (`engine/program/decoder.py` `line_compared_atoms`), never from a date
+  (a period before or after the date reads that), and only to a figure over the lines (a count, a sum, an average, a
+  highest or lowest, a distinct count): a shown line or a rank takes the one line next to the named one (a
+  neighbour).
+- Offered to every frame first, it failed the gate: WikiTableQuestions picks 237 -> 235 (0 wins, 2 losses), "what is
+  previous to complete series 10?" read as every line before it and "before 1980" stacked on the date's period (records
+  `regress/sets/public/records/2026-11-25-place`). Offered to aggregates only, it kept every family win.
+- Its family (`regress/run_public.py --set wtq-train --size 9070 --squall "\bid [<>]=? \( select id"`): the 28
+  annotated training questions, run on 2bbf60e7 (records `2026-11-25-place-before`) and with the change
+  (`2026-11-25-place3`). Right 14 -> 19 (5 wins, 0 losses: four "how many ... before/after X" and "how many wins
+  before the November 19th game"), built 18 -> 23, unmarked wrong 6 -> 6. Decisions spend about $0.02.
+- Gate (`regress/run_dev_decisions.py --record --tag place3`): picks on the 896 737 -> 737 (0 wins, 0 losses), unwarned
+  wrong 63 -> 61 (WikiTableQuestions nt-4336 and nt-1336 now warned), demo 86 of 91 unchanged. References kept; the
+  cache-hit replay is at parity on all five sets.
+
+## The final fresh sample at 2bbf60e7 (times in seconds, numbers in a choice, the spanning footer): the engine alone 696 -> 699 of 1,000 (3 wins, 0 losses), unmarked wrong 145 -> 146 (2026-11-25)
+
+- `regress/run_public.py --run 2026-11-25-span-fresh --set wtq-fresh2 --system engine` on 2bbf60e7, against the same
+  sample at a4e5d814 (`2026-11-25-marks-fresh`): right 696 -> 699, built 803 -> 808, unmarked wrong 145 -> 146. The
+  three wins are choices between two named numbers ("did episode 8 or episode 9 have a better ranking?", "was the
+  overall score lower in 2010 or 2013?") and "the average number of laps driven in the Indianapolis 500", whose
+  "Totals" footer (203-csv/647) no longer counts as a race. Gemini 4 Neon reads 850 of this sample.
+
 ## A label spanning a line's key beside a figure is a printed line: "how many clubs are listed?" no longer counts the "Total" footer; on the 11 WikiTableQuestions tables it changes, the training questions 45 -> 48 right of 53 (2026-11-25)
 
 - A web table's footer writes its label into every column the merged cell covers: "Total" across club, city, stadium

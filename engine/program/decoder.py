@@ -26,6 +26,7 @@ from engine.sheet.names import PRINTED_ROLES
 
 _LINE_GROUP = -2
 _SECTION_GROUP = -3
+_PLACE_GROUP = -4     # a line listed before or after the line a value names
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +100,7 @@ def table_reach(reading: Reading) -> dict[str, float]:
 def _atom_order(table: CatalogTable, atom: Atom) -> tuple:
     """Where an atom stands among equals, read from what it says: what a column's shape says first, so a slot's top k keeps it; then by column, read from the column's words and cells; then its own words."""
     condition = atom.condition
-    columns = [held for held in (getattr(condition, "column", None), getattr(condition, "other", None)) if held is not None]
+    columns = [held for held in (getattr(condition, "column", None), getattr(condition, "other", None)) if isinstance(held, Col)]     # a line's place is no column
     return (_ATOM_KINDS.get(type(condition), 2), tuple(table.column_rank[column.position] for column in columns), type(condition).__name__, tuple(repr(getattr(condition, field)) for field in condition.__slots__ if field not in ("column", "other", "table")))
 
 
@@ -649,9 +650,11 @@ class _Search:
     def line_compared_atoms(self, table: CatalogTable, index: TableIndex) -> list[Atom]:
         """"More medals than Canada": a comparison the reading names, against a text value it names on this table that
         one data line holds (the line; "not much competition" names a category, not a line), for the number columns it
-        reads likeliest as filter or measure; the two likeliest values, three columns."""
+        reads likeliest as filter or measure; the two likeliest values, three columns. Before or after it, the lines
+        listed before or after that line too, by their place ("how many movies was she in before Vampire Family"), from a
+        value that is no date."""
         asked = [op for op in dict.fromkeys(name.split(":", 1)[1] for name in self.positive(SLOT_COMPARISON)) if op in COMPARE_OPS]
-        if not asked or not index.number_columns:
+        if not asked:
             return []
         prefix = f"{table.id}."
         named: list[tuple[int, str]] = []
@@ -670,8 +673,11 @@ class _Search:
             col = Col(table.id, position).name
             return max(self.s(coordinate(SLOT_FILTER, col)), self.s(coordinate(SLOT_MEASURE, col)))
         columns = sorted(index.number_columns, key=lambda position: (round(-read(position), _ROUND), table.column_rank[position]))[:3]
+        # never from a date: a date names a time, which a period before or after it reads (InPeriod)
+        placed = [index.atom_of(CompareLine(LineOrder(table.id), op, Col(table.id, key), value), _PLACE_GROUP)
+                  for op in asked if op in (LT, GT) for key, value in named[:2] if key not in index.date_columns]
         return [index.atom_of(CompareLine(Col(table.id, position), op, Col(table.id, key), value), position)
-                for op in asked for key, value in named[:2] for position in columns]
+                for op in asked for key, value in named[:2] for position in columns] + placed
 
     def per_column(self, atoms: list[_Option], keep: int) -> list[_Option]:
         """The top options of each column, in overall order."""
@@ -834,7 +840,10 @@ class _Search:
         index = self.decoder.indexes[table.id]
         if not table.lines:
             return []
-        atoms = self.atoms_of(table, index)
+        placed = self.atoms_of(table, index)
+        # the lines listed before or after a named line are read by a figure over them ("how many movies before X", "the
+        # highest prize before X"); a shown line or a rank takes the one line next to the named one instead (a neighbour)
+        atoms = [option for option in placed if not (isinstance(option.payload.condition, CompareLine) and isinstance(option.payload.condition.column, LineOrder))]
         frames: list[_Frame] = []
         table_score = self.s(coordinate(SLOT_TABLE, table.id))
         all_positions = [column.position for column in table.columns]
@@ -875,19 +884,19 @@ class _Search:
         unit = Col(table.id, index.currency_column) if index.currency_column is not None else None
         for function in NUMBER_AGGREGATES:     # per currency where the lines name theirs (_per_unit)
             base = agg + s(coordinate(SLOT_AGGREGATE, function)) + self.type_score(A_NUMBER)
-            frames += self.condition_frames(base, (measures,), lambda options, where, f=function: _per_unit(Agg(f, options[0], table.id, where), unit, index), table, index, atoms, choices=function == SUM)
+            frames += self.condition_frames(base, (measures,), lambda options, where, f=function: _per_unit(Agg(f, options[0], table.id, where), unit, index), table, index, placed, choices=function == SUM)
         magnitude = agg + s(coordinate(SLOT_AGGREGATE, SUM)) + self.type_score(A_NUMBER) + s(coordinate(SLOT_SIZE, STATED_BY_SIZE))
         plain = self.column_options(table, index.number_columns, SLOT_MEASURE)
-        frames += self.condition_frames(magnitude, (plain,), lambda options, where: Agg(SUM, options[0], table.id, where, magnitude=True), table, index, atoms)
+        frames += self.condition_frames(magnitude, (plain,), lambda options, where: Agg(SUM, options[0], table.id, where, magnitude=True), table, index, placed)
         count = agg + s(coordinate(SLOT_AGGREGATE, COUNT)) + self.type_score(A_COUNT)
         # "the US and Jamaica combined", "members from Lawton and Oklahoma City": a total or a count over a choice of named
         # values is one figure over both; an average, a lowest or a highest of a choice is a rank's question
-        frames += self.condition_frames(count, (), lambda options, where: Agg(COUNT, None, table.id, where), table, index, atoms, choices=True)
+        frames += self.condition_frames(count, (), lambda options, where: Agg(COUNT, None, table.id, where), table, index, placed, choices=True)
         if s(coordinate(SLOT_ORDER, RUN)) > 0:     # the most lines in a row ("how many consecutive wins"): only where the order call reads a run
-            frames += self.condition_frames(count + s(coordinate(SLOT_ORDER, RUN)), (), lambda options, where: _longest_run(table.id, where), table, index, atoms, min_conditions=1, choices=True)
+            frames += self.condition_frames(count + s(coordinate(SLOT_ORDER, RUN)), (), lambda options, where: _longest_run(table.id, where), table, index, placed, min_conditions=1, choices=True)
         distinct = agg + s(coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)) + self.type_score(A_COUNT)
         keys = self.column_options(table, all_positions, SLOT_MEASURE)
-        frames += self.condition_frames(distinct, (keys,), lambda options, where: Agg(COUNT_DISTINCT, options[0], table.id, where), table, index, atoms, max_policy=2)
+        frames += self.condition_frames(distinct, (keys,), lambda options, where: Agg(COUNT_DISTINCT, options[0], table.id, where), table, index, placed, max_policy=2)
         # rank
         rank = s(coordinate(SLOT_FORM, RANK)) + table_score
         rank_measures = self.measure_options(table, index, dates=True)

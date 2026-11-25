@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, LONGEST_RUN, RUN, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, GT, LT, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, LONGEST_RUN, RUN, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAINS, BREAKDOWN_GRAINS, PERCENT_OP, coordinate)
 from engine.program.semantics import fold, number_text
@@ -263,8 +263,9 @@ class CompareLine:
     """A number cell compares with the same column's number on the line a value names ("more medals than Canada"):
     the first data line whose key cell is value. That line, and every line its key names the same, is the measure and
     is not kept ("the same number as Japan" asks for the others). A blank cell never passes; with no such line, or a
-    blank number on it, no line does."""
-    column: Col
+    blank number on it, no line does. With the line's place (LineOrder) for the column, a line listed before (<) or
+    after (>) that line passes ("how many movies was she in before Vampire Family")."""
+    column: Col | LineOrder
     op: str
     key: Col
     value: str
@@ -272,6 +273,8 @@ class CompareLine:
     def __post_init__(self):
         if self.op not in COMPARE_OPS:
             raise ValueError(f"unknown comparison: {self.op}")
+        if isinstance(self.column, LineOrder) and self.op not in (LT, GT):
+            raise ValueError("a line's place is listed before or after the line a value names")
         if self.key.table != self.column.table or self.key == self.column or self.key.position < 0:
             raise ValueError("a line is named by another column of the same table")
 
@@ -331,7 +334,8 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
     if isinstance(condition, CompareColumns):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_FILTER, condition.other.name), coordinate(SLOT_COMPARISON, condition.op), coordinate(SLOT_COMPARISON, f"{condition.op}@{condition.column.name}"))
     if isinstance(condition, CompareLine):
-        return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_COMPARISON, condition.op), coordinate(SLOT_VALUE, condition.key.name, fold(condition.value)))
+        head = () if isinstance(condition.column, LineOrder) else (coordinate(SLOT_FILTER, condition.column.name),)
+        return (*head, coordinate(SLOT_COMPARISON, condition.op), coordinate(SLOT_VALUE, condition.key.name, fold(condition.value)))
     if isinstance(condition, IsBlank):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_BLANK, "filled" if condition.filled else "blank"))
     if isinstance(condition, IsNumber):

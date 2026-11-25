@@ -109,8 +109,11 @@ def _condition_words(catalog: Catalog, condition: Condition) -> str:
     if isinstance(condition, CompareColumns):
         return f"{_name(catalog, condition.column)} is {_COMPARE_WORDS[condition.op]} {_name(catalog, condition.other)}"
     if isinstance(condition, CompareLine):
+        named = f'the line where {_name(catalog, condition.key)} is "{_value_words(catalog, condition.key, condition.value)}"'
+        if isinstance(condition.column, LineOrder):
+            return f"listed {'before' if condition.op == LT else 'after'} {named}"
         name = _name(catalog, condition.column)
-        return f'{name} is {_COMPARE_WORDS[condition.op]} the {name} of the line where {_name(catalog, condition.key)} is "{_value_words(catalog, condition.key, condition.value)}"'
+        return f'{name} is {_COMPARE_WORDS[condition.op]} the {name} of {named}'
     if isinstance(condition, IsBlank):
         return f"{_name(catalog, condition.column)} is {'filled' if condition.filled else 'blank'}"
     if isinstance(condition, IsNumber):
@@ -556,7 +559,7 @@ def _criteria(catalog: Catalog, where: tuple[Condition, ...]) -> list[str] | Non
         elif isinstance(condition, IsBlank):
             table = catalog.table(condition.column.table)
             out.extend((_range(table, condition.column.position), '"<>"' if condition.filled else '""'))
-        elif isinstance(condition, CompareLine):      # "<>X" passes a blank key, as the line kept out is only X's
+        elif isinstance(condition, CompareLine) and not isinstance(condition.column, LineOrder):      # "<>X" passes a blank key, as the line kept out is only X's
             table = catalog.table(condition.column.table)
             range_, keys = _range(table, condition.column.position), _range(table, condition.key.position)
             named = _value_words(catalog, condition.key, condition.value).replace('"', '""')
