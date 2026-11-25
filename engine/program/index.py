@@ -303,6 +303,8 @@ class TableIndex:
             lines = [line for text, hit in zip(self.value_lines[position], found) if hit for line in self.value_lines[position][text]]
             return bitmask(lines, size)
         if isinstance(condition, OneOf) and condition.column.position >= 0:
+            if condition.numbers:
+                return _as_mask(np.isin(self.number_arrays[condition.column.position], condition.values))
             lines = self.value_lines[condition.column.position]
             return bitmask([line for value in condition.values for line in lines.get(fold(value), [])], size)
         if isinstance(condition, Compare):

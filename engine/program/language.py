@@ -117,17 +117,24 @@ class Equals:
 
 @dataclass(frozen=True, slots=True)
 class OneOf:
-    """A text cell is one of these values ("Germany or France"), each read as Equals reads it, case and spacing aside.
-    Two or more different values, in their folded order, so one set of values is one condition."""
+    """A cell is one of these values ("Germany or France", "1994 or 2009"), each read as Equals reads it: texts case and
+    spacing aside, numbers as numbers. Two or more different values of one kind, texts in their folded order and
+    numbers in theirs, so one set of values is one condition."""
     column: Col
-    values: tuple[str, ...]
+    values: tuple[str, ...] | tuple[float, ...]
 
     def __post_init__(self):
-        if len(self.values) < 2 or not all(isinstance(value, str) for value in self.values):
-            raise ValueError("one of takes two or more text values")
-        folded = [fold(value) for value in self.values]
-        if len(set(folded)) != len(folded) or folded != sorted(folded):
-            raise ValueError("one of takes different values in their folded order")
+        texts = all(isinstance(value, str) for value in self.values)
+        numbers = all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in self.values)
+        if len(self.values) < 2 or not (texts or numbers):
+            raise ValueError("one of takes two or more values, all texts or all numbers")
+        keys = [fold(value) for value in self.values] if texts else list(self.values)
+        if len(set(keys)) != len(keys) or keys != sorted(keys):
+            raise ValueError("one of takes different values in their order")
+
+    @property
+    def numbers(self) -> bool:
+        return isinstance(self.values[0], (int, float))
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,7 +317,7 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
         value = number_text(condition.value) if isinstance(condition.value, (int, float)) else fold(condition.value)
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_VALUE, condition.column.name, value))
     if isinstance(condition, OneOf):
-        return (coordinate(SLOT_FILTER, condition.column.name), *(coordinate(SLOT_VALUE, condition.column.name, fold(value)) for value in condition.values))
+        return (coordinate(SLOT_FILTER, condition.column.name), *(coordinate(SLOT_VALUE, condition.column.name, number_text(value) if condition.numbers else fold(value)) for value in condition.values))
     if isinstance(condition, NotEquals):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_COMPARISON, NE), coordinate(SLOT_VALUE, condition.column.name, fold(condition.value)))
     if isinstance(condition, Contains):

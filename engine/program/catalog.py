@@ -197,6 +197,8 @@ class CatalogTable:
                 return number is not None and number == condition.value
             return self._fold_of(condition.column.position, i) == fold(condition.value)
         if isinstance(condition, OneOf):
+            if condition.numbers:
+                return self.numbers[condition.column.position][i] in condition.values
             return self._fold_of(condition.column.position, i) in {fold(value) for value in condition.values}
         if isinstance(condition, NotEquals):
             text = self._fold_of(condition.column.position, i)

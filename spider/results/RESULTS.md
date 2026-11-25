@@ -10,6 +10,29 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A choice among numbers the question writes: "which year had less votes, 1994 or 2009?" ranks the two years' lines; on the 367 training questions whose SQUALL query ranks among named values, right 268 -> 285 (2026-11-25)
+
+- A choice among named values (`engine/program/language.py` `OneOf`) took text values only, so a number column's
+  two named numbers ("1994 or 2009", "week 4 or week 9", "game #1 or #7") were never one condition and the rank among
+  them was not built; the reading fell back to one of the two ("Year is 2009"). `OneOf` now takes two or more numbers
+  as well, read as `Equals` reads a number (`= a OR = b` on the column's figures in the typed SQL, `engine/program/
+  lowering.py`; the catalog and the index the same), and the decoder offers it from the value reading
+  (`engine/program/decoder.py` `one_of_atoms`), a number in a number column as a number, any other value as its text.
+  A number is chosen among only where the question writes it, as a number it states or a year: without that rule
+  the value reading's cells made choices no question names ("more than 1 existing loan" read as "2 or 3", "above
+  70%" as "0.705 or 0.744"), and the dev gate failed (picks 735 -> 736, 4 wins and 3 losses, unwarned wrong 63 -> 64,
+  DataBench 17 -> 19; records `regress/sets/public/records/2026-11-25-either`).
+- Its family (`regress/run_public.py --set wtq-train --size 9070 --squall "where c[0-9]+\w* in \( [^)]* \) (group
+  by [^ ]+ )?order by .* limit 1"`): the 367 annotated training questions whose SQUALL query ranks the lines or groups
+  among named values, run on 8699ca47 (records `2026-11-25-either-before`) and with the change (`2026-11-25-either2`).
+  Right 268 -> 285 (17 wins, 0 losses), built 304 -> 323; unmarked wrong 33 -> 38, five questions that were wrong
+  before and are now answered without a mark (a breakdown of both years' counts for "are there more films in 2008 or
+  2005?", "a higher round placement" ranked highest, a shown column other than the year). Decisions spend about $0.22.
+- Gate (`regress/run_dev_decisions.py --record --tag either2`): picks on the 896 735 -> 737 (WikiTableQuestions
+  235 -> 237: nt-1856 "which had more ger numbers, 1898 or 1893?" and nt-5804 "was the quantity higher in 1894 or
+  1893?"; 2 wins, 0 losses), built 798 -> 800, unwarned wrong 63 -> 63; DataBench, messy and fresh dev unchanged; the
+  demo 86 of 91 unchanged. References kept; the cache-hit replay is at parity on all five sets.
+
 ## Release 8699ca47 (the calendar month, the score's mark, times compared in seconds) live; Chrome gate 102 of 102 fresh, 77 of 78 existing (2026-11-25)
 
 - Engine `prereasoner-api-00350-nuj` (`engine@sha256:2c1d2de3...`, Cloud Build eba67e72: build, offline regression

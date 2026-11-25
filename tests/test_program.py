@@ -792,6 +792,40 @@ def test_a_choice_among_named_values():
     assert not any(isinstance(c, OneOf) for p in Decoder(catalog).decode(averaged, k=200).programs if isinstance(p.program, Agg) and p.program.function == AVG for c in p.program.where)
 
 
+VOTES = [["Year", "Votes"], [1990, 100.0], [1994, 300.0], [2001, 700.0], [2009, 200.0]]
+
+
+def test_a_choice_among_named_numbers():
+    """"Which year had less votes, 1994 or 2009?" (WikiTableQuestions nt-2389): a choice among numbers a number column
+    holds keeps the lines whose number is one of them, as Equals reads a number, the same in the index, the catalog,
+    the typed SQL and the dual emitter; the rank among those lines answers, not the whole table's. It names each
+    number, reads as 'is "1994" or "2009"', refuses a set of mixed kinds or out of order, and the decoder proposes it
+    from the reading of both numbers where the question writes them; numbers it does not write ("more than 1 existing
+    loan" read as the values 2 and 3, DataBench 055_German/5) make no choice."""
+    catalog, table, tables = _setup(VOTES)
+    year, votes = (Col(table.id, at) for at in range(2))
+    either = OneOf(year, (1994.0, 2009.0))
+    index = TableIndex(table)
+    assert index.mask(either) == table.condition_mask(either) == table.condition_mask(Equals(year, 1994.0)) | table.condition_mask(Equals(year, 2009.0))
+    fewer = Rank(ENTITY_LINE, table.id, LOWEST, (either,), votes, (year,))
+    assert [float(row[0]) for row in _answer(fewer, tables)] == [2009.0], _answer(fewer, tables)
+    assert [float(row[0]) for row in _answer(Rank(ENTITY_LINE, table.id, HIGHEST, (either,), votes, (year,)), tables)] == [1994.0]
+    names = coordinates(fewer, catalog.column_kind)
+    assert coordinate("value", year.name, "1994") in names and coordinate("value", year.name, "2009") in names, names
+    assert '"1994" or "2009"' in read_as(fewer, catalog), read_as(fewer, catalog)
+    for bad in (lambda: OneOf(year, (1994.0, "2009")), lambda: OneOf(year, (2009.0, 1994.0)), lambda: OneOf(year, (1994.0, 1994))):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("one of accepted what it cannot say")
+    written = {coordinate("period", "1994"): 0.9, coordinate("period", "2009"): 0.9}
+    decoded = Decoder(catalog).decode(Reading({**{name_: 1.0 for name_ in names}, **written}), k=50)
+    assert decoded.programs[0].program == fewer, decoded.programs[:3]
+    unwritten = Decoder(catalog).decode(Reading({name_: 1.0 for name_ in names}), k=200).programs
+    assert not any(isinstance(c, OneOf) for p in unwritten for c in getattr(p.program, "where", ())), unwritten[:3]
+
+
 def test_a_check_asks_what_the_top_one_is():
     """"Is the oldest one in region y?", "is the youngest one older than 25?", "is x the most common region?": a check of
     a rank of one against a stated text (folded) or number, the same in the typed SQL and the dual emitter, a tie going
@@ -2204,7 +2238,7 @@ TESTS = [
     test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down, test_a_date_key_groups_by_its_month_of_any_year_named_as_the_column_writes_it, test_the_most_lines_in_a_row, test_a_measures_spread_is_its_highest_less_its_lowest, test_lines_are_taken_by_where_they_stand, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_a_score_opening_with_a_mark_gets_the_mark_as_its_own_part, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
-    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
+    test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_choice_among_named_numbers, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,
     test_scores_come_in_as_data_and_nothing_else_moves_the_list, test_contributions_are_named_and_sum_to_the_score, test_intervention_a_named_coordinate_moves_the_score_by_its_weight, test_policy_prunes_values_only_where_it_says, test_conditions_stay_on_distinct_columns,
     test_a_value_of_a_few_valued_number_column_is_named, test_a_number_condition_may_be_an_equality, test_a_breakdown_gives_a_figure_for_each_group, test_amounts_in_several_currencies_are_given_per_currency, test_a_column_stating_its_currency_is_not_split_by_currency, test_a_rate_column_gives_a_percent_share_of_a_measure, test_a_share_of_lines_counts_both_sides, test_a_date_key_breaks_down_by_its_month, test_a_period_of_whole_years_tests_a_column_of_year_numbers, test_a_number_compares_with_the_line_a_value_names, test_the_decoder_breaks_down_only_when_the_reading_names_a_breakdown, test_times_read_as_numbers_in_the_sheet_and_the_question, test_a_number_compared_with_times_is_offered_in_their_seconds, test_an_ordinal_is_not_a_stated_number, test_words_alone_read_a_question, test_verifier_shape_and_type_evidence, test_printed_total_ties_only_under_its_exact_conditions, test_verifier_runs_the_top_programs_and_never_raises, test_a_code_python_reads_as_infinite_is_text_to_the_verifier, test_read_as_in_the_sheets_own_words,
     test_cells_are_the_exact_addresses_used, test_formula_a_user_can_check, test_explain_carries_the_named_contributions,

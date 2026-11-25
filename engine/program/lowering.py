@@ -55,6 +55,8 @@ def _condition(condition: Condition):
             return Comparison(_number(condition.column), "=", Literal(float(condition.value)))
         return Comparison(_fold(condition.column), "=", Literal(fold_text(condition.value), SQLType.TEXT))
     if isinstance(condition, OneOf):
+        if condition.numbers:
+            return BooleanExpr("OR", tuple(Comparison(_number(condition.column), "=", Literal(float(value))) for value in condition.values))
         return BooleanExpr("OR", tuple(Comparison(_fold(condition.column), "=", Literal(fold_text(value), SQLType.TEXT)) for value in condition.values))
     if isinstance(condition, NotEquals):
         return Comparison(_fold(condition.column), "!=", Literal(fold_text(condition.value), SQLType.TEXT))

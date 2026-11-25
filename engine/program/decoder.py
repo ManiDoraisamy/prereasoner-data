@@ -446,25 +446,37 @@ class _Search:
         return [name for name in self.by_slot.get(slot, ()) if self.reading.score(name) > 0]
 
     def one_of_atoms(self, table: CatalogTable, index: TableIndex) -> list[Atom]:
-        """"Germany or France": a column whose text values the reading scores positively, two or more of them, kept as
-        one condition; each pair of its three likeliest values."""
+        """"Germany or France", "1994 or 2009": a column whose values the reading scores positively, two or more of them,
+        kept as one condition; each pair of its three likeliest values. A value is read as Equals reads it: a number in a
+        number column as a number, any other as its text. A number is chosen among only where the question writes it (a
+        number it states, or a year): "more than 1 existing loan" names no "2 or 3"."""
         prefix = f"{table.id}."
-        stated: dict[int, list[str]] = {}
+        written = {float(name.split(":", 1)[1]) for name in self.positive(SLOT_NUMBER)}
+        written |= {float(body) for body in (name.split(":", 1)[1] for name in self.positive(SLOT_PERIOD)) if body.isdigit()}
+        stated: dict[int, list[str | float]] = {}
         for name in sorted(self.positive(SLOT_VALUE), key=lambda name: (round(-self.s(name), _ROUND), name)):
             body = name.split(":", 1)[1]
             if not body.startswith(prefix):
                 continue
             position, _, value = body[len(prefix):].partition("=")
             position = int(position)
-            if 0 <= position < len(table.columns) and _number_or_none(value) is None and fold(value) not in {fold(v) for v in stated.get(position, [])}:
-                stated.setdefault(position, []).append(value)
+            if not 0 <= position < len(table.columns):
+                continue
+            number = _number_or_none(value)
+            held = number if number is not None and position in index.number_columns and table.columns[position].kind == "number" else value
+            if number is not None and number not in written:
+                continue
+            key = (lambda v: v) if isinstance(held, float) else fold
+            if key(held) not in {key(v) for v in stated.get(position, []) if isinstance(v, float) == isinstance(held, float)}:
+                stated.setdefault(position, []).append(held)
         out = []
         for position, values in sorted(stated.items()):
-            top = values[:3]
-            for i in range(len(top)):
-                for j in range(i + 1, len(top)):
-                    pair = tuple(sorted((top[i], top[j]), key=fold))
-                    out.append(index.atom_of(OneOf(Col(table.id, position), pair), position))
+            for kind in (str, float):
+                top = [value for value in values if isinstance(value, kind)][:3]
+                for i in range(len(top)):
+                    for j in range(i + 1, len(top)):
+                        pair = tuple(sorted((top[i], top[j]), key=fold if kind is str else None))
+                        out.append(index.atom_of(OneOf(Col(table.id, position), pair), position))
         return out
 
     def said_words(self) -> tuple[tuple[str, str], float] | None:
