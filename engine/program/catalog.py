@@ -42,6 +42,7 @@ class CatalogTable:
         self.folds: list[list[str | None]] = []
         self.numbers: list[list[float | None]] = []
         self.days: list[list[str | None]] = []
+        self.durations: set[int] = set()      # the columns of times ("3:36", "2:05:31"), their numbers in seconds
         for position in range(len(table.columns)):
             cells = [line.cells.get(position) for line in self.lines]
             self.texts.append([cell_text(cell) for cell in cells])
@@ -49,7 +50,10 @@ class CatalogTable:
             self.folds.append([cell_fold(cell) for cell in cells])
             numbers = [cell_number(cell) for cell in cells]
             if table.columns[position].kind != V_NUMBER and not any(number is not None for number in numbers):
-                numbers = duration_numbers(self.texts[-1]) or numbers     # "35:00", "2:05:31": times read as numbers too
+                times = duration_numbers(self.texts[-1])     # "35:00", "2:05:31": times read as numbers too
+                if times is not None:
+                    numbers = times
+                    self.durations.add(position)
             self.numbers.append(numbers)
             self.days.append([cell_day(cell) for cell in cells])
 

@@ -616,7 +616,7 @@ class _Search:
             for position in index.number_columns:
                 col = Col(table.id, position)
                 ops = [op for op in asked if op in COMPARE_OPS and not (op == EQ and position in index.few_numbers)]     # a few-valued column states its values as Equals
-                for number in numbers:
+                for number in (*numbers, *_in_seconds(numbers, table, position)):
                     out.extend(index.atom_of(Compare(col, op, number), position) for op in ops)
         for comparison in self.positive(SLOT_COMPARISON):
             op = comparison.split(":", 1)[1]
@@ -1167,6 +1167,16 @@ class _Search:
                     frames.append(_Frame(base + s(coordinate(SLOT_CALC_OP, op)), (a_columns, a_atoms, b_columns, b_atoms),
                                          lambda options, a=first, b=second, o=op: Calc(Show(a.id, (options[0],), (options[1].condition,)), o, Show(b.id, (options[2],), (options[3].condition,)))))
         return frames
+
+
+def _in_seconds(numbers: Sequence[float], table: CatalogTable, position: int) -> list[float]:
+    """A stated number as a column of times counts it: the times are read in seconds ("3:36" is 216), so "below 5
+    minutes" is below 300; a number of hours too, where the times run past an hour. None for any other column."""
+    if position not in table.durations:
+        return []
+    longest = max((number for number in table.numbers[position] if number is not None), default=0.0)
+    scales = (60.0, 3600.0) if longest >= 3600 else (60.0,)
+    return [number * scale for scale in scales for number in numbers]
 
 
 def _number_or_none(text: str) -> float | None:

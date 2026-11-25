@@ -10,6 +10,29 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A number compared with times, offered in their seconds: "how many films had a duration below 5 minutes?" keeps the films under 5:00; on the 30 training questions whose SQUALL query reads minutes or seconds, right 11 -> 24 (2026-11-25)
+
+- A column of times ("3:36", "2:05:31") reads its numbers in seconds (`engine/program/semantics.py`
+  `duration_numbers`), so the 5 of "below 5 minutes" compared with 216 and 280 and kept none; the reading then took
+  the times as values ("Duration is 3:36 or 4:40"). Where a column holds times (`engine/program/catalog.py`
+  `CatalogTable.durations`), a stated number is now offered as minutes too (300), and as hours where the column's
+  times run past an hour (`engine/program/decoder.py` `_in_seconds`). The read-as states the number as the column
+  writes a time ("Duration is below 5:00", "Time is below 2:00:00"; `engine/program/output.py` `_number_words`), so
+  the choice reads which one the question means. No unit word is read: the number is offered in each unit and the
+  choice takes the one the question states.
+- Its family (`regress/run_public.py --set wtq-train --size 9070 --squall "c[0-9]+_(min|sec|hour)\b"`): the 30
+  annotated training questions whose SQUALL query reads a time's minutes, seconds or hour, run on 0bac195c (records
+  `2026-11-25-times-before`) and with the change (`2026-11-25-times`). Right 11 -> 24 (13 wins, 0 losses), built
+  18 -> 25, unmarked wrong 5 -> 2. The rest are clock times ("games played before 6 pm", "not scheduled for 1:00
+  pm"), a time stated in minutes and seconds ("below 3 minutes and 3 seconds"), and one count of finishers after
+  2:00:00 that now lists the right reading but warns. Decisions spend about $0.05.
+- Gate (`regress/run_dev_decisions.py --record --tag times`; the references kept from its records). The 896:
+  built 798 -> 798, picked 735 -> 735, unwarned wrong 63 -> 63; one WikiTableQuestions answer keeps its right
+  answer without its warning, and three of its listings move. Messy, fresh dev, DataBench and the demo's 91 are
+  unchanged. Kept for its family, as the decades were. A cache-hit replay of every set on the final code is at
+  parity with the kept references.
+
+
 ## The final fresh sample at a4e5d814 (the calendar month and the score's mark): the engine alone 695 -> 696 of 1,000 (2 wins, 1 loss), unmarked wrong 143 -> 145 (2026-11-25)
 
 - The 1,000 WikiTableQuestions test questions, run in a clean checkout of a4e5d814 (records

@@ -67,6 +67,19 @@ def _headers(catalog: Catalog, columns) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _number_words(catalog: Catalog, column: Col, number: float) -> str:
+    """A number a condition compares with, as its column writes it: a column of times as a time ("5:00", "1:02:05"),
+    the seconds it counts in; any other as the number."""
+    if column.position not in catalog.table(column.table).durations or number < 0:
+        return f"{number:g}"
+    hours, rest = divmod(number, 3600)
+    minutes, seconds = divmod(rest, 60)
+    tail = f"{seconds:05.2f}".rstrip("0").rstrip(".") if seconds % 1 else f"{int(seconds):02d}"
+    if len(tail.split(".")[0]) < 2:
+        tail = "0" + tail
+    return f"{int(hours)}:{int(minutes):02d}:{tail}" if hours else f"{int(minutes)}:{tail}"
+
+
 def _value_words(catalog: Catalog, column: Col, value: str | float) -> str:
     if isinstance(value, (int, float)):
         return f"{value:g}"
@@ -92,7 +105,7 @@ def _condition_words(catalog: Catalog, condition: Condition) -> str:
                  else f"at least {condition.first}" if condition.last >= 9999 else f"from {condition.first} to {condition.last}")
         return f"{_name(catalog, condition.column)} is {years}"
     if isinstance(condition, Compare):
-        return f"{_name(catalog, condition.column)} is {_COMPARE_WORDS[condition.op]} {condition.number:g}"
+        return f"{_name(catalog, condition.column)} is {_COMPARE_WORDS[condition.op]} {_number_words(catalog, condition.column, condition.number)}"
     if isinstance(condition, CompareColumns):
         return f"{_name(catalog, condition.column)} is {_COMPARE_WORDS[condition.op]} {_name(catalog, condition.other)}"
     if isinstance(condition, CompareLine):
