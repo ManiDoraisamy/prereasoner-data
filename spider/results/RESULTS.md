@@ -10,6 +10,25 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A label spanning a line's key beside a figure is a printed line: "how many clubs are listed?" no longer counts the "Total" footer; on the 11 WikiTableQuestions tables it changes, the training questions 45 -> 48 right of 53 (2026-11-25)
+
+- A web table's footer writes its label into every column the merged cell covers: "Total" across club, city, stadium
+  and capacity over the mean attendance (203-csv/581). Its figures add up nothing (a mean, or a printed count), so no
+  arithmetic tie made it a printed line and it read as a seventeenth club. A line whose first text is written across
+  three or more of its first columns, beside a figure, is now a printed line (`engine/sheet/line_roles.py`
+  `_spanned_key_lines`, signal `S_SPANNED_KEY`): one label over the columns that name a record names no record. Two
+  cells alike ("Seville | Seville", a province named as its capital), a span after the key ("did not play" after a
+  season) and a no-value mark over the key ("/" beside "Own Goals", 204-csv/978) stay records.
+- WikiTableQuestions tables it changes: 11 of 2,108 (fingerprints of every compiled table, c6b3023d against the
+  change), each losing its footer from the lines ("Total", "Totals", "Career total", "Fulham Total", "Total City of
+  Calgary"); no messy, fresh dev, DataBench or WikiTableQuestions dev table changes.
+- Its family (`regress/run_public.py --set wtq-train --size 9070 --books`, the 11 tables): the 53 training questions
+  on them, run on c6b3023d (records `2026-11-25-span-before`) and with the change (`2026-11-25-span`). Right 45 -> 48
+  (3 wins, 0 losses: two "how many clubs" and the count of home stadiums), built 48 -> 51, unmarked wrong 8 -> 4 (the
+  mean attendance over all stadiums is now 14,580.5 and warned). Decisions spend about $0.05.
+- Gate (`regress/run_dev_decisions.py --record --tag span`): every set at its reference, no answer different (picks 737
+  of 896, unwarned wrong 63, demo 86 of 91).
+
 ## A choice among numbers the question writes: "which year had less votes, 1994 or 2009?" ranks the two years' lines; on the 367 training questions whose SQUALL query ranks among named values, right 268 -> 285 (2026-11-25)
 
 - A choice among named values (`engine/program/language.py` `OneOf`) took text values only, so a number column's

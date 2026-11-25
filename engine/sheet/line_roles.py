@@ -6,7 +6,7 @@ from engine.sheet.grid import Grid
 from engine.sheet.line_facts import LABEL_VALUE, LineFacts, line_facts
 from engine.sheet.line_model import final_scores, line_features, load_model
 from engine.sheet.names import (BAND, HEADER, NOTE, RECORD, S_ABOVE_TABLE, S_ALONE_AFTER_GAP, S_ALONE_AFTER_TOTAL, S_ALONE_BEFORE_HEADER, S_ALONE_STYLED, S_ARITHMETIC_TIE, S_AUTOFILTER_TOP, S_BELOW_TABLE, S_FIGURES, S_FORMULA_CLOSES_BLOCK,
-                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_GROUP_TIE, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL,
+                                S_FORMULA_COMPUTED, S_FORMULA_TOTAL, S_FROZEN_LAST, S_GROUP_TIE, S_JOINED_ABOVE, S_JOINED_BELOW, S_LABEL_VALUE, S_MERGED_OVER_COLUMNS, S_MODEL, S_NAMES_BODY, S_SPANNED_KEY, S_STYLE_OF_HEADER, S_TEXT_LINE, TITLE, TOTAL,
                                 V_DATE, V_ERROR, V_MARKER, V_NUMBER, V_PERIOD, V_TEXT)
 from engine.sheet.values import year_number
 
@@ -399,12 +399,31 @@ def header_lines(grid: Grid, facts: dict[int, LineFacts], printed: dict[int, lis
     return heads
 
 
+def _spanned_key_lines(grid: Grid, facts: dict[int, LineFacts]) -> dict[int, list[str]]:
+    """A line whose first text is written across _SPAN_LEAST or more of its first columns, beside a figure: one label
+    merged over the columns that name a record, as a web table's footer reads ("Total" across club, city and stadium
+    over the mean attendance), so it names no record of its own. Its figures need not add up: a mean, a count or a
+    rate is printed there as often as a sum. A mark holding no letter or digit spanning the key ("/" over position,
+    nation and number beside "Own Goals") is a no-value mark on a record, no label."""
+    out: dict[int, list[str]] = {}
+    for r, f in facts.items():
+        if f.real_figures < 1:
+            continue
+        line = grid.rows[r]
+        spanned = spanned_columns(line)
+        if all(col in spanned for col in range(f.first_col, f.first_col + _SPAN_LEAST)) and any(ch.isalnum() for ch in str(line[f.first_col].value)):
+            out[r] = [S_SPANNED_KEY]
+    return out
+
+
 def read_roles(grid: Grid) -> dict[int, tuple[str, tuple[str, ...]]]:
     """Each filled line's role and the signals behind it, in the evidence's order: printed lines by rule, header lines by the line model, the rest by where each line sits. Printed lines come back as TOTAL; the compiler tells subtotals from totals once it knows the table."""
     facts = line_facts(grid)
     if not facts:
         return {}
     printed = _printed_signals(facts)
+    for r, signals in _spanned_key_lines(grid, facts).items():
+        printed.setdefault(r, []).extend(signals)
     heads = header_lines(grid, facts, printed)
     printed = {r: s for r, s in printed.items() if r not in heads}
     return assign_roles(grid, facts, heads, printed)

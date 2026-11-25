@@ -11,7 +11,7 @@ from engine.sheet.grid import Grid
 from engine.sheet.line_facts import line_facts
 from engine.sheet.line_model import FEATURES, SECOND_FEATURES, contributions, final_scores, header_score, line_features, load_model, second_features
 from engine.sheet.names import (AXIS_GROUP, AXIS_PERIOD, AXIS_SEQUENCE, BAND, COLUMN_ROLES, DATE, F_CURRENCY, F_DATE, F_GENERAL, F_PERCENT, FX_AGG_COLUMN, FX_AGG_ROW, FX_LINK_COLUMN, FX_ROW_ARITH, HEADER, KEY, LABEL, LINE_ROLES,
-                                MEASURE, NOTE, P_MONTH, P_YEAR, PEER, ROW_TOTAL, S_AUTOFILTER_TOP, S_FORMULA_TOTAL, S_FROZEN_LAST, SECTION_LABEL, SHEET_CHART, STRAY_ERROR,
+                                MEASURE, NOTE, P_MONTH, P_YEAR, PEER, ROW_TOTAL, S_AUTOFILTER_TOP, S_FORMULA_TOTAL, S_FROZEN_LAST, S_SPANNED_KEY, SECTION_LABEL, SHEET_CHART, STRAY_ERROR,
                                 STRAY_LABEL, STRAY_NUMBER_WITH_WORD, STRAY_REPEATED_HEADER, SUBTOTAL, TAB_NAME, TITLE, TOTAL, V_NUMBER, V_TEXT)
 from engine.sheet.payload import tab_from_json, workbook_from_json
 from engine.sheet.values import format_kind, parse_number, parse_period
@@ -515,6 +515,26 @@ def test_a_value_spanning_columns_is_a_record_not_a_header():
     assert line_roles.spanned_columns(grid.rows[2]) == {2, 3, 4, 5} and not line_roles.spanned_columns(grid.rows[3])
     # Two cells alike are no span: a record's "4th | 4th" is two values.
     assert not line_roles.spanned_columns(Grid(tab_from_json({"name": "S", "rows": [["Argentina", "4th", "4th", "3rd"]]})).rows[1])
+
+
+def test_a_label_spanning_the_key_beside_a_figure_is_printed():
+    # WikiTableQuestions 203-csv/581: the footer's "Total" is written across club, city and stadium over the mean
+    # attendance, which adds up nothing, so it read as a seventeenth club ("how many clubs are listed?" 17 for 16).
+    head = ["Club", "City", "Stadium", "Capacity", "Average attendance"]
+    clubs = [[f"Club {i}", f"City {i}", f"Stadium {i}", 20000.0 + 1000 * i, 10000.0 + 500 * i] for i in range(8)]
+    model = _tab([head] + clubs + [["Total", "Total", "Total", "Total", 11750.0]])
+    table = model.tables[0]
+    assert len(table.lines) == 8, [(line.row, line.role) for line in table.lines]
+    assert [(line.role, line.signals) for line in table.printed] == [(TOTAL, (S_SPANNED_KEY,))]
+    # Two cells alike before the figures are a record's two values (a province named as its capital), and a span
+    # that does not start the line ("did not play" after a season) is one record's value: both stay records.
+    alike = _tab([head] + clubs + [["Seville", "Seville", "Stadium 9", 30000.0, 12000.0]]).tables[0]
+    assert len(alike.lines) == 9 and not alike.printed
+    later = _tab([head] + clubs + [["Club 9", "did not play", "did not play", "did not play", 0.0]]).tables[0]
+    assert len(later.lines) == 9 and not later.printed
+    # A no-value mark spanning the key (204-csv/978: "/" over position, nation and number beside "Own Goals") is no label.
+    marked = _tab([head] + clubs + [["/", "/", "/", 0.0, 500.0]]).tables[0]
+    assert len(marked.lines) == 9 and not marked.printed
 
 
 def test_short_last_lines_under_their_records_are_records():
@@ -1042,7 +1062,7 @@ TESTS = [
     test_number_parser, test_period_parser, test_format_kinds, test_formula_shapes, test_clean_table_comes_out_unchanged, test_title_lines_give_context, test_multi_row_header_joins_with_merges,
     test_total_lines_are_printed_and_never_records, test_total_word_inside_a_name_stays_a_record, test_total_word_in_prose_is_no_mark,
     test_a_total_printed_over_its_block_is_printed, test_a_total_over_subtotals_and_loose_lines_is_printed, test_published_whole_numbers_tie_within_their_rounding,
-    test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_column_beyond_the_named_blocks_stays_in_a_table,
+    test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_label_spanning_the_key_beside_a_figure_is_printed, test_a_column_beyond_the_named_blocks_stays_in_a_table,
     test_the_line_model_artifact_is_small_pinned_and_retrains_the_same, test_training_labels_hold_row_numbers_and_hashes_only, test_a_units_line_repeating_over_new_names_opens_a_table, test_a_total_word_naming_a_column_can_be_a_header,
     test_a_closing_total_ends_its_table_when_records_resume, test_titles_with_one_cell_a_block_part_side_by_side_blocks, test_each_side_by_side_list_has_its_own_bands, test_a_lone_label_between_a_total_and_figures_is_a_band, test_axes_cross_spacers_and_totals_and_reach_flag_columns,
     test_a_later_line_styled_as_the_header_is_a_header, test_rule_lines_are_spacers_and_never_names, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,
