@@ -253,7 +253,9 @@ resolve this source-label ambiguity.
   program. The deterministic decoder builds the reading's 50 most probable programs as typed ASTs, the
   verifier runs them, and one more closed question weighs those that returned rows, per answer: answered
   at 0.575 or more (`T_FLAG`), warned from 0.42 (`T_ERR`) or when two readings are worded alike, and most
-  likely wrong below 0.42 or when "none of these" is likelier. The engine never asks back for its own
+  likely wrong below 0.42 or when "none of these" is likelier. A second judge (Gemini 4 Neon at low
+  thinking) answers the same closed question with the key of one option; an answer the first choice would
+  give unmarked is warned unless the judge picks it too. The engine never asks back for its own
   uncertainty.
 - Retry: an answer most likely wrong, or one the person retries, is answered by one SQLite SELECT that
   Gemini 4 Neon writes over the workbook (`engine/retry.py`); it is guarded, run read-only, and shown

@@ -307,7 +307,8 @@ class PoolSelection:
     equals. ``selected`` is the decided candidate, answered or, below closed.T_FLAG, ``warned``: ``uncertain`` then
     names the coordinates the runner-up answer (first listed at ``runner_up``) reads differently
     (engine/program/language.coordinates); ``alike`` when that reading reads word for word like the answer's own (in
-    the sheet's header words). When the likeliest answer is most likely wrong (engine/program/closed.py ERRED) the path
+    the sheet's header words); ``doubt`` when it is warned because the second judge did not pick it
+    (engine/program/closed.py DOUBT_*: another answer, then ``runner_up``; none; or no answer). When the likeliest answer is most likely wrong (engine/program/closed.py ERRED) the path
     decides nothing (``selected`` is None, so compose and the search may answer it) and ``erred`` is the likeliest
     candidate, served marked as most likely wrong when its retry (engine/retry.py) cannot answer: None when none
     returned rows.
@@ -333,6 +334,7 @@ class PoolSelection:
     tables: object = None
     converts: bool = False
     alike: bool = False
+    doubt: str | None = None
 
     @property
     def candidate(self) -> ScoredQuery | None:
@@ -385,6 +387,7 @@ class PoolSelection:
             "confidence": None if self.confidence is None else round(self.confidence, 4),
             "erred": self.erred,
             "warned": self.warned,
+            "doubt": self.doubt,
         }
         if self.selected is not None:
             evidence.update(rank=self.ranking.index(self.selected), score=round(self.pool[self.selected].score, 6))

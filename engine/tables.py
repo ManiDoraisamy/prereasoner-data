@@ -453,7 +453,7 @@ class TableQuery:
         return PoolSelection(tuple(pool), ranking, None if erred else said.pick, said.mass,
                              said.pick if erred else None, said.kind == WARNED, said.uncertain, said.runner_up,
                              said.probabilities, said.listed_programs, said.listed_rows, prepared.catalog, store, bool(targets),
-                             said.alike)
+                             said.alike, said.doubt)
 
     @staticmethod
     def workbook(question, tables, database):
@@ -880,16 +880,17 @@ def _rounded(value):
 
 def answer_check(selection, candidate):
     """The response's ``check`` of a decided answer: answered, or warned (``PoolSelection.warned``: below
-    closed.T_FLAG, or another answer's reading reads word for word like it) with the reason its mark opens on (how it was
-    read, how sure the choice was, what else the question may mean: the runner-up's reading) and the coordinates the
-    runner-up reads differently (engine/program/language.coordinates)."""
+    closed.T_FLAG, another answer's reading reads word for word like it, or the second judge did not pick it) with the
+    reason its mark opens on (how it was read, how sure the choice was, what else the question may mean: the runner-up's
+    reading, the second judge's own pick when it picked another answer) and the coordinates the runner-up reads
+    differently (engine/program/language.coordinates)."""
     if not selection.warned:
         return {"state": "answered", "confidence": _rounded(selection.confidence)}
     other = selection.runner_up
     also = read_as_of(selection.pool[other]) if other is not None else None
     from engine.answer_presentation import warned_reason
     return {"state": "warned", "confidence": _rounded(selection.confidence),
-            "reason": warned_reason(read_as_of(candidate), also, selection.confidence, selection.alike),
+            "reason": warned_reason(read_as_of(candidate), also, selection.confidence, selection.alike, selection.doubt),
             "coordinates": list(selection.uncertain), "also_read_as": also}
 
 

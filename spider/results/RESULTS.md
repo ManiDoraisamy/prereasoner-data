@@ -10,6 +10,52 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## The second judge is served, and it is Gemini 4 Neon: of three faster judges in its seat, Flash-Lite leaves 9% to 10% of answers unmarked and wrong and Hydrogen reaches 7% only at its point estimate (2026-11-26)
+
+- Owner (2026-11-26, after the judge test below): "yes, test the faster judge first, then the build plan". The judge
+  test's own questions (every choice miss, the seeded 150 right and 50 unbuilt, on `wtq-test` from `2026-11-26-s3a`
+  and on `wtq-fresh2` from `2026-11-26-verdicts-fresh`) were put, in the same body, to Gemini 4 Hydrogen at low
+  thinking and Gemini 3.5 Flash-Lite at low and at minimal thinking; `regress/run_public.py --judge SOURCE --judges
+  MODEL:THINKING ...` now asks every judge named from one replay, and each judge's rows are their own records
+  (`judge-<model>-<thinking>.jsonl`, the choice's fields `choice_*`, the judge's `pick_*`; the Neon rows of the entry
+  below are re-packed so). Gemini 3.8 Flash at low took 6.6 s on a pilot of three questions, slower than Neon, and was
+  not run. Run at 968e3e91 with this entry's changes uncommitted; every replay equal to its record except one
+  question of `wtq-fresh2` (replayed apart from its workbook's other questions, its listings differ), which the three
+  new judges were not asked. Spend $5.32 metered (Hydrogen $4.23, Flash-Lite $1.08, Decisions $0.01) and about $0.3
+  in a first attempt's calls, kept and replayed; records `regress/sets/public/records/2026-11-26-judge/`, answers
+  `regress/sets/public/calls/judge/`.
+
+  | Two judges that must agree, the second one being | wtq-test: unmarked wrong (95% interval) / unmarked right / marked | wtq-fresh2: the same | Seconds p50 / p90 | Dollars a question |
+  |---|---|---|---|---|
+  | none (today) | 136 / 651 / 213 | 128 / 608 / 264 | | |
+  | Gemini 4 Neon, low | 67.0 (53.0-81.0) / 617.8 / 315 | 58.2 (47.5-68.9) / 603.1 / 339 | 4.9 / 8.2 and 5.0 / 8.4 | 0.016 |
+  | Gemini 4 Hydrogen, low | 73.0 (59.0-87.0) / 583.6 / 343 | 71.2 (60.2-82.2) / 584.1 / 345 | 2.7 / 4.4 and 3.1 / 7.0 | 0.0075 |
+  | Gemini 3.5 Flash-Lite, low | 101.0 (88.7-113.3) / 593.4 / 306 | 96.3 (86.6-106.0) / 593.6 / 310 | 0.9 / 1.6 and 1.0 / 1.7 | 0.001 |
+  | Gemini 3.5 Flash-Lite, minimal | 93.0 (79.9-106.1) / 598.3 / 309 | 92.1 (82.0-102.3) / 588.8 / 319 | 0.9 / 1.5 and 0.9 / 1.8 | 0.001 |
+
+- **No faster judge meets the bar with room.** Flash-Lite, at about a second, takes a third off the unmarked wrong and
+  stops at 9.2% to 10.1%: it picks the choice's own wrong answer far more often (on the unbuilt questions answered
+  unmarked, 34 and 37 of 50 on `wtq-test` against Neon's 25). Hydrogen, at about three seconds, reaches 7.3% and 7.1%,
+  under 8% only at its point estimate (the intervals reach 8.7% and 8.2%), marks more answers (34.3% and 34.5% against
+  31.5% and 33.9%) and leaves fewer right ones unmarked (584 and 584 against 618 and 603).
+- **More judges do not add much: they agree on the same wrong answers.** Neon and Hydrogen that must both agree leave
+  62.0 and 58.8 unmarked wrong (unmarked right 584 and 584); all four, 59.0 and 53.8 (559 and 551)
+  (`judges_agreeing`).
+- **Served** (owner's decision; `DECISIONS.md`): beside the Decisions choice, the same question goes to Gemini 4 Neon
+  at low thinking (`engine/llm.py` `judge`, `JUDGE_MODEL`); an answer the choice would give unmarked waits for it and
+  is warned when the judge picks another answer (shown as what it may also mean), picks none, or does not answer
+  (`engine/program/closed.py` `choose_answer`, `PoolSelection.doubt`); the answer served is the choice's, and a
+  warned or erred answer does not wait. The judge test now builds its bodies with the engine's own
+  (`regress/run_public.py` `judge_body` over `llm.judge_payload`), and the served path was checked against it at no
+  spend: 120 of the test's `wtq-test` questions through `TableQuery.select_query` with the judge's transport reading
+  the recorded answers only, every judge body found recorded and every mark the one the test's row gives (62
+  unmarked by both, 15 warned by none, 9 by another answer, 34 warned or erred by the choice and left so).
+- Its cost on each answer the choice gives unmarked (about three in four): $0.016 and 4.9 s at the median, 8.3 s at
+  p90, beside a request that takes 2.7 s at the median today. Not yet measured on the 896 and a fresh sample through
+  the served path: every listing change moves the judge's body, so that run (about $32 of Neon) is made once, on the
+  release's engine. Until then a run that reads what is built and picked asks no judge (`--unjudged`, every training
+  set; `regress/eval_sets.py` `judge_unasked`), and labels each answer as the choice alone leaves it.
+
 ## Gemini 4 Neon as the judge of the engine's own listings: the choice is worth about two points; on half its misses no listing reads the question, and two judges that must agree halve the unmarked wrong (2026-11-26)
 
 - Owner's question (2026-11-26): is the judge what holds the engine behind Neon? `regress/run_public.py --judge` puts

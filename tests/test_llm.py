@@ -161,6 +161,44 @@ def test_the_retry_query_sends_one_sorted_body_and_reads_its_json_answer():
         _unavailable(lambda: llm.write_query("rules", "p"))
 
 
+def test_the_judge_sends_the_choices_question_and_reads_one_key():
+    """judge() puts one closed question to JUDGE_MODEL on the Developer API (engine/program/answer.py, the choice's
+    second judge): the STATE the Decisions endpoint is given, the instruction and the options in the order given, the
+    answer held by a JSON schema to one option's key, at the low thinking level, keys sorted so a question gives one
+    body (a recorded answer replays by its hash). Its thought parts are not the answer; an answer that is not its JSON,
+    a key that is no option, a failed call and a missing key reach the caller as LLMUnavailable."""
+    import json
+    from urllib.parse import urlparse
+
+    sent = []
+    state = {"question": "total amount", "workbook": []}
+    options = [("r00", "the total of Amount -> answer: 7"), ("r01", "the number of lines -> answer: 3"), ("none", "None of these.")]
+
+    def post(url, payload, timeout, attempts, label):
+        sent.append((url, json.loads(payload.decode("utf-8")), timeout, attempts))
+        return {"candidates": [{"content": {"parts": [{"text": "weighing...", "thought": True}, {"text": json.dumps({"choice": "r01"})}]}}],
+                "usageMetadata": {"promptTokenCount": 40, "candidatesTokenCount": 3, "thoughtsTokenCount": 9}}
+
+    with patch.object(llm, "_post_developer", post), patch.object(llm, "JUDGE_TRANSPORT", llm._post_judge):
+        assert llm.judge(state, "Choose the reading.", options) == "r01"
+    url, body, timeout, attempts = sent[0]
+    assert urlparse(url).path.endswith(f"/models/{config.JUDGE_MODEL}:generateContent") and "model" not in body
+    assert (timeout, attempts) == (llm.JUDGE_TIMEOUT_SECONDS, llm.JUDGE_ATTEMPTS)
+    generation = body["generationConfig"]
+    assert generation["thinkingConfig"] == {"thinkingLevel": "low"} and "temperature" not in generation
+    assert generation["responseJsonSchema"]["properties"]["choice"]["enum"] == ["r00", "r01", "none"]
+    prompt = body["contents"][0]["parts"][0]["text"]
+    assert prompt == ("STATE:\n" + json.dumps(state) + "\n\nQUESTION: Choose the reading.\n\nOPTIONS:\n"
+                      "r00: the total of Amount -> answer: 7\nr01: the number of lines -> answer: 3\nnone: None of these.")
+    assert llm.judge_payload(state, "Choose.", options) == llm.judge_payload(state, "Choose.", options)
+    assert json.loads(llm.judge_payload(state, "Choose.", options, "gemini-4-hydrogen", "medium"))["model"] == "gemini-4-hydrogen"
+    for text in ("r01", json.dumps({"choice": "r07"}), json.dumps({"pick": "r01"})):
+        with patch.object(llm, "JUDGE_TRANSPORT", lambda payload, text=text: {"text": text}):
+            _unavailable(lambda: llm.judge(state, "Choose.", options))
+    with patch.dict("os.environ", {"GOOGLE_API_KEY": ""}), patch.object(llm, "JUDGE_TRANSPORT", llm._post_judge):
+        _unavailable(lambda: llm.judge(state, "Choose.", options))
+
+
 def test_json_request_is_deterministic_and_carries_the_schema():
     models = _Models(reply='{"sql": "SELECT 1"}')
     with _gemini(), _serving(models):
@@ -417,6 +455,7 @@ TESTS = [
     test_a_decision_sends_one_sorted_body_and_returns_each_questions_options,
     test_json_request_is_deterministic_and_carries_the_schema,
     test_the_retry_query_sends_one_sorted_body_and_reads_its_json_answer,
+    test_the_judge_sends_the_choices_question_and_reads_one_key,
     test_failures_reach_callers_only_as_unavailable,
     test_stream_yields_chunks_and_fails_as_unavailable,
     test_one_client_per_process_is_created_under_a_lock,

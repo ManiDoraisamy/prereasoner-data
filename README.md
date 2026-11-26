@@ -53,9 +53,10 @@ What runs today:
 
 The decoder builds every own-data program from the reading, each candidate runs on your tables, and the
 choice weighs the ones that returned rows, per answer; no model writes those queries. The answer shows the
-query and how the question was read. An answer the choice is less sure of carries a warning mark, and one it
-holds most likely wrong is retried: Gemini 4 Neon writes one SQLite query over the workbook, shown with its
-SQL. A click on the mark shows the reason and a Retry.
+query and how the question was read. An answer the choice is less sure of carries a warning mark, as does one
+a second judge (Gemini 4 Neon, asked the same closed question) does not pick too; one the choice holds most
+likely wrong is retried: Gemini 4 Neon writes one SQLite query over the workbook, shown with its SQL. A click
+on the mark shows the reason and a Retry.
 
 The optional chat service uses Gemini to make follow-up wording explicit and request engine operations.
 It sends schema metadata, bounded recent user questions and saved analysis questions. It sends no source

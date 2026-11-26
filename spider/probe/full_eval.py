@@ -23,7 +23,7 @@ a refusal would still score wrong, so that omission can only make the benchmark 
 Selection is the served one: `TableQuery.select_query` (the Decisions path), with the same runtime bundle and stock
 reader the service loads, so the evaluator measures the shipped pipeline and cannot drift from it. Every question makes
 live Decisions calls (engine/llm.py: a key, and their cost), unless engine.llm.DECISIONS_TRANSPORT replays recorded
-ones. --selection pool_oracle scores the example by the best of the candidates that path listed (each ran to be listed):
+ones; the second judge, which only marks an answer, is not asked. --selection pool_oracle scores the example by the best of the candidates that path listed (each ran to be listed):
 an explicitly labeled oracle ablation (like --config gold_tables) that measures candidate-pool recall — the ceiling any
 choice improvement can reach — and is never a serving mode; gold rows stay inside the evaluator and never reach
 prediction. Denotation is compared on the REAL gold rows; we report
@@ -662,6 +662,11 @@ def main():
         from engine.encoder_overlay import EncoderQuery
         from engine.primitive_head import PrimitiveReader
         enc = EncoderQuery()
+        # The second judge only marks an answer (engine/program/closed.py choose_answer): the query graded here is the
+        # choice's either way, so this evaluator asks no judge.
+        import engine.llm as llm
+        from regress.eval_sets import judge_unasked
+        llm.JUDGE_TRANSPORT = judge_unasked
         reader = PrimitiveReader(encoder=enc)
         eng = ComposeEngine(reader=reader)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)

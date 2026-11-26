@@ -124,14 +124,21 @@ def _sure(confidence: Any) -> str:
         return ""
 
 
-def warned_reason(read_as: Any, also_read_as: Any, confidence: Any, alike: bool) -> str:
+def warned_reason(read_as: Any, also_read_as: Any, confidence: Any, alike: bool, doubt: Any = None) -> str:
     """Why a warned answer carries its warning (engine/tables.py answer_check): how it was read and how sure the choice
     was, and what else the question may mean. A reading another column reads word for word like says the question does
-    not tell the two apart; the read-as names each column by the sheet's letter."""
+    not tell the two apart; the read-as names each column by the sheet's letter. ``doubt`` (engine/program/closed.py
+    DOUBT_*): a second check of the reading chose another one, found none that answers the question, or did not run."""
     read = f"I read this as “{_data_text(read_as)}”{_sure(confidence)}" if read_as else f"I'm not sure of this answer{_sure(confidence)}"
     also = _data_text(also_read_as or "")
     if alike and also:
         return f"{read}, but “{also}” reads the same way and gives another answer; the question does not say which."
+    if doubt == "another" and also:
+        return f"{read}, but a second check read it as “{also}”, which gives another answer."
+    if doubt == "none":
+        return f"{read}, but a second check found no reading that answers the question as asked."
+    if doubt == "unread":
+        return f"{read}; the second check of this reading did not run."
     return f"{read}; it may also mean “{also}”." if also else f"{read}."
 
 

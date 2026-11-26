@@ -30,6 +30,12 @@ with the links recorded there: the reference's inputs, so the knowledgebase's ch
 --csv is a new measurement, not parity: each tab is rendered to CSV text and read as an upload is (csv_table,
 canonical table names); its bodies differ, so it needs --record.
 
+The second judge (engine/llm.py judge, JUDGE_TRANSPORT) is replayed the same way from regress/sets/judge_calls: an
+answer the choice gives unmarked is labelled as its two judges leave it (``doubt``: why the second one warned it).
+--unjudged asks no second judge (a change measured for what it builds and picks, not for its marks): an answer is
+labelled as the choice alone leaves it (``judged`` false), and compared with the reference's label as the choice alone
+left that one.
+
 --retry measures serving's retry (engine/retry.py): each question whose answer is most likely wrong (closed.ERRED) is
 retried over its workbook's tables as TableQuery.serve retries it, and its rows are graded (right, wrong, the sheet
 cannot answer it, or the retry failed); the retry model's answers are kept by body hash in regress/sets/retry_calls.
@@ -60,7 +66,7 @@ import engine.llm as llm
 import engine.sheet
 from engine.prepared import scratch_database
 from engine.program.answer import ANSWERED, ERRED, WARNED
-from engine.program.closed import answer_key
+from engine.program.closed import DOUBT_UNREAD, answer_key
 from engine.request_validation import canonical_table_name
 from engine.tables import TableQuery, csv_table, normalize_tables
 from regress import eval_sets
@@ -69,9 +75,10 @@ ROOT = Path(__file__).resolve().parents[1]
 REFERENCE = eval_sets.SETS / "dev_decisions" / "reference"
 DEMO_MAPS = eval_sets.SETS / "demo_maps"
 RETRY_CALLS = eval_sets.SETS / "retry_calls"
+JUDGE_CALLS = eval_sets.SETS / "judge_calls"
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
 # The fields of a record that the reference keeps (its timing and comparison are the run's own)
-KEPT = ("id", "set", "kind", "label", "mass", "listed", "listed_answer", "listed_right", "choose_p", "read_as", "error", "miss", "convert_to", "calls")
+KEPT = ("id", "set", "kind", "label", "mass", "listed", "listed_answer", "listed_right", "choose_p", "read_as", "error", "miss", "convert_to", "calls", "doubt", "judged")
 DEMO_AS_OF = "2026-11-18"
 CENT = 0.01                 # run_connected.py: a scalar within one cent, a row's cells to the cent
 
@@ -103,6 +110,27 @@ class Replay:
             raise ReplayMiss(digest)
         self.used.append(digest)
         return {"answers": held["answers"], "tokens": held["tokens"]}
+
+
+class JudgeReplay:
+    """engine.llm's judge transport (JUDGE_TRANSPORT) over the recorded judge answers by body hash, as Replay is the
+    Decisions transport's: without ``record`` a body the store lacks is a miss; with it, the body is sent through
+    engine.llm's own transport and its answer kept. The selection asks the judge beside its choice for every question
+    and reads its answer only for an answer the choice gives unmarked, so a miss reaches the question (ReplayMiss) only
+    there."""
+
+    def __init__(self, store: eval_sets.CallStore, record: bool = False):
+        self.store, self.record, self.send = store, record, llm.JUDGE_TRANSPORT
+
+    def __call__(self, payload: bytes) -> dict:
+        digest = llm.decision_hash(payload)
+        held = self.store.get(digest)
+        if held is None and self.record:
+            held = self.send(payload)
+            self.store.keep(digest, held)
+        if held is None:
+            raise ReplayMiss(digest)
+        return held
 
 
 class QueryReplay:
@@ -249,6 +277,13 @@ def label_of(kind: str, right: bool) -> str:
     if kind == ERRED:
         return "asked"
     return ("flagged_" if kind == WARNED else "") + ("right" if right else "wrong")
+
+
+def choice_label(row: dict) -> str:
+    """A record's label as the Decisions choice alone leaves it: an answer only the second judge warned (``doubt``) is
+    right or wrong unflagged."""
+    label = row["label"]
+    return label.removeprefix("flagged_") if row.get("doubt") else label
 
 
 def reference(name: str, folder: Path = REFERENCE) -> dict:
@@ -407,6 +442,7 @@ def main() -> int:
     parser.add_argument("--keep", action="store_true", help="the run's records become each measured set's reference (a kept change)")
     parser.add_argument("--demo-maps", type=Path, nargs="?", const=DEMO_MAPS, help="the demo set on the request databases built for it on 2026-11-18 (default regress/sets/demo_maps)")
     parser.add_argument("--retry", action="store_true", help="retry each erred question as serving does; the retry model's answers are kept in regress/sets/retry_calls")
+    parser.add_argument("--unjudged", action="store_true", help="ask no second judge: each answer labelled as the choice alone leaves it")
     args = parser.parse_args()
     names = args.sets.split(",")
     if any(name not in SETS for name in names):
@@ -418,6 +454,7 @@ def main() -> int:
     batch = f"{datetime.date.today().isoformat()}-{args.tag}-{'_'.join(args.sets.split(','))}-{os.getpid()}"
     replay = Replay(eval_sets.CallStore(eval_sets.CALLS, batch), out / "misses", args.record)
     llm.DECISIONS_TRANSPORT = replay
+    llm.JUDGE_TRANSPORT = eval_sets.judge_unasked if args.unjudged else JudgeReplay(eval_sets.CallStore(JUDGE_CALLS, batch), args.record)
     query_replay = None
     if args.retry:
         query_replay = QueryReplay(eval_sets.CallStore(RETRY_CALLS, batch))
@@ -459,10 +496,15 @@ def main() -> int:
                     shown = selection.selected if selection.selected is not None else selection.erred
                     rows = selection.answer(shown) if shown is not None else ()
                     kind = kind_of(selection)
+                    if selection.doubt == DOUBT_UNREAD:     # no second judge answered: unasked, or its call failed
+                        if not args.unjudged:
+                            raise ReplayMiss("the second judge's call failed")
+                        kind = ANSWERED
                     listed_right = [graded(item, selection.answer(at)) for at in range(len(selection.rows))]
                     row.update(kind=kind, label=label_of(kind, graded(item, rows)), mass=selection.confidence, listed=len(selection.rows),
                                listed_answer=[answer_key(listed) for listed in selection.rows], listed_right=listed_right,
-                               choose_p=selection.probabilities, read_as=selection.pool[shown].evidence[0] if shown is not None else "")
+                               choose_p=selection.probabilities, read_as=selection.pool[shown].evidence[0] if shown is not None else "",
+                               doubt=None if args.unjudged else selection.doubt, judged=not args.unjudged)
                     if query_replay is not None and kind == ERRED and name != "demo":
                         row["retry"] = retry_row(planner, item, selection)
                 except ReplayMiss as miss:
@@ -492,8 +534,11 @@ def main() -> int:
                             differs.append("choice probabilities")
                         if row["listed_right"] != (theirs.get("listed_right") or []):
                             differs.append("listed grades")
-                        if row["label"] != reference_label:
-                            differs.append(f"label {row['label']} vs {reference_label}")
+                        # the labels as served where both runs asked the second judge, else as the choice alone leaves them
+                        both = bool(row.get("judged")) and bool(theirs.get("judged"))
+                        mine, recorded = (row["label"], reference_label) if both else (choice_label(row), choice_label(theirs))
+                        if mine != recorded:
+                            differs.append(f"label {mine} vs {recorded}")
                         if bool(row["error"]) != bool(theirs.get("error")):
                             differs.append(f"error {row['error']} vs {theirs.get('error')}")
                         if name == "demo" and row.get("convert_to") != theirs.get("convert_to"):

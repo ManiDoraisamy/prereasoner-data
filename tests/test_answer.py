@@ -15,7 +15,10 @@ import torch
 
 import engine.llm as llm
 import engine.program.stock as stock
+from engine import config
+from engine.answer_presentation import warned_reason
 from engine.program.answer import ANSWERED, ERRED, WARNED, answer, prepare
+from engine.program.closed import DOUBT_ANOTHER, DOUBT_NONE, DOUBT_UNREAD, UNJUDGED
 from engine.program.catalog import Catalog
 from engine.program.closed import (CHOICE_NONE, CHOOSE_K, NONE, SAID_OPTIONS_MOST, T_ERR, T_FLAG, TAB_IN_VIEW_CONVENTION, W, answer_key, choice_record, choose_answer, fused_reading, preview,
                                    reading_record, said_record, said_scores, said_spans, sheet_state, value_set_question)
@@ -87,17 +90,46 @@ def _no_retry_call(_payload):
     raise llm.LLMUnavailable("no retry model in a hermetic test")
 
 
-def _with_transport(transport, call):
+class FakeJudge:
+    """A hermetic test's second judge (engine/llm.py JUDGE_TRANSPORT): it reads the judge's body back into the choice's
+    question and picks the option the test's own rule favours most for it (rule("reading", question, state), the first
+    option when it favours none), so it agrees with a fake choice answering by the same rule; a test of a disagreeing
+    judge gives it another rule. With no rule the judge fails as an outage would, and no test reaches the network."""
+
+    def __init__(self, rule=None):
+        self.rule, self.bodies = rule, []
+
+    def __call__(self, payload: bytes) -> dict:
+        if self.rule is None:
+            raise llm.LLMUnavailable("no second judge in a hermetic test")
+        body = json.loads(payload.decode("utf-8"))
+        self.bodies.append(body)
+        prompt = body["contents"][0]["parts"][0]["text"]
+        state_text, rest = prompt[len("STATE:\n"):].split("\n\nQUESTION: ", 1)
+        instructions, listed = rest.split("\n\nOPTIONS:\n", 1)
+        keys = body["generationConfig"]["responseJsonSchema"]["properties"]["choice"]["enum"]
+        criteria = dict(line.split(": ", 1) for line in listed.split("\n"))
+        assert list(criteria) == keys, "the options listed are the keys the answer may be"
+        favoured = self.rule("reading", {"instructions": instructions, "criteria": criteria}, json.loads(state_text)) or {}
+        choice = max(favoured, key=lambda key: (favoured[key], -keys.index(key))) if favoured else keys[0]
+        return {"text": json.dumps({"choice": choice}), "usage": {}, "seconds": 0.0}
+
+
+def _with_transport(transport, call, judge=None):
+    """``call`` with the Decisions transport replaced by ``transport``, no retry model, and the second judge a FakeJudge
+    answering by the transport's own rule (``judge``: another judge transport)."""
     held = llm.DECISIONS_TRANSPORT
-    held_query = llm.QUERY_TRANSPORT
+    held_query, held_judge = llm.QUERY_TRANSPORT, llm.JUDGE_TRANSPORT
     llm.DECISIONS_TRANSPORT = transport
     if llm.QUERY_TRANSPORT is llm._post_query:
         llm.QUERY_TRANSPORT = _no_retry_call
+    if judge is not None or llm.JUDGE_TRANSPORT is llm._post_judge:
+        llm.JUDGE_TRANSPORT = judge if judge is not None else FakeJudge(getattr(transport, "rule", None))
     try:
         return call()
     finally:
         llm.DECISIONS_TRANSPORT = held
-        llm.QUERY_TRANSPORT = held_query
+        llm.QUERY_TRANSPORT, llm.JUDGE_TRANSPORT = held_query, held_judge
 
 
 def _option(question, needle):
@@ -386,6 +418,61 @@ def test_answer_reads_decodes_and_chooses_through_its_calls() -> None:
     assert said.program is said.listed_programs[said.pick]
 
 
+def test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it() -> None:
+    """Two judges that must agree (owner, 2026-11-26): on unseen tables 13.6% and 12.8% of answers were given unmarked
+    and wrong, and no threshold on the choice's own probability reaches 8% within 20% marked. An answer the choice would
+    give unmarked stays unmarked only where the second judge (engine/llm.py judge) picks a listing of the same answer;
+    another answer warns it, with the judge's reading as what it may also mean, none warns it, and so does a judge that
+    did not answer. The answer served is the choice's in every case, and an answer the choice itself warned or erred is
+    as the choice left it. The path asks the judge the choice's own question, beside the choice."""
+    answers = ["a", "a", "b", "c"]
+    sure = {"r00": 0.5, "r01": 0.3, "r02": 0.1, "r03": 0.05, NONE: 0.05}
+    alone = choose_answer(sure, answers)
+    assert (alone.kind, alone.pick, alone.runner_up, alone.doubt) == (ANSWERED, 0, 2, None)
+    agreed = choose_answer(sure, answers, judged="r01")       # another listing of the same answer
+    assert (agreed.kind, agreed.pick, agreed.runner_up, agreed.doubt) == (ANSWERED, 0, 2, None)
+    another = choose_answer(sure, answers, judged="r03")
+    assert (another.kind, another.pick, another.runner_up, another.doubt) == (WARNED, 0, 3, DOUBT_ANOTHER)
+    nothing = choose_answer(sure, answers, judged=NONE)
+    assert (nothing.kind, nothing.pick, nothing.runner_up, nothing.doubt) == (WARNED, 0, 2, DOUBT_NONE)
+    unread = choose_answer(sure, answers, judged=UNJUDGED)
+    assert (unread.kind, unread.pick, unread.doubt) == (WARNED, 0, DOUBT_UNREAD)
+    unsure = {"r00": 0.3, "r01": 0.2, "r02": 0.3, "r03": 0.1, NONE: 0.1}      # 0.5: warned by the choice alone
+    left = choose_answer(unsure, answers, judged="r03")
+    assert choose_answer(unsure, answers).kind == WARNED and (left.kind, left.runner_up, left.doubt) == (WARNED, 2, None)
+    lost = choose_answer({"r00": 0.2, "r02": 0.1, NONE: 0.7}, answers, judged="r00")
+    assert (lost.kind, lost.doubt) == (ERRED, None)
+
+    _use_fake_reader()
+    prepared = _with_transport(FakeTransport(lambda *a: {}), lambda: prepare(_workbook()))
+    question = "total amount for East"
+
+    def rule(name, criteria_question, state):     # the choice holds its first listing likeliest
+        if name == "reading":
+            return {next(option for option in criteria_question["criteria"] if option != NONE): 0.8}
+        return _reading_rule(name, criteria_question, state)
+
+    def ask(judge):
+        return _with_transport(FakeTransport(rule), lambda: answer(question, prepared, RequestTables(prepared.catalog)), judge)
+    same = FakeJudge(rule)
+    both = ask(same)
+    assert (both.kind, both.doubt) == (ANSWERED, None)
+    body = same.bodies[0]
+    assert body["model"] == config.JUDGE_MODEL and body["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
+    keys = body["generationConfig"]["responseJsonSchema"]["properties"]["choice"]["enum"]
+    assert keys == [f"r{at:02d}" for at in range(len(both.listed_rows))] + [NONE], "the choice's own options, none last"
+    other = next(at for at, key in enumerate(both.listed_answers) if key != both.listed_answers[both.pick])
+    doubted = ask(FakeJudge(lambda name, criteria_question, state: {f"r{other:02d}": 0.9}))
+    assert (doubted.kind, doubted.doubt, doubted.runner_up) == (WARNED, DOUBT_ANOTHER, other)
+    assert doubted.rows == both.rows and doubted.read_as == both.read_as, "the answer served is the choice's"
+    assert doubted.uncertain, "what the judge's reading reads differently is named"
+    assert (ask(FakeJudge(lambda name, criteria_question, state: {NONE: 0.9})).doubt, ask(FakeJudge()).doubt) == (DOUBT_NONE, DOUBT_UNREAD)
+    reason = warned_reason(doubted.read_as, doubted.listed_read_as[other], doubted.mass, False, doubted.doubt)
+    assert reason.startswith(f"I read this as “{doubted.read_as}”") and reason.endswith("”, which gives another answer.") and "a second check read it as" in reason
+    assert warned_reason("the total of Amount", None, 0.9, False, DOUBT_NONE) == "I read this as “the total of Amount”, 90% sure, but a second check found no reading that answers the question as asked."
+    assert warned_reason("the total of Amount", None, 0.9, False, DOUBT_UNREAD).endswith("; the second check of this reading did not run.")
+
+
 def test_a_failed_call_reaches_the_caller() -> None:
     _use_fake_reader()
     prepared = _with_transport(FakeTransport(lambda *a: {}), lambda: prepare(_workbook()))
@@ -534,7 +621,8 @@ TESTS = [
     test_a_year_written_with_letters_offers_the_ten_or_hundred_years_it_begins, test_a_sheet_without_days_or_years_asks_no_period, test_fused_reading_reads_the_api_against_the_uniform_share_and_values_against_none,
     test_value_sets_ask_about_the_likeliest_values, test_choice_record_lists_each_candidate_with_its_answer_and_none,
     test_the_request_body_is_sorted_and_hashable, test_answer_reads_decodes_and_chooses_through_its_calls, test_said_spans_are_the_questions_own_words,
-    test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_a_failed_call_reaches_the_caller,
+    test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it,
+    test_a_failed_call_reaches_the_caller,
     test_a_batch_another_run_is_writing_is_read_to_its_last_whole_line, test_packing_a_batch_again_keeps_what_was_packed, test_text_dates_are_typed_when_the_workbook_loads, test_digit_dates_ask_the_order_only_when_the_column_never_shows_it,
     test_the_dev_replay_runs_from_a_clean_clone,
 ]

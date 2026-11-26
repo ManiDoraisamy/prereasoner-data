@@ -60,6 +60,10 @@ W = 2.0                    # an API probability's weight on the decoder's readin
 T_ERR = 0.42               # below this, the likeliest answer is most likely wrong: retried, never asked back
 T_FLAG = 0.575             # below this, the likeliest answer is given with a warning
 CHOOSE_K = 50              # candidates the choice offers
+# What a second judge's answer says of an answered answer (choose_answer): it picked another answer, it picked none, or
+# it did not answer. Any of them warns.
+DOUBT_ANOTHER, DOUBT_NONE, DOUBT_UNREAD = "another", "none", "unread"
+UNJUDGED = "unjudged"      # the second judge's call failed: no key of its own
 P_FLOOR = 1e-4             # a probability is read no smaller than this
 SCORE_DIGITS = 4
 ANSWERED, WARNED, ERRED = "answered", "warned", "erred"
@@ -865,6 +869,13 @@ def choice_record(catalog: Catalog, question: str, listed: Sequence[tuple[str, S
     return sheet_state(catalog, question, active_sheet), {"reading": {"instructions": CHOICE_INSTRUCTION, "criteria": criteria}}
 
 
+def judge_options(question: Mapping) -> list[tuple[str, str]]:
+    """The choice question's options as the second judge reads them (engine/llm.py judge): each key and its text, in
+    the decoder's order, none last."""
+    criteria = question["criteria"]
+    return [(key, criteria[key]) for key in criteria if key != NONE] + ([(NONE, criteria[NONE])] if NONE in criteria else [])
+
+
 def answer_key(rows: Sequence[Sequence]) -> str:
     """An answer's identity: candidates returning the same rows give the same answer."""
     return hashlib.sha1(json.dumps([list(row) for row in rows], default=str, ensure_ascii=False).encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
@@ -876,13 +887,16 @@ class AnswerChoice:
     listings returning it the one the choice gave the most probability (the first among equals), so the read-as served
     is the reading the choice preferred; runner_up: the first listing of the next likeliest answer; mass: the likeliest
     answer's probability, summed over the candidates returning it; alike: the listing of another answer that reads word
-    for word like a reading of this one (in the sheet's header words), or None."""
+    for word like a reading of this one (in the sheet's header words), or None; doubt: what the second judge said of an
+    answer the choice alone would give unmarked (DOUBT_ANOTHER: it picked another answer, then the runner-up;
+    DOUBT_NONE: it picked none; DOUBT_UNREAD: it did not answer), or None."""
     kind: str
     pick: int | None
     runner_up: int | None
     mass: float | None
     none: float
     alike: int | None = None
+    doubt: str | None = None
 
 
 def answer_masses(probabilities: Mapping[str, float] | None, answers: Sequence[str]) -> tuple[dict[str, float], dict[str, int]]:
@@ -897,7 +911,8 @@ def answer_masses(probabilities: Mapping[str, float] | None, answers: Sequence[s
     return mass, first
 
 
-def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[str], lines: Sequence[str] = ()) -> AnswerChoice:
+def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[str], lines: Sequence[str] = (),
+                  judged: str | None = None) -> AnswerChoice:
     """Per answer, not per candidate: the API spreads its probability over readings that return the same answer (a right
     answer at ranks 0, 5, 9 and 12 read 0.33, 0.28 and 0.13 on three of them), so a candidate's probability is summed over
     the listed candidates whose answer (answers[i], answer_key) is the same (answer_masses). The likeliest answer, ties to
@@ -906,7 +921,14 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
     too when a reading of it reads, word for word (``lines``: each listing's read-as in the sheet's own header words,
     output.in_header_words), like a reading the choice was offered of another answer (``alike``): "total Amount" on a
     sheet with two columns headed Amount read "the total of Amount" for both, 40 and 60, and the question cannot tell
-    which it means; the served reading names its column by the sheet's letter ("Amount [C]")."""
+    which it means; the served reading names its column by the sheet's letter ("Amount [C]").
+
+    Two judges that must agree (owner, 2026-11-26): ``judged`` is the key a second judge picked for the same question
+    (engine/llm.py judge; UNJUDGED when its call failed; None when it is not asked, as before the choice is known). An
+    answer the choice would give unmarked stays unmarked only where the judge picked a listing of the same answer;
+    another answer (then the runner-up), none, or no answer warns it (``doubt``). The answer served is the choice's
+    in every case, and a warned or erred answer is as the choice left it. On unseen tables the unmarked wrong fell
+    from 13.6% and 12.8% to 6.7% and 5.8% (spider/results/RESULTS.md, 2026-11-26)."""
     probabilities = probabilities or {}
     none = probabilities.get(NONE, 0.0)
     mass, first = answer_masses(probabilities, answers)
@@ -925,9 +947,20 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
     else:
         kind = ANSWERED
     served = min((key for key in probabilities if key != NONE and answers[int(key[1:])] == best), key=lambda key: (-probabilities[key], int(key[1:])))
-    return AnswerChoice(kind, int(served[1:]), alike if alike is not None else runner_up, mass[best], none, alike)
+    other, doubt = alike if alike is not None else runner_up, None
+    if kind == ANSWERED and judged is not None:
+        if judged == UNJUDGED:
+            doubt = DOUBT_UNREAD
+        elif judged == NONE:
+            doubt = DOUBT_NONE
+        elif answers[int(judged[1:])] != best:
+            other, doubt = int(judged[1:]), DOUBT_ANOTHER
+        if doubt is not None:
+            kind = WARNED
+    return AnswerChoice(kind, int(served[1:]), other, mass[best], none, alike, doubt)
 
 
-__all__ = ["ORDER_QUESTION", "order_record", "order_scores", "ANSWERED", "CHOOSE_K", "ERRED", "T_ERR", "T_FLAG", "W", "WARNED", "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses",
+__all__ = ["ORDER_QUESTION", "order_record", "order_scores", "ANSWERED", "CHOOSE_K", "DOUBT_ANOTHER", "DOUBT_NONE", "DOUBT_UNREAD", "ERRED", "T_ERR", "T_FLAG", "UNJUDGED", "W", "WARNED",
+           "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses", "judge_options",
            "choice_record", "choose_answer", "convert_choice", "convert_record", "fused_reading", "reading_record", "said_record", "sheet_state",
            "value_set_question", "value_set_scores"]

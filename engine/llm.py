@@ -1,6 +1,6 @@
 """llm.py — the ONE Gemini client for the whole product.
 
-Gemini is the only external model, and it is always on: there is no switch. Three surfaces share this module:
+Gemini is the only external model, and it is always on: there is no switch. Four surfaces share this module:
 
 - ``decide``: one call to the Gemini Developer API's closed-choice Decisions endpoint. A record's STATE (the
   question and the sheet's description) is the input; each of its questions is a closed choice among options the
@@ -11,6 +11,10 @@ Gemini is the only external model, and it is always on: there is no switch. Thre
   the question, as a JSON document; the caller guards and runs it. Owner's decision, 2026-11-21: the Decisions path
   never asks back for its own uncertainty, and its answer most likely wrong, or one the person retries, is retried
   by this call. It authenticates as ``decide`` does.
+- ``judge``: the own-data choice's one closed question put to a second model (JUDGE_MODEL, one generateContent call on
+  the Developer API), its answer held by a schema to the key of one option the engine built: an answer stays unmarked
+  only where both judges pick it (engine/program/closed.py choose_answer). Owner's decision, 2026-11-26. It writes no
+  text, SQL or program, and authenticates as ``decide`` does.
 
 - The synchronous calls: ``generate_text`` (starter questions, orchestrator/suggestions.py) and
   ``stream_text`` (reference generation, /api/master/generate). One ``genai.Client`` per process, created lazily under a lock.
@@ -34,7 +38,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -226,6 +230,69 @@ def write_query(system: str, prompt: str) -> WrittenQuery:
     return WrittenQuery(answerable and bool(sql.strip()), sql.strip(), reason.strip(),
                         int(usage.get("promptTokenCount") or 0),
                         int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0))
+
+
+# ------------------------------------------------------------------------------------------------ the second judge
+# The own-data choice's one closed question put to a second model (engine/program/answer.py): generateContent on the
+# Developer API, the answer held by a JSON schema to the key of exactly one option the engine built. It writes no
+# text, no SQL and no program. Gemini 4 Neon at its low thinking level answered in 4.9 s at the median, 8.3 s at p90
+# and 11 s at p95 (2026-11-26, 606 questions; 16 took over 15 s); it takes no temperature or seed. One attempt within
+# 15 s: an answer waits no longer for its second judge, and one the judge does not reach in time is warned as unread.
+JUDGE_THINKING = "low"
+JUDGE_MAX_OUTPUT_TOKENS = 16384
+JUDGE_TIMEOUT_SECONDS = 15.0
+JUDGE_ATTEMPTS = 1
+JUDGE_SYSTEM = ("You answer one closed question about a person's spreadsheet. STATE describes the spreadsheet and the "
+                "question asked of it, QUESTION says what to choose, and OPTIONS lists the options by key. Reply with the "
+                "key of exactly one option.")
+
+
+def judge_payload(state: dict, instructions: str, options: Sequence[tuple[str, str]], model: str | None = None,
+                  thinking: str = JUDGE_THINKING) -> bytes:
+    """The generateContent body of one judgement: the same STATE the Decisions endpoint is given, the instruction, and
+    the options (key, text) in the order given; the answer held to one option's key by its schema. Keys are sorted, so
+    a question and a judge give one body (``decision_hash`` keys a recorded answer)."""
+    prompt = ("STATE:\n" + json.dumps(state, ensure_ascii=False) + "\n\nQUESTION: " + instructions
+              + "\n\nOPTIONS:\n" + "\n".join(f"{key}: {text}" for key, text in options))
+    schema = {"type": "object", "properties": {"choice": {"type": "string", "enum": [key for key, _text in options]}}, "required": ["choice"]}
+    body = {"model": model or config.JUDGE_MODEL, "systemInstruction": {"parts": [{"text": JUDGE_SYSTEM}]},
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"responseMimeType": "application/json", "responseJsonSchema": schema,
+                                 "thinkingConfig": {"thinkingLevel": thinking}, "maxOutputTokens": JUDGE_MAX_OUTPUT_TOKENS}}
+    return json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def _post_judge(payload: bytes) -> dict:
+    """The judge's answer to one body: {"text": its JSON answer, "usage": {...}, "seconds": the call's time}. Raises
+    LLMUnavailable."""
+    body = json.loads(payload.decode("utf-8"))
+    model = body.pop("model")
+    clock = time.perf_counter()
+    result = _post_developer(QUERY_ENDPOINT.format(model=model), json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                             JUDGE_TIMEOUT_SECONDS, JUDGE_ATTEMPTS, "Judge")
+    try:
+        parts = result["candidates"][0]["content"]["parts"]
+    except (KeyError, IndexError, TypeError):
+        raise LLMUnavailable(f"Judge call failed: no choice ({(result.get('candidates') or [{}])[0].get('finishReason')})") from None
+    text = "".join(part.get("text", "") for part in parts if not part.get("thought"))
+    return {"text": text, "usage": result.get("usageMetadata") or {}, "seconds": round(time.perf_counter() - clock, 2)}
+
+
+# The transport ``judge`` sends a body through; an evaluation may replay recorded answers by ``decision_hash``.
+JUDGE_TRANSPORT = _post_judge
+
+
+def judge(state: dict, instructions: str, options: Sequence[tuple[str, str]]) -> str:
+    """One judgement: the key of the option the second judge picks for a closed question. Raises LLMUnavailable and
+    nothing else."""
+    answer = JUDGE_TRANSPORT(judge_payload(state, instructions, options))
+    try:
+        choice = json.loads(answer.get("text") or "")["choice"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise LLMUnavailable(f"Judge answer is not its JSON ({type(exc).__name__})") from None
+    if choice not in {key for key, _text in options}:
+        raise LLMUnavailable("Judge answer is not one of its options")
+    return choice
 
 
 def decide(state: dict, questions: dict) -> Decision:

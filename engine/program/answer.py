@@ -12,7 +12,9 @@
             the question alone (whether it takes the first or the last lines of a table) ->
             the fused reading -> the typed k-best decoder, top DECODE_K,
             every program verified on the request's tables -> the candidate order of the engine's prior chooser -> the
-            candidates that returned rows -> the choice record -> one decide call -> the per-answer decision.
+            candidates that returned rows -> the choice record -> one decide call, and beside it the second
+            judge's call over the same question (engine/llm.py judge) -> the per-answer decision: an answer the choice
+            would give unmarked waits for the judge and stays unmarked only where the judge picks it too.
 
 No model writes SQL or a program here: the API returns probabilities over options the engine built, the decoder builds
 every program from the reading, and the verifier runs each one. Every external call goes through engine.llm.decide, and
@@ -24,12 +26,12 @@ import contextvars
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from engine.llm import decide
+from engine.llm import LLMUnavailable, decide, judge
 from engine.named.chooser import PRIOR, score_candidates
 from engine.named.units import Target
 from engine.program.catalog import Catalog
-from engine.program.closed import (ANSWERED, ERRED, WARNED, answer_key, choice_record, choose_answer, convert_choice, convert_record, fused_reading,
-                                   order_record, reading_record, said_record, value_set_question)
+from engine.program.closed import (ANSWERED, ERRED, UNJUDGED, WARNED, answer_key, choice_record, choose_answer, convert_choice, convert_record, fused_reading,
+                                   judge_options, order_record, reading_record, said_record, value_set_question)
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
 from engine.program.language import Program, coordinates
@@ -61,7 +63,8 @@ class Prepared:
 @dataclass(frozen=True)
 class Answer:
     """What the path says back. kind: answered, warned (given, with the coordinates the runner-up answer reads differently
-    in uncertain; alike when the runner-up's reading reads word for word like it) or erred (most likely wrong: program,
+    in uncertain; alike when the runner-up's reading reads word for word like it; doubt when the second judge did not
+    pick the answer, closed.DOUBT_*, the runner-up then its pick) or erred (most likely wrong: program,
     rows and read_as are then the likeliest reading, served when its retry cannot answer; empty when no candidate ran).
     mass: the likeliest answer's probability, summed over the candidates returning it.
 
@@ -84,6 +87,16 @@ class Answer:
     pick: int | None = None
     runner_up: int | None = None
     alike: bool = False
+    doubt: str | None = None
+
+
+def _judged(state: dict, question: dict) -> str:
+    """The key the second judge picks for the choice's question, or UNJUDGED when its call fails: the answer is then
+    served with a warning that it was not judged twice, never withheld."""
+    try:
+        return judge(state, question["instructions"], judge_options(question))
+    except LLMUnavailable:
+        return UNJUDGED
 
 
 def prepare(workbook: WorkbookPayload) -> Prepared:
@@ -147,13 +160,21 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
         listed = [candidate for candidate in score_candidates(verified, fused, catalog, PRIOR) if candidate.rows]
         lines = tuple(read_as(candidate.verified.scored.program, catalog) for candidate in listed)
         answers = tuple(answer_key(candidate.rows) for candidate in listed)
-    probabilities = None
+    probabilities, judging = None, None
     if listed:
         with span("decisions_choose"):
             state, questions = choice_record(catalog, question, [(line, candidate.rows) for line, candidate in zip(lines, listed)], in_view)
+            # the second judge reads the same question beside the choice; only an answer the choice gives unmarked waits for it
+            beside = ThreadPoolExecutor(max_workers=1)
+            judging = beside.submit(contextvars.copy_context().run, _judged, state, questions["reading"])
+            beside.shutdown(wait=False)
             choice = decide(state, questions)
         probabilities, tokens = choice.fields["reading"], tokens + choice.tokens
-    decision = choose_answer(probabilities, answers, tuple(in_header_words(candidate.verified.scored.program, catalog) for candidate in listed))
+    worded = tuple(in_header_words(candidate.verified.scored.program, catalog) for candidate in listed)
+    decision = choose_answer(probabilities, answers, worded)
+    if decision.kind == ANSWERED and judging is not None:
+        with span("decisions_judge"):
+            decision = choose_answer(probabilities, answers, worded, judging.result())
     chosen = listed[decision.pick] if decision.pick is not None else None
     uncertain: tuple[str, ...] = ()
     if decision.kind == WARNED and decision.runner_up is not None:
@@ -163,7 +184,7 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
                   lines[decision.pick] if chosen else "", decision.mass, uncertain, lines,
                   tuple(candidate.rows for candidate in listed), answers, probabilities, tokens,
                   tuple(candidate.verified.scored.program for candidate in listed), decision.pick, decision.runner_up,
-                  decision.alike is not None)
+                  decision.alike is not None, decision.doubt)
 
 
 __all__ = ["ANSWERED", "DECODE_K", "ERRED", "WARNED", "Answer", "Prepared", "answer", "convert_target", "prepare", "prepare_catalog"]

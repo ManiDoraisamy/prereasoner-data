@@ -338,7 +338,9 @@ selection is `engine/tables.py:TableQuery.select_query`: the request's tables ar
 answered by `engine/program/answer.py`, and every candidate is a typed SQL AST the engine built. An external
 closed-choice model, the Decisions API (Gemini's Developer API, called only through `engine/llm.py:decide`), answers
 closed questions whose options the engine built and returns probabilities only; it never writes text, SQL or a
-program. Only the retry (step 8 below) runs a query a model wrote.
+program. A second judge (`engine/llm.py:judge`, `JUDGE_MODEL`) answers the choice's question with the key of one of
+its options and sets an answer's mark, never the answer (step 5). Only the retry (step 8 below) runs a query a model
+wrote.
 
 | Owner | Responsibility |
 |---|---|
@@ -347,8 +349,8 @@ program. Only the retry (step 8 below) runs a query a model wrote.
 | `engine/program/connected.py` | The connected catalog: the request's links placed on the workbook (`links_on`), what each reaches on the request's database (`reach`) and the columns it adds (`connect`) |
 | `engine/knowledge_bridges.py` | The request's links (`request_links`: routes and their bridges, entity columns, keys, money columns and their rates) and their registration per served request (`link_request`) |
 | `engine/sheet/` | The sheet compiler: tabs to tables (headers, sections, printed lines, families of copies, a text column's figures as number columns of their own: `Score #1`, `Score #2`), the wire form a host sends (`payload.py`) |
-| `engine/program/answer.py` | `prepare` and `answer`: the stock reading, the closed-question calls, the decoder, the verifier, the choice and the per-answer decision |
-| `engine/program/closed.py` | The sheet's description, the closed questions per slot and the added ones, the fused reading, the choice record and the per-answer decision (`choose_answer`, `T_ERR` 0.42, `T_FLAG` 0.575) |
+| `engine/program/answer.py` | `prepare` and `answer`: the stock reading, the closed-question calls, the decoder, the verifier, the choice, the second judge's call beside it and the per-answer decision |
+| `engine/program/closed.py` | The sheet's description, the closed questions per slot and the added ones, the fused reading, the choice record and the per-answer decision (`choose_answer`, `T_ERR` 0.42, `T_FLAG` 0.575, the two judges' agreement: `DOUBT_*`) |
 | `engine/program/stock.py` | The stock reading: the word reader plus stock bge-m3 similarity (the shortlist of options) |
 | `engine/program/dates.py` | Text dates typed by one Decisions call when a workbook is prepared |
 | `engine/program/catalog.py`, `language.py`, `decoder.py`, `verifier.py` | The workbook's tables, the program language, the typed k-best decoder (50 programs) and the verifier's named evidence |
@@ -393,7 +395,13 @@ program. Only the retry (step 8 below) runs a query a model wrote.
    of its answer, and "none of these"); per answer, a candidate's probability is summed over the candidates returning
    the same answer. The likeliest answer is answered at `T_FLAG` or more, warned from `T_ERR` (or when another
    answer's reading reads word for word like it), and most likely wrong (`ERRED`) below that or when "none of these"
-   is likelier. It is never asked back for (owner, 2026-11-21).
+   is likelier. It is never asked back for (owner, 2026-11-21). Two judges must agree for an answer to go unmarked
+   (owner, 2026-11-26): beside the choice, the same question (the same sheet description, instruction and options)
+   goes to a second model (`engine/llm.py:judge`, `JUDGE_MODEL`: Gemini 4 Neon at low thinking), which answers with
+   one option's key; an answer the choice would give unmarked waits for it and is warned when the judge picks another
+   answer (shown as what it may also mean), picks none, or does not answer (`PoolSelection.doubt`). The answer served
+   is the choice's in every case, and a warned or erred answer does not wait for the judge. On unseen tables the
+   answers given unmarked and wrong fell from 13.6% and 12.8% to 6.7% and 5.8% (`spider/results/RESULTS.md`).
 6. `select_query` records it as a `PoolSelection`: the listed candidates (each its typed AST, SQL, answer probability
    and read-as line), ranked by that probability; `selected` (answered or warned), `warned` and `uncertain` (the
    coordinates the runner-up answer reads differently), or `erred` (the likeliest, when it is most likely wrong:

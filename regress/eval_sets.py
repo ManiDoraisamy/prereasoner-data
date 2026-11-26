@@ -545,6 +545,14 @@ class CallStore:
                 sink.write(json.dumps({"hash": digest, **answer}, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def judge_unasked(_payload: bytes) -> dict:
+    """engine.llm's judge transport (JUDGE_TRANSPORT) for a run that reads no mark (a diagnosis run on training
+    questions, the Spider evaluator): the second judge is not asked, so an answer the choice gives unmarked comes back
+    unjudged (engine/program/closed.py DOUBT_UNREAD) and the run records it as the choice left it."""
+    import engine.llm as llm
+    raise llm.LLMUnavailable("the second judge is not asked in this run")
+
+
 def pack(folder: Path = CALLS) -> None:
     """Each plain batch of ``folder`` compressed to .jsonl.gz (sorted by hash, no timestamp, so the same answers give
     the same bytes), the plain file removed. A batch packed before keeps its lines: a run still writing it starts the

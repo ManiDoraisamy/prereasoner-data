@@ -5841,3 +5841,28 @@ that one secret. Compatibility shim: the
 grant when the grant loses its `count`. Consumer: Terraform state of deployments made before this change
 (production and Community installs). Removal condition: every such deployment has applied once. Removal date:
 2026-12-31.
+
+## Two judges must agree for an answer to go unmarked (2026-11-26)
+
+Owner's decision, after the judge test (`spider/results/RESULTS.md`, 2026-11-26): the own-data choice gains a second
+judge. Beside the Decisions choice, the same closed question (the same sheet description, instruction and options, in
+the decoder's order with none last) goes to a second model through `engine/llm.py` `judge`, which answers with the key
+of one option. An answer the choice would give unmarked stays unmarked only where the judge picks a listing of the same
+answer; another answer, none, or no answer warns it (`engine/program/closed.py` `choose_answer`, `DOUBT_*`). The answer
+served is the choice's in every case: the judge sets a mark and is no second selection, and a warned or erred answer
+does not wait for it.
+
+Why: the marks could not reach the plan's bar by thresholds on the choice's own probability (8% of answers unmarked
+and wrong needs about 43% marked). With two judges that must agree, the unmarked wrong on unseen tables fell from
+13.6% and 12.8% to 6.7% and 5.8%, with 31.5% and 33.9% of answers marked.
+
+The judge is Gemini 4 Neon at low thinking (`JUDGE_MODEL`). Faster judges were measured in the same seat on the same
+questions before it was built: Gemini 3.5 Flash-Lite (about 1 s) leaves 9.3% to 10.1% unmarked wrong, and Gemini 4
+Hydrogen (about 3 s) reaches 7.1% to 7.3% only at its point estimate and leaves fewer right answers unmarked. Neon costs
+about $0.016 and 4.9 s at the median on each answer the choice gives unmarked (8.3 s at p90), on top of the request.
+
+It is a model answering with one key, not a probability: the 2026-11-20 rule ("returns probabilities only") is amended
+for this one call in `CLAUDE.md`, whose ownership map names it. A failed judge call warns the answer ("the second
+check did not run") and never fails the request. Evaluations replay its answers by body hash
+(`regress/sets/judge_calls`, `regress/sets/public/calls/judge`); a run that reads what is built and not the marks
+asks no judge (`--unjudged`, `regress/eval_sets.py` `judge_unasked`).
