@@ -10,6 +10,71 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A verdict says Yes or No and a cell reads as the sheet writes it: unseen tables 728 -> 742 and the fresh sample 700 -> 718 of 1,000, no question lost; an either-or in the question's words, a cell's parts, the choice reading a table's lines, a smaller value bound and a fitted pick not kept (2026-11-26)
+
+- Owner's plan, steps 2 to 4 (2026-11-25). Each change gated on the 896 and the demo's 91
+  (`regress/run_dev_decisions.py`), measured on the 1,000 unseen test questions of the stage map (`wtq-test`, read for
+  diagnosis, `regress/run_public.py`) against `2026-11-25-map-test` (`7bf1b3f1`), and the kept one confirmed on the
+  final fresh sample (`wtq-fresh2`) against the same sample at `33738bbc` (`2026-11-26-base-fresh`: right 700, built
+  808, unmarked wrong 143; at `2bbf60e7` 699, 808, 146).
+- **Kept: an answer as the sheet writes it** (`engine/program/execute.py` `answered`, `engine/sql_rank.py`
+  `PoolSelection.answer`, which `TableQuery._run_member` and the evaluators read). The choice reads its candidates as
+  before, a verdict as True or False and a cell by its stored value (with "Yes"/"No" in its previews it picked worse,
+  2026-11-24); the answer it chose says Yes or No, and a cell taken from a column of numbers or days (a shown cell, the
+  top line's, a column's lowest or highest) reads as the sheet writes it where the column writes that value one way and
+  with more than digits, separators and signs ("£3.00", "April 27, 1966", "202.6 km/h (126 mph)"); a number written
+  plainly ("18,123") keeps its stored value. DataBench's dev comparison reads a yes as true, as its official grader
+  does (`regress/eval_sets.py` `databench_same`). Dev: picks 737 -> 737, unwarned wrong 61 -> 61, the demo unchanged;
+  WikiTableQuestions nt-6898 ("does the united states have more ...?") right and nt-1512 ("... true or false?") wrong
+  (its training answers are yes or no 183 times, true or false 8). Unseen (`2026-11-26-s3a`): right 728 -> 742
+  (14 wins, 0 losses: 10 yes-or-no, 2 money, 2 dates), unmarked wrong 149 -> 136, built 820 -> 837. Fresh
+  (`2026-11-26-verdicts-fresh`): right 700 -> 718 (18 wins, 0 losses: 16 yes-or-no, a date, a speed with its
+  unit), unmarked wrong 143 -> 128, built 808 -> 829.
+- **Not kept: an either-or answered in the question's words.** The said call asked two more closed questions, the
+  spans naming the first and the second alternative the question asks between; an answer whose first cells all held
+  the same one of them as whole words, and none the other, became that alternative as the question writes it, unless
+  the question writes the cell whole (fresh dev FD-0102, "Between Central Harlem - Morningside Heights and East
+  Harlem": a span is at most three words), its marks kept ("saint-hyacinthe", unseen nu-4182). Dev unchanged; unseen
+  742 -> 746 (5 wins: "japan or finland?" over "Osaka, Japan", "izmir or busan", "russia or moldova", "noah or
+  jacob", "'brace' or 'bracket'"; 1 loss); fresh 0 wins, 2 losses. Each loss asks "who" between two surnames and its
+  gold is the full name ("who was faster, dalziel or doornbos?" => "Ryan Dalziel"), as "mikac or wall?" => "Des Wall",
+  while "does pat or john have the highest total?" wants "john": the annotators differ, and over the two samples the
+  change nets 2 of 2,000.
+- **Not kept: a cell's parts by its marks** (`engine/sheet/compiler.py`: a text column's lines a line break sets
+  apart, a list's items, "X (Y)" as the part outside the brackets and the part inside, as new columns). Dev: picks
+  737 -> 730 (WikiTableQuestions 3 wins, 3 losses; fresh dev 1, 3; DataBench 0, 5), unwarned wrong 61 -> 62
+  (WikiTableQuestions 26 -> 28), built 800 -> 799; its rules change the compiled tables of 893 of 2,108
+  WikiTableQuestions workbooks (a "Comments" column half of whose cells read "X (Y)" gets two part columns), which
+  moves the reading of questions that ask no part.
+- **Not kept: the choice reads a small table's lines** (at most 600 cells, line by line, the sheet's own columns).
+  Shown only when a listed reading takes lines by where they stand (first or last lines, the line before or after
+  another): picks 737 -> 740 (WikiTableQuestions 3 wins, 1 loss; fresh dev 1, 0), unwarned wrong 61 -> 62, the demo
+  unchanged; over all 987 questions unmarked right 747 -> 750 and warned wrong 43 -> 39, five warned wrong answers
+  losing their warning (fresh dev FD-0142: the same wrong reading at 0.43 without the lines, 0.80 with them). Shown for
+  every small table: picks 737 -> 743 (WikiTableQuestions 8, 3; messy 0, 3; fresh dev 2, 1), unwarned wrong 61 -> 65
+  (fresh dev 16 -> 21), and the demo's bank-deposits #2 ("which country has the most deposits?") warned wrong again,
+  as on 2026-11-23. The lines make the choice surer, not right more often.
+- **Not kept: a workbook's value targets within 4,000 tokens** (latency: a large workbook's first question encodes
+  about 5 ms a token on Cloud Run's 4 vCPU, 60-77 s served at 12,000, 2026-11-25): picks 737 -> 735 (messy 0 wins,
+  1 loss; fresh dev 0, 1), unwarned wrong 61 -> 61; the larger sheets' readings lose the values they no longer see.
+  The bound stays 12,000; the stock reader's cache already reads each text once per instance.
+- **Step 4: nothing to fit.** Over the 896's listings (at most 50 each), one additive score of named parts (the
+  choice's log probability, the chooser's features, the coordinate slots, the form, the place in the listing, the
+  decoder's gap) fitted on half of the sets and held out on the other: 342 -> 343 of 420 and 395 -> 396 of 475. The
+  answer summed over its listings stays the pick (737 of 895; the best single listing 736, the sum over the square
+  root of the count 729). The marks: at today's `T_FLAG` 0.575 the unmarked wrong are 10.7% of the 3,125 training
+  questions and 13.6% of the 1,000 unseen ones (with the kept change), and 8% on unseen tables needs about 0.78, which
+  marks 43% of them against the bar's 20%: the thresholds stay, and the bar is the choice's to meet.
+- Diffs, gate logs and step 4's scripts: `prereasoner-scratch/patches/steps-20261126/` in the archive; their recorded
+  calls in `regress/sets/calls` (`2026-11-26-*`), so each gate replays from a clone; records
+  `regress/sets/public/records/2026-11-26-{s3a,s3c,answers,base-fresh,answers-fresh,verdicts-fresh}/`. Decisions
+  spend $2.26 (5,144 calls, 22.6M tokens) of the $60 the owner allowed.
+- Checks: tests (answer 30, program 98, SQL AST 91, sheet compile 79, connected 18, release 70, enrichment 37); the
+  hermetic repository run with every suite passing (`tests.test_complex_datasets` reads the knowledgebase and passes 6 of 6
+  through the Cloud SQL proxy); the offline regression gate PASS (world tier skipped); ruff F/E9, bandit,
+  compileall; the 896 and the demo replayed on the final code at the gate's records (the three WikiTableQuestions
+  records above), each set's records kept as its reference.
+
 ## The stage map: given a human query's reading, the engine builds about one question in a hundred more; what it misses on unseen tables is cells and language it lacks, and a tenth of every set is lost in the choice (2026-11-26)
 
 - Owner's plan, step 1 (2026-11-25): each miss at the first stage that loses it, through the one selection
