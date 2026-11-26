@@ -10,6 +10,31 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release 4a3b86e5 (a verdict says Yes or No, a cell as the sheet writes it, the stock reading warmed) live; Chrome gate 102 of 102 fresh, 77 of 78 existing; served 775 of 1,000 WikiTableQuestions test and 346 of 450 DataBench test (2026-11-26)
+
+- Engine `prereasoner-api-00354-det` (`engine@sha256:a5d1dc66...`, Cloud Build e22d7f61: build, offline regression
+  gate, runtime server smoke, live product suites, 55 min), deployed with no traffic under tag `verdict`, healthz 200,
+  release smoke job w9vqw ok, then 100%; both engine jobs on the image. Chat and Hosting unchanged. Rollback:
+  `prereasoner-api-00352-qeg` (6216c9ab). It carries the stock reading warmed before an instance serves (7fa996e4)
+  and the answer as the sheet writes it (fd8e75f4): the 896's picks 737 unchanged, unwarned wrong 61, the demo
+  unchanged; unseen tables 728 -> 742 and the fresh sample 700 -> 718 of 1,000 (the entry below).
+- **Chrome gate** (Claude in Chrome on the owner's signed-in Chrome, chat.prereasoner.com; captures and grades
+  `prereasoner-scratch/gate-4a3b86e5/` in the archive): existing conversations (the 24 of 6216c9ab's fresh pass, 78
+  follow-ups) 77 passed, 1 failed, 77 records byte-identical to 6216c9ab's existing pass and one differing only in
+  status; the failure is customer-orders "in GBP for the whole of Europe?" read as an average after the
+  conversation's last turn asked an average, the same miss as at every gate since b9b0fe50. Fresh (24 datasets, 102
+  records, six of them uploaded files) 102 passed, 100 byte-identical to 6216c9ab's fresh pass and two differing only
+  in status (a chat 502 at 86-100 s, the same rows read back from `/api/analysis`).
+- **Served, with the automatic Neon retry** (`regress/run_public.py --run 2026-11-26-release --system prereasoner`,
+  against the 2026-11-22 benchmark's records): WikiTableQuestions test 743 -> **775** of 1,000 (52 wins, 20 losses;
+  the engine alone 701 -> 742; erred 124 -> 102), against Gemini 4 Neon's 859 and Claude Opus 5.5's 841 on the same
+  sample; DataBench test within the product's upload limit 345 -> **346** of 450 (3 wins, 2 losses; the engine alone
+  314 -> 321), against Neon's 399 and Opus's 404. Spend $1.23 (Decisions and Neon; most bodies recorded before).
+- **Latency** (production `[timing]` lines, the 195 latest requests of each revision, most of 00354-det's the gate's):
+  an instance's first request 38.6 s and 69.2 s on 00352-qeg (its stock reading 24.3 s and 37.0 s), 6.3 s and 8.7 s
+  on 00354-det; the stock reading's longest 37.0 s -> 5.1 s; requests p50 3.07 s -> 2.70 s, p90 7.49 s -> 5.46 s.
+- Not run: the Enron tabs (no sheet-compiler change; their sheets never go to an outside API).
+
 ## A verdict says Yes or No and a cell reads as the sheet writes it: unseen tables 728 -> 742 and the fresh sample 700 -> 718 of 1,000, no question lost; an either-or in the question's words, a cell's parts, the choice reading a table's lines, a smaller value bound and a fitted pick not kept (2026-11-26)
 
 - Owner's plan, steps 2 to 4 (2026-11-25). Each change gated on the 896 and the demo's 91
