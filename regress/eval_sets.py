@@ -275,8 +275,10 @@ def databench_same(value, truth, kind: str) -> bool:
     development, stricter on a few forms; the test split is graded by the official one)."""
     import pandas as pd
     try:
-        if kind == "boolean":
-            return str(value).strip(STRIP).lower() == str(truth).strip(STRIP).lower()
+        if kind == "boolean":     # as databench_eval's default_compare reads one: true, yes, y / false, no, n
+            truths, falses = ("true", "yes", "y"), ("false", "no", "n")
+            a, b = str(value).strip(STRIP).lower(), str(truth).strip(STRIP).lower()
+            return (a in truths and b in truths) or (a in falses and b in falses)
         if kind == "category":
             a, b = str(value).strip(STRIP), str(truth).strip(STRIP)
             if a == b:

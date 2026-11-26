@@ -1331,6 +1331,26 @@ FILMS = [["Year", "Title", "Prize"], [2001.0, "Rain", 10.0], [2003.0, "Vampire F
          [2005.0, "Glass", 20.0], [2002.0, "Snow", 50.0]]
 
 
+def test_the_answer_says_yes_or_no_and_a_cell_as_the_sheet_writes_it():
+    # 2026-11-25, the unseen-table stage map: "what is the top price for a class 1 toll rate?" answered 3.0 where the
+    # gold and the sheet say "£3.00"; "did China PR join in 2002?" answered True where the gold says "yes". The choice
+    # reads a verdict as True or False and a cell by its stored value (picking worse with Yes/No previews, 2026-11-24);
+    # the answer it chose says Yes or No, and a cell taken from a column of numbers or days, a column's lowest or
+    # highest, reads as the sheet writes it where the column writes that value one way and with more than digits,
+    # separators and signs. The choice's rows, and the answer keys it is summed over, stay as it read them.
+    from engine.program.execute import answered
+    rows = [["Plaza", "Class 1", "Count"], ["A", "£3.00", "1,370"], ["B", "£2.50", "12"], ["C", "£3.00", "7"]]
+    catalog = Catalog.from_model(compile_workbook(workbook_from_json({"name": "b", "tabs": [{"name": "Tolls", "rows": rows}]})))
+    table = catalog.tables[0].id
+    price, count = Col(table, 1), Col(table, 2)
+    assert answered(Agg(MAX, price, table), ((3.0,),), catalog) == (("£3.00",),)
+    assert answered(Agg(MIN, price, table), (("2.5",),), catalog) == (("£2.50",),)
+    assert answered(Agg(SUM, price, table), ((8.5,),), catalog) == ((8.5,),), "a total is no cell of the sheet"
+    assert answered(Show(table, (count,), (Equals(Col(table, 0), "a"),)), (("1370",),), catalog) == (("1370",),),         "a number written plainly keeps its stored value: WikiTableQuestions' grader reads \"18,123\" as no number (nt-9008)"
+    verdict = Check(ANY, Agg(COUNT, None, table, (Equals(Col(table, 0), "a"),)))
+    assert answered(verdict, (("True",),), catalog) == (("Yes",),) and answered(verdict, (("False",),), catalog) == (("No",),)
+
+
 def test_lines_listed_before_or_after_the_line_a_value_names():
     """"How many movies was she in before Vampire Family?", "previous to July 6, 2004, what is the highest prize money?"
     (WikiTableQuestions nt-10892, nt-4745): the lines the sheet lists before (or after) the first data line a value
@@ -2268,6 +2288,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
+    test_the_answer_says_yes_or_no_and_a_cell_as_the_sheet_writes_it,
     test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down, test_a_date_key_groups_by_its_month_of_any_year_named_as_the_column_writes_it, test_the_most_lines_in_a_row, test_a_measures_spread_is_its_highest_less_its_lowest, test_lines_are_taken_by_where_they_stand, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_a_score_opening_with_a_mark_gets_the_mark_as_its_own_part, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,

@@ -356,11 +356,11 @@ def run_engine(system: str, items, limits, sql, sink, done, ledger: Ledger, batc
                         book = item.book
                     selection = planner.select_query(item.question, tables)
                     shown = selection.selected if selection.selected is not None else selection.erred
-                    rows = selection.rows[shown] if shown is not None else ()
+                    rows = selection.answer(shown) if shown is not None else ()
                     kind = dev.kind_of(selection)
                     right = dev.graded(item, rows)
                     row.update(kind=kind, engine=right, served=right, confidence=selection.confidence, answer=_first(rows),
-                               listed=len(selection.rows), listed_right=[bool(dev.graded(item, listed)) for listed in selection.rows],
+                               listed=len(selection.rows), listed_right=[bool(dev.graded(item, selection.answer(at))) for at in range(len(selection.rows))],
                                read_as=selection.pool[shown].evidence[0] if shown is not None else "")
                     row.update(_stage_fields(selection, shown, row["listed_right"]))
                     if system == "prereasoner" and kind == ERRED:

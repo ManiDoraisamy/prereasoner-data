@@ -507,7 +507,7 @@ class TableQuery:
         context = current_analysis_context()
         try:
             if context is None:
-                rows = selection.rows[index]
+                rows = selection.answer(index)
             else:
                 _columns, rows = self._execute_deterministic(
                     tablemap, selection.plan(index, context.slug), estimated_rows=selection.estimated_rows(index))

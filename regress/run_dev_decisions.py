@@ -457,9 +457,9 @@ def main() -> int:
                             book = item.book
                         selection = planner.select_query(item.question, tables)
                     shown = selection.selected if selection.selected is not None else selection.erred
-                    rows = selection.rows[shown] if shown is not None else ()
+                    rows = selection.answer(shown) if shown is not None else ()
                     kind = kind_of(selection)
-                    listed_right = [graded(item, listed) for listed in selection.rows]
+                    listed_right = [graded(item, selection.answer(at)) for at in range(len(selection.rows))]
                     row.update(kind=kind, label=label_of(kind, graded(item, rows)), mass=selection.confidence, listed=len(selection.rows),
                                listed_answer=[answer_key(listed) for listed in selection.rows], listed_right=listed_right,
                                choose_p=selection.probabilities, read_as=selection.pool[shown].evidence[0] if shown is not None else "")

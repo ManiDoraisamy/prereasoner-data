@@ -74,7 +74,7 @@ class Engine:
         ok, why = self.enc.guard(sql)
         if not ok:
             raise RuntimeError(f"guard: {why}")
-        return [list(r) for r in selection.rows[selection.selected]], sql
+        return [list(r) for r in selection.answer(selection.selected)], sql
 
     def run(self, tabs, q):
         try:

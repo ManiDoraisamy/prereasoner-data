@@ -312,8 +312,9 @@ class PoolSelection:
     candidate, served marked as most likely wrong when its retry (engine/retry.py) cannot answer: None when none
     returned rows.
     ``confidence`` is the likeliest answer's probability and ``probabilities`` the choice's own, per listing (r00, r01,
-    ..., and none). ``programs``, ``rows`` and ``catalog`` hold each candidate's program, the rows it returned on the
-    candidates' floats (what the choice read) and the workbook it reads; ``tables`` the request's tables the programs
+    ..., and none). ``programs``, ``rows`` and ``catalog`` hold each candidate's program, the rows it returned as the
+    choice read them (a verdict as True or False, a cell by its stored value; ``answer`` gives them as served) and the
+    workbook it reads; ``tables`` the request's tables the programs
     run on (engine/program/store.py, on the request's database). ``converts``: the request's money columns could be
     read in another currency, so the path's own convert question read whether the question wants its answer in one
     (engine/program/answer.py convert_target)."""
@@ -355,11 +356,18 @@ class PoolSelection:
         return sum(len(self.catalog.table(table_id).lines) for table_id in tables_of(self.programs[index]))
 
     def shown(self, index: int, rows) -> tuple[tuple, ...]:
-        """Rows a deterministic run of pool member ``index`` returned, as its program shows them
-        (engine/program/execute.py displayed)."""
-        from engine.program.execute import displayed
+        """Rows a deterministic run of pool member ``index`` returned, as its answer gives them (engine/program/execute.py
+        displayed, then answered: what ``rows`` holds for it)."""
+        from engine.program.execute import answered, displayed
 
-        return displayed(self.programs[index], rows, self.tables)
+        return answered(self.programs[index], displayed(self.programs[index], rows, self.tables), self.catalog)
+
+    def answer(self, index: int) -> tuple[tuple, ...]:
+        """Pool member ``index``'s rows as its answer gives them (engine/program/execute.py answered): what ``rows``
+        holds as the choice read it, a verdict as Yes or No, a cell by how the sheet writes it."""
+        from engine.program.execute import answered
+
+        return answered(self.programs[index], self.rows[index], self.catalog)
 
     def columns(self, index: int) -> tuple[str, ...]:
         """The names of pool member ``index``'s answer columns, in the sheet's words (engine/program/output.py)."""

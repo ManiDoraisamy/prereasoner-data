@@ -12,9 +12,9 @@ from engine.deterministic import DeterministicAnalysis, ExecutionMode
 from engine.numeric import canonical_decimal
 from engine.prepared import SharedConnection
 from engine.program.catalog import CatalogTable
-from engine.program.language import Breakdown, Calc, Check, Col, Program, Rank, Show, tables_of
+from engine.program.language import Agg, Breakdown, Calc, Check, Col, Program, Rank, Show, tables_of
 from engine.program.lowering import to_plan, to_query
-from engine.program.names import ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, GRAIN_CALENDAR_MONTH
+from engine.program.names import ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, GRAIN_CALENDAR_MONTH, MAX, MIN
 from engine.program.store import RequestTables
 from engine.sql_ast import render_query
 
@@ -119,6 +119,58 @@ def displayed(program: Program, rows, tables: RequestTables) -> tuple[tuple, ...
     """The rows a deterministic run of the program returned (each a sequence of cells), as the program shows them: exact
     numbers as their canonical decimal text, days as ISO text, and the sheet's own spelling restored (_displayed)."""
     return _displayed(program, [tuple(_plain(cell) for cell in row) for row in rows], tables)
+
+
+def answered(program: Program, rows, catalog) -> tuple[tuple, ...]:
+    """The rows as the answer gives them, the choice having read them as shown (_displayed): a verdict says Yes or No,
+    and a cell the answer takes from a column of numbers or days (a shown cell, the top line's, a column's lowest or
+    highest) reads as the sheet writes it ("£5.00", "April 27, 1966") where the column writes that value one way."""
+    rows = tuple(tuple(row) for row in rows)
+    if not rows:
+        return rows
+    if isinstance(program, Check) and program.said is None:
+        return tuple((("Yes" if row[0] == "True" else "No" if row[0] == "False" else row[0]), *row[1:]) for row in rows)
+    sources: tuple = ()
+    if isinstance(program, Show) and not program.every:
+        sources = program.shown
+    elif isinstance(program, Rank) and program.entity == ENTITY_LINE:
+        sources = program.shown + ((program.measure,) if isinstance(program.measure, Col) else ())
+    elif isinstance(program, Agg) and program.function in (MIN, MAX) and isinstance(program.measure, Col):
+        sources = (program.measure,)
+    if not sources:
+        return rows
+    writings = [_writings(catalog.table(column.table), column.position) for column in sources]
+    return tuple(tuple(writings[at].get(_cell_key(cell), cell) if at < len(writings) and cell is not None else cell
+                       for at, cell in enumerate(row)) for row in rows)
+
+
+def _cell_key(cell) -> tuple:
+    if isinstance(cell, (int, float)) and not isinstance(cell, bool):
+        return ("number", float(cell))
+    text = str(cell)
+    try:
+        return ("number", float(text))
+    except ValueError:
+        return ("day", text)
+
+
+_PLAIN_WRITING = re.compile(r"^[\d\s.,+\-−]*$")     # digits, separators and signs: a number written plainly
+
+
+def _writings(table, position: int) -> dict[tuple, str]:
+    """{a number or day of the column's cells -> how the sheet writes it}, for the values every line holding them
+    writes one way and writes with more than digits, separators and signs ("£3.00", "April 27, 1966", "12%"): a number
+    written plainly ("18,123") or a day as ISO keeps its stored value."""
+    held: dict[tuple, set[str]] = {}
+    for at, line in enumerate(table.lines):
+        cell = line.cells.get(position)
+        raw = cell.raw if cell is not None else None
+        written = " ".join(raw.split()) if isinstance(raw, str) else table.written[position][at]
+        number, day = table.numbers[position][at], table.days[position][at]
+        key = ("number", float(number)) if number is not None else ("day", day) if day is not None else None
+        if key is not None and written not in (None, ""):
+            held.setdefault(key, set()).add(str(written))
+    return {key: next(iter(texts)) for key, texts in held.items() if len(texts) == 1 and not _PLAIN_WRITING.match(next(iter(texts)))}
 
 
 def run_dual(program: Program, tables: RequestTables, *, slug: str = "program", python_row_limit: int = 10_000) -> Result:

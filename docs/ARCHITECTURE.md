@@ -410,7 +410,10 @@ program. Only the retry (step 8 below) runs a query a model wrote.
    `/api/reason`, `TableQuery.retry_answer`) runs the same retry.
 7. In an analysis, as every served request is, the chosen program's one plan runs through both deterministic
    emitters on the request's database (`TableQuery._execute_deterministic`), in exact decimals, and its rows are
-   shown as the sheet spells them. Outside one (an evaluator), the answer is the rows the choice read.
+   shown as the sheet spells them. Outside one (an evaluator), the answer is the rows the choice read. Either way
+   the answer is given in the sheet's terms (`engine/program/execute.py` `answered`, `PoolSelection.answer`), though
+   the choice read True or False and stored values: a verdict says Yes or No, and a cell taken from a column of
+   numbers or days reads as the sheet writes it ("£3.00", "April 27, 1966").
 
 The served response carries `read_as`, the chosen program's plain reading, which the thread shows as the turn's
 "read as" line, and a `coverage` record certifying the reading (the world routes keep their own wording gate in
