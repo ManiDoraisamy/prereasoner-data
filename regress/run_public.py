@@ -40,6 +40,9 @@ usage: python -X utf8 -m regress.run_public --run NAME --set SET --system SYSTEM
        python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 2100 --squall "max .* - min"   (one SQUALL family)
        python -X utf8 -m regress.run_public --run NAME --set wtq-train-open --size 2251 --match "PATTERN"   (one family by its text)
        python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 9070 --books FILE   (the questions on the tables a reading change touches)
+       python -X utf8 -m regress.run_public --run NAME --set wtq-test --judge SOURCE_RUN [--judge-sizes 150 50] [--cap 15]
+                   (the judge test: the choice's question on SOURCE_RUN's questions put to Gemini 4 Neon, nothing served;
+                   rerun it to print its numbers)
 """
 from __future__ import annotations
 
@@ -68,7 +71,7 @@ SYSTEMS = ("engine", "prereasoner", "neon", "opus")
 NEON_MODEL, OPUS_MODEL = "gemini-4-neon", "claude-opus-5-5"
 # Dollars per million tokens (input; output with thinking) on 2026-11-22: OpenRouter's model list for Gemini 4 Neon, the
 # Claude API's price table for Opus 5.5, Google's Decisions API page for gemini-decision-1 (no output charge).
-PRICES = {"decisions": (0.10, 0.0), "retry": (3.0, 15.0), "neon": (3.0, 15.0), "opus": (4.0, 20.0)}
+PRICES = {"decisions": (0.10, 0.0), "retry": (3.0, 15.0), "neon": (3.0, 15.0), "opus": (4.0, 20.0), "judge": (3.0, 15.0)}
 FORMAT = ("Put the answer itself in the first output column: one row holding the value for a single answer, one row "
           "per item for a list; supporting columns may follow it.")
 DATABENCH_TRAIN, DATABENCH_TRAIN_SEED = 400, 20261122
@@ -863,6 +866,287 @@ def stages(run: str, set_name: str = "wtq-train", teacher: str | None = None) ->
     return {stage: counts[stage] for stage in STAGES}
 
 
+# ------------------------------------------------------------------------------------------------------ the judge test
+JUDGE_SEED = 20261126
+# The retry's thinking level (engine/llm.py QUERY_THINKING): a judge asked on every question could afford no more.
+JUDGE_THINKING = "low"
+JUDGE_SYSTEM = ("You answer one closed question about a person's spreadsheet. STATE describes the spreadsheet and the "
+                "question asked of it, QUESTION says what to choose, and OPTIONS lists the options by key. Reply with the "
+                "key of exactly one option.")
+JUDGE_STRATA = ("choice miss", "right", "not built")
+
+
+def judge_payload(state: dict, question: dict) -> bytes:
+    """The choice's one closed question (engine/program/closed.py choice_record) put to Gemini 4 Neon as the Decisions
+    endpoint is given it: the same STATE, instruction and options, in the decoder's order with none last; the answer
+    held to one option's key by its schema, at the retry's thinking level. Keys are sorted, so a question gives one
+    body and its recorded answer replays by the body's hash."""
+    from engine.named.names import NONE
+    criteria = question["criteria"]
+    keys = [key for key in criteria if key != NONE] + ([NONE] if NONE in criteria else [])
+    prompt = ("STATE:\n" + json.dumps(state, ensure_ascii=False) + "\n\nQUESTION: " + question["instructions"]
+              + "\n\nOPTIONS:\n" + "\n".join(f"{key}: {criteria[key]}" for key in keys))
+    schema = {"type": "object", "properties": {"choice": {"type": "string", "enum": keys}}, "required": ["choice"]}
+    body = {"model": NEON_MODEL, "systemInstruction": {"parts": [{"text": JUDGE_SYSTEM}]},
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"responseMimeType": "application/json", "responseJsonSchema": schema,
+                                 "thinkingConfig": {"thinkingLevel": JUDGE_THINKING}, "maxOutputTokens": 16384}}
+    return json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def judge_send(payload: bytes) -> dict:
+    """Gemini 4 Neon's answer to one judge body: its JSON text, the usage billed and the seconds it took."""
+    body = json.loads(payload.decode("utf-8"))
+    model = body.pop("model")
+    clock = time.perf_counter()
+    result = llm._post_developer(llm.QUERY_ENDPOINT.format(model=model), json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                                 120.0, 4, "Judge")
+    try:
+        parts = result["candidates"][0]["content"]["parts"]
+    except (KeyError, IndexError, TypeError):
+        raise llm.LLMUnavailable(f"Judge call failed: no choice ({(result.get('candidates') or [{}])[0].get('finishReason')})") from None
+    text = "".join(part.get("text", "") for part in parts if not part.get("thought"))
+    return {"text": text, "usage": result.get("usageMetadata") or {}, "seconds": round(time.perf_counter() - clock, 2)}
+
+
+def judge_strata(held: dict) -> dict[str, str]:
+    """An engine run's questions by what another judge of their listings can change: a choice miss (an answer listed
+    was right, another was picked), right (picked right, a wrong answer listed beside it) or not built (no answer
+    listed right, answered unmarked: what a second judge's disagreement would mark). No judge changes the others."""
+    strata = {}
+    for key, row in held.items():
+        flags = row.get("listed_right") or []
+        if row.get("kind") in ("error", "refused") or not flags:
+            continue
+        if row["engine"]:
+            if not all(flags):
+                strata[key] = "right"
+        elif any(flags):
+            strata[key] = "choice miss"
+        elif row.get("kind") == "answered":
+            strata[key] = "not built"
+    return strata
+
+
+def run_judge(source: str, set_name: str, run: str, sizes: tuple[int, int], limit: int | None, ledger: Ledger, batch: str,
+              threads: int) -> None:
+    """--judge SOURCE (owner, 2026-11-26): the choice's closed question, as the one selection asked it on the questions
+    of engine run SOURCE, put to Gemini 4 Neon instead (judge_payload); its pick graded by that listing's grade, nothing
+    served. Asked: every choice miss of the run, and seeded samples of sizes[0] right questions and sizes[1] unbuilt
+    ones answered unmarked (judge_strata). Each question is replayed from the recorded Decisions answers, and its pick
+    and listings must equal its record's (parity) before Neon is asked. Each row holds both picks, whether they return
+    the same answer, and the probability the Decisions choice gave the answer Neon picked.
+    Writes regress/results/public/<run>/<set>/judge.jsonl; Neon's answers go to regress/sets/public/calls/judge/."""
+    import random
+    import torch
+    import regress.run_dev_decisions as dev
+    from engine.named.names import NONE
+    from engine.prepared import scratch_database
+    from engine.program.closed import CHOICE_INSTRUCTION, answer_key, answer_masses
+    from engine.tables import TableQuery
+
+    held = records(source, set_name, "engine")
+    strata = judge_strata(held)
+    chosen = {key for key, stratum in strata.items() if stratum == "choice miss"}
+    for stratum, n in zip(JUDGE_STRATA[1:], sizes):
+        pool = sorted(key for key, value in strata.items() if value == stratum)
+        chosen |= set(random.Random(f"{JUDGE_SEED}/{set_name}/{stratum}").sample(pool, min(n, len(pool))))
+    items, _limits, _sql = items_of(set_name, None, 0)
+    items = sorted((item for item in items if item.id in chosen), key=lambda item: item.book)
+    target = WORK / run / set_name / "judge.jsonl"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    done: set[str] = set()
+    if target.exists():     # rows a provider failed are asked again, so the file holds each question once
+        kept = [row for row in map(json.loads, filter(str.strip, target.read_text(encoding="utf-8").splitlines())) if not row.get("infra")]
+        target.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in kept), encoding="utf-8", newline="\n")
+        done = {row["id"] for row in kept}
+    items = [item for item in items if item.id not in done][:limit]
+    print(f"judge {set_name}: {len(chosen)} questions, {len(done)} done, {len(items)} to ask; "
+          f"spend ${ledger.total():.2f} of ${ledger.cap:g}", flush=True)
+
+    torch.set_num_threads(threads)
+    decisions = Decisions(ledger, batch)
+    lock, captured, unrecorded = threading.Lock(), [], [0]
+
+    def transport(payload: bytes) -> dict:
+        body = json.loads(payload.decode("utf-8"))
+        question = (body.get("questions") or {}).get("reading") or {}
+        with lock:
+            if question.get("instructions") == CHOICE_INSTRUCTION:
+                captured.append((json.loads(body["input"].split("\n", 1)[1]), question))
+            if decisions.store.get(llm.decision_hash(payload)) is None:
+                unrecorded[0] += 1
+        return decisions(payload)
+
+    llm.DECISIONS_TRANSPORT = transport
+    neon = Recorded("judge", ledger, judge_send, batch)
+    planner = TableQuery()
+
+    def ask(row: dict, payload: bytes, listed_right: list[bool], answers: list[str], mass: dict, none_p: float) -> dict | None:
+        try:
+            answer = neon(payload)
+            choice = json.loads(answer.get("text") or "")["choice"]
+            at = None if choice == NONE else int(choice[1:])
+        except BudgetStop:
+            return None
+        except Exception as error:
+            return {**row, "neon": None, "error": f"{type(error).__name__}: {str(error)[:200]}", "infra": _infra(error)}
+        usage = answer.get("usage") or {}
+        shown = row["judge_at"]
+        row.update(neon=choice, neon_at=at, neon_right=at is not None and listed_right[at],
+                   same_answer=at is not None and shown is not None and answers[at] == answers[shown],
+                   neon_mass=round(mass.get(answers[at], 0.0), 4) if at is not None else None, none_p=round(none_p, 4),
+                   tokens_in=int(usage.get("promptTokenCount") or 0),
+                   tokens_out=int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0),
+                   seconds=answer.get("seconds"))
+        return row
+
+    pending: list = []
+    with open(target, "a", encoding="utf-8", newline="\n") as sink, ThreadPoolExecutor(4) as pool, contextlib.ExitStack() as request:
+
+        def write(wait: bool) -> None:
+            while pending and (wait or pending[0].done() or len(pending) > 12):
+                row = pending.pop(0).result()
+                if row is not None:
+                    sink.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+                    sink.flush()
+
+        book, tables, count, started = None, None, 0, time.time()
+        asked_of_book: dict[str, tuple] = {}     # a question asked twice of one workbook is answered from the request's cache
+        for item in items:
+            if ledger.stopped:
+                break
+            record = held[item.id]
+            row = {"id": item.id, "book": item.book, "question": item.question, "stratum": strata[item.id],
+                   "judge_at": record.get("shown_at"), "judge_right": bool(record["engine"]), "judge_kind": record.get("kind"),
+                   "judge_mass": record.get("confidence"),
+                   "difference": _choice_difference(record.get("shown_coordinates") or [], record.get("right_coordinates") or [])
+                   if strata[item.id] == "choice miss" else ""}
+            try:
+                if item.book != book:
+                    book, tables = None, None
+                    request.close()
+                    asked_of_book.clear()
+                    tables = dev.tables_of(item)
+                    request.enter_context(scratch_database())
+                    book = item.book
+                captured.clear()
+                selection = planner.select_query(item.question, tables)
+                if captured:
+                    asked_of_book[item.question] = captured[0]
+                elif item.question in asked_of_book:
+                    captured.append(asked_of_book[item.question])
+            except Exception as error:
+                book, tables = None, None
+                request.close()
+                row.update(neon=None, error=f"{type(error).__name__}: {str(error)[:200]}", infra=_infra(error))
+                sink.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+                continue
+            shown = selection.selected if selection.selected is not None else selection.erred
+            listed_right = [bool(dev.graded(item, selection.answer(at))) for at in range(len(selection.rows))]
+            row["parity"] = shown == record.get("shown_at") and listed_right == record.get("listed_right") and len(captured) == 1
+            if not row["parity"]:
+                row.update(neon=None, error="the replay differs from the record")
+                sink.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+                continue
+            answers = [answer_key(rows) for rows in selection.rows]
+            mass, _first = answer_masses(selection.probabilities, answers)
+            pending.append(pool.submit(ask, row, judge_payload(*captured[0]), listed_right, answers, mass,
+                                       float((selection.probabilities or {}).get(NONE, 0.0))))
+            write(False)
+            count += 1
+            if count % 25 == 0:
+                print(f"judge {set_name} {count} replayed, {round(time.time() - started)}s, spend ${ledger.total():.2f}", flush=True)
+        write(True)
+    print(("STOPPED at the cap; " if ledger.stopped else "") + f"judge {set_name}: {count} replayed, "
+          f"{unrecorded[0]} Decisions bodies not recorded before, spend ${ledger.total():.2f}", flush=True)
+
+
+def judge_summary(run: str, source: str, set_name: str) -> dict:
+    """The judge test's numbers on one set (run_judge): per stratum, how many were asked of how many there are and
+    Neon's picks graded; and, with each sampled stratum scaled to its count (every choice miss is asked), the set's
+    right if Neon's pick were served (its none serving the Decisions choice's pick, as an erred answer's likeliest
+    pick is served), with a 95% interval from the right sample's losses, and its unmarked wrong and unmarked right
+    under two marks: agreement (unmarked only where the Decisions choice answered unmarked and Neon picked the same
+    answer; another answer warned, none erred) and today's thresholds over the Decisions probability of Neon's
+    answer (unmarked at engine/program/closed.py T_FLAG and above, none less likely). And Neon asked only where the
+    Decisions choice marks its answer (warned or erred), its unmarked answers kept: the latency of the rest unchanged.
+    Latency and spend per call from the recorded answers."""
+    from engine.program.closed import T_FLAG
+    held = records(source, set_name, "engine")
+    strata = judge_strata(held)
+    population = collections.Counter(strata.values())
+    rows = [row for row in records(run, set_name, "judge").values() if row.get("neon") is not None and row.get("parity")]
+    out: dict = {"questions": len(held), "right now": sum(bool(row["engine"]) for row in held.values()),
+                 "unmarked wrong now": sum(row.get("kind") == "answered" and not row["engine"] for row in held.values()),
+                 "unmarked right now": sum(row.get("kind") == "answered" and bool(row["engine"]) for row in held.values())}
+    delta = unmarked_wrong = unmarked_right = threshold_wrong = threshold_right = escalated = 0.0
+    variance = escalated_variance = wrong_variance = 0.0
+    for stratum in JUDGE_STRATA:
+        asked = [row for row in rows if row["stratum"] == stratum]
+        if not asked:
+            continue
+        scale = population[stratum] / len(asked)
+        served = [row["neon_right"] if row["neon_at"] is not None else row["judge_right"] for row in asked]
+        block = {"of": population[stratum], "asked": len(asked), "neon right": sum(row["neon_right"] for row in asked),
+                 "neon none": sum(row["neon_at"] is None for row in asked),
+                 "same answer as the choice": sum(row["same_answer"] for row in asked),
+                 "the choice right": sum(row["judge_right"] for row in asked)}
+        if stratum == "choice miss":
+            block["neon right by how the choice's pick differs"] = dict(collections.Counter(
+                f"{row['difference']} {'right' if row['neon_right'] else 'wrong'}" for row in asked).most_common())
+        change = [int(now) - int(row["judge_right"]) for now, row in zip(served, asked)]
+        delta += scale * sum(change)
+        marked = [c if row["judge_kind"] != "answered" else 0 for c, row in zip(change, asked)]
+        escalated += scale * sum(marked)
+        if stratum != "choice miss" and len(asked) > 1:
+            for values, kept in ((change, "all"), (marked, "marked")):
+                mean = sum(values) / len(asked)
+                spread = population[stratum] ** 2 * sum((c - mean) ** 2 for c in values) / (len(asked) - 1) / len(asked)
+                if kept == "all":
+                    variance += spread
+                else:
+                    escalated_variance += spread
+        flagged = [int(row["judge_kind"] == "answered" and row["same_answer"] and not now) for now, row in zip(served, asked)]
+        if stratum != "choice miss" and len(asked) > 1:
+            mean = sum(flagged) / len(asked)
+            wrong_variance += population[stratum] ** 2 * sum((f - mean) ** 2 for f in flagged) / (len(asked) - 1) / len(asked)
+        for now, row in zip(served, asked):
+            agreed = row["judge_kind"] == "answered" and row["same_answer"]
+            unmarked_wrong += scale * (agreed and not now)
+            unmarked_right += scale * (agreed and now)
+            p = row["neon_mass"]
+            clean = p is not None and row["none_p"] <= p and p >= T_FLAG
+            threshold_wrong += scale * (clean and not now)
+            threshold_right += scale * (clean and now)
+        out[stratum] = block
+    unasked_clean = sum(1 for key, row in held.items() if key not in strata and row.get("kind") == "answered")
+    unasked_wrong = sum(1 for key, row in held.items() if key not in strata and row.get("kind") == "answered" and not row["engine"])
+    half = 1.96 * math.sqrt(variance)
+    seconds = sorted(row["seconds"] for row in rows if row.get("seconds") is not None)
+    usd = [(row["tokens_in"] * PRICES["judge"][0] + row["tokens_out"] * PRICES["judge"][1]) / 1e6 for row in rows]
+    out["neon's pick served"] = {
+        "right": round(out["right now"] + delta, 1), "interval": [round(out["right now"] + delta - half, 1), round(out["right now"] + delta + half, 1)],
+        "agreement marks": {"unmarked wrong": round(unmarked_wrong + unasked_wrong, 1),
+                            "unmarked wrong interval": [round(unmarked_wrong + unasked_wrong - 1.96 * math.sqrt(wrong_variance), 1),
+                                                       round(unmarked_wrong + unasked_wrong + 1.96 * math.sqrt(wrong_variance), 1)],
+                            "unmarked right": round(unmarked_right + unasked_clean - unasked_wrong, 1)},
+        "today's thresholds over neon's answer": {"unmarked wrong": round(threshold_wrong + unasked_wrong, 1),
+                                                  "unmarked right": round(threshold_right + unasked_clean - unasked_wrong, 1)}}
+    half = 1.96 * math.sqrt(escalated_variance)
+    out["neon asked only where the choice marks its answer"] = {
+        "asked of": sum(row.get("kind") in ("warned", "erred") for row in held.values()),
+        "right": round(out["right now"] + escalated, 1),
+        "interval": [round(out["right now"] + escalated - half, 1), round(out["right now"] + escalated + half, 1)],
+        "unmarked wrong": out["unmarked wrong now"]}
+    if seconds:
+        out["per call"] = {"seconds p50": seconds[len(seconds) // 2], "seconds p90": seconds[int(len(seconds) * 0.9)],
+                           "tokens in": round(sum(row["tokens_in"] for row in rows) / len(rows)),
+                           "tokens out with thinking": round(sum(row["tokens_out"] for row in rows) / len(rows)),
+                           "usd": round(sum(usd) / len(usd), 4), "usd asked": round(sum(usd), 2)}
+    return out
+
+
 def keep(run: str) -> None:
     """The run's working records packed into regress/sets/public/records/<run>/ (no timestamp in the archives)."""
     for path in sorted((WORK / run).glob("*/*.jsonl")):
@@ -901,6 +1185,9 @@ def main() -> int:
     parser.add_argument("--teacher", help="with --oracle or --stages on a test sample: the run whose neon records hold the written queries")
     parser.add_argument("--merge", nargs="+", metavar="RUN", help="with --run and --set: the shards' records of a set gathered into one run")
     parser.add_argument("--boost", type=float, default=4.0)
+    parser.add_argument("--judge", metavar="SOURCE", help="with --run and --set: the choice's question on engine run SOURCE's questions put to Gemini 4 Neon (diagnosis; nothing served)")
+    parser.add_argument("--judge-sizes", nargs=2, type=int, default=(150, 50), metavar=("RIGHT", "UNBUILT"),
+                        help="with --judge: the seeded samples of right questions and of unbuilt ones answered unmarked (every choice miss is asked)")
     args = parser.parse_args()
     if args.new_sample:
         record = new_sample(args.new_sample, args.size or 1000, args.seed)
@@ -938,6 +1225,11 @@ def main() -> int:
     if not (args.run and args.set):
         parser.error("--run and --set are required")
     ledger = Ledger(args.run, args.cap)
+    if args.judge:
+        run_judge(args.judge, args.set, args.run, tuple(args.judge_sizes), args.limit, ledger,
+                  f"{args.run}-{args.set}-judge-{os.getpid()}", args.threads)
+        print(json.dumps(judge_summary(args.run, args.judge, args.set), indent=1))
+        return 0
     batch = f"{args.run}-{args.set}-{args.system}-{os.getpid()}"     # run names carry their date
     items, limits, sql = items_of(args.set, args.size, args.skip)
     if args.squall:

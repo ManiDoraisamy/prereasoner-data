@@ -22,8 +22,8 @@ the public benchmark and the training find set are `regress/run_public.py`.
 | `demo_maps/` | The request databases production built for the demo datasets on 2026-11-18 (`<dataset>.main.sqlite`, `.kb.sqlite`) and the links it recorded (`<dataset>.json`): the demo gate's inputs offline | Demo data: `web/public/dataset/`; knowledgebase rows: Wikidata (CC0), ECB rates |
 | `calls/` | The Decisions API's answers by request-body hash (`engine.llm.decision_hash`), one batch per recording: probabilities over options the engine built, no text | This project's API spend |
 | `public/samples/` | The public benchmark's samples of WikiTableQuestions test ids (seed, size, the samples each leaves out) | Ids of WikiTableQuestions (CC BY-SA 4.0) |
-| `public/records/<run>/<set>/<system>.jsonl.gz` | Every public run's per-question records (engine, served, Gemini 4 Neon, Claude Opus 5.5) | Questions quoted from WikiTableQuestions (CC BY-SA 4.0) and DataBench (MIT) |
-| `public/calls/<system>/` | The written queries' answers by request-body hash: the retry's (Gemini 4 Neon at low thinking), and the frontier systems' | This project's API spend |
+| `public/records/<run>/<set>/<system>.jsonl.gz` | Every public run's per-question records (engine, served, Gemini 4 Neon, Claude Opus 5.5; `judge`, the judge test's picks over the engine's listings) | Questions quoted from WikiTableQuestions (CC BY-SA 4.0) and DataBench (MIT) |
+| `public/calls/<system>/` | The written queries' answers by request-body hash: the retry's (Gemini 4 Neon at low thinking), and the frontier systems'; `judge/`, Gemini 4 Neon's one-key answers to the choice's closed question (`regress/run_public.py --judge`) | This project's API spend |
 | `retry_calls/` | The dev replay's retry answers (`--retry`), when recorded | This project's API spend |
 
 A kept change to the Decisions path re-measures every dev and demo question with

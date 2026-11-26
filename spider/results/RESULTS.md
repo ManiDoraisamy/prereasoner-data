@@ -10,6 +10,54 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Gemini 4 Neon as the judge of the engine's own listings: the choice is worth about two points; on half its misses no listing reads the question, and two judges that must agree halve the unmarked wrong (2026-11-26)
+
+- Owner's question (2026-11-26): is the judge what holds the engine behind Neon? `regress/run_public.py --judge` puts
+  the choice's one closed question, exactly as the one selection asks it (the same STATE, instruction and options in
+  the decoder's order, `engine/program/closed.py` `choice_record`), to Gemini 4 Neon at the retry's thinking level, its
+  answer held by a schema to the key of one option; its pick is graded by that listing's grade, and nothing is served.
+  Asked on the kept change's unseen records (`2026-11-26-s3a` on `wtq-test`, read for diagnosis;
+  `2026-11-26-verdicts-fresh` on `wtq-fresh2`, read in totals only): every choice miss (95, 111), a seeded 150 of the
+  right questions with a wrong listing beside them (of 733, 712) and a seeded 50 of the unbuilt questions answered
+  unmarked (of 100, 78). Run at 8368da67 with this entry's evaluator change uncommitted (the engine unchanged since
+  fd8e75f4); every replay equal to its record (pick and listings), no Decisions body new. Neon spend $9.81 for 606
+  questions; records `regress/sets/public/records/2026-11-26-judge/`, Neon's answers `regress/sets/public/calls/judge/`,
+  so a clone replays it without spend.
+
+  | | wtq-test | wtq-fresh2 |
+  |---|---|---|
+  | Choice misses: Neon right / none / the choice's wrong answer / another wrong | 28 / 44 / 20 / 3 of 95 | 29 / 47 / 30 / 5 of 111 |
+  | Right, sampled: Neon right / none / wrong | 142 / 7 / 1 of 150 | 141 / 7 / 2 of 150 |
+  | Unbuilt answered unmarked, sampled: none / the choice's answer / another | 22 / 25 / 3 of 50 | 28 / 20 / 2 of 50 |
+  | Right: today -> Neon's pick served (its none serving the choice's pick), 95% interval | 742 -> 765.1 (755.5-774.7) | 718 -> 737.5 (724.4-750.6) |
+  | Right with Neon asked only where the choice marks its answer (213, 264 asked) | 757.1 | 733.3 |
+  | Unmarked wrong: today -> two judges that must agree, 95% interval | 136 -> 67.0 (53.0-81.0) | 128 -> 58.2 (47.5-68.9) |
+  | Unmarked right: today -> two judges that must agree | 651 -> 617.8 | 608 -> 603.1 |
+
+- **The choice is worth about two points.** With the same listings, a frontier judge picks the right answer on 28 and
+  29 of the choice misses and loses 1 and 2 of 150 right ones (5 and 9 scaled): 742 -> 765 and 718 -> 738, against
+  Neon's 859 and 850 writing its own query. The rest of the gap is what the engine builds.
+- **On half the choice misses no listing reads the question.** Neon picks none on 44 and 47 of them. On the benchmark
+  sample's 44, read one by one, the listing graded right matches the gold by accident on about 35: a line pinned by
+  its label that holds the gold (the pick and the right listing differ by such a pin on 19; "which language has been
+  spoken the most?" read as the Language with the most lines where on the line "1932 summer olympics george calnan
+  english"), a figure that happens to equal it ("how many days is between 31 october 2008 and 1 november 2008": the
+  total of Placing on the one day minus the other's), or the opposite condition ("how many administrators did not
+  possess a ph.d?" counting those who do). The stage map's choice stage (9.2% of unseen
+  questions) is therefore mostly unbuilt questions: no reading the engine built says what they ask. Where both judges
+  pick the same answer and the gold holds another (20, 30), most readings defend themselves ("what is the last symbol
+  listed?": Character, the gold Name; "how many competitions were not in the united kingdom?": distinct competitions
+  or lines).
+- **The marks.** Two judges that must agree (an answer unmarked only where the Decisions choice answered it unmarked
+  and Neon picked the same answer; another answer, and none, warned) halve the unmarked wrong on unseen tables, to
+  6.7% and 5.8%, under the plan's 8%, while unmarked right falls 651 -> 618 and 608 -> 603; 31.5% and 33.9% of answers
+  are marked, against 21.3% and 26.4% today. Today's thresholds reach 8% only at about 43% marked (2026-11-26, step 4
+  of the owner's plan). Its cost, Neon on every question: 3,500 input tokens and 380 output with thinking, $0.016,
+  4.9 s at the median and 8.2-8.4 s at p90 (the recorded answers' times), after the request's own 2.7 s median today.
+- Nothing in the engine changed; `--judge` stays the evaluator's measurement of a judge over the one selection's
+  listings, as `--oracle` and `--stages` measure the reading and the stages.
+
+
 ## Release 4a3b86e5 (a verdict says Yes or No, a cell as the sheet writes it, the stock reading warmed) live; Chrome gate 102 of 102 fresh, 77 of 78 existing; served 775 of 1,000 WikiTableQuestions test and 346 of 450 DataBench test (2026-11-26)
 
 - Engine `prereasoner-api-00354-det` (`engine@sha256:a5d1dc66...`, Cloud Build e22d7f61: build, offline regression
