@@ -330,7 +330,9 @@ through the existing timing collector; backend durations include stage materiali
 
 Own-data AST lowering supports unaliased inner joins, Boolean comparison filters (including `LIKE` over
 `LOWER(column)`), projections and arithmetic,
-`COUNT/SUM/AVG/MIN/MAX`, grouped aggregates whose projected group columns precede aggregates, the month of a
+`COUNT/SUM/AVG/MIN/MAX`, a median and a sample standard deviation (`MEDIAN`, `STDEV`: both programs take them from
+`engine/numeric.py` `decimal_median` and `decimal_deviation`, so they agree to the last place), grouped aggregates
+whose projected group columns precede aggregates, the month of a
 date column (`DatePart('month')`, lowered as `FunctionValue` `MONTH`), a grouping by its year-month
 (`DatePart('year_month')`, lowered as `FunctionValue` `YEAR_MONTH`, the text '2026-08'), a share of the whole for a
 non-distinct column or `COUNT(*)` aggregate (`sql_ast.share_of`, a reduction crossed with the whole's

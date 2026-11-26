@@ -17,8 +17,8 @@ from typing import Callable, Sequence
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
-from engine.program.language import (Absent, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, LineOrder, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (FIRST, LAST, LONGEST_RUN, LOWEST, RUN, SLOT_ORDER, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.language import (Absent, Between, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, LineOrder, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
+from engine.program.names import (BETWEEN, FIRST, LAST, LONGEST_RUN, LOWEST, RUN, SERIES_AGGREGATES, SLOT_ORDER, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, BREAKDOWN_GRAINS, GRAIN_CALENDAR_MONTH, GRAIN_YEAR, PERCENT_OP, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -625,15 +625,23 @@ class _Search:
                 out.extend(index.atom_of(InYears(Col(table.id, position), span), position) for span in years)
         numbers = [float(name.split(":", 1)[1]) for name in self.positive(SLOT_NUMBER)]
         if numbers:
-            asked = list(dict.fromkeys(name.split(":", 1)[1].split("@", 1)[0] for name in self.positive(SLOT_COMPARISON))) or COMPARE_OPS
+            # the comparisons the reading names, a range aside (it has its own atoms below); any of them when it names none
+            asked = [op for op in dict.fromkeys(name.split(":", 1)[1].split("@", 1)[0] for name in self.positive(SLOT_COMPARISON)) if op != BETWEEN] or COMPARE_OPS
             for position in index.number_columns:
                 col = Col(table.id, position)
                 ops = [op for op in asked if op in COMPARE_OPS and not (op == EQ and position in index.few_numbers)]     # a few-valued column states its values as Equals
                 for number in (*numbers, *_in_seconds(numbers, table, position)):
                     out.extend(index.atom_of(Compare(col, op, number), position) for op in ops)
+        # a range between the two likeliest numbers the question states, both ends kept ("a score between 300 and 310"):
+        # only where the order call's range question reads one
+        if self.s(coordinate(SLOT_COMPARISON, BETWEEN)) > 0:
+            stated = sorted(self.positive(SLOT_NUMBER), key=lambda name: (round(-self.s(name), _ROUND), name))[:2]
+            ends = sorted(float(name.split(":", 1)[1]) for name in stated)
+            if len(ends) == 2 and ends[0] < ends[1]:
+                out.extend(index.atom_of(Between(Col(table.id, position), ends[0], ends[1]), position) for position in index.number_columns)
         for comparison in self.positive(SLOT_COMPARISON):
             op = comparison.split(":", 1)[1]
-            if "@" in op:
+            if "@" in op or op == BETWEEN:
                 continue
             scored = sorted((position for position in index.number_columns if self.s(coordinate(SLOT_FILTER, Col(table.id, position).name)) > 0), key=lambda position: (round(-self.s(coordinate(SLOT_FILTER, Col(table.id, position).name)), _ROUND), table.column_rank[position]))[:self.policy.compared_columns]
             for a in scored:
@@ -888,6 +896,10 @@ class _Search:
         magnitude = agg + s(coordinate(SLOT_AGGREGATE, SUM)) + self.type_score(A_NUMBER) + s(coordinate(SLOT_SIZE, STATED_BY_SIZE))
         plain = self.column_options(table, index.number_columns, SLOT_MEASURE)
         frames += self.condition_frames(magnitude, (plain,), lambda options, where: Agg(SUM, options[0], table.id, where, magnitude=True), table, index, placed)
+        for function in SERIES_AGGREGATES:     # a median or a standard deviation of a number column: only where the order call's figure question reads one
+            read = s(coordinate(SLOT_AGGREGATE, function))
+            if read > 0:
+                frames += self.condition_frames(agg + read + self.type_score(A_NUMBER), (plain,), lambda options, where, f=function: Agg(f, options[0], table.id, where), table, index, placed)
         count = agg + s(coordinate(SLOT_AGGREGATE, COUNT)) + self.type_score(A_COUNT)
         # "the US and Jamaica combined", "members from Lawton and Oklahoma City": a total or a count over a choice of named
         # values is one figure over both; an average, a lowest or a highest of a choice is a rank's question
@@ -938,11 +950,15 @@ class _Search:
             peer_sets = self.peer_options(table, index)
             end = FIRST if direction == LOWEST else LAST
             if s(coordinate(SLOT_ORDER, end)) > 0:     # the first or last lines as listed: only where the order question reads it
-                by_place = rank + s(coordinate(SLOT_ENTITY, ENTITY_LINE)) + s(coordinate(SLOT_ORDER, end))
+                # the order slot, not the form, says the lines are taken by place: their cells answer a question read
+                # as a rank of lines and one read as a show ("the first venue", "list the page counts of the first
+                # five books") alike, so the frame takes the likelier of the two readings
+                ranked = rank + s(coordinate(SLOT_ENTITY, ENTITY_LINE))
+                placed_at = s(coordinate(SLOT_ORDER, end))
                 place = [_Option(0.0, LineOrder(table.id))]
-                frames += self.condition_frames(by_place, (shown, place), lambda options, where, d=direction: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0]), table, index, atoms, rank=True, max_policy=2)
+                frames += self.condition_frames(max(ranked, form) + placed_at, (shown, place), lambda options, where, d=direction: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0]), table, index, atoms, rank=True, max_policy=2)
                 for n, stated in counts:
-                    frames += self.condition_frames(by_place + s(stated), (shown, place), lambda options, where, d=direction, n=n: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0], count=n), table, index, atoms, rank=True, max_policy=2)
+                    frames += self.condition_frames(max(ranked, listed) + placed_at + s(stated), (shown, place), lambda options, where, d=direction, n=n: Rank(ENTITY_LINE, table.id, d, where, options[1], options[0], count=n), table, index, atoms, rank=True, max_policy=2)
             peer = turn + s(coordinate(SLOT_ENTITY, ENTITY_PEER)) + self.type_score(A_NAME)
             if peer_sets:
                 frames += self.condition_frames(peer, (peer_sets,), lambda options, where, d=direction: Rank(ENTITY_PEER, table.id, d, where, peers=options[0]), table, index, atoms, rank=True, max_policy=1)
@@ -1009,6 +1025,7 @@ class _Search:
         # a versus the question names in its own two words ("more or less than 2126") is also built in those words, each
         # versus below once, scored by the words in place of a comparison
         said = self.said_words()
+        counted_columns = self.column_options(table, [column.position for column in table.columns], SLOT_MEASURE)
         for stated in self.positive(SLOT_NUMBER)[:2]:
             number = float(stated.split(":", 1)[1])
             for op in asked:
@@ -1016,6 +1033,8 @@ class _Search:
                 for function in NUMBER_AGGREGATES:
                     frames += self.condition_frames(head + s(coordinate(SLOT_AGGREGATE, function)), (measures if function == SUM else plain,), lambda options, where, f=function, o=op, n=number: Check(VERSUS, Agg(f, options[0], table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
                 frames += self.condition_frames(head + counted, (), lambda options, where, o=op, n=number: Check(VERSUS, Agg(COUNT, None, table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
+                # how many different values a column holds, against the number ("are there more than 3 regions?")
+                frames += self.condition_frames(head + s(coordinate(SLOT_AGGREGATE, COUNT_DISTINCT)), (counted_columns,), lambda options, where, o=op, n=number: Check(VERSUS, Agg(COUNT_DISTINCT, options[0], table.id, where), op=o, number=n), table, index, atoms, max_policy=2)
             if said is not None:
                 words, spoken = said
                 head = versus + spoken + s(stated)

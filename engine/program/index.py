@@ -13,7 +13,7 @@ from functools import cached_property
 import numpy as np
 
 from engine.program.catalog import CatalogTable
-from engine.program.language import Col, Compare, CompareLine, Condition, LineOrder, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, OnLine, OneOf, PercentOf, RowArithmetic, Size, condition_coordinates
+from engine.program.language import Between, Col, Compare, CompareLine, Condition, LineOrder, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, OnLine, OneOf, PercentOf, RowArithmetic, Size, condition_coordinates
 from engine.program.names import ENDS, EQ, GE, GT, LE, LT, MINUS, NE, PLUS, STARTS
 from engine.program.semantics import CURRENCY_CODES, fold
 from engine.sheet.values import parse_number
@@ -312,6 +312,9 @@ class TableIndex:
         if isinstance(condition, InYears):
             years = self.number_arrays[condition.column.position]
             return _as_mask((years >= condition.first) & (years <= condition.last) & ~np.isnan(years))
+        if isinstance(condition, Between):
+            numbers = self.number_arrays[condition.column.position]
+            return _as_mask((numbers >= condition.low) & (numbers <= condition.high) & ~np.isnan(numbers))
         if isinstance(condition, IsNumber):
             return _as_mask(~np.isnan(self.number_arrays[condition.column.position]))
         if isinstance(condition, CompareLine):

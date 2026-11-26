@@ -12,6 +12,7 @@ from decimal import ROUND_HALF_UP, Decimal, DivisionByZero, InvalidOperation, lo
 import math
 import re
 import sqlite3
+import statistics
 import json
 from typing import Any, Iterable
 
@@ -208,6 +209,37 @@ def decimal_divide(left: Decimal, right: Decimal) -> Decimal:
         return (left / right).quantize(Decimal(1).scaleb(-DIVISION_SCALE), rounding=ROUND_HALF_UP)
 
 
+def decimal_median(values: Iterable[Decimal]) -> Decimal | None:
+    """The middle of ``values`` in their order; of an even count, the mean of the two middle ones (decimal_divide);
+    None of none. SQLite's decimal_median and the Python emitter's MEDIAN both take it here."""
+    ordered = sorted(values)
+    if not ordered:
+        return None
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    with localcontext() as context:
+        context.prec = DECIMAL_PRECISION
+        return decimal_divide(ordered[middle - 1] + ordered[middle], Decimal(2))
+
+
+def decimal_deviation(values: Iterable[Decimal]) -> Decimal | None:
+    """The sample standard deviation of ``values``, as a spreadsheet's STDEV gives it: the square root of their squared
+    distances from their mean, summed and divided by one less than their count; None of fewer than two. The variance is
+    one exact division of whole sums; its root is taken at DECIMAL_PRECISION digits and rounded half up at the division
+    scale, so SQLite's decimal_stdev and the Python emitter's STDEV say the same."""
+    held = list(values)
+    count = len(held)
+    if count < 2:
+        return None
+    with localcontext() as context:
+        context.prec = DECIMAL_PRECISION
+        total = sum(held, Decimal(0))
+        squares = sum((value * value for value in held), Decimal(0))
+        variance = max(Decimal(0), (count * squares - total * total) / (count * (count - 1)))
+        return variance.sqrt().quantize(Decimal(1).scaleb(-DIVISION_SCALE), rounding=ROUND_HALF_UP)
+
+
 def _decimal_arg(value: Any) -> Decimal | None:
     if value is None:
         return None
@@ -271,9 +303,13 @@ class _DecimalAggregate:
                 result = decimal_divide(sum(self.values, Decimal(0)), Decimal(len(self.values)))
             elif self.mode == "min":
                 result = min(self.values)
+            elif self.mode == "median":
+                result = decimal_median(self.values)
+            elif self.mode == "stdev":
+                result = decimal_deviation(self.values)
             else:
                 result = max(self.values)
-        return canonical_decimal(result)
+        return None if result is None else canonical_decimal(result)
 
 
 class _DecimalAverage(_DecimalAggregate):
@@ -288,6 +324,36 @@ class _DecimalMaximum(_DecimalAggregate):
     mode = "max"
 
 
+class _DecimalMedian(_DecimalAggregate):
+    mode = "median"
+
+
+class _DecimalDeviation(_DecimalAggregate):
+    mode = "stdev"
+
+
+class _Median:
+    """MEDIAN over SQLite's own numbers, the dialect the program path's candidates run in (engine/program/execute.py):
+    the middle value, the mean of the two middle ones of an even count; a value that is no number is skipped."""
+
+    def __init__(self) -> None:
+        self.values: list[float] = []
+
+    def step(self, value: Any) -> None:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            self.values.append(float(value))
+
+    def finalize(self) -> float | None:
+        return statistics.median(self.values) if self.values else None
+
+
+class _Deviation(_Median):
+    """STDEV over SQLite's own numbers: the sample standard deviation, None of fewer than two."""
+
+    def finalize(self) -> float | None:
+        return statistics.stdev(self.values) if len(self.values) > 1 else None
+
+
 def register_sqlite_decimal(connection: sqlite3.Connection) -> None:
     connection.create_function("decimal_add", 2, lambda a, b: _binary("+", a, b), deterministic=True)
     connection.create_function("decimal_sub", 2, lambda a, b: _binary("-", a, b), deterministic=True)
@@ -299,6 +365,10 @@ def register_sqlite_decimal(connection: sqlite3.Connection) -> None:
     connection.create_aggregate("decimal_avg", 1, _DecimalAverage)
     connection.create_aggregate("decimal_min", 1, _DecimalMinimum)
     connection.create_aggregate("decimal_max", 1, _DecimalMaximum)
+    connection.create_aggregate("decimal_median", 1, _DecimalMedian)
+    connection.create_aggregate("decimal_stdev", 1, _DecimalDeviation)
+    connection.create_aggregate("median", 1, _Median)
+    connection.create_aggregate("stdev", 1, _Deviation)
 
     def collate(left: str, right: str) -> int:
         result = _compare(left, right)

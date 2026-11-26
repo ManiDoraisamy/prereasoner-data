@@ -50,6 +50,8 @@ _TYPE = {
     SQLType.TEXT: ("str", "Text"),
     SQLType.UNKNOWN: ("object", "Text"),
 }
+# The aggregates whose running state is finalized into their value, each with that state (operators.py).
+_FINALIZED = {"AVG": "AverageState", "MEDIAN": "SeriesState", "STDEV": "SeriesState"}
 _BINARY_FUNCTION = {"+": "ADD", "-": "SUBTRACT", "*": "MULTIPLY", "/": "DIVIDE",
                     ">": "VERDICT_GT", ">=": "VERDICT_GE", "<": "VERDICT_LT", "<=": "VERDICT_LE", "=": "VERDICT_EQ", "<>": "VERDICT_NE"}
 _PREDICATE_FUNCTION = {
@@ -1157,14 +1159,14 @@ class PythonEmitter:
     def _aggregate_finalize(
         view: ReducedView, row_class: str, *, indent: str
     ) -> list[str]:
-        if not any(aggregate.function == "AVG" or aggregate.distinct for aggregate in view.aggregates):
+        if not any(aggregate.function in _FINALIZED or aggregate.distinct for aggregate in view.aggregates):
             return []
         fields = [f"{item.name}=result.{item.name}" for item in view.group_by]
         fields.extend(
             f"{aggregate.name}="
             + (
-                f"FINALIZE_AVG(result.{aggregate.name})"
-                if aggregate.function == "AVG"
+                f"FINALIZE_{aggregate.function}(result.{aggregate.name})"
+                if aggregate.function in _FINALIZED
                 else f"FINALIZE_COUNT_DISTINCT(result.{aggregate.name})" if aggregate.distinct
                 else f"result.{aggregate.name}"
             )
@@ -1197,8 +1199,8 @@ class PythonEmitter:
             return "DistinctCountState()"
         if aggregate.function == "COUNT":
             return "0"
-        if aggregate.function == "AVG":
-            return "AverageState()"
+        if aggregate.function in _FINALIZED:
+            return f"{_FINALIZED[aggregate.function]}()"
         return "None"
 
     def _python_predicate(
@@ -1354,8 +1356,8 @@ def _operator_imports(plan: AnalysisPlan) -> tuple[str, ...]:
                         names.update({"DistinctCountState", "FINALIZE_COUNT_DISTINCT"})
                 else:
                     names.add(aggregate.function)
-                if aggregate.function == "AVG":
-                    names.update({"AverageState", "FINALIZE_AVG"})
+                if aggregate.function in _FINALIZED:
+                    names.update({_FINALIZED[aggregate.function], f"FINALIZE_{aggregate.function}"})
                 if aggregate.operand is not None:
                     add_value(aggregate.operand)
         elif isinstance(view, WindowView):

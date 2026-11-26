@@ -9,15 +9,15 @@ from dataclasses import replace
 
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
-from engine.program.language import (Absent, LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
-from engine.program.names import AFTER, ANY, IS, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
+from engine.program.language import (Absent, Between, LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
+from engine.program.names import AFTER, ANY, DEVIATION, IS, MEDIAN, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (DATE, INTEGER, LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, REAL, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, TEXT, day_column, fold_column,
                                   number_column, peers_table, sql_table, table_columns, table_id_of, text_column, words_column)
 from engine.sheet.names import RECORD
 from engine.sql_ast import (Abs, Aggregate, BinaryExpr, BlankAsZero, BooleanExpr, ColumnRef, Comparison, DatePart, InPredicate, Join, Literal, LongestRun, OrderTerm, ScalarSubquery, SelectItem, SelectQuery, SQLType, Star, and_predicates, column_refs)
 
-_FUNCTIONS = {SUM: "SUM", AVG: "AVG", MIN: "MIN", MAX: "MAX"}
+_FUNCTIONS = {SUM: "SUM", AVG: "AVG", MIN: "MIN", MAX: "MAX", MEDIAN: "MEDIAN", DEVIATION: "STDEV"}
 VALUE = "value"
 KEY = "key"
 TIED_LINE = "tied_line"     # the line number a line rank's tied lines are ordered by (execute drops it from the answer)
@@ -72,6 +72,9 @@ def _condition(condition: Condition):
         return BooleanExpr("AND", (Comparison(year, ">=", Literal(float(condition.first))), Comparison(year, "<=", Literal(float(condition.last)))))
     if isinstance(condition, Compare):
         return Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, Literal(float(condition.number)))
+    if isinstance(condition, Between):
+        number = _number(condition.column)
+        return BooleanExpr("AND", (Comparison(number, ">=", Literal(float(condition.low))), Comparison(number, "<=", Literal(float(condition.high)))))
     if isinstance(condition, CompareColumns):
         return Comparison(_number(condition.column), "!=" if condition.op == NE else condition.op, _number(condition.other))
     if isinstance(condition, CompareLine):     # against the first data line the value names; that line's key kept out

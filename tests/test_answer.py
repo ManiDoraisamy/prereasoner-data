@@ -393,7 +393,8 @@ def test_an_either_or_is_answered_in_the_questions_words() -> None:
 
 # --------------------------------------------------------------------------------------------------------- the path
 def test_answer_reads_decodes_and_chooses_through_its_calls() -> None:
-    """The reading call (and the value-set call), the said and order calls beside them, then the choice call."""
+    """The reading call (and the value-set call), the said and order calls beside them (the order call's four questions:
+    the first or last lines, a run, a median or standard deviation, a range between two numbers), then the choice call."""
     _use_fake_reader()
     prepared = _with_transport(FakeTransport(lambda *a: {}), lambda: prepare(_workbook()))
     question = "total amount for East"
@@ -406,7 +407,7 @@ def test_answer_reads_decodes_and_chooses_through_its_calls() -> None:
     transport = FakeTransport(rule)
     said = _with_transport(transport, lambda: answer(question, prepared, RequestTables(prepared.catalog)))
     names = [list(body["questions"]) for body in transport.bodies]
-    assert names[-1] == ["reading"] and ["said_above", "said_below"] in names and ["line_order", "line_run"] in names and any("value" in called for called in names), names
+    assert names[-1] == ["reading"] and ["said_above", "said_below"] in names and ["line_order", "line_run", "number_range", "series_figure"] in names and any("value" in called for called in names), names
     assert len(names) in (4, 5), names
     assert said.listed_rows and said.probabilities is not None and len(said.probabilities) == min(len(said.listed_rows), CHOOSE_K) + 1
     assert said.listed_answers == tuple(answer_key(rows) for rows in said.listed_rows)

@@ -8,8 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, GT, LT, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, LONGEST_RUN, RUN, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
-                                  MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
+from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BETWEEN, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, GT, LT, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, LONGEST_RUN, RUN, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+                                  MINUS, NE, NUMBER_AGGREGATES, SERIES_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAINS, BREAKDOWN_GRAINS, PERCENT_OP, coordinate)
 from engine.program.semantics import fold, number_text
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR, PERIOD_KINDS
@@ -247,6 +247,19 @@ class Compare:
 
 
 @dataclass(frozen=True, slots=True)
+class Between:
+    """A number cell lies between two numbers the question states, both ends kept ("a score between 300 and 310");
+    text and blanks never pass."""
+    column: Col
+    low: float
+    high: float
+
+    def __post_init__(self):
+        if not self.low < self.high:
+            raise ValueError("a range runs from a lower number to a higher one")
+
+
+@dataclass(frozen=True, slots=True)
 class CompareColumns:
     """One number cell compares with another on the same line; a line blank on either side never passes."""
     column: Col
@@ -308,7 +321,7 @@ class OnLine:
     role: str | None = None
 
 
-Condition: TypeAlias = Equals | OneOf | NotEquals | Contains | InPeriod | InYears | Compare | CompareColumns | CompareLine | IsBlank | IsNumber | InSection | OnLine
+Condition: TypeAlias = Equals | OneOf | NotEquals | Contains | InPeriod | InYears | Compare | Between | CompareColumns | CompareLine | IsBlank | IsNumber | InSection | OnLine
 
 
 def addresses_printed(where: tuple[Condition, ...]) -> bool:
@@ -331,6 +344,8 @@ def condition_coordinates(condition: Condition) -> tuple[str, ...]:
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_PERIOD, condition.span.name))
     if isinstance(condition, Compare):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_COMPARISON, condition.op), coordinate(SLOT_NUMBER, number_text(condition.number)))
+    if isinstance(condition, Between):
+        return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_COMPARISON, BETWEEN), coordinate(SLOT_NUMBER, number_text(condition.low)), coordinate(SLOT_NUMBER, number_text(condition.high)))
     if isinstance(condition, CompareColumns):
         return (coordinate(SLOT_FILTER, condition.column.name), coordinate(SLOT_FILTER, condition.other.name), coordinate(SLOT_COMPARISON, condition.op), coordinate(SLOT_COMPARISON, f"{condition.op}@{condition.column.name}"))
     if isinstance(condition, CompareLine):
@@ -399,6 +414,7 @@ class Show:
 @dataclass(frozen=True, slots=True)
 class Agg:
     """f of a measure over the data lines the conditions keep. Blanks and text cells are skipped; count takes no measure, a distinct count a column. magnitude states the result by its size.
+    A median (MEDIAN) is the middle of the kept numbers, the mean of the two middle ones of an even count; a standard deviation (DEVIATION) is the sample's, as a spreadsheet's STDEV, and of fewer than two numbers there is none.
     The longest run (LONGEST_RUN) counts too, but only the most data lines in a row, as the sheet lists them, that all the conditions keep: a line they do not keep ends a run ("how many consecutive wins"), and 0 when none does."""
     function: str
     measure: Measure | None
@@ -411,8 +427,10 @@ class Agg:
             if self.measure is not None or not self.where or self.magnitude or addresses_printed(self.where):
                 raise ValueError("a longest run counts data lines a condition keeps, and nothing else")
             return
-        if self.function not in AGGREGATES:
+        if self.function not in (*AGGREGATES, *SERIES_AGGREGATES):
             raise ValueError(f"unknown aggregate: {self.function}")
+        if self.function in SERIES_AGGREGATES and self.magnitude:
+            raise ValueError("a median or a standard deviation is not stated by its size")
         if (self.function == COUNT) != (self.measure is None):
             raise ValueError("count alone takes no measure")
         if self.function == COUNT_DISTINCT and not isinstance(self.measure, Col):
@@ -800,5 +818,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Absent", "Across", "Agg", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "LineOrder", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size", "Words",
+__all__ = ["Absent", "Across", "Agg", "Between", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "LineOrder", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size", "Words",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

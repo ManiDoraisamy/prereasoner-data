@@ -43,7 +43,11 @@ usage: python -X utf8 -m regress.run_public --run NAME --set SET --system SYSTEM
        python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 2100 --squall "max .* - min"   (one SQUALL family)
        python -X utf8 -m regress.run_public --run NAME --set wtq-train-open --size 2251 --match "PATTERN"   (one family by its text)
        python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 9070 --books FILE   (the questions on the tables a reading change touches)
-       python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 3125 --order-read   (the questions whose order call reads the first or last lines)
+       python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 3125 --order-read [QUESTION]
+                   (the questions whose order call reads an option of its named question: line_order, the first or last
+                   lines, by default; series_figure, a median or a standard deviation)
+       python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 3125 --ids FILE   (the questions FILE lists: another run's subset, for its before)
+       python -X utf8 -m regress.run_public --run NAME-1 --set SET --system SYSTEM --shard 1 3   (one of three parts, by workbook; then --run NAME --set SET --system SYSTEM --merge NAME-1 NAME-2 NAME-3)
        python -X utf8 -m regress.run_public --run NAME --set wtq-test --judge SOURCE_RUN [--judges gemini-4-neon:low ...]
                    [--judge-sizes 150 50] [--cap 15]
                    (the judge test: the choice's question on SOURCE_RUN's questions put to other models, nothing
@@ -457,16 +461,17 @@ def run_frontier(system: str, items, sink, done, ledger: Ledger, batch: str, thr
             keep(*pending.pop(0))
 
 
-def order_read(items) -> list:
-    """The questions whose recorded order call (engine/program/closed.py order_record) holds the first or the last
-    lines likelier than neither: the questions a change to lines taken by where they stand can touch. A question whose
-    order call is not recorded is left out."""
+def order_read(items, field: str, transport) -> list:
+    """The questions whose order call (engine/program/closed.py order_record) holds an option of its question ``field``
+    likelier than neither (line_order: the first or the last lines; series_figure: a median or a standard deviation):
+    the questions a change to what that question offers can touch. The call is the selection's own, replayed where
+    ``transport`` holds its answer and asked where not."""
     from engine.named.names import NONE
     from engine.program.closed import order_record
-    store, out = eval_sets.CallStore(), []
+    out = []
     for item in items:
-        held = store.get(llm.decision_hash(llm.decisions_payload(*order_record(item.question))))
-        read = (((held or {}).get("answers") or {}).get("line_order") or {}).get("probabilities") or {}
+        answer = transport(llm.decisions_payload(*order_record(item.question)))
+        read = ((answer.get("answers") or {}).get(field) or {}).get("probabilities") or {}
         if read and max((p for key, p in read.items() if key != NONE), default=0.0) > read.get(NONE, 0.0):
             out.append(item)
     return out
@@ -1240,7 +1245,9 @@ def main() -> int:
     parser.add_argument("--squall", help="wtq-train: only the questions whose SQUALL query matches this pattern (one family, for diagnosis)")
     parser.add_argument("--match", help="training sets: only the questions whose text matches this pattern (one family, for diagnosis; never a gate)")
     parser.add_argument("--books", type=Path, help="training sets: only the questions on the workbooks this file lists, one per line (the tables a reading change touches, for diagnosis; never a gate)")
-    parser.add_argument("--order-read", action="store_true", help="only the questions whose recorded order call reads the first or the last lines (the questions a change to lines taken by place touches, for diagnosis; never a gate)")
+    parser.add_argument("--order-read", nargs="?", const="line_order", metavar="QUESTION", help="only the questions whose order call reads an option of this question of its own (line_order by default: the first or the last lines; series_figure) likelier than neither: the questions a change to it touches, for diagnosis; never a gate")
+    parser.add_argument("--ids", type=Path, help="only the questions this file lists, one id per line (a subset another run chose, for its before and after; never a gate)")
+    parser.add_argument("--shard", nargs=2, type=int, metavar=("K", "N"), help="the K-th of N parts of the set, by workbook (a workbook's questions stay together): scheduling only; --merge gathers the parts' records into one run")
     parser.add_argument("--new-sample")
     parser.add_argument("--compare", nargs=2, metavar=("RUN_A", "RUN_B"))
     parser.add_argument("--summary")
@@ -1319,10 +1326,19 @@ def main() -> int:
             parser.error("--books reads training questions only")
         books = {line.strip() for line in args.books.read_text(encoding="utf-8").splitlines() if line.strip()}
         items = [item for item in items if item.book in books]
-    if args.order_read:
+    if args.order_read or args.ids:
         if args.set.startswith("wtq-fresh"):
-            parser.error("--order-read reads no fresh sample: those are read in totals")
-        items = order_read(items)
+            parser.error("--order-read and --ids read no fresh sample: those are read in totals")
+    if args.order_read:
+        items = order_read(items, args.order_read, Decisions(ledger, f"{args.run}-{args.set}-order-{os.getpid()}"))
+    if args.ids:
+        listed = {line.strip() for line in args.ids.read_text(encoding="utf-8").splitlines() if line.strip()}
+        items = [item for item in items if item.id in listed]
+    if args.shard:
+        part, parts = args.shard
+        books = sorted({item.book for item in items})
+        mine = {book for at, book in enumerate(books) if at % parts == part - 1}
+        items = [item for item in items if item.book in mine]
     items = items[:args.limit]
     target = WORK / args.run / args.set / f"{args.system}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)

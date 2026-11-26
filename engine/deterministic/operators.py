@@ -10,7 +10,7 @@ from functools import cmp_to_key
 import re
 from typing import Generic, TypeVar
 
-from engine.numeric import decimal_divide, wire_document
+from engine.numeric import decimal_deviation, decimal_divide, decimal_median, wire_document
 from engine.sql_ast import DAYS_PER_UNIT, day_number
 
 T = TypeVar("T")
@@ -323,6 +323,29 @@ def FINALIZE_COUNT_DISTINCT(current: DistinctCountState) -> int:
 
 def COUNT_STAR(current: int) -> int:
     return current + 1
+
+
+@dataclass
+class SeriesState:
+    """Every value an aggregate of the whole series reads (a median, a standard deviation), in the order met."""
+    values: list[Decimal] = field(default_factory=list)
+
+
+def MEDIAN(current: SeriesState, value) -> SeriesState:
+    if value is not None:
+        current.values.append(Decimal(str(value)))
+    return current
+
+
+STDEV = MEDIAN      # both gather the series; their FINALIZE tells them apart
+
+
+def FINALIZE_MEDIAN(current: SeriesState) -> Decimal | None:
+    return decimal_median(current.values)
+
+
+def FINALIZE_STDEV(current: SeriesState) -> Decimal | None:
+    return decimal_deviation(current.values)
 
 
 def AVG(current: AverageState, value) -> AverageState:

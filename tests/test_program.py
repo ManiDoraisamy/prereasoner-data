@@ -10,6 +10,7 @@ from engine.program.catalog import Catalog
 from engine.program.decoder import Decoder, POLICY, _Checks, _Conditions, _Option
 from engine.program.execute import run, run_dual
 from engine.program.index import Atom, TableIndex
+from engine.program.language import conditions_of
 from engine.program.language import (Absent, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Contains, DateOf, Equals, InPeriod, InSection, InYears, IsBlank, IsNumber, LineOrder, NotEquals, OnLine, PercentOf, PeriodSpan, Rank, RowArithmetic, SECTION, Show, Size, Words, answer_type_of, coordinates, form_of, tables_of, is_sound, period_from_name, shown_together)
 from engine.program.lowering import plan_schema, to_query
 from engine.program.names import (A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BREAKDOWN, SAME, CHECK, EQ, EVERY, IS, LT, NE, NO, VERSUS, ANSWER_TYPES, AVG, CALC, COMPARISONS, COUNT, COUNT_DISTINCT, ENDS, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, LONGEST_RUN, EV_ADDS_TWICE, EV_BARE_ZERO, EV_EMPTY, EV_FAILED, EV_FILTER_DID_NOTHING, EV_FRACTION_FOR_COUNT, EV_MANY_ROWS, EV_PRINTED_TIE, EV_RAN,
@@ -100,7 +101,7 @@ def test_every_name_is_from_a_closed_list():
 
 def test_forms_refuse_what_they_cannot_say():
     _, table, _, col = _trades()
-    for bad in (lambda: Agg("median", col(3), table.id), lambda: Agg(COUNT, col(3), table.id), lambda: Agg(COUNT_DISTINCT, Size(col(3)), table.id), lambda: Rank(ENTITY_LINE, table.id, HIGHEST, (), None, (col(0),)),
+    for bad in (lambda: Agg("mode", col(3), table.id), lambda: Agg(COUNT, col(3), table.id), lambda: Agg(COUNT_DISTINCT, Size(col(3)), table.id), lambda: Rank(ENTITY_LINE, table.id, HIGHEST, (), None, (col(0),)),
                 lambda: Rank(ENTITY_GROUP, table.id, HIGHEST, (), col(3), key=None, function=SUM), lambda: Rank(ENTITY_PEER, table.id), lambda: Rank("nothing", table.id), lambda: Rank(ENTITY_LINE, table.id, "sideways", (), col(3), (col(0),)),
                 lambda: Show(table.id, ()), lambda: RowArithmetic(col(3), "%", col(4)), lambda: Compare(col(3), "~", 1.0), lambda: Calc(Rank(ENTITY_LINE, table.id, HIGHEST, (), col(3), (col(0),)), MINUS, Agg(SUM, col(3), table.id)),
                 lambda: Calc(Show(table.id, (col(3),), listing=True), MINUS, Agg(SUM, col(3), table.id)), lambda: PeriodSpan("fortnight", "2001-01-01"), lambda: PeriodSpan("month")):
@@ -1534,6 +1535,115 @@ def test_lines_are_taken_by_where_they_stand():
     assert not placed(unread), "lines by their place only where the order slot is read"
 
 
+def test_lines_taken_by_place_answer_a_question_read_as_a_list():
+    """"List the page counts of the first five books": the reading call reads a list (the show form) and the order call
+    the first lines. The lines taken by place were scored as a rank of lines alone, so under that reading (the rank form
+    and its line entity held unlikely) no listing took them, and the answer listed the column's different values: 8 of
+    DataBench test's 450 questions within the product's limit. The order slot, not the form, says the lines are taken by
+    place, so the frame takes the likelier of the two readings; a question read as a rank keeps its listing."""
+    from engine.program.names import FIRST, SHOW, RANK, SLOT_ANSWER_TYPE, SLOT_ENTITY, SLOT_FORM, SLOT_LISTING, SLOT_NUMBER, SLOT_ORDER, SLOT_SHOWN, SLOT_TABLE, coordinate
+    rows = [["Year", "Venue", "Books"], [2001, "Paris", 498.0], [2002, "Rome", 640.0], [2003, "Oslo", 80.0], [2004, "Rome", 300.0], [2005, "Lima", 120.0]]
+    catalog, table, tables = _setup(rows)
+    books = Col(table.id, 2)
+    first_three = Rank(ENTITY_LINE, table.id, LOWEST, (), LineOrder(table.id), (books,), count=3)
+    listed = {coordinate(SLOT_FORM, SHOW): 3.6, coordinate(SLOT_FORM, RANK): -12.3, coordinate(SLOT_ENTITY, ENTITY_LINE): -8.8,
+              coordinate(SLOT_LISTING, "yes"): 1.0, coordinate(SLOT_ANSWER_TYPE, A_LIST): 3.7, coordinate(SLOT_ORDER, FIRST): 11.2,
+              coordinate(SLOT_NUMBER, "3"): 5.2, coordinate(SLOT_SHOWN, books.name): 4.0, coordinate(SLOT_TABLE, table.id): 1.0}
+    top = Decoder(catalog).decode(Reading(listed), k=50).programs[0].program
+    assert top == first_three, top
+    assert _answer(top, tables) == (("498",), ("640",), ("80",))
+    ranked = dict(listed) | {coordinate(SLOT_FORM, SHOW): -12.3, coordinate(SLOT_FORM, RANK): 3.6, coordinate(SLOT_ENTITY, ENTITY_LINE): 2.0}
+    assert Decoder(catalog).decode(Reading(ranked), k=50).programs[0].program == first_three, "a question read as a rank keeps its lines by place"
+    unplaced = {name: score for name, score in listed.items() if name != coordinate(SLOT_ORDER, FIRST)}
+    assert not any(isinstance(scored.program, Rank) and isinstance(scored.program.measure, LineOrder) for scored in Decoder(catalog).decode(Reading(unplaced), k=50).programs)
+
+
+def test_a_median_and_a_standard_deviation():
+    """"What is the median monthly income?", "what is the standard deviation of the scores?": 7 of DataBench test's 450
+    questions within the product's limit ask for one, and every aggregate was a total, an average, a lowest, a highest
+    or a count, so the answer read the average. A median is the middle of the kept numbers, the mean of the two middle
+    ones of an even count; a standard deviation is the sample's, as a spreadsheet's STDEV, and of fewer than two
+    numbers there is none; a blank is skipped. Both emitters agree with the typed query (exact decimals, one root).
+    The decoder offers them only where the order call's figure question reads one (aggregate:median,
+    aggregate:stdev), never from the reading call's aggregate question, so a question asking nothing of them lists
+    none."""
+    import statistics
+    from engine.program.names import DEVIATION, MEDIAN, SLOT_AGGREGATE, coordinate
+    rows = [["Name", "Team", "Pay"], ["Ann", "East", 10.0], ["Bo", "East", 40.0], ["Cy", "West", 20.0], ["Di", "West", None], ["Ed", "East", 75.0], ["Flo", "West", 30.0]]
+    catalog, table, tables = _setup(rows)
+    team, pay = Col(table.id, 1), Col(table.id, 2)
+    assert _one(_answer(Agg(MEDIAN, pay, table.id), tables)) == 30.0                                   # 10 20 30 40 75
+    assert _one(_answer(Agg(MEDIAN, pay, table.id, (Equals(team, "West"),)), tables)) == 25.0          # 20 30: their mean
+    assert abs(_one(_answer(Agg(DEVIATION, pay, table.id), tables)) - 25.0) < 1e-9                    # the sample's: 2500 over 4, its root
+    assert abs(_one(_answer(Agg(DEVIATION, pay, table.id, (Equals(team, "East"),)), tables)) - statistics.stdev([10.0, 40.0, 75.0])) < 1e-9
+    assert _answer(Agg(DEVIATION, pay, table.id, (Equals(Col(table.id, 0), "Ann"),)), tables) == (), "one number has no deviation"
+    assert _answer(Agg(MEDIAN, pay, table.id, (Equals(Col(table.id, 0), "Di"),)), tables) == (), "no number, no median"
+    assert read_as(Agg(MEDIAN, pay, table.id), catalog) == 'the median of Pay on "Sheet1"'
+    assert read_as(Agg(DEVIATION, pay, table.id, (Equals(team, "East"),)), catalog) == 'the standard deviation of Pay on "Sheet1" where Team is "East"'
+    assert formula(Agg(MEDIAN, pay, table.id), tables) == "=MEDIAN('Sheet1'!C2:C7)" and formula(Agg(DEVIATION, pay, table.id), tables) == "=STDEV('Sheet1'!C2:C7)"
+    assert formula(Agg(MEDIAN, pay, table.id, (Equals(team, "West"),)), tables) == "=MEDIAN('Sheet1'!C4,'Sheet1'!C7)", "no MEDIANIFS: the kept cells"
+    assert "aggregate:median" in coordinates(Agg(MEDIAN, pay, table.id), catalog.column_kind)
+    for refused in (lambda: Agg(MEDIAN, None, table.id), lambda: Agg(DEVIATION, pay, table.id, magnitude=True)):
+        try:
+            refused()
+        except ValueError:
+            continue
+        raise AssertionError("a median reads a measure and is not stated by its size")
+    averaged = {name: 1.0 for name in coordinates(Agg(AVG, pay, table.id), catalog.column_kind)}
+    def series(reading):
+        return [scored.program for scored in Decoder(catalog).decode(Reading(reading), k=50).programs if isinstance(scored.program, Agg) and scored.program.function in (MEDIAN, DEVIATION)]
+    assert not series(averaged), "no median unless the figure question reads one"
+    asked = series(averaged | {coordinate(SLOT_AGGREGATE, MEDIAN): 9.0})
+    assert asked and asked[0] == Agg(MEDIAN, pay, table.id) and all(program.function == MEDIAN for program in asked)
+    assert Decoder(catalog).decode(Reading(averaged | {coordinate(SLOT_AGGREGATE, MEDIAN): 9.0}), k=50).programs[0].program == Agg(MEDIAN, pay, table.id)
+
+
+def test_a_check_compares_how_many_different_values_with_a_stated_number():
+    """"Are there more than 3 regions?", "are there fewer than 5 types of exercise?": a check held a total, an average,
+    a lowest, a highest or a count of lines against the number a question states, and never how many different values a
+    column holds, so no listing read the question and the answer said whether the different values number the lines
+    (3 of DataBench test's 450 questions within the product's limit). A distinct count is offered against the stated
+    number as a count of lines is, under the comparison the reading names."""
+    rows = [["Region", "Amount"], ["east", 1.0], ["west", 2.0], ["east", 3.0], ["north", 4.0], ["south", 5.0]]
+    catalog, table, tables = _setup(rows)
+    region = Col(table.id, 0)
+    more = Check(VERSUS, Agg(COUNT_DISTINCT, region, table.id), op=GT, number=3.0)
+    assert _answer(more, tables) == (("True",),) and _answer(Check(VERSUS, Agg(COUNT_DISTINCT, region, table.id), op=GT, number=4.0), tables) == (("False",),)
+    assert read_as(more, catalog) == 'whether the number of different Region on "Sheet1" is above 3'
+    listed = [scored.program for scored in Decoder(catalog).decode(Reading({name: 1.0 for name in coordinates(more, catalog.column_kind)}), k=50).programs]
+    assert listed[0] == more, listed[0]
+
+
+def test_a_number_between_two_stated_numbers():
+    """"How many applicants have a score between 300 and 310 (including both)?": the reading call's comparison question
+    offers above, below, at least, at most and other than, so two stated numbers read as two values the column holds
+    ("is 300 or 310") or as one bound. Between keeps the number cells from the lower to the higher of the two numbers,
+    both ends kept; text and blanks never pass; both emitters agree. The decoder offers it, between the two likeliest
+    stated numbers, only where the order call's range question reads one (comparison:between)."""
+    from engine.program.language import Between
+    from engine.program.names import BETWEEN, SLOT_COMPARISON, coordinate
+    rows = [["Name", "Score", "Note"], ["Ann", 299.0, "a"], ["Bo", 300.0, "b"], ["Cy", 305.0, "c"], ["Di", 310.0, "d"], ["Ed", 311.0, "e"], ["Flo", None, "f"], ["Gus", "n/a", "g"]]
+    catalog, table, tables = _setup(rows)
+    score = Col(table.id, 1)
+    within = Agg(COUNT, None, table.id, (Between(score, 300.0, 310.0),))
+    assert _one(_answer(within, tables)) == 3.0
+    assert _answer(Show(table.id, (Col(table.id, 0),), (Between(score, 300.5, 310.5),), listing=True), tables) == (("Cy",), ("Di",))
+    assert read_as(within, catalog) == 'the number of lines on "Sheet1" where Score is between 300 and 310'
+    assert formula(within, tables) == """=COUNTIFS('Sheet1'!B2:B8,">=300",'Sheet1'!B2:B8,"<=310")"""
+    names = coordinates(within, catalog.column_kind)
+    assert "comparison:between" in names and "number:300" in names and "number:310" in names
+    try:
+        Between(score, 310.0, 300.0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a range runs from a lower number to a higher one")
+    asked = Reading({name: 1.0 for name in names})
+    assert Decoder(catalog).decode(asked, k=50).programs[0].program == within
+    unread = Reading({name: 1.0 for name in names if name != coordinate(SLOT_COMPARISON, BETWEEN)})
+    assert not any(isinstance(condition, Between) for scored in Decoder(catalog).decode(unread, k=50).programs for condition in conditions_of(scored.program)), "no range unless the range question reads one"
+
+
 def test_the_most_lines_in_a_row():
     """"How many consecutive wins", "at most how many championships were won in a row": 212 of WikiTableQuestions'
     11,321 training questions outside dev ask for an unbroken run of lines, 180 of them among the 2,251 SQUALL does not
@@ -2289,7 +2399,7 @@ def test_explain_carries_the_named_contributions():
 
 TESTS = [
     test_the_answer_says_yes_or_no_and_a_cell_as_the_sheet_writes_it,
-    test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down, test_a_date_key_groups_by_its_month_of_any_year_named_as_the_column_writes_it, test_the_most_lines_in_a_row, test_a_measures_spread_is_its_highest_less_its_lowest, test_lines_are_taken_by_where_they_stand, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_a_score_opening_with_a_mark_gets_the_mark_as_its_own_part, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down, test_a_date_key_groups_by_its_month_of_any_year_named_as_the_column_writes_it, test_the_most_lines_in_a_row, test_a_measures_spread_is_its_highest_less_its_lowest, test_lines_are_taken_by_where_they_stand, test_lines_taken_by_place_answer_a_question_read_as_a_list, test_a_median_and_a_standard_deviation, test_a_check_compares_how_many_different_values_with_a_stated_number, test_a_number_between_two_stated_numbers, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_a_score_opening_with_a_mark_gets_the_mark_as_its_own_part, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_choice_among_named_numbers, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

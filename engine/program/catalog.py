@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 from functools import cached_property
 
-from engine.program.language import (Col, Compare, CompareColumns, CompareLine, Condition, LineOrder, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
+from engine.program.language import (Between, Col, Compare, CompareColumns, CompareLine, Condition, LineOrder, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
 from engine.program.names import ANYWHERE, ENDS, EQ, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, cell_written, duration_numbers, fold, is_filled
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
@@ -220,6 +220,9 @@ class CatalogTable:
         if isinstance(condition, InYears):
             number = self.numbers[condition.column.position][i]
             return number is not None and condition.first <= number <= condition.last
+        if isinstance(condition, Between):
+            number = self.numbers[condition.column.position][i]
+            return number is not None and condition.low <= number <= condition.high
         if isinstance(condition, Compare):
             number = self.numbers[condition.column.position][i]
             return number is not None and _compared(number, condition.op, condition.number)

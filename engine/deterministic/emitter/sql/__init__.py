@@ -59,7 +59,8 @@ def _function(function: str, operand: str) -> str:
     return f"LOWER({operand})"
 
 _DECIMAL = {"+": "decimal_add", "-": "decimal_sub", "*": "decimal_mul", "/": "decimal_div"}
-_DECIMAL_AGGREGATE = {"SUM": "decimal_sum", "AVG": "decimal_avg", "MIN": "decimal_min", "MAX": "decimal_max"}
+_DECIMAL_AGGREGATE = {"SUM": "decimal_sum", "AVG": "decimal_avg", "MIN": "decimal_min", "MAX": "decimal_max",
+                      "MEDIAN": "decimal_median", "STDEV": "decimal_stdev"}
 _ORDERED = frozenset({"=", "!=", "<>", ">", "<", ">=", "<="})
 
 
@@ -434,7 +435,7 @@ class SQLEmitter:
         )
         function = aggregate.function
         if function in _DECIMAL_AGGREGATE and (
-            function in {"SUM", "AVG"} or self._plan.numeric(aggregate.operand, self._numbers)
+            function in {"SUM", "AVG", "MEDIAN", "STDEV"} or self._plan.numeric(aggregate.operand, self._numbers)
         ):
             # Exact: a decimal sum, and an average rounded half up at the division scale, as the Python
             # program's SUM and AVG (engine.numeric.decimal_divide).

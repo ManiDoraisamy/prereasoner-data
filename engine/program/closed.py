@@ -49,7 +49,7 @@ from engine.program.catalog import KIND_FAMILY, KIND_TABLE, Catalog
 from engine.program.decoder import table_reach
 from engine.program.index import index_of
 from engine.program.language import PeriodSpan, period_from_name
-from engine.program.names import (EVERY_COLUMN, FIRST, LAST, PERCENT_OP, RUN, SAID_ABOVE, SAID_BELOW, SLOT_ANSWER_TYPE, SLOT_LISTING, SLOT_NUMBER, SLOT_ORDER, SLOT_PERIOD,
+from engine.program.names import (BETWEEN, DEVIATION, EVERY_COLUMN, FIRST, LAST, MEDIAN, PERCENT_OP, RUN, SLOT_AGGREGATE, SLOT_COMPARISON, SAID_ABOVE, SAID_BELOW, SLOT_ANSWER_TYPE, SLOT_LISTING, SLOT_NUMBER, SLOT_ORDER, SLOT_PERIOD,
                                   SLOT_ROW_OP, SLOT_SAID, SLOT_SHOWN, coarse_type, coordinate)
 from engine.program.scoring import Reading
 from engine.program.semantics import fold, number_text
@@ -789,24 +789,39 @@ ORDER_ENDS_OF = {"o00": FIRST, "o01": LAST}
 RUN_QUESTION = ("Does the question ask how many rows stand in an unbroken run, one right after another as the table lists "
                 "them, all meeting what it says, rather than how many there are in all?")
 RUN_OPTIONS = {"r00": "the most rows in an unbroken run, one right after another"}
+FIGURE_QUESTION = ("Does the question ask for the median of a set of numbers (their middle value), or for their standard "
+                   "deviation (how spread out they are), rather than a total, an average, a count, a lowest or a highest?")
+FIGURE_OPTIONS = {"f00": "their median: the middle value", "f01": "their standard deviation"}
+FIGURES_OF = {"f00": MEDIAN, "f01": DEVIATION}
+RANGE_QUESTION = ("Does the question keep the rows whose number lies between two numbers it states, a range with a lower "
+                  "and an upper end, rather than above or below one number?")
+RANGE_OPTIONS = {"b00": "between two numbers the question states, both ends included"}
 
 
 def order_record(question: str) -> tuple[dict, dict]:
-    """The order call: two closed questions over the question alone (no sheet is needed to read them): whether it takes
+    """The order call: closed questions over the question alone (no sheet is needed to read them): whether it takes
     the first or the last lines of a table as the sheet lists them ("the first venue", "the last 3 entries"), or
-    neither; and whether it counts the most lines in a row ("how many consecutive wins"), or not. It is a call of its
-    own, so the reading call's body is the same whether it is asked or not."""
+    neither; whether it counts the most lines in a row ("how many consecutive wins"), or not; whether it asks for
+    a median or a standard deviation, figures the reading call's aggregate question does not offer; and whether it
+    keeps rows whose number lies between two numbers it states, a comparison that question does not offer. It is a call of
+    its own, so the reading call's body is the same whether it is asked or not; the endpoint answers each question of
+    a call by itself (a question added here moved no other answer on 40 questions, 2026-11-26)."""
     return {"question": question}, {"line_order": {"instructions": ORDER_QUESTION, "criteria": {**ORDER_OPTIONS, NONE: "neither"}},
-                                    "line_run": {"instructions": RUN_QUESTION, "criteria": {**RUN_OPTIONS, NONE: "neither"}}}
+                                    "line_run": {"instructions": RUN_QUESTION, "criteria": {**RUN_OPTIONS, NONE: "neither"}},
+                                    "series_figure": {"instructions": FIGURE_QUESTION, "criteria": {**FIGURE_OPTIONS, NONE: "neither"}},
+                                    "number_range": {"instructions": RANGE_QUESTION, "criteria": {**RANGE_OPTIONS, NONE: "no"}}}
 
 
 def order_scores(scores: Mapping[str, float], fields: Mapping[str, Mapping[str, float]]) -> dict[str, float]:
     """Each end the API holds likelier than neither joins the reading as order:first or order:last, and a run it holds
     likelier than neither as order:run, at W * (log p - log p(none)), as said_scores reads its spans; the decoder ranks
     lines by where they stand, or counts the most in a row, only where one is set (engine/program/decoder.py
-    table_frames)."""
+    table_frames). A median or a standard deviation it holds likelier than neither joins the same way as
+    aggregate:median or aggregate:stdev, and a range between two stated numbers as comparison:between, each of which
+    the decoder offers only where set."""
     out = dict(scores)
-    for field, read in (("line_order", ORDER_ENDS_OF), ("line_run", {"r00": RUN})):
+    for field, slot, read in (("line_order", SLOT_ORDER, ORDER_ENDS_OF), ("line_run", SLOT_ORDER, {"r00": RUN}),
+                              ("series_figure", SLOT_AGGREGATE, FIGURES_OF), ("number_range", SLOT_COMPARISON, {"b00": BETWEEN})):
         probabilities = fields.get(field) or {}
         if not probabilities:
             continue
@@ -814,7 +829,7 @@ def order_scores(scores: Mapping[str, float], fields: Mapping[str, Mapping[str, 
         for key, value in read.items():
             term = W * (_log(probabilities.get(key, 0.0)) - math.log(none))
             if term > 0:
-                out[coordinate(SLOT_ORDER, value)] = round(term, SCORE_DIGITS)
+                out[coordinate(slot, value)] = round(term, SCORE_DIGITS)
     return out
 
 

@@ -18,7 +18,7 @@ from typing import TypeAlias
 from engine.sql_ast import DAYS_PER_UNIT, ISO_DAY, SQLType
 
 _SCHEMAS = frozenset({"conversation", "knowledgebase", "public"})
-_AGGREGATES = frozenset({"SUM", "MAX", "MIN", "COUNT", "AVG"})
+_AGGREGATES = frozenset({"SUM", "MAX", "MIN", "COUNT", "AVG", "MEDIAN", "STDEV"})
 _BINARY = frozenset({"+", "-", "*", "/", ">", ">=", "<", "<=", "=", "<>"})   # a verdict (>, =, ...) is 1 or 0
 _COMPARISONS = frozenset({"=", "!=", "<>", ">", "<", ">=", "<=", "IS", "IS NOT", "LIKE"})
 
@@ -797,7 +797,7 @@ class AnalysisPlan:
                             self._validate_value(
                                 aggregate.operand, stage_tables, stage_values
                             )
-                            if aggregate.function in {"SUM", "AVG"} and self._carries_text(
+                            if aggregate.function in {"SUM", "AVG", "MEDIAN", "STDEV"} and self._carries_text(
                                 aggregate.operand, stage_text
                             ):
                                 raise ValueError(
@@ -1054,7 +1054,7 @@ class AnalysisPlan:
                     if column.type in {SQLType.INTEGER, SQLType.REAL}}
 
         def aggregate_number(aggregate, current):
-            return (aggregate.function in {"COUNT", "SUM", "AVG"}
+            return (aggregate.function in {"COUNT", "SUM", "AVG", "MEDIAN", "STDEV"}
                     or self.numeric(aggregate.operand, current))
 
         out: dict[str, frozenset[str]] = {}

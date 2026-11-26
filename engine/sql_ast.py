@@ -309,7 +309,9 @@ class ASTValidationError(ValueError):
     pass
 
 
-AGGREGATES = frozenset({"COUNT", "SUM", "AVG", "MIN", "MAX"})
+# MEDIAN and STDEV (the sample standard deviation) are functions of the request's database (engine/numeric.py
+# register_sqlite_decimal): no SQL engine names both alike, and only the program path's figures read them.
+AGGREGATES = frozenset({"COUNT", "SUM", "AVG", "MIN", "MAX", "MEDIAN", "STDEV"})
 COMPARISONS = frozenset({"=", "!=", "<>", ">", "<", ">=", "<=", "LIKE", "NOT LIKE", "IS", "IS NOT"})
 SET_OPERATORS = frozenset({"UNION", "INTERSECT", "EXCEPT"})
 
@@ -401,7 +403,7 @@ def expression_type(expr: ScalarExpr) -> SQLType:
     if isinstance(expr, Aggregate):
         if expr.function == "COUNT":
             return SQLType.INTEGER
-        if expr.function == "AVG":
+        if expr.function in {"AVG", "MEDIAN", "STDEV"}:
             return SQLType.REAL
         return expression_type(expr.operand)
     if isinstance(expr, BinaryExpr):
@@ -731,7 +733,7 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str], *, allow_star: boo
             raise ASTValidationError(f"{expr.function}(*) is not valid")
         if isinstance(expr.operand, Star) and expr.distinct:
             raise ASTValidationError("COUNT(DISTINCT *) is not valid")
-        if (expr.function in {"SUM", "AVG"} and isinstance(expr.operand, ColumnRef)
+        if (expr.function in {"SUM", "AVG", "MEDIAN", "STDEV"} and isinstance(expr.operand, ColumnRef)
                 and not expr.operand.type.numeric):
             raise ASTValidationError(f"{expr.function} requires a numeric column")
         if isinstance(expr.operand, (BinaryExpr, Abs)):
@@ -829,6 +831,7 @@ def _render_expr(expr: ScalarExpr, dialect: str = "standard") -> str:
             function = {
                 "SUM": "decimal_sum", "AVG": "decimal_avg",
                 "MIN": "decimal_min", "MAX": "decimal_max",
+                "MEDIAN": "decimal_median", "STDEV": "decimal_stdev",
             }.get(function, function)
         return f"{function}({distinct}{_render_expr(expr.operand, dialect)})"
     if isinstance(expr, BinaryExpr):
@@ -914,7 +917,7 @@ def value_type(expr: ScalarExpr) -> SQLType:
         while isinstance(query, SetQuery):
             query = query.left
         return value_type(query.select[0].expression) if len(query.select) == 1 else SQLType.UNKNOWN
-    if isinstance(expr, Aggregate) and expr.function not in {"COUNT", "AVG"}:
+    if isinstance(expr, Aggregate) and expr.function not in {"COUNT", "AVG", "MEDIAN", "STDEV"}:
         return value_type(expr.operand)
     if isinstance(expr, (Abs, BlankAsZero)):
         return value_type(expr.operand)

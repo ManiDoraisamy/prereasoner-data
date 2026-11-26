@@ -8,8 +8,8 @@ from dataclasses import dataclass
 
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
-from engine.program.language import (LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
-from engine.program.names import (A_PERCENT, AFTER, ANY, SAME, ANYWHERE, EQ, GRAIN_CALENDAR_MONTH, GRAIN_MONTH, GRAIN_YEAR, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
+from engine.program.language import (Between, LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
+from engine.program.names import (A_PERCENT, AFTER, ANY, DEVIATION, MEDIAN, SAME, ANYWHERE, EQ, GRAIN_CALENDAR_MONTH, GRAIN_MONTH, GRAIN_YEAR, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
 from engine.program.store import RequestTables
@@ -17,12 +17,12 @@ from engine.sheet.formulas import column_letter
 
 _GRAIN_WORDS = {GRAIN_MONTH: "month", GRAIN_YEAR: "year", GRAIN_CALENDAR_MONTH: "calendar month"}
 _AGG_WORDS = {SUM: "total", AVG: "average", MIN: "lowest", MAX: "highest", COUNT: "number of lines", COUNT_DISTINCT: "number of different",
-              LONGEST_RUN: "most lines in a row"}
+              LONGEST_RUN: "most lines in a row", MEDIAN: "median", DEVIATION: "standard deviation"}
 _COMPARE_WORDS = {EQ: "equal to", GE: "at least", GT: "above", LE: "at most", LT: "below", NE: "other than"}
 _OP_WORDS = {PLUS: "plus", MINUS: "minus", TIMES: "times", OVER: "over"}
 _VERDICT_WORDS = {GT: "above", GE: "at least", LT: "below", LE: "at most", EQ: "equal to", NE: "different from"}
 _VERDICT_FORMULA = {GT: ">", GE: ">=", LT: "<", LE: "<=", EQ: "=", NE: "<>"}
-_SHEET_FUNCTION = {SUM: "SUM", AVG: "AVERAGE", MIN: "MIN", MAX: "MAX"}
+_SHEET_FUNCTION = {SUM: "SUM", AVG: "AVERAGE", MIN: "MIN", MAX: "MAX", MEDIAN: "MEDIAN", DEVIATION: "STDEV"}
 _IFS = {SUM: "SUMIFS", AVG: "AVERAGEIFS", MIN: "MINIFS", MAX: "MAXIFS"}
 _MAX_CELLS = 2000
 _MAX_LINES_ADDED = 30
@@ -100,6 +100,8 @@ def _condition_words(catalog: Catalog, condition: Condition) -> str:
         return f'{_name(catalog, condition.column)} {where} "{condition.text}"'
     if isinstance(condition, InPeriod):
         return f"{_name(catalog, condition.column)} falls in {condition.span.name}"
+    if isinstance(condition, Between):
+        return f"{_name(catalog, condition.column)} is between {_number_words(catalog, condition.column, condition.low)} and {_number_words(catalog, condition.column, condition.high)}"
     if isinstance(condition, InYears):
         years = (f"{condition.first}" if condition.first == condition.last else f"at most {condition.last}" if condition.first <= 1
                  else f"at least {condition.first}" if condition.last >= 9999 else f"from {condition.first} to {condition.last}")
@@ -556,6 +558,9 @@ def _criteria(catalog: Catalog, where: tuple[Condition, ...]) -> list[str] | Non
         elif isinstance(condition, InYears):
             range_ = _range(catalog.table(condition.column.table), condition.column.position)
             out.extend((range_, f'">={condition.first}"', range_, f'"<={condition.last}"'))
+        elif isinstance(condition, Between):
+            range_ = _range(catalog.table(condition.column.table), condition.column.position)
+            out.extend((range_, f'">={condition.low:g}"', range_, f'"<={condition.high:g}"'))
         elif isinstance(condition, IsBlank):
             table = catalog.table(condition.column.table)
             out.extend((_range(table, condition.column.position), '"<>"' if condition.filled else '""'))
@@ -616,7 +621,7 @@ def _filter_array(catalog: Catalog, where: tuple[Condition, ...]) -> str | None:
     """Conditions as one array of 1s and 0s over a table's ranges (GROUPBY's filter), or None when one has no plain test."""
     tests = []
     for condition in where:
-        if isinstance(condition, (Equals, Compare, Contains, InPeriod, InYears, IsBlank)):
+        if isinstance(condition, (Equals, Compare, Between, Contains, InPeriod, InYears, IsBlank)):
             range_ = _range(catalog.table(condition.column.table), condition.column.position)
         if isinstance(condition, Equals):
             value = f"{condition.value:g}" if isinstance(condition.value, (int, float)) else '"' + _value_words(catalog, condition.column, condition.value).replace('"', '""') + '"'
@@ -629,6 +634,8 @@ def _filter_array(catalog: Catalog, where: tuple[Condition, ...]) -> str | None:
             tests.append(f'({range_}>=DATEVALUE("{condition.span.start}"))*({range_}<=DATEVALUE("{condition.span.end or condition.span.start}"))')
         elif isinstance(condition, InYears):
             tests.append(f"({range_}>={condition.first})*({range_}<={condition.last})")
+        elif isinstance(condition, Between):
+            tests.append(f"({range_}>={condition.low:g})*({range_}<={condition.high:g})")
         elif isinstance(condition, IsBlank):
             tests.append(f'({range_}{"<>" if condition.filled else "="}"")')
         else:
@@ -672,7 +679,7 @@ def _agg_formula(program: Agg, table: CatalogTable, tables: RequestTables) -> st
         cells = compress(cells_used(Show(program.table, (program.measure,), program.where, listing=True), tables, ()))
         return "=COUNTA(UNIQUE(VSTACK(" + ",".join(cells) + ")))" if cells else "=0"
     function = program.function
-    if isinstance(program.measure, Col) and plain:
+    if isinstance(program.measure, Col) and plain and (not criteria or function in _IFS):     # no MEDIANIFS: its kept cells are listed
         target = _range(table, program.measure.position)
         body = f"{_IFS[function]}({target},{','.join(criteria)})" if criteria else f"{_SHEET_FUNCTION[function]}({target})"
     elif isinstance(program.measure, (RowArithmetic, PercentOf, Size, Across, Words)):

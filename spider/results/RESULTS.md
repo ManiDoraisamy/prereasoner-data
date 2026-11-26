@@ -10,6 +10,99 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Three readings DataBench's misses lacked (a median or a standard deviation, a distinct count against a stated number, a number between two numbers): DataBench test 327 -> 339 of 450, the set they were read from; on questions not read for them, DataBench training 320 -> 321 of 400 and WikiTableQuestions training unchanged; two more readings not kept (2026-11-26)
+
+- The build plan's missing pieces (owner, 2026-11-26), each a meaning that holds on any sheet, from the 129 DataBench
+  test misses read one by one (the set is a diagnosis set from now on). WikiTableQuestions' unbuilt training questions
+  were read too (157 of 3,125) and are spread thin: no construct holds more than 0.4% of the set (24 `having`, 18
+  date differences, 9 `between`, 5 aggregates over the first lines).
+  - **A median and a standard deviation** (`Agg` `MEDIAN`, `DEVIATION`: the middle of the kept numbers, the mean of
+    the two middle ones of an even count; the sample's deviation, a spreadsheet's STDEV). Every aggregate was a total,
+    an average, a lowest, a highest or a count, so "the median monthly income" read the average. Both emitters take
+    them from `engine/numeric.py` (`decimal_median`, `decimal_deviation`: exact sums, one root rounded at the division
+    scale), the request database registers `MEDIAN`, `STDEV` and their decimal forms, and the sheet formula is
+    `MEDIAN(...)` or `STDEV(...)`.
+  - **A distinct count against a stated number** in a check ("are there more than 3 regions?"): a check compared a
+    total, an average, a lowest, a highest or a count of lines with the number, never how many different values a
+    column holds, so no listing read the question.
+  - **A number between two stated numbers**, both ends kept (`Between`; "a score between 300 and 310", "ranked 10th to
+    15th", "from 14:08 to 15:48"): the reading call's comparison question offers one bound, so two stated numbers read
+    as two values the column holds.
+- What the reading call does not offer is asked beside it, in the order call (`engine/program/closed.py`
+  `order_record`: `series_figure`, `number_range`, next to `line_order` and `line_run`), so the reading call's body is
+  unchanged and a reading is built only where its own question reads it. The Decisions endpoint answers each question
+  of a call by itself: on 40 questions, adding a question to the order call moved no other answer, and the same body
+  sent again gave the same answer. The order call's body changed, so every set asked it again.
+- Measured on top of the entry below (lines by place), no second judge asked (`--unjudged`; training sets ask none).
+  `--run 2026-11-26-readings`: DataBench test, all 522, against the release's records with that entry's rows;
+  DataBench training, its 400 seeded questions, not read for these readings, against `--run
+  2026-11-26-readings-before` (the same checkout without them); the WikiTableQuestions questions whose order call
+  reads the first or last lines, a median or deviation, or a range (`--order-read line_order | series_figure |
+  number_range`: 156 of `wtq-test`'s 1,000, 541 of the 3,125 training questions), against that entry's records and `2026-11-26-s3a`. Run at 3e48bd2b with the changes
+  uncommitted. Decisions spend $0.53 (the removed readings' runs included).
+
+  | Set, engine alone | Right | Wins / losses | Built | Unmarked wrong | Unmarked right |
+  |---|---|---|---|---|---|
+  | DataBench test, 450 within the limit (read) | 327 -> 339 | 12 / 0 | 380 -> 388 | 48 -> 48 | 304 -> 316 |
+  | DataBench training, 400 (not read) | 320 -> 321 | 2 / 1 | 350 -> 352 | 39 -> 39 | 295 -> 298 |
+  | `wtq-test`, the 156 its cues touch | 118 -> 119 | 1 / 0 | 126 -> 128 | 25 -> 24 | 98 -> 99 |
+  | WikiTableQuestions training, the 440 of 3,125 the entry below measured | 375 -> 375 | 0 / 0 | 411 -> 411 | 29 -> 29 | 299 -> 299 |
+
+- **On the set they were read from the readings answer; on questions not read for them they add about one in four
+  hundred.** DataBench test: a median or deviation 6, a distinct count 4, a range 2, no question lost; with lines by
+  place the engine alone stands at 339 of 450 (321 at the release, 18 wins, 0 losses; Gemini 4 Neon 399, Claude Opus
+  5.5 404). DataBench training: two wins, both medians ("the median age of the respondents"), one loss (a check no reading builds, right before by which way it fell), and one check read better ("more than 20 unique clothing items": warned at 0.44 -> given at 0.95). The test set asks its questions in families (five on the first five
+  books, three on a taxonomy's first values), which reading its misses fits; the training set is the fairer measure
+  of what a new sheet gains.
+- **Not kept: a listing's first values** ("the first 3 different parents": `Show.first`). DataBench test 4 wins; on
+  DataBench training it made a wrong listing confident ("the artists of the top 5 ranked songs": warned at 0.47 ->
+  given unmarked at 0.78) and won nothing.
+- **Not kept: a dated rank with a stated count** ("the top 4 years by number of reviews"). DataBench test 2 wins,
+  training none; its frames are built for any stated number on a table with dates, with no question of their own, and
+  on the 896 they took the place of the plain reading in two listings (DataBench dev "the 4 dates with the most
+  reviews": right at 0.93 -> no right listing). A new reading is gated by a closed question of its own, or it costs
+  the listings it shares.
+- Gate, the 896 (`regress/run_dev_decisions.py --record --unjudged --keep --tag readings`, both entries' changes
+  together; each answer labelled as the choice alone leaves it; references kept): built 800 -> 800, right 663 -> 664,
+  unwarned wrong 61 -> 60, erred 76 -> 74, warned 96 -> 98; picks 737 -> 735 (0 wins, 2 losses: "previous to tom
+  andrews who was elected?" and DataBench dev's "the 3 most recent patents by their ID", where lines by place joined
+  the listing and the choice moved to another reading). The demo set at parity, every answer (86 right, 1 unwarned
+  wrong of 91).
+- tests: `test_a_median_and_a_standard_deviation`, `test_a_check_compares_how_many_different_values_with_a_stated_number`,
+  `test_a_number_between_two_stated_numbers` (tests/test_program.py, 102 pass); tests.test_answer 31,
+  tests.test_sql_ast 91.
+
+## Lines taken by place answer a question read as a list: "list the page counts of the first five books" reads the first five lines; on DataBench test's 30 such questions, right 16 -> 22, no question lost (2026-11-26)
+
+- The build plan's first piece (owner, 2026-11-26), from the DataBench test misses read one by one (129 of the 450
+  within the product's limit; DataBench test is a diagnosis set from now on). "List the page counts of the first five
+  books" was read as the order call reads it (the first lines, p 0.995) and as the reading call reads it (a list, the
+  show form), but the lines taken by place were scored as a rank of lines alone (`form:rank` and `entity:line`, both
+  held unlikely here), so no listing took them and the answer listed the column's different values. The order slot,
+  not the form, says the lines are taken by place: the frame now takes the likelier of the two readings
+  (`engine/program/decoder.py` `table_frames`; test
+  `test_lines_taken_by_place_answer_a_question_read_as_a_list`). No program, lowering or closed question changes.
+- Measured on the questions it can touch, those whose recorded order call reads the first or the last lines
+  (`regress/run_public.py --order-read`), before in a checkout holding every other working change
+  (`--run 2026-11-26-place-list-before`) and after (`--run 2026-11-26-place-list`), no second judge asked; the unseen
+  sets against the release's records (`2026-11-26-s3a`, `2026-11-26-release`). Run at 968e3e91 with the changes
+  uncommitted. Decisions spend $0.08.
+
+  | Questions whose order call reads the first or last lines | Right | Wins / losses | Built | Unmarked wrong |
+  |---|---|---|---|---|
+  | WikiTableQuestions training, 440 of 3,125 | 373 -> 375 | 4 / 2 | 411 -> 411 | 30 -> 29 |
+  | DataBench training, 5 of 400 (few of its order calls were recorded) | 4 -> 4 | 0 / 0 | 4 -> 4 | 1 -> 1 |
+  | `wtq-test`, 144 of 1,000 | 115 -> 117 | 2 / 0 | 124 -> 125 | 18 -> 16 |
+  | DataBench test, 30 of 450 | 16 -> 22 | 6 / 0 | 18 -> 25 | 5 -> 1 |
+
+- DataBench test: the six wins are "the first five books" and "the last five books" of a column (page counts,
+  copies left, categories) and "the 4 first tier values present in the first 4 rows"; the engine alone stands at 327
+  of 450 with them (321 before). On WikiTableQuestions, whose questions of this kind read as ranks already, the
+  listings change little: the training set's four wins and two losses are all the line after or before a named line,
+  moved by the choice as the pool beside them changed, and `wtq-test` gains "the winner of the last iron chef battle
+  during season 5" (the last line, where the highest Episode was read).
+- The 896 and the demo are measured with the entry above's readings, on the same engine (its gate line).
+
 ## The second judge is served, and it is Gemini 4 Neon: of three faster judges in its seat, Flash-Lite leaves 9% to 10% of answers unmarked and wrong and Hydrogen reaches 7% only at its point estimate (2026-11-26)
 
 - Owner (2026-11-26, after the judge test below): "yes, test the faster judge first, then the build plan". The judge

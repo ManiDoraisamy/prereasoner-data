@@ -170,7 +170,7 @@ a fuzzy city word only against the cities the request's tables name, since a cit
 of their rows.
 
 SQLite has no exact decimal type, so the database registers the decimal functions (`engine/numeric.py`): the SQL
-program computes arithmetic, SUM/AVG/MIN/MAX, comparisons and ordering through them and returns numbers as
+program computes arithmetic, SUM/AVG/MIN/MAX/MEDIAN/STDEV, comparisons and ordering through them and returns numbers as
 decimal text, which the runtime reads back as Decimals; the Python program's columns read the same text through
 `ExactDecimal`. Both programs agree exactly at every stage. `lower()` and `upper()` fold every alphabet, text sorts
 by code point in both programs, empty values sort last in both directions, and a statement ends at the request's
@@ -389,7 +389,10 @@ wrote.
 4. The stock reading scores the program language's coordinates; the reading record offers each slot its options and
    one Decisions call answers it (a second answers the value sets, and a third, beside them, reads which of the
    question's own words name a comparison's two outcomes; a fourth, beside them too, whether the question takes lines
-   by where they stand in a table, the first ones or the last). The fused reading feeds the decoder's 50 most probable
+   by where they stand in a table, the first ones or the last, whether it counts the most lines in a row, whether it
+   asks for a median or a standard deviation, and whether it keeps rows whose number lies between two numbers it
+   states: what the reading call's aggregate and comparison questions do not offer). The fused reading feeds the
+   decoder's 50 most probable
    programs, each run by the verifier on the request's store tables.
 5. The programs that returned rows are listed. One Decisions call weighs them (each its read-as line and a preview
    of its answer, and "none of these"); per answer, a candidate's probability is summed over the candidates returning

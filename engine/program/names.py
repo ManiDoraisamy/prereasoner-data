@@ -28,6 +28,12 @@ NUMBER_AGGREGATES = (SUM, AVG, MIN, MAX)
 # The most lines in a row, as the sheet lists them, that the conditions keep ("how many consecutive wins"): a count no
 # reading's aggregate slot names (it is not in AGGREGATES); only the order call's run question offers it (RUN below).
 LONGEST_RUN = "run"
+# A measure's median (its middle value, the mean of the two middle ones of an even count) and its standard deviation
+# (the sample's, a spreadsheet's STDEV): figures of the whole series that no reading's aggregate slot names (they are
+# not in AGGREGATES, whose list the reading call offers); only the order call's figure question offers them.
+MEDIAN = "median"
+DEVIATION = "stdev"
+SERIES_AGGREGATES = (MEDIAN, DEVIATION)
 
 # Which way a rank runs.
 HIGHEST = "highest"
@@ -59,6 +65,9 @@ CHECK_OPS = (GE, GT, LE, LT, EQ, NE)
 # What a number condition may do: the small reader's closed head reads COMPARISONS; equality ("with zero calories",
 # "exactly 3 wins") is the plain reading of a stated number no comparison word qualifies.
 COMPARE_OPS = (EQ, *COMPARISONS)
+# A number between two numbers the question states, both ends kept (language.Between): no comparison the reading call
+# offers (it is not in COMPARISONS); only the order call's range question reads it, as comparison:between.
+BETWEEN = "between"
 
 # What a check asks of the kept lines.
 ANY = "any"            # some kept line exists
