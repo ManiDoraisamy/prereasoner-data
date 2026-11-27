@@ -10,6 +10,37 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A rank's stated count read again as a condition's number ("the 6 lowest levels ... where the level is above 6"): a rule against it not kept; DataBench training's read questions 144 -> 145 of 199 with 4 fewer unmarked and wrong, unread ones 115 -> 112 of 166 (2026-11-27)
+
+- Found reading DataBench training's misses: 27 of its 400 served readings keep a stated number of lines or groups
+  and hold a column against that same number ("Cholesterol of the 6 lines with the lowest Cholesterol where
+  Cholesterol is above 6"), 16 of them wrong. The decoder lists the plain reading first on those; the choice takes
+  the one with the condition, whose answer looks likelier (no zeros among the lowest levels).
+- The rule tried (`engine/program/language.py` `is_sound`): a rank that keeps a stated number of lines or groups
+  holds no column against that number, a number stated once saying one thing, as two conditions already share none.
+- Measured, the engine alone, no second judge, on the questions that state a number from 2 to 50 (`--match`):
+
+  | Set | Questions | Right | Wins / losses | Built | Unmarked wrong |
+  |---|---|---|---|---|---|
+  | DataBench training, read | 199 | 144 -> 145 | 4 / 3 | 163 -> 162 | 28 -> 24 |
+  | DataBench training, unread (`--skip 400 --size 400`) | 166 | 115 -> 112 | 1 / 4 | 128 -> 128 | 28 -> 27 |
+  | WikiTableQuestions fresh sample `wtq-fresh2`, with the figure of lines taken by place | 1,000 | 720 -> 722 | 2 / 0 | 829 -> 830 | 128 -> 129 |
+
+  On the unread DataBench questions the baseline served such a reading on 12, 9 of them right: where every value
+  exceeds the count the condition changes nothing. With the rule 8 of the 12 are right, and of the 20 questions whose
+  served reading changed 13 were right before and 10 after. On the fresh WikiTableQuestions sample the baseline
+  served it on 2 (1 right, 1 after); one of the sample's two wins is the other change's.
+- **Not kept.** Without the reading the choice takes another, as often a worse one ("the bottom 2 recency values"
+  became the different values below 2); the unread questions lose 3 answers and gain no built one. What it shows:
+  on these questions the listing holds the right reading first and the choice leaves it, so the miss is the
+  choice's, and a second judge that does not pick the served answer warns it.
+- Records: `regress/sets/public/records/2026-11-27-once/` and `2026-11-27-once-unread/` (with the rule),
+  `2026-11-27-stack/wtq-fresh2` (with the rule and the figure of lines taken by place), against
+  `2026-11-26-readings/databench-train`, `2026-11-27-parts-unread-before/` and `2026-11-27-head/wtq-fresh2` (the
+  fresh sample at the head: 720 right, 829 built; its calls committed). The rule's diff is in the archive
+  (`prereasoner-scratch/open-20261127/count-once.diff`). Decisions spend $0.30.
+
+
 ## A cell's list items and parts as lines and columns (step 1 of the build plan): not kept; on the DataBench training questions read for it 107 -> 114 of 138, on unread ones 87 -> 89 of 121 with 3 more unmarked and wrong, and DataBench dev builds and picks no more (281, 262) with 2 more unmarked and wrong (2026-11-27)
 
 - Step 1 of the build plan (owner, 2026-11-26: "Go ahead with this plan"): the largest family among DataBench test's
