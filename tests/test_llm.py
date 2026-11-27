@@ -203,9 +203,14 @@ def test_a_judge_still_out_is_asked_a_second_time_and_the_first_answer_is_read()
     """The provider holds a call now and then for longer than an answer waits for its second judge (release
     568b1f0a's gate: five right answers served warned). A call still out JUDGE_SECOND_SECONDS on is made a second
     time beside the first and the first to answer is the judgement. A call that answers in time is made once; one
-    that fails at once is not made again; and when the first fails while the second is out, the second answers."""
+    that fails at once is not made again; and when the first fails while the second is out, the second answers. The
+    request's timing line counts the second asking, and its answer when that is the one read (release 95e2a7af's gate
+    could see neither)."""
     import json
     import threading
+    import time
+
+    from engine import request_timing
 
     state = {"question": "total amount", "workbook": []}
     options = [("r00", "the total of Amount -> answer: 7"), ("none", "None of these.")]
@@ -233,14 +238,33 @@ def test_a_judge_still_out_is_asked_a_second_time_and_the_first_answer_is_read()
     def failed():
         raise llm.LLMUnavailable("Judge call failed (503)")
 
+    def late_first(url, payload, timeout, attempts, label):
+        late_sent.append(len(late_sent))
+        if late_sent[-1] == 0:
+            time.sleep(0.4)
+            return answer
+        return stalled()
+
+    def counted(run):
+        token = request_timing.begin("judge")
+        try:
+            return run(), dict(request_timing._CTX.get().counters)
+        finally:
+            request_timing.end(token)
+
+    late_sent = []
     try:
         with patch.object(llm, "JUDGE_TRANSPORT", llm._post_judge), patch.object(llm, "JUDGE_SECOND_SECONDS", 0.05):
             sent, post = posting(stalled)
             with patch.object(llm, "_post_developer", post):
-                assert llm.judge(state, "Choose.", options) == "r00" and sent == [0, 1], "the second call answered while the first was held"
+                key, counters = counted(lambda: llm.judge(state, "Choose.", options))
+                assert key == "r00" and sent == [0, 1], "the second call answered while the first was held"
+                assert counters == {"judge_second": 1, "judge_second_answered": 1}, counters
             sent, post = posting(lambda: answer)
             with patch.object(llm, "_post_developer", post):
-                assert llm.judge(state, "Choose.", options) == "r00" and sent == [0], "a call that answers in time is made once"
+                key, counters = counted(lambda: llm.judge(state, "Choose.", options))
+                assert key == "r00" and sent == [0], "a call that answers in time is made once"
+                assert counters == {}, counters
             sent, post = posting(failed)
             with patch.object(llm, "_post_developer", post):
                 _unavailable(lambda: llm.judge(state, "Choose.", options))
@@ -248,6 +272,10 @@ def test_a_judge_still_out_is_asked_a_second_time_and_the_first_answer_is_read()
             sent, post = posting(stalled_then_failed)
             with patch.object(llm, "_post_developer", post):
                 assert llm.judge(state, "Choose.", options) == "r00" and sent == [0, 1]
+            with patch.object(llm, "_post_developer", late_first):
+                key, counters = counted(lambda: llm.judge(state, "Choose.", options))
+                assert key == "r00" and late_sent == [0, 1], "the first call answered late, the second still out"
+                assert counters == {"judge_second": 1}, counters
     finally:
         held.set()
 

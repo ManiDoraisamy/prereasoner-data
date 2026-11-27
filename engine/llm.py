@@ -271,7 +271,9 @@ def judge_payload(state: dict, instructions: str, options: Sequence[tuple[str, s
 def _first_to_answer(call, after: float):
     """``call()``'s answer, the call made a second time beside the first when the first is still out ``after`` seconds
     on: the answer of whichever returns first. A call that fails leaves the other to answer, and when none is left
-    the first failure is raised; a first call that fails before ``after`` is not made again."""
+    the first failure is raised; a first call that fails before ``after`` is not made again. The request's timing
+    line counts the second asking (``judge_second``) and its answer when that is the one read
+    (``judge_second_answered``)."""
     import contextvars
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
@@ -279,7 +281,8 @@ def _first_to_answer(call, after: float):
 
     pool = ThreadPoolExecutor(max_workers=2)
     try:
-        out = {pool.submit(contextvars.copy_context().run, call)}
+        first = pool.submit(contextvars.copy_context().run, call)
+        out = {first}
         if not wait(out, timeout=after).done:
             request_timing.count("judge_second")
             out.add(pool.submit(contextvars.copy_context().run, call))
@@ -288,6 +291,8 @@ def _first_to_answer(call, after: float):
             done, out = wait(out, return_when=FIRST_COMPLETED)
             for one in done:
                 if one.exception() is None:
+                    if one is not first:
+                        request_timing.count("judge_second_answered")
                     return one.result()
                 failure = failure or one.exception()
         raise failure

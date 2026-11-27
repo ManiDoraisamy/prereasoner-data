@@ -5896,8 +5896,11 @@ first is the judgement (`engine/llm.py` `_post_judge`, `_first_to_answer`). Of 4
 out at 8 s, which is what the second asking adds to the judge's cost (about $0.0008 a question), and 8.7% took
 longer than the 7 s it leaves a second call, so two calls that are slow independently both miss on about one answer
 in two thousand, against one in two hundred for a single call. A slow spell holds calls together, so the share is
-read in production: the request's `[timing]` line counts `judge_second`, and the waits that still end by the clock
-are read at the next gate.
+read in production: the request's `[timing]` line counts `judge_second` and, where the second asking's answer is the
+one read, `judge_second_answered`, and the waits that still end by the clock are read at each gate. Release
+95e2a7af's gate could read neither count: the line printed a counter only when it was not 1, so an event that
+happens once in a request never showed (`world_lookup_skipped` and `deterministic_python_fallback` among them). It
+prints every counter now and leaves out only the count of a span that ran once (`engine/request_timing.py` `emit`).
 
 It is the same body to the same model, not a third opinion and not a retry: a call that fails at once is not made
 again (`JUDGE_ATTEMPTS` stays 1), and a failed first call leaves a second already out to answer. The judge takes no

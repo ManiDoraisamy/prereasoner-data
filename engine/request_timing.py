@@ -142,7 +142,10 @@ def emit(tag, **extra):
             ):  # nested: publish the non-overlapping share too
                 parts.append(f"{name}_self_ms={self_s * 1000:.0f}")
         for name in sorted(timing.counters):
-            if timing.counters[name] != 1:  # a once-only phase needs no count
+            # A span that ran once needs no count beside its time. A counter of its own prints at 1
+            # too: that is the one value an event counted once ever takes.
+            once = timing.counters[name] == 1 and name.endswith("_n") and name[:-2] in timing.spans
+            if not once:
                 parts.append(f"{name}={timing.counters[name]}")
         print(f"[timing] {tag} " + " ".join(parts), flush=True)
     except Exception as e:  # noqa: BLE001 — a timing bug must not fail the request

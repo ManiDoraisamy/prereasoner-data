@@ -219,6 +219,27 @@ def test_single_call_phase_prints_no_count():
     assert "serve_n=" not in out, f"a once-only phase should not carry a count: {out}"
 
 
+def test_an_event_counted_once_is_printed():
+    """A counter printed only when it was not 1, so an event that happens once in a request was never seen: release
+    95e2a7af's gate could not tell how often the judge was asked a second time (`judge_second`), and
+    `world_lookup_skipped` and `deterministic_python_fallback` had never printed. Only a span's own count is left out
+    at 1."""
+    def run():
+        token = request_timing.begin("rid9")
+        try:
+            with request_timing.span("serve"):
+                request_timing.count("judge_second")
+                request_timing.count("rows_n")            # no span is named `rows`: a counter of its own
+            request_timing.emit("t")
+        finally:
+            request_timing.end(token)
+
+    _, out = _capture(run)
+    f = _fields(out)
+    assert f.get("judge_second") == "1" and f.get("rows_n") == "1", f"an event counted once must print: {out}"
+    assert "serve_n=" not in out, f"a span that ran once still carries no count: {out}"
+
+
 def test_request_id_can_be_adopted_after_parsing():
     def run():
         token = request_timing.begin("generated")
@@ -244,6 +265,7 @@ TESTS = [
     test_unattributed_time_is_published,
     test_span_count_and_explicit_count_share_one_key,
     test_single_call_phase_prints_no_count,
+    test_an_event_counted_once_is_printed,
     test_request_id_can_be_adopted_after_parsing,
 ]
 
