@@ -37,6 +37,8 @@ Records: regress/results/public/<run>/<set>/<system>.jsonl; --keep packs them in
 usage: python -X utf8 -m regress.run_public --run NAME --set SET --system SYSTEM [--limit N] [--threads N] [--cap 30] [--skip N --size N]
        python -X utf8 -m regress.run_public --new-sample NAME --size 1000 --seed S      (a fresh WikiTableQuestions test sample)
        python -X utf8 -m regress.run_public --compare RUN_A RUN_B --set SET [--system engine]
+                   (right, built and the marks of each run, wins and losses; the engine system reads a served
+                   run for the engine's own answers, so a release's served run compares with the engine before it)
        python -X utf8 -m regress.run_public --summary RUN
        python -X utf8 -m regress.run_public --census RUN          (wtq-train: the misses by SQUALL query family)
        python -X utf8 -m regress.run_public --oracle RUN [--boost 4]   (wtq-train: what a reading naming SQUALL's columns builds)
@@ -505,18 +507,32 @@ def sign_test(wins: int, losses: int) -> float:
     return 1.0 if n == 0 else min(1.0, 2 * sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n)
 
 
+def engine_records(run: str, name: str) -> dict:
+    """The engine's own answers of a run: its engine records, else its served ones, which hold the engine's answer
+    (``engine``) and its marks (``kind``, ``doubt``) beside what the retry served."""
+    try:
+        return records(run, name, "engine")
+    except SystemExit:
+        return records(run, name, "prereasoner")
+
+
 def compare(run_a: str, run_b: str, name: str, system: str) -> dict:
-    """Right and built (some listed answer right) in each run, wins and losses of b against a, the marks of each."""
-    a, b = records(run_a, name, system), records(run_b, name, system)
+    """Right and built (some listed answer right) in each run, wins and losses of b against a, the marks of each, and
+    of the answers the second judge warned (``doubt``: the choice gave them unmarked) how many were right and wrong.
+    With the engine system a run that was served is read for the engine's own answers (engine_records), so a release's
+    served run compares with the engine alone before it."""
+    a, b = ((engine_records(run, name) if system == "engine" else records(run, name, system)) for run in (run_a, run_b))
     ids = sorted(set(a) & set(b))
     out = {"questions": len(ids)}
     for label, held in ((run_a, a), (run_b, b)):
         marks = collections.Counter((held[i].get("kind"), verdict(held[i], system)) for i in ids)
+        doubts = collections.Counter((held[i]["doubt"], verdict(held[i], system)) for i in ids if held[i].get("doubt"))
         out[label] = {"right": sum(verdict(held[i], system) for i in ids), "built": sum(any(held[i].get("listed_right") or []) for i in ids),
                       "unmarked right": marks[("answered", True)], "unmarked wrong": marks[("answered", False)],
                       "warned right": marks[("warned", True)], "warned wrong": marks[("warned", False)],
                       "erred": marks[("erred", True)] + marks[("erred", False)], "refused": marks[("refused", False)],
-                      "errors": marks[("error", False)]}
+                      "errors": marks[("error", False)],
+                      "warned by the second judge": {f"{doubt}, the answer {'right' if right else 'wrong'}": n for (doubt, right), n in sorted(doubts.items())}}
     wins = sum(verdict(b[i], system) and not verdict(a[i], system) for i in ids)
     losses = sum(verdict(a[i], system) and not verdict(b[i], system) for i in ids)
     out.update(wins=wins, losses=losses, sign_test_p=round(sign_test(wins, losses), 4))
@@ -966,7 +982,7 @@ def run_judge(source: str, set_name: str, run: str, sizes: tuple[int, int], limi
     import regress.run_dev_decisions as dev
     from engine.named.names import NONE
     from engine.prepared import scratch_database
-    from engine.program.closed import CHOICE_INSTRUCTION, answer_key, answer_masses
+    from engine.program.closed import answer_key, answer_masses
     from engine.tables import TableQuery
 
     held = records(source, set_name, "engine")
@@ -995,11 +1011,10 @@ def run_judge(source: str, set_name: str, run: str, sizes: tuple[int, int], limi
     lock, captured, unrecorded = threading.Lock(), [], [0]
 
     def transport(payload: bytes) -> dict:
-        body = json.loads(payload.decode("utf-8"))
-        question = (body.get("questions") or {}).get("reading") or {}
+        choice = eval_sets.choice_question(payload)
         with lock:
-            if question.get("instructions") == CHOICE_INSTRUCTION:
-                captured.append((json.loads(body["input"].split("\n", 1)[1]), question))
+            if choice is not None:
+                captured.append(choice)
             if decisions.store.get(llm.decision_hash(payload)) is None:
                 unrecorded[0] += 1
         return decisions(payload)

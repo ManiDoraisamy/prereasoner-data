@@ -1,0 +1,95 @@
+{
+ "wtq": {
+  "n": 300,
+  "misses": 0,
+  "errors": 0,
+  "mismatches": 0,
+  "labels": {
+   "flagged_wrong": 33,
+   "flagged_right": 36,
+   "right": 191,
+   "asked": 28,
+   "wrong": 12
+  },
+  "reference_labels": {
+   "flagged_wrong": 33,
+   "flagged_right": 36,
+   "right": 191,
+   "asked": 28,
+   "wrong": 12
+  },
+  "seconds": 980.0,
+  "gate": {
+   "built": 262,
+   "reference_built": 262,
+   "pick": 236,
+   "reference_pick": 236,
+   "wins": 0,
+   "losses": 0,
+   "unwarned_wrong": 12,
+   "reference_unwarned_wrong": 12
+  }
+ },
+ "messy": {
+  "n": 120,
+  "misses": 0,
+  "errors": 0,
+  "mismatches": 0,
+  "labels": {
+   "right": 84,
+   "flagged_wrong": 9,
+   "flagged_right": 16,
+   "asked": 10,
+   "wrong": 1
+  },
+  "reference_labels": {
+   "right": 84,
+   "flagged_wrong": 9,
+   "flagged_right": 16,
+   "asked": 10,
+   "wrong": 1
+  },
+  "seconds": 295.7,
+  "gate": {
+   "built": 116,
+   "reference_built": 116,
+   "pick": 105,
+   "reference_pick": 105,
+   "wins": 0,
+   "losses": 0,
+   "unwarned_wrong": 1,
+   "reference_unwarned_wrong": 1
+  }
+ },
+ "freshdev": {
+  "n": 176,
+  "misses": 0,
+  "errors": 0,
+  "mismatches": 0,
+  "labels": {
+   "flagged_right": 20,
+   "asked": 18,
+   "flagged_wrong": 24,
+   "right": 112,
+   "wrong": 2
+  },
+  "reference_labels": {
+   "flagged_right": 20,
+   "asked": 18,
+   "flagged_wrong": 24,
+   "right": 112,
+   "wrong": 2
+  },
+  "seconds": 923.1,
+  "gate": {
+   "built": 141,
+   "reference_built": 141,
+   "pick": 132,
+   "reference_pick": 132,
+   "wins": 0,
+   "losses": 0,
+   "unwarned_wrong": 2,
+   "reference_unwarned_wrong": 2
+  }
+ }
+}

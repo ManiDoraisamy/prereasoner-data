@@ -1,0 +1,62 @@
+{
+ "databench": {
+  "n": 300,
+  "misses": 0,
+  "errors": 0,
+  "mismatches": 0,
+  "labels": {
+   "flagged_right": 27,
+   "right": 230,
+   "asked": 18,
+   "wrong": 8,
+   "flagged_wrong": 17
+  },
+  "reference_labels": {
+   "flagged_right": 27,
+   "right": 230,
+   "asked": 18,
+   "wrong": 8,
+   "flagged_wrong": 17
+  },
+  "seconds": 1835.4,
+  "gate": {
+   "built": 281,
+   "reference_built": 281,
+   "pick": 262,
+   "reference_pick": 262,
+   "wins": 0,
+   "losses": 0,
+   "unwarned_wrong": 8,
+   "reference_unwarned_wrong": 8
+  }
+ },
+ "demo": {
+  "n": 91,
+  "misses": 0,
+  "errors": 0,
+  "mismatches": 0,
+  "labels": {
+   "asked": 4,
+   "right": 82,
+   "flagged_wrong": 1,
+   "flagged_right": 4
+  },
+  "reference_labels": {
+   "asked": 4,
+   "right": 82,
+   "flagged_wrong": 1,
+   "flagged_right": 4
+  },
+  "seconds": 319.9,
+  "gate": {
+   "built": 87,
+   "reference_built": 87,
+   "pick": 86,
+   "reference_pick": 86,
+   "wins": 0,
+   "losses": 0,
+   "unwarned_wrong": 0,
+   "reference_unwarned_wrong": 0
+  }
+ }
+}

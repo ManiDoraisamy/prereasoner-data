@@ -5859,7 +5859,10 @@ and wrong needs about 43% marked). With two judges that must agree, the unmarked
 The judge is Gemini 4 Neon at low thinking (`JUDGE_MODEL`). Faster judges were measured in the same seat on the same
 questions before it was built: Gemini 3.5 Flash-Lite (about 1 s) leaves 9.3% to 10.1% unmarked wrong, and Gemini 4
 Hydrogen (about 3 s) reaches 7.1% to 7.3% only at its point estimate and leaves fewer right answers unmarked. Neon costs
-about $0.016 and 4.9 s at the median on each answer the choice gives unmarked (8.3 s at p90), on top of the request.
+about $0.016 on every question with a listing: its call starts beside the choice, before the choice's mark is known, so
+that an answer the choice gives unmarked (about three in four) waits only for what is left of it, a call of 4.9 s at
+the median and 8.3 s at p90. Asking it after the choice would spare the call on a marked answer and add the choice's
+own second or two to every unmarked one.
 
 It is a model answering with one key, not a probability: the 2026-11-20 rule ("returns probabilities only") is amended
 for this one call in `CLAUDE.md`, whose ownership map names it. A failed judge call warns the answer ("the second

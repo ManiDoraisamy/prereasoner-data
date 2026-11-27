@@ -10,6 +10,141 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release 924a7b19 (two judges that must agree, lines by place, three readings) live; on a fresh 1,000 the answers given unmarked and wrong fall from 12.9% to 4.4% with 35.9% marked, the engine's own right answers 748 -> 749; Chrome gate 97 of 97 fresh on 23 datasets (one not run: the account's storage is full), 77 of 78 existing; a compound question waits for the judge once per part (2026-11-27)
+
+- Engine `prereasoner-api-00356-qul` (`engine@sha256:033caa12...`, Cloud Build 446e5412: build, offline regression
+  gate, runtime server smoke, live product suite, 92 min, each demo question's four modes now waiting for the judge),
+  tag `judge`, health ok, the release smoke job ok (execution h7fxb), 100% of traffic from 2026-11-26 23:12 UTC, both
+  engine jobs on the image; the chat service and Hosting unchanged (nothing under `web/` or `orchestrator/` moved since
+  4a3b86e5). It holds 3e48bd2b (the second judge) and 924a7b19 (lines by place under a list reading, a median or a
+  standard deviation, a distinct count against a stated number, a number between two numbers). Rollback
+  `prereasoner-api-00354-det`. CI green on 924a7b19. Owner, 2026-11-26: "Deploy".
+- **The fresh sample** `wtq-fresh3` (`regress/sets/public/samples/wtq-fresh3.json`, seed 20261126: 1,000 of the 1,344
+  WikiTableQuestions test questions no earlier sample holds; read in totals, and the three questions whose answer
+  changed were read). Before: the released engine alone at 4a3b86e5 (`--run 2026-11-26-fresh3-base`, system `engine`).
+  After: this release as served, the second judge and the retry asked live (`--run 2026-11-26-fresh3`, system
+  `prereasoner`, three shards merged, the two questions whose judge call failed asked again). `python -m
+  regress.run_public --compare 2026-11-26-fresh3-base 2026-11-26-fresh3 --set wtq-fresh3 --system engine` prints
+  it from the committed records:
+
+  | 1,000 questions never read | The released engine | This release, served |
+  |---|---|---|
+  | The engine's own answer right | 748 | 749 (2 wins, 1 loss) |
+  | Right as served, an erred answer retried | (not run) | 780 (78.0%, 75.3-80.5) |
+  | Built (a listed answer graded right) | 851 | 851 |
+  | Unmarked and wrong | 129 (12.9%, 11.0-15.1) | 44 (4.4%, 3.3-5.9) |
+  | Unmarked and right | 639 | 597 |
+  | Warned: right / wrong | 82 / 58 | 123 / 143 |
+  | Erred | 92 | 93 |
+  | Marked, warned or erred | 232 (23.2%) | 359 (35.9%) |
+
+  The second judge warned 128 answers the choice gave unmarked: 85 wrong and 43 right (it picked none on 66 wrong
+  and 29 right, another answer on 19 wrong and 14 right). Of the answers still unmarked, 597 of 641 are right
+  (93.1%). The readings are level on unread tables, as their own entries said: 6 answers of 1,000 changed.
+- **The 896 and the demo set with the judge** (`regress/run_dev_decisions.py --tag judged --record --keep`, the
+  references now judged; records `regress/sets/dev_decisions/records/judged/`; parity with the choice's own labels
+  on every question, no miss):
+
+  | | The choice alone | Two judges |
+  |---|---|---|
+  | The 896: unmarked and wrong | 60 (6.7%) | 23 (2.6%) |
+  | The 896: unmarked and right | 664 (74.1%) | 617 (68.9%) |
+  | The 896: marked | 172 (19.2%) | 256 (28.6%) |
+  | Demo, 91: unmarked right / unmarked wrong / warned / erred | 84 / 1 / 2 / 4 | 82 / 0 / 5 / 4 |
+
+  On the dev sets the judge warns more right answers than wrong ones (47 and 37; on DataBench dev its none falls on
+  15 right answers, yes-or-no checks that hit the gold by a contorted reading, the map below), and on the fresh
+  WikiTableQuestions sample twice as many wrong as right.
+- **What the judge costs as served.** It is asked on every question with a listing (997 of the sample's 1,000):
+  3,516 tokens in and 354 out a call, $0.0159 a question ($15.82 the sample; the dev sets' sheets are larger,
+  $0.0191). Its call takes 4.7 s at the median and 7.7 s at p90 (the sample's recorded calls). In production
+  (`[timing]`, 191 requests of the Chrome gate against 195 at 4a3b86e5): a request's total 2.7 s -> 6.1 s at the
+  median and 5.5 s -> 17.4 s at p90; 126 requests waited for the judge, 3.7 s at the median.
+- **Found at the gate, to fix forward: a compound question waits for the judge once per part.** Each part's selection
+  waits for its own judge in turn, so a request of four or five parts waits 16 to 26 s in all (the 12 waits of 15 s
+  or more among the 126 are all such requests; of the 8 between 10 and 15 s, six are one slow call), and the complex
+  demo questions took 30 to 60 s in the browser against 12 to 24 s. The parts' checks are to wait together, and the
+  judge's 15 s limit, a socket's today, becomes a clock's on the wait.
+- **Chrome gate** on the deployed site (Claude in Chrome on the owner's account, harness and captures in
+  `prereasoner-scratch/gate-924a7b19/`, archived). Existing conversations first (the 24 of 4a3b86e5's fresh pass):
+  77 of 78, the miss customer-orders "in GBP for the whole of Europe?" read as an average after the conversation's
+  last turn asked one, as at every gate since b9b0fe50; 65 records byte-identical to 4a3b86e5's, 13 differing by the
+  day's exchange rates; no answer warned. Fresh pass: 97 of 97 on 23 of the 24 datasets (81 byte-identical, 16 by the
+  day's rates); **eval-neartail-ecommerce was not run**: its 942 KB upload was refused, the account's 256 MB of
+  conversations being full of earlier gates' chats, which the owner clears. Two fresh answers carry a warning, both
+  right: "number of leads" on a 4,521-line upload, whose judge call did not answer in time, and "total budget in
+  Germany", where the judge picked the one-group breakdown by currency, the same 33,000 in another shape.
+- Evaluation: a judge call that fails while a reference is recorded is asked again (three attempts, each as served)
+  and a set with a miss is skipped, not the run (`regress/run_dev_decisions.py` `JudgeReplay`); every record names
+  its question's judge call from the choice's own body (`judge_call`, `regress/eval_sets.py` `judge_call_of`), so
+  `tests/test_answer.py` `test_the_dev_replay_runs_from_a_clean_clone` checks the committed judge answers hold every
+  one an answer read, and the judges' answers on warned and erred answers can be read without asking again;
+  `run_public --compare` reads a served run for the engine's own answers. A call batch is packed only when no run
+  is live: a batch packed under a running store cost one question an error, and that set was run again.
+- Spend: Gemini 4 Neon as the judge $34.53 ($15.82 the fresh sample, $18.71 the 896 and the demo), the retry $1.21,
+  Decisions $1.08; records, the judges' and the retry's answers kept, so a clone replays all of it without the API.
+
+
+## DataBench test's 111 misses read one by one: 388 of 450 built by the grade, 350 built and read; the largest family is a cell that holds a list or a record, 23 of the 111 (2026-11-26)
+
+- The build plan's steps 2 and 4 (owner, 2026-11-26): count a question as built only where a listing reads it, and
+  map DataBench as WikiTableQuestions was mapped. Run `2026-11-26-readings` (the engine alone at 924a7b19, no second
+  judge asked): 339 right of the 450 within the upload limit, against 399 for Gemini 4 Neon and 404 for Claude Opus
+  5.5 writing their own query (`2026-11-22-benchmark`). Each of the 111 misses was read once (the question, the gold,
+  the answer served and its read-as line, the read-as line of the listing graded right) and filed under the first
+  thing the question needs that the served listing lacks:
+  `regress/sets/public/records/2026-11-26-readings/databench-test/misses_read.json` holds each family's ids. DataBench
+  test is a diagnosis set; nothing was built from this reading in this entry.
+
+  | By the answer's type | Questions | Right | A listing graded right, another picked | No listing graded right | Neon | Opus |
+  |---|---|---|---|---|---|---|
+  | yes or no | 112 | 91 | 21 | 0 | 107 | 103 |
+  | category | 59 | 50 | 6 | 3 | 54 | 57 |
+  | list of categories | 60 | 35 | 5 | 20 | 48 | 45 |
+  | list of numbers | 79 | 58 | 7 | 14 | 69 | 73 |
+  | number | 140 | 105 | 10 | 25 | 121 | 126 |
+  | all | 450 | 339 | 49 | 62 | 399 | 404 |
+
+- **Counted by what reads the question, the engine builds 350, not 388.** Of the 49 misses with a listing graded
+  right, 11 have a listing that reads the question and the choice picked another (which column a list shows on
+  three; the highest where the best of a death rate is the lowest, and the reverse, on two; "the standard deviation
+  of ratio" read as Rate over SE). On the other 38 the listing matches the gold by accident, 21 of them a yes or no,
+  which any contorted check hits half the time ("is our research dept bigger than sales?" graded right as whether
+  the TotalWorkingYears of one line is above another's). The choice stage on DataBench test is therefore 11 questions
+  (2.4%), and the rest of the distance to Neon is what the engine builds, as on WikiTableQuestions (the judge test
+  below). The second judge sees the same thing from the other side: on DataBench dev it warns right answers whose
+  reading is such a check (the release entry's 896).
+- **What the 111 need**, a question filed once:
+
+  | The question needs | Misses | Of them a listing graded right |
+  |---|---|---|
+  | a cell that holds a list or a record (TripAdvisor's ratings and author, OpenFoodFacts' labels, stores and countries) | 23 | 5 |
+  | knowledge outside the sheet (a name's gender, a teenager's ages, an obese BMI, freezing, a defensive rebound) | 15 | 6 |
+  | its words read another way ("all rows named", "the most value", "ratio" as a division) | 14 | 10 |
+  | a unit or a scale the sheet does not use (95 per cent of a chance held as 0.95, 2k points, 50000 grams of a weight in kilograms, metres of a height in centimetres, six decades) | 11 | 9 |
+  | which columns a list shows (the figures alone, duplicates kept) | 8 | 5 |
+  | the first different values by appearance | 5 | 0 |
+  | a set of lines, then a figure or the different values of it (the highest height of the two heaviest; the day names of the five highest) | 5 | 1 |
+  | the grader or the gold (a total printed with six decimals, any five of many) | 5 | 1 |
+  | a count of counts (ids that appear exactly once, any region above 50 lines, a highest found once) | 4 | 3 |
+  | the second or the nth | 3 | 2 |
+  | a hierarchy's descendants | 3 | 2 |
+  | a part of a date (the year of the first review, the top years) | 3 | 0 |
+  | arithmetic the question states (half a day at 200 pages a day; 30 copies less the copies left) | 3 | 0 |
+  | a length in characters | 2 | 0 |
+  | the value closest to a number | 2 | 1 |
+  | two counts compared | 2 | 2 |
+  | which end is best or worst | 2 | 2 |
+  | a count for each column | 1 | 0 |
+
+- Neon answers 76 of the 111. A cell that holds a list or a record is the largest family (5% of the set) and a design
+  of its own: how a part of a cell becomes a column or a line belongs to the sheet compiler and the catalog, not to a
+  frame. Units and scales come next and need a closed question of their own (is the stated number in the sheet's
+  unit?). Every other buildable family is one to five questions, under 1.2% of the set each, and the two readings not
+  kept on 2026-11-26 (the first different values, the top years) are among them: on this set the tail is as thin as
+  WikiTableQuestions'.
+
+
 ## Three readings DataBench's misses lacked (a median or a standard deviation, a distinct count against a stated number, a number between two numbers): DataBench test 327 -> 339 of 450, the set they were read from; on questions not read for them, DataBench training 320 -> 321 of 400 and WikiTableQuestions training unchanged; two more readings not kept (2026-11-26)
 
 - The build plan's missing pieces (owner, 2026-11-26), each a meaning that holds on any sheet, from the 129 DataBench
@@ -143,11 +278,13 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
   spend: 120 of the test's `wtq-test` questions through `TableQuery.select_query` with the judge's transport reading
   the recorded answers only, every judge body found recorded and every mark the one the test's row gives (62
   unmarked by both, 15 warned by none, 9 by another answer, 34 warned or erred by the choice and left so).
-- Its cost on each answer the choice gives unmarked (about three in four): $0.016 and 4.9 s at the median, 8.3 s at
-  p90, beside a request that takes 2.7 s at the median today. Not yet measured on the 896 and a fresh sample through
-  the served path: every listing change moves the judge's body, so that run (about $32 of Neon) is made once, on the
-  release's engine. Until then a run that reads what is built and picked asks no judge (`--unjudged`, every training
-  set; `regress/eval_sets.py` `judge_unasked`), and labels each answer as the choice alone leaves it.
+- Its cost: $0.016 on every question with a listing (the call starts beside the choice, before the choice's mark is
+  known), and for an answer the choice gives unmarked (about three in four) the wait for it, a call of 4.9 s at the
+  median and 8.3 s at p90 beside a request that takes 2.7 s at the median today. Not yet measured on the 896 and a
+  fresh sample through the served path: every listing change moves the judge's body, so that run (about $32 of Neon)
+  is made once, on the release's engine (the release entry above). Until then a run that reads what is built and
+  picked asks no judge (`--unjudged`, every training set; `regress/eval_sets.py` `judge_unasked`), and labels each
+  answer as the choice alone leaves it.
 
 ## Gemini 4 Neon as the judge of the engine's own listings: the choice is worth about two points; on half its misses no listing reads the question, and two judges that must agree halve the unmarked wrong (2026-11-26)
 

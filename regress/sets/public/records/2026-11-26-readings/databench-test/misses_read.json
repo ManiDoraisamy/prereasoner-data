@@ -1,0 +1,247 @@
+{
+ "run": "2026-11-26-readings",
+ "set": "databench-test",
+ "within the upload limit": 450,
+ "right": 339,
+ "misses": 111,
+ "misses with a listing graded right": 49,
+ "of those, a listing reads the question": {
+  "questions": 11,
+  "ids": [
+   "db/069_Taxonomy/7",
+   "db/071_COL/27",
+   "db/071_COL/28",
+   "db/072_Admissions/13",
+   "db/074_Lift/4",
+   "db/074_Lift/27",
+   "db/075_Mortality/11",
+   "db/075_Mortality/18",
+   "db/075_Mortality/27",
+   "db/076_NBA/24",
+   "db/078_Fires/27"
+  ]
+ },
+ "built, a listing graded right": 388,
+ "built, a listing reads the question": 350,
+ "families": {
+  "a cell that holds a list or a record": {
+   "questions": 23,
+   "built": 5,
+   "ids": [
+    "db/067_TripAdvisor/2",
+    "db/067_TripAdvisor/3",
+    "db/067_TripAdvisor/9",
+    "db/067_TripAdvisor/11",
+    "db/067_TripAdvisor/12",
+    "db/067_TripAdvisor/14",
+    "db/067_TripAdvisor/21",
+    "db/067_TripAdvisor/25",
+    "db/067_TripAdvisor/26",
+    "db/070_OpenFoodFacts/10",
+    "db/070_OpenFoodFacts/11",
+    "db/070_OpenFoodFacts/14",
+    "db/070_OpenFoodFacts/15",
+    "db/070_OpenFoodFacts/16",
+    "db/070_OpenFoodFacts/17",
+    "db/070_OpenFoodFacts/22",
+    "db/070_OpenFoodFacts/23",
+    "db/070_OpenFoodFacts/24",
+    "db/070_OpenFoodFacts/25",
+    "db/070_OpenFoodFacts/26",
+    "db/070_OpenFoodFacts/27",
+    "db/070_OpenFoodFacts/28",
+    "db/080_Books/11"
+   ]
+  },
+  "knowledge outside the sheet": {
+   "questions": 15,
+   "built": 6,
+   "ids": [
+    "db/073_Med_Cost/3",
+    "db/074_Lift/4",
+    "db/074_Lift/14",
+    "db/074_Lift/15",
+    "db/074_Lift/18",
+    "db/074_Lift/29",
+    "db/074_Lift/30",
+    "db/075_Mortality/1",
+    "db/076_NBA/17",
+    "db/076_NBA/18",
+    "db/077_Gestational/7",
+    "db/077_Gestational/23",
+    "db/078_Fires/4",
+    "db/078_Fires/27",
+    "db/080_Books/10"
+   ]
+  },
+  "the question's words read another way": {
+   "questions": 14,
+   "built": 10,
+   "ids": [
+    "db/067_TripAdvisor/6",
+    "db/069_Taxonomy/3",
+    "db/069_Taxonomy/7",
+    "db/070_OpenFoodFacts/19",
+    "db/071_COL/27",
+    "db/072_Admissions/13",
+    "db/072_Admissions/36",
+    "db/075_Mortality/18",
+    "db/076_NBA/11",
+    "db/076_NBA/21",
+    "db/076_NBA/22",
+    "db/077_Gestational/9",
+    "db/078_Fires/3",
+    "db/080_Books/28"
+   ]
+  },
+  "a unit or a scale the sheet does not use": {
+   "questions": 11,
+   "built": 9,
+   "ids": [
+    "db/072_Admissions/4",
+    "db/072_Admissions/20",
+    "db/073_Med_Cost/23",
+    "db/076_NBA/3",
+    "db/076_NBA/7",
+    "db/077_Gestational/4",
+    "db/077_Gestational/8",
+    "db/077_Gestational/15",
+    "db/077_Gestational/20",
+    "db/077_Gestational/24",
+    "db/077_Gestational/25"
+   ]
+  },
+  "which columns the answer shows": {
+   "questions": 8,
+   "built": 5,
+   "ids": [
+    "db/069_Taxonomy/25",
+    "db/071_COL/28",
+    "db/074_Lift/25",
+    "db/074_Lift/27",
+    "db/075_Mortality/24",
+    "db/076_NBA/24",
+    "db/078_Fires/12",
+    "db/080_Books/40"
+   ]
+  },
+  "the first different values by appearance": {
+   "questions": 5,
+   "built": 0,
+   "ids": [
+    "db/069_Taxonomy/28",
+    "db/069_Taxonomy/29",
+    "db/069_Taxonomy/30",
+    "db/069_Taxonomy/33",
+    "db/069_Taxonomy/34"
+   ]
+  },
+  "a set of lines, then a figure or the different values of it": {
+   "questions": 5,
+   "built": 1,
+   "ids": [
+    "db/069_Taxonomy/31",
+    "db/077_Gestational/11",
+    "db/077_Gestational/30",
+    "db/078_Fires/36",
+    "db/078_Fires/37"
+   ]
+  },
+  "the grader or the gold": {
+   "questions": 5,
+   "built": 1,
+   "ids": [
+    "db/073_Med_Cost/21",
+    "db/074_Lift/32",
+    "db/076_NBA/29",
+    "db/076_NBA/30",
+    "db/080_Books/37"
+   ]
+  },
+  "a count of counts": {
+   "questions": 4,
+   "built": 3,
+   "ids": [
+    "db/067_TripAdvisor/8",
+    "db/069_Taxonomy/21",
+    "db/075_Mortality/6",
+    "db/078_Fires/7"
+   ]
+  },
+  "the second or the nth": {
+   "questions": 3,
+   "built": 2,
+   "ids": [
+    "db/069_Taxonomy/11",
+    "db/071_COL/12",
+    "db/071_COL/13"
+   ]
+  },
+  "a hierarchy's descendants": {
+   "questions": 3,
+   "built": 2,
+   "ids": [
+    "db/069_Taxonomy/2",
+    "db/069_Taxonomy/24",
+    "db/069_Taxonomy/26"
+   ]
+  },
+  "a part of a date": {
+   "questions": 3,
+   "built": 0,
+   "ids": [
+    "db/067_TripAdvisor/20",
+    "db/067_TripAdvisor/23",
+    "db/067_TripAdvisor/28"
+   ]
+  },
+  "arithmetic the question states": {
+   "questions": 3,
+   "built": 0,
+   "ids": [
+    "db/074_Lift/26",
+    "db/080_Books/19",
+    "db/080_Books/21"
+   ]
+  },
+  "a length in characters": {
+   "questions": 2,
+   "built": 0,
+   "ids": [
+    "db/067_TripAdvisor/15",
+    "db/067_TripAdvisor/19"
+   ]
+  },
+  "the value closest to a number": {
+   "questions": 2,
+   "built": 1,
+   "ids": [
+    "db/071_COL/14",
+    "db/071_COL/29"
+   ]
+  },
+  "two counts compared": {
+   "questions": 2,
+   "built": 2,
+   "ids": [
+    "db/066_IBM_HR/4",
+    "db/066_IBM_HR/6"
+   ]
+  },
+  "which end is best or worst": {
+   "questions": 2,
+   "built": 2,
+   "ids": [
+    "db/075_Mortality/11",
+    "db/075_Mortality/27"
+   ]
+  },
+  "a count for each column": {
+   "questions": 1,
+   "built": 0,
+   "ids": [
+    "db/069_Taxonomy/27"
+   ]
+  }
+ }
+}

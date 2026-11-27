@@ -32,6 +32,8 @@ canonical table names); its bodies differ, so it needs --record.
 
 The second judge (engine/llm.py judge, JUDGE_TRANSPORT) is replayed the same way from regress/sets/judge_calls: an
 answer the choice gives unmarked is labelled as its two judges leave it (``doubt``: why the second one warned it).
+With --record a judge's call that fails is sent again (three attempts, each as served), since the reference keeps the
+judge's answer and not one run's timeout; a set with a miss is not kept and is run again, its recorded bodies replayed.
 --unjudged asks no second judge (a change measured for what it builds and picks, not for its marks): an answer is
 labelled as the choice alone leaves it (``judged`` false), and compared with the reference's label as the choice alone
 left that one.
@@ -78,7 +80,7 @@ RETRY_CALLS = eval_sets.SETS / "retry_calls"
 JUDGE_CALLS = eval_sets.SETS / "judge_calls"
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
 # The fields of a record that the reference keeps (its timing and comparison are the run's own)
-KEPT = ("id", "set", "kind", "label", "mass", "listed", "listed_answer", "listed_right", "choose_p", "read_as", "error", "miss", "convert_to", "calls", "doubt", "judged")
+KEPT = ("id", "set", "kind", "label", "mass", "listed", "listed_answer", "listed_right", "choose_p", "read_as", "error", "miss", "convert_to", "calls", "doubt", "judged", "judge_call")
 DEMO_AS_OF = "2026-11-18"
 CENT = 0.01                 # run_connected.py: a scalar within one cent, a row's cells to the cent
 
@@ -96,9 +98,11 @@ class Replay:
         self.store, self.misses, self.record = store, misses, record
         self.send = llm.DECISIONS_TRANSPORT
         self.used: list[str] = []
+        self.judge_call: str | None = None     # the judge's body hash for the question in hand, from its choice call
 
     def __call__(self, payload: bytes) -> dict:
         digest = llm.decision_hash(payload)
+        self.judge_call = eval_sets.judge_call_of(payload) or self.judge_call
         held = self.store.get(digest)
         if held is None and self.record:
             answer = self.send(payload)
@@ -115,9 +119,15 @@ class Replay:
 class JudgeReplay:
     """engine.llm's judge transport (JUDGE_TRANSPORT) over the recorded judge answers by body hash, as Replay is the
     Decisions transport's: without ``record`` a body the store lacks is a miss; with it, the body is sent through
-    engine.llm's own transport and its answer kept. The selection asks the judge beside its choice for every question
-    and reads its answer only for an answer the choice gives unmarked, so a miss reaches the question (ReplayMiss) only
-    there."""
+    engine.llm's own transport and its answer kept. Serving asks the judge once, within its seconds, and warns the
+    answer when that call fails; a recording wants the judge's answer, so a call that fails is sent again (ATTEMPTS in
+    all, each one as served), and only a body that never answers is the question's miss. The selection asks the judge
+    beside its choice for every question and reads its answer only for an answer the choice gives unmarked, so a miss
+    reaches the question (ReplayMiss) only there. Every record with a listing names its judge's call
+    (``judge_call``, eval_sets.judge_call_of over the choice's own body), read or not, so the judges' answers on
+    warned and erred answers can be read from the store without asking again."""
+
+    ATTEMPTS = 3
 
     def __init__(self, store: eval_sets.CallStore, record: bool = False):
         self.store, self.record, self.send = store, record, llm.JUDGE_TRANSPORT
@@ -126,11 +136,19 @@ class JudgeReplay:
         digest = llm.decision_hash(payload)
         held = self.store.get(digest)
         if held is None and self.record:
-            held = self.send(payload)
+            held = self._asked(payload)
             self.store.keep(digest, held)
         if held is None:
             raise ReplayMiss(digest)
         return held
+
+    def _asked(self, payload: bytes) -> dict:
+        for left in range(self.ATTEMPTS - 1, -1, -1):
+            try:
+                return self.send(payload)
+            except llm.LLMUnavailable:
+                if not left:
+                    raise
 
 
 class QueryReplay:
@@ -447,6 +465,8 @@ def main() -> int:
     names = args.sets.split(",")
     if any(name not in SETS for name in names):
         raise SystemExit(f"sets are {SETS}")
+    if args.keep and (args.limit or args.resume):
+        raise SystemExit("a reference is a whole set measured in one run: --keep takes neither --limit nor --resume")
     torch.set_num_threads(args.threads)
     out = ROOT / "regress" / "results" / "dev_decisions" / args.tag
     out.mkdir(parents=True, exist_ok=True)
@@ -454,7 +474,8 @@ def main() -> int:
     batch = f"{datetime.date.today().isoformat()}-{args.tag}-{'_'.join(args.sets.split(','))}-{os.getpid()}"
     replay = Replay(eval_sets.CallStore(eval_sets.CALLS, batch), out / "misses", args.record)
     llm.DECISIONS_TRANSPORT = replay
-    llm.JUDGE_TRANSPORT = eval_sets.judge_unasked if args.unjudged else JudgeReplay(eval_sets.CallStore(JUDGE_CALLS, batch), args.record)
+    judge_replay = None if args.unjudged else JudgeReplay(eval_sets.CallStore(JUDGE_CALLS, batch), args.record)
+    llm.JUDGE_TRANSPORT = eval_sets.judge_unasked if args.unjudged else judge_replay
     query_replay = None
     if args.retry:
         query_replay = QueryReplay(eval_sets.CallStore(RETRY_CALLS, batch))
@@ -478,7 +499,7 @@ def main() -> int:
             for at, item in enumerate(items):
                 if item.id in done:
                     continue
-                replay.used = []
+                replay.used, replay.judge_call = [], None
                 clock = time.perf_counter()
                 row = {"id": item.id, "set": name, "miss": None, "error": None}
                 try:
@@ -505,6 +526,8 @@ def main() -> int:
                                listed_answer=[answer_key(listed) for listed in selection.rows], listed_right=listed_right,
                                choose_p=selection.probabilities, read_as=selection.pool[shown].evidence[0] if shown is not None else "",
                                doubt=None if args.unjudged else selection.doubt, judged=not args.unjudged)
+                    if judge_replay is not None and replay.judge_call is not None:
+                        row["judge_call"] = replay.judge_call
                     if query_replay is not None and kind == ERRED and name != "demo":
                         row["retry"] = retry_row(planner, item, selection)
                 except ReplayMiss as miss:
@@ -567,9 +590,9 @@ def main() -> int:
             counts["retry_tokens_sent"] = list(query_replay.tokens)
         totals[name] = counts
         print(json.dumps({"set": name, **counts}), flush=True)
-        if args.keep:
-            if counts["misses"] or args.limit or args.resume:
-                raise SystemExit(f"{name}: a reference is a whole set measured in one run with no miss")
+        if args.keep and counts["misses"]:     # the sets after it are still measured; this one is run again
+            print(f"NOT kept {name}'s reference: a reference is a whole set measured in one run with no miss ({counts['misses']} here)", flush=True)
+        elif args.keep:
             keep_reference(name, measured)
             print(f"kept {name}'s reference ({len(measured)} questions)", flush=True)
     (out / f"summary_{'_'.join(names)}.json").write_bytes((json.dumps(totals, indent=1) + "\n").encode("utf-8"))

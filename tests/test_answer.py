@@ -562,20 +562,43 @@ def test_packing_a_batch_again_keeps_what_was_packed() -> None:
         assert store.get("c3") == {"answers": {}, "tokens": 3} and store.get("a1") is not None
 
 
+def test_a_record_names_its_questions_judge_call_from_the_choices_own_body() -> None:
+    """An evaluation names the second judge's call of a question from the choice's Decisions body alone
+    (regress/eval_sets.py judge_call_of): the hash of the very body engine.llm.judge sends for it, whose sorted keys put
+    none first and closed.judge_options puts last again. A body that is not the choice's names none."""
+    from engine.program.closed import CHOICE_INSTRUCTION, judge_options
+    from regress import eval_sets
+    state = {"sheet": "orders", "columns": ["Amount", "Units"]}
+    question = {"instructions": CHOICE_INSTRUCTION,
+                "criteria": {"r00": 'the total of Amount on "orders" -> 100', "r01": 'the total of Units on "orders" -> 7', NONE: CHOICE_NONE}}
+    body = llm.decisions_payload(state, {"reading": question})
+    read_state, read = eval_sets.choice_question(body)
+    assert read_state == state and read["instructions"] == CHOICE_INSTRUCTION and read["criteria"] == question["criteria"]
+    assert list(read["criteria"]) == [NONE, "r00", "r01"] and [key for key, _text in judge_options(read)] == ["r00", "r01", NONE]
+    assert eval_sets.judge_call_of(body) == llm.decision_hash(llm.judge_payload(state, CHOICE_INSTRUCTION, judge_options(question)))
+    other = llm.decisions_payload(state, {"reading": {"instructions": "Which column is the measure?", "criteria": {"c00": "Amount", "c01": "Units"}}})
+    assert eval_sets.choice_question(other) is None and eval_sets.judge_call_of(other) is None
+
+
 def test_the_dev_replay_runs_from_a_clean_clone() -> None:
     """The dev replay's reference and the Decisions answers it reads are committed (regress/sets): each set's reference
     holds every one of its questions once, a served label each, and the recorded answers hold every call the reference
-    made, so a clone replays the 896 dev questions and the 91 demo ones without the API or any file of this machine."""
+    made, so a clone replays the 896 dev questions and the 91 demo ones without the API or any file of this machine.
+    Where a reference asked the second judge, every answer that read the judge's answer (given unmarked, or warned by
+    it) names that call, and the judge's recorded answers hold it."""
     from regress import eval_sets
-    from regress.run_dev_decisions import SETS, reference
+    from regress.run_dev_decisions import JUDGE_CALLS, SETS, reference
     sizes = {"messy": 120, "wtq": 300, "databench": 300, "freshdev": 176, "demo": 91}
-    store = eval_sets.CallStore()
+    store, judged = eval_sets.CallStore(), eval_sets.CallStore(JUDGE_CALLS)
     for name in SETS:
         held = reference(name)
         assert len(held) == sizes[name], (name, len(held))
         assert all(row["label"] in ("right", "flagged_right", "flagged_wrong", "wrong", "asked") for row in held.values()), name
         missing = [digest for row in held.values() for digest in row.get("calls") or [] if store.get(digest) is None]
         assert not missing, f"{name}: {len(missing)} calls of the reference are not recorded"
+        read = [row for row in held.values() if row.get("judged") and (row["kind"] == ANSWERED or row.get("doubt"))]
+        unheld = [row["id"] for row in read if judged.get(row.get("judge_call") or "") is None]
+        assert not unheld, f"{name}: the judge's answer {len(unheld)} answers read is not recorded"
 
 
 def test_a_warmed_reader_owns_its_weights_and_reads_the_same() -> None:
@@ -625,7 +648,7 @@ TESTS = [
     test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it,
     test_a_failed_call_reaches_the_caller,
     test_a_batch_another_run_is_writing_is_read_to_its_last_whole_line, test_packing_a_batch_again_keeps_what_was_packed, test_text_dates_are_typed_when_the_workbook_loads, test_digit_dates_ask_the_order_only_when_the_column_never_shows_it,
-    test_the_dev_replay_runs_from_a_clean_clone,
+    test_a_record_names_its_questions_judge_call_from_the_choices_own_body, test_the_dev_replay_runs_from_a_clean_clone,
 ]
 
 if __name__ == "__main__":
