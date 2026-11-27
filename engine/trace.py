@@ -287,8 +287,10 @@ def stream_final(emit, res):
         # the workbook never has to infer Python-versus-SQL from source availability.
         if res.get("execution") is not None:
             emit("execution", res["execution"])
-        if res.get("check") is not None:
-            emit("check", res["check"])                       # the answer's mark: answered, warned, erred or retried
+        if isinstance(res.get("check"), dict):
+            # the answer's mark: answered, warned, erred or retried, or checking while its second judge is asked
+            # (the token that settles it stays in the response: engine/tables.py seal_pending)
+            emit("check", {key: value for key, value in res["check"].items() if key != "pending"})
         if res.get("read_as"):
             emit("read_as", res["read_as"])
         if res.get("low_confidence"):

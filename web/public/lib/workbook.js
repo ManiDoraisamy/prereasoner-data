@@ -559,9 +559,11 @@ function turnHtmlBody(){
   // (coalesced full-state writes, docs/SHEETS_AS_REASONING.md untouched — this is rail text only).
   // Render it as it grows so the answer starts appearing mid-turn; settle() then swaps in the
   // authoritative CONV text unchanged.
+  // The engine answers first (owner, 2026-11-27): the reply is the answer already, and its mark (CHECK, streamed on
+  // the call's trace) shows beside it while it is still being checked, then settles in place.
   if(ORCH&&REPLY&&!SETTLED)
     return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>'
-          +'<div class=convmsg>'+conv2html(REPLY)+'</div>';
+          +'<div class=convmsg>'+checkMark(CHECK)+conv2html(REPLY)+'</div>';
   let h='<div class=statusline>'+(SETTLED?'&#10003; ':'<span class=spin></span> ')+esc(STATUS)+'</div>';
   if(!ORCH){                                                  // orchestrated runs show a clean status while composing; the full,
     const refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');   // plain-English steps live in the "Reasoning steps" panel once the answer lands
@@ -588,7 +590,8 @@ function archiveTurn(){                                       // freeze the turn
   else if(CONV) h=(ORCH?archivedMeta:'')+'<div class=convmsg>'+checkMark(CHECK,CHAT.length)+conv2html(CONV)+'</div>';
   else{ const rs=resultSummary(); const n=BOOK.filter(s=>s.cls==='deriv').length;
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
-  CHAT.push({q:question, html:h, reply:reply, analysis:TURN_ANALYSIS?Object.assign({},TURN_ANALYSIS):null, check:CHECK});
+  CHAT.push({q:question, html:h, reply:reply, analysis:TURN_ANALYSIS?Object.assign({},TURN_ANALYSIS):null,
+             check:CHECK&&CHECK.state==='checking'?null:CHECK});   // a mark still being checked is not a turn's kept mark
 }
 async function loadAnalysis(analysisId,revision,options){
   if(!SETTLED||!convId()||!/^a_[0-9a-f]{32}$/.test(String(analysisId))
@@ -1255,6 +1258,15 @@ async function startRun(){
   // Persist the server-authoritative conversation_id — GUARDED to this turn (RUN===myRun) so a slow
   // earlier turn can't clobber a later one — and re-render so the follow-up send button re-enables.
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
+  // The engine answers first (owner, 2026-11-27): an answer comes back with its mark still being checked and a
+  // token. The chat service settles it for an orchestrated turn (mcp_server/engine_client.py settle); on this
+  // direct path the page asks POST /api/check itself, and the mark settles in place.
+  httpPromise.then(async j=>{ if(RUN!==myRun||!j||!j.check||j.check.state!=='checking'||!j.check.pending)return;
+    const settled=await fetch(API_BASE+'/api/check',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
+        body:JSON.stringify({pending:j.check.pending,jobId:jobId,conversation_id:j.conversation_id,analysis:j.analysis})}).then(parseBody).catch(()=>null);
+    if(RUN!==myRun)return;
+    CHECK=(settled&&settled.check)||{state:'warned',reason:'The second check of this answer did not run.'};
+    renderRail(); saveConvState(); });
   // The HTTP body is ATOMIC (result+present+sql together) — the race-free source for present. Stash it and
   // (re)attempt present; tryPresent no-ops until the derivation has settled, so this can't pre-empt streaming.
   httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); noteExecution(executionOf(j),jobId);

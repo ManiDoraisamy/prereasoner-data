@@ -404,7 +404,14 @@
   }
 
   // ``retryAttrs``: the attributes the Retry button carries (a client's own handler); none, no button.
+  // An answer is served before its second check has answered (engine/tables.py checking_check; owner, 2026-11-27:
+  // the answer first). While it is being checked its mark is a quiet pulse with no reason and no Retry: it settles
+  // into no mark or a warning, in view.
   function renderCheck(check, retryAttrs) {
+    if (check && check.state === 'checking') {
+      return '<span class="turn-check check-checking" role="status" title="Checking this answer" ' +
+        'aria-label="Checking this answer"><span class="checkpulse"></span></span>';
+    }
     var mark = check && CHECK_MARKS[check.state];
     if (!mark) return '';
     var retry = check.retry || {};

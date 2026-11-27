@@ -36,7 +36,8 @@ async def prereasoner_query(question: str, tables: list | None = None, job_id: s
                  "revision": revision} if action and slug else None)
     if analysis:
         analysis = {key: value for key, value in analysis.items() if value is not None}
-    return json.dumps(await engine_client.call_query(
+    # The engine answers first and settles after; a tool call returns one answer, so it is the settled one.
+    return json.dumps(await engine_client.settled_query(
         question, tables or [], job_id, conversation_id, analysis=analysis,
         decomposition=decomposition, source_hash=source_hash,
     ))

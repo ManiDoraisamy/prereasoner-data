@@ -50,6 +50,10 @@ a.steplink:hover,a.steplink:focus-visible{border-color:#b9a8e8;background:#faf9f
 .turn-check>summary::-webkit-details-marker{display:none}
 .check-warned>summary{color:#a86200;background:#fff3dc}
 .check-erred>summary{color:#b3261e;background:#fde8e6}
+.check-checking{width:22px;height:22px;display:flex;align-items:center;justify-content:center}
+.checkpulse{width:8px;height:8px;border-radius:50%;background:#b9b3c6;animation:checkpulse 1.2s ease-in-out infinite}
+@keyframes checkpulse{0%,100%{opacity:.35}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.checkpulse{animation:none}}
 .check-retried>summary{color:#4a3aa8;background:#eeeafc}
 .turn-check[open]{float:none;margin:0 0 8px;padding:8px 10px;border:1px solid #e7e2ed;border-radius:8px;background:#faf9fc}
 .turn-check[open]>summary{margin-bottom:4px}

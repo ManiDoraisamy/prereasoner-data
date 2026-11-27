@@ -542,6 +542,29 @@ def complete_analysis(user_id, conversation_id, descriptor, question, response):
         conn.close()
 
 
+def settle_analysis_check(user_id, conversation_id, analysis_id, revision, check):
+    """The settled mark of a completed revision: its answer was served while its second judge was being asked
+    (engine/tables.py checking_check) and stored as not judged twice; this is the mark the judge's answer left.
+    Returns whether a revision was updated."""
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        _owned_analysis(cur, user_id, conversation_id, analysis_id, lock=True)
+        cur.execute(
+            'UPDATE "chat"."analysis_revision" SET response = jsonb_set(response, \'{check}\', %s::jsonb) '
+            'WHERE analysis_id = %s AND revision = %s AND status = %s',
+            (json_dumps(check, ensure_ascii=False, separators=(",", ":")), analysis_id, int(revision), "complete"),
+        )
+        updated = cur.rowcount == 1
+        conn.commit()
+        return updated
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def fail_analysis(user_id, conversation_id, descriptor):
     """Tombstone a failed revision without disturbing the last completed workbook."""
     conn = _pg()

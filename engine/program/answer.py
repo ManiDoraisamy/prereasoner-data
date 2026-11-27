@@ -25,12 +25,11 @@ LLMUnavailable reaches the caller: a question is not answered from a reading the
 from __future__ import annotations
 
 import contextvars
-import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from engine.llm import JUDGE_TIMEOUT_SECONDS, LLMUnavailable, decide, judge
+from engine.llm import JUDGE_TIMEOUT_SECONDS, LLMUnavailable, decide, judge_payload, judged_key
 from engine.named.chooser import PRIOR, score_candidates
 from engine.named.units import Target
 from engine.program.catalog import Catalog
@@ -65,8 +64,19 @@ class Prepared:
 
 
 @dataclass(frozen=True)
+class Awaited:
+    """The second judge's question about an answer whose mark depends on it (closed.awaits_judge): its request body
+    (engine/llm.py judge_payload) and the keys it may answer with. The answer is given before the judge is asked
+    (owner, 2026-11-27: "always serve the answer before the judge has answered"); ``ask`` sends the body and ``judged``
+    applies its key, when the caller settles the mark."""
+    body: bytes
+    keys: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Answer:
-    """What the path says back. kind: answered, warned (given, with the coordinates the runner-up answer reads differently
+    """What the path says back, as the choice left it: the second judge has not been asked (``awaited`` holds its
+    question when the mark depends on it; ``judged`` applies its answer). kind: answered, warned (given, with the coordinates the runner-up answer reads differently
     in uncertain; alike when the runner-up's reading reads word for word like it; doubt when the second judge did not
     pick the answer, closed.DOUBT_*, the runner-up then its pick) or erred (most likely wrong: program,
     rows and read_as are then the likeliest reading, served when its retry cannot answer; empty when no candidate ran).
@@ -75,7 +85,8 @@ class Answer:
     For serving, evaluation and display: listed_* hold every candidate that returned rows, in decoder order (the choice's
     r00, r01, ...): its program, read-as line, rows and its answer's identity (closed.answer_key); pick is the likeliest
     answer's first listing (None when nothing ran) and runner_up the next answer's; probabilities is the choice's answer
-    (None when nothing ran); tokens are the input tokens the calls billed."""
+    (None when nothing ran); tokens are the input tokens the calls billed; worded is each listing's read-as in the
+    sheet's own header words (what the choice compares readings by)."""
     kind: str
     program: Program | None
     rows: tuple[tuple, ...]
@@ -92,25 +103,35 @@ class Answer:
     runner_up: int | None = None
     alike: bool = False
     doubt: str | None = None
+    worded: tuple[str, ...] = ()
+    awaited: Awaited | None = None
 
 
-def _judged(state: dict, question: dict) -> str:
-    """The key the second judge picks for the choice's question, or UNJUDGED when its call fails: the answer is then
-    served with a warning that it was not judged twice, never withheld."""
-    try:
-        return judge(state, question["instructions"], judge_options(question))
-    except LLMUnavailable:
-        return UNJUDGED
+def ask(awaited: Awaited) -> str:
+    """The key the second judge picks for an answer's question, or UNJUDGED when its call fails or has not answered
+    JUDGE_TIMEOUT_SECONDS after it was asked: the call's own limit is a socket's, which a slow connection or a late
+    body outlasts, and a mark does not wait longer than the limit says. The answer is then marked as not judged
+    twice, never withheld."""
+    with span("decisions_judge"):
+        beside = ThreadPoolExecutor(max_workers=1)
+        asking = beside.submit(contextvars.copy_context().run, judged_key, awaited.body, awaited.keys)
+        beside.shutdown(wait=False)
+        try:
+            return asking.result(timeout=JUDGE_TIMEOUT_SECONDS)
+        except (FutureTimeout, LLMUnavailable):
+            return UNJUDGED
 
 
-def _judgement(judging: Future, asked: float) -> str:
-    """The judge's key for an answer that waits for it, or UNJUDGED when it has not answered JUDGE_TIMEOUT_SECONDS
-    after it was asked (``asked``, time.monotonic): the call's own limit is a socket's, which a slow connection or a
-    late body outlasts, and an answer does not wait longer than the limit says."""
-    try:
-        return judging.result(timeout=max(0.0, JUDGE_TIMEOUT_SECONDS - (time.monotonic() - asked)))
-    except FutureTimeout:
-        return UNJUDGED
+def judged(answer: Answer, key: str) -> Answer:
+    """``answer`` with the second judge's ``key`` applied (closed.choose_answer; UNJUDGED when it gave none): its mark,
+    the answer it may also mean and why it is doubted. The answer given is the same in every case."""
+    decision = choose_answer(answer.probabilities, answer.listed_answers, answer.worded, key)
+    uncertain: tuple[str, ...] = ()
+    if decision.kind == WARNED and decision.runner_up is not None:
+        theirs = set(coordinates(answer.listed_programs[decision.runner_up]))
+        uncertain = tuple(name for name in coordinates(answer.program) if name not in theirs)
+    return replace(answer, kind=decision.kind, uncertain=uncertain, runner_up=decision.runner_up,
+                   alike=decision.alike is not None, doubt=decision.doubt, awaited=None)
 
 
 def prepare(workbook: WorkbookPayload) -> Prepared:
@@ -149,8 +170,9 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
     """One question over a prepared workbook, its programs run on tables (the request's, over prepared.catalog).
     active_sheet: the tab the client has in view when the question is asked; on a workbook of several tabs both records
     name it. marked: whether the answer's mark is wanted; a compound question's part (engine/decomposition.py) is a
-    step of a plan whose listing alone is read, so it asks no second judge and its kind is the choice's own. Raises
-    LLMUnavailable."""
+    step of a plan whose listing alone is read, so no second judge is asked about it. The answer comes back as the
+    choice left it, before the second judge is asked: where its mark depends on the judge (closed.awaits_judge) it
+    holds the judge's question (``awaited``), which ``ask`` sends and ``judged`` applies. Raises LLMUnavailable."""
     catalog = prepared.catalog
     in_view = active_sheet
     with span("program_read"):
@@ -176,23 +198,18 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
         listed = [candidate for candidate in score_candidates(verified, fused, catalog, PRIOR) if candidate.rows]
         lines = tuple(read_as(candidate.verified.scored.program, catalog) for candidate in listed)
         answers = tuple(answer_key(candidate.rows) for candidate in listed)
-    probabilities, judging, asked = None, None, 0.0
+    probabilities, awaited = None, None
     if listed:
         with span("decisions_choose"):
             state, questions = choice_record(catalog, question, [(line, candidate.rows) for line, candidate in zip(lines, listed)], in_view)
-            if marked:
-                # the second judge reads the same question beside the choice; only an answer whose mark depends on it waits
-                beside = ThreadPoolExecutor(max_workers=1)
-                asked = time.monotonic()
-                judging = beside.submit(contextvars.copy_context().run, _judged, state, questions["reading"])
-                beside.shutdown(wait=False)
             choice = decide(state, questions)
         probabilities, tokens = choice.fields["reading"], tokens + choice.tokens
     worded = tuple(in_header_words(candidate.verified.scored.program, catalog) for candidate in listed)
     decision = choose_answer(probabilities, answers, worded)
-    if judging is not None and awaits_judge(decision):
-        with span("decisions_judge"):
-            decision = choose_answer(probabilities, answers, worded, _judgement(judging, asked))
+    if marked and listed and awaits_judge(decision):
+        # the second judge reads the same question; it is asked when the mark is settled, after the answer is given
+        options = judge_options(questions["reading"])
+        awaited = Awaited(judge_payload(state, questions["reading"]["instructions"], options), tuple(key for key, _text in options))
     chosen = listed[decision.pick] if decision.pick is not None else None
     uncertain: tuple[str, ...] = ()
     if decision.kind == WARNED and decision.runner_up is not None:
@@ -202,7 +219,8 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
                   lines[decision.pick] if chosen else "", decision.mass, uncertain, lines,
                   tuple(candidate.rows for candidate in listed), answers, probabilities, tokens,
                   tuple(candidate.verified.scored.program for candidate in listed), decision.pick, decision.runner_up,
-                  decision.alike is not None, decision.doubt)
+                  decision.alike is not None, decision.doubt, worded, awaited)
 
 
-__all__ = ["ANSWERED", "DECODE_K", "ERRED", "WARNED", "Answer", "Prepared", "answer", "convert_target", "prepare", "prepare_catalog"]
+__all__ = ["ANSWERED", "DECODE_K", "ERRED", "WARNED", "Answer", "Awaited", "Prepared", "answer", "ask", "convert_target", "judged", "prepare",
+           "prepare_catalog"]

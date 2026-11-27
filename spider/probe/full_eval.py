@@ -662,11 +662,9 @@ def main():
         from engine.encoder_overlay import EncoderQuery
         from engine.primitive_head import PrimitiveReader
         enc = EncoderQuery()
-        # The second judge only marks an answer (engine/program/closed.py choose_answer): the query graded here is the
-        # choice's either way, so this evaluator asks no judge.
-        import engine.llm as llm
-        from regress.eval_sets import judge_unasked
-        llm.JUDGE_TRANSPORT = judge_unasked
+        # The second judge only marks an answer, after it is given (engine/tables.py select_query: the selection comes
+        # back as the choice left it unless a caller asks for the judged one): the query graded here is the choice's,
+        # and this evaluator asks no judge.
         reader = PrimitiveReader(encoder=enc)
         eng = ComposeEngine(reader=reader)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)

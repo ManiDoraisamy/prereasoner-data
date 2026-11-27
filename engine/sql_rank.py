@@ -318,7 +318,9 @@ class PoolSelection:
     workbook it reads; ``tables`` the request's tables the programs
     run on (engine/program/store.py, on the request's database). ``converts``: the request's money columns could be
     read in another currency, so the path's own convert question read whether the question wants its answer in one
-    (engine/program/answer.py convert_target)."""
+    (engine/program/answer.py convert_target). ``pending``: the selection is as the choice left it and its mark
+    awaits the second judge (engine/tables.py PendingMark: the judge's question, and the path's answer with a key of
+    the judge's applied); None once the judge's answer is applied, or where no judge is asked."""
     pool: tuple[ScoredQuery, ...]
     ranking: tuple[int, ...]
     selected: int | None
@@ -335,6 +337,7 @@ class PoolSelection:
     converts: bool = False
     alike: bool = False
     doubt: str | None = None
+    pending: object = None
 
     @property
     def candidate(self) -> ScoredQuery | None:

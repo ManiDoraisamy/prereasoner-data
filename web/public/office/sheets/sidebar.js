@@ -305,7 +305,10 @@
             '<div class="statusline"><span class="spin"></span>' + R.escapeHtml(live.status) +
             elapsedHtml(live.startedAt) + '</div>' +
             reasoningHtml(live, true) +
-            (live.reply ? '<div class="turn-answer convmsg answer">' + R.renderMarkdown(live.reply) + '</div>' : '') +
+            // The engine answers first (owner, 2026-11-27): the reply is the answer already, and its mark shows
+            // beside it while it is still being checked (no Retry on a turn still running).
+            (live.reply ? '<div class="turn-answer convmsg answer">' + (R.renderCheck ? R.renderCheck(live.check) : '') +
+              R.renderMarkdown(live.reply) + '</div>' : '') +
             '</div>'});
         }
 
@@ -414,6 +417,7 @@
                 },
                 onExecution: function (execution) { jobs[call.jobId].execution = execution; refreshSteps(); },
                 onAnalysis: function (analysis) { if (analysis) { live.analysis = analysis; renderLive(); } },
+                onCheck: function (check) { live.check = check; renderLive(); },   // the last call's mark is the turn's
                 onTransportError: function (message) { live.status = message; renderLive(); }
               }));
             },
@@ -638,7 +642,8 @@
             state.conversationId = response.conversationId || live.conversationId || state.conversationId;
             var turn = response.traces ? finishedTurn(question, response)
               : {question: question, reply: live.reply, asks: live.asks, analysis: live.analysis || null, steps: live.steps,
-                 conversationId: state.conversationId};
+                 conversationId: state.conversationId,
+                 check: live.check && live.check.state !== 'checking' ? live.check : null};
             state.turns = state.turns.concat([turn]).slice(-24);
             state.history = response.history && response.history.length ? response.history.slice(-24)
               : state.history.concat([{role: 'user', content: question}, {role: 'assistant', content: turn.reply}]).slice(-24);

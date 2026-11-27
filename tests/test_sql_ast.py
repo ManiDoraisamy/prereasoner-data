@@ -2183,18 +2183,28 @@ EAST = 'SELECT SUM("Amount") AS "total amount" FROM "orders" WHERE "Region" = \'
 
 def test_an_answer_most_likely_wrong_is_retried_never_asked_back():
     """Owner, 2026-11-21: "never ask back unless the question is wrong". Below closed.T_ERR, or with "none of these"
-    likelier, the Decisions path decides nothing (compose and the search may answer it) and serving retries it
-    (engine/retry.py): Gemini 4 Neon writes one SQLite query over typed copies of the request's tables, guarded and
-    run read-only, and its rows are the answer, marked retried with its reason and query. The retry's word that the
-    sheet cannot answer is the one question back; a retry that cannot answer leaves the likeliest reading served,
-    marked most likely wrong. Asked back until then, the reply was "I read this as …, but I'm not confident"."""
+    likelier, the Decisions path decides nothing (compose and the search may answer it) and the answer is owed its
+    retry (engine/retry.py): Gemini 4 Neon writes one SQLite query over typed copies of the request's tables, guarded
+    and run read-only, and its rows are the answer, marked retried with its reason and query. Owner, 2026-11-27: the
+    answer first. Serving gives the likeliest reading at once, marked most likely wrong, with the token of the retry
+    it is owed, and asks no model; the retry (``retry_answer`` with the token) replaces it. The retry's word that the
+    sheet cannot answer is the one question back; a retry that cannot answer leaves the served answer marked, with
+    why. A token this engine did not seal is refused. Until 2026-11-27 serving waited for the retry before it
+    answered."""
     from engine import config
     from engine.llm import LLMUnavailable
+    from engine.tables import RETRY_FAILED, PendingInvalid
 
     planner = _hermetic_planner()
     prompts, restore = _neon([{"answerable": True, "sql": EAST, "reason": "Adds Amount over the East rows."}])
     try:
-        response, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+        first, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+        assert prompts == [], "serving answers before any retry is asked"
+        assert "clarify" not in first and first["valid"] and first["result"]["rows"] and first["model"] == PROGRAM_MODEL, first
+        owed = first["check"]
+        assert owed["state"] == "erred" and "most likely wrong" in owed["reason"] and "could not answer" not in owed["reason"], owed
+        assert first["selection"]["selected"] is None and first["selection"]["erred"] == 0 and first["read_as"]
+        response = planner.retry_answer(_orders_request(), "total amount for East", pending=owed["pending"])
     finally:
         restore()
     assert "clarify" not in response and response["valid"] and response["error"] is None, response
@@ -2202,27 +2212,35 @@ def test_an_answer_most_likely_wrong_is_retried_never_asked_back():
     check = response["check"]
     assert check["state"] == "retried" and check["asked"] is False and check["retry"]["sql"] == EAST, check
     assert check["retry"]["model"] == config.QUERY_MODEL and "most likely wrong" in check["reason"], check
+    assert first["read_as"] in check["reason"], "the retried answer's reason names the reading it replaces"
     assert response["sql"] == EAST and response["read_as"] == "Adds Amount over the East rows."
-    assert response["selection"]["selected"] is None and response["selection"]["erred"] == 0
     assert 'TABLE "orders" (7 rows)' in prompts[0] and '"Amount" REAL' in prompts[0] and "'East'" in prompts[0], prompts[0]
     assert prompts[0].endswith("QUESTION: total amount for East")
     # the question is wrong: the retry says the sheet cannot answer it, and that is asked
     _p, restore = _neon([{"answerable": False, "sql": "", "reason": "The sheet has no column of costs."}])
     try:
-        wrong, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total cost for East"))
+        asked, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total cost for East"))
+        wrong = planner.retry_answer(_orders_request(), "total cost for East", pending=asked["check"]["pending"])
     finally:
         restore()
     assert wrong["clarify"] is True and wrong["reason"] == "The sheet has no column of costs." and wrong["result"] is None
-    # the retry cannot answer (a query the guard refuses, twice; then a failed call): the likeliest reading, marked
+    assert wrong["read_as"] == asked["read_as"]
+    # the retry cannot answer (a query the guard refuses, twice; then a failed call): the served answer stays, marked
     for answers in ([{"answerable": True, "sql": 'DELETE FROM "orders"', "reason": "r"}] * 2, [LLMUnavailable("down")]):
         _p, restore = _neon(answers)
         try:
-            served, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+            failed = planner.retry_answer(_orders_request(), "total amount for East", pending=owed["pending"])
         finally:
             restore()
-        assert served["valid"] and served["result"]["rows"] and served["check"]["state"] == "erred", served
-        assert "most likely wrong" in served["check"]["reason"] and served["read_as"], served["check"]
-        assert served["model"] == PROGRAM_MODEL and "clarify" not in served
+        assert failed["error"] == RETRY_FAILED and failed["result"] is None and failed["check"]["state"] == "erred", failed
+        assert "most likely wrong" in failed["check"]["reason"] and "could not answer it either" in failed["check"]["reason"]
+        assert "pending" not in failed["check"] and "clarify" not in failed
+    for forged in (owed["pending"][:-1] + ("0" if owed["pending"][-1] != "0" else "1"), "p1.e30.00", "", None and "x"):
+        try:
+            planner.retry_answer(_orders_request(), "total amount for East", pending=forged or "x")
+        except PendingInvalid:
+            continue
+        raise AssertionError("a token this engine did not seal ran a retry")
     # the person's Retry: the retry answers whatever the path read
     _p, restore = _neon([{"answerable": True, "sql": EAST, "reason": "Adds Amount over the East rows."}])
     try:
@@ -2313,31 +2331,58 @@ def test_the_retry_is_told_to_put_the_answer_first():
 
 
 def test_a_warned_answer_is_served_with_what_else_it_may_mean():
-    """Between closed.T_ERR and T_FLAG, where the second judge does not pick the answer too, it is served and its
-    ``check`` is warned: the reason its mark opens on says how it was read, how sure the choice was and what else the
-    question may mean, with the coordinates the runner-up reads differently. The reply is the answer alone (the reason
-    moved from the reply to the mark, 2026-11-21). Contrast: an answer the choice stands behind is answered, and so
-    is one in that band that both judges pick (2026-11-27)."""
+    """Between closed.T_ERR and T_FLAG, where the second judge does not pick the answer too, an answer's ``check`` is
+    warned: the reason its mark opens on says how it was read, how sure the choice was and what else the question may
+    mean, with the coordinates the runner-up reads differently. The reply is the answer alone (the reason moved from
+    the reply to the mark, 2026-11-21). Contrast: an answer the choice stands behind is answered, and so is one in
+    that band that both judges pick (2026-11-27).
+
+    Owner, 2026-11-27: "always serve the answer before the judge has answered". Serving gives the answer with its
+    mark being checked (``check`` checking, with a sealed token) and asks no judge; ``settle_check`` asks the judge
+    and returns the mark its answer leaves; the selection's record is the choice's own. The stored and streamed forms
+    hold no token, and a stored answer is not judged twice until it is settled. Until 2026-11-27 serving waited for
+    the judge, a median 3.7 s and a p90 of 10 s of a request's 6.1 s and 13.7 s (release 95e2a7af's gate)."""
     from engine.answer_presentation import terminal_reply
+    from engine.tables import PendingInvalid, settle_check, shown_check, unsettled_check
     from mcp_server.engine_client import shape_reason_response
-    from tests.test_answer import NONE
+    from tests.test_answer import NONE, FakeJudge, FakeTransport, _use_fake_reader, _with_transport
 
     planner = _hermetic_planner()
-    unpicked = lambda name, question, state: {NONE: 0.9}     # noqa: E731
-    response, _ = _decided(_choice(0.47, none=0.44), lambda: planner.serve(_orders_request(), "total amount for East"), unpicked)
+    _use_fake_reader()
+
+    def served(rule, judge):
+        def run():
+            response = planner.serve(_orders_request(), "total amount for East")
+            assert judge.bodies == [], "the answer is served before the judge is asked"
+            given = response["check"]
+            return response, given, settle_check(given["pending"])
+        return _with_transport(FakeTransport(rule), run, judge)
+
+    response, given, check = served(_choice(0.47, none=0.44), FakeJudge(lambda name, question, state: {NONE: 0.9}))
     assert response["valid"] and response["result"]["rows"] and response["selection"]["warned"], response["selection"]
-    check = response["check"]
+    assert given["state"] == "checking" and set(given) == {"state", "confidence", "pending"}, sorted(given)
     assert check["state"] == "warned" and check["reason"].startswith("I read this as “") and "% sure" in check["reason"]
     assert isinstance(check["coordinates"], list) and all(":" in name for name in check["coordinates"])
     assert check["also_read_as"] is None or isinstance(check["also_read_as"], str)
-    shaped = shape_reason_response(response, None)
+    assert shown_check(given) == {"state": "checking", "confidence": given["confidence"]}
+    assert unsettled_check(given)["state"] == "warned", "stored before it is settled: warned, as the choice alone left it"
+    shaped = shape_reason_response({**response, "check": check}, None)
     assert shaped["status"] == "answered" and shaped["check"] == check
     assert "not sure" not in terminal_reply(shaped)
-    sure, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
-    assert sure["valid"] and sure["check"]["state"] == "answered" and not sure["selection"]["warned"]
-    both, _ = _decided(_choice(0.47, none=0.44), lambda: planner.serve(_orders_request(), "total amount for East"))
-    assert both["check"]["state"] == "answered" and not both["selection"]["warned"] and both["result"]["rows"] == response["result"]["rows"], \
-        "low by the choice alone, and the second judge picks it too"
+    for forged in (given["pending"][:-2] + "00", "p1.e30.00", "not a token"):
+        try:
+            settle_check(forged if forged != given["pending"] else forged + "0")
+        except PendingInvalid:
+            continue
+        raise AssertionError("a token this engine did not seal was sent to the judge")
+    agreeing = FakeJudge(_choice(0.47, none=0.44))
+    both, both_given, both_check = served(_choice(0.47, none=0.44), agreeing)
+    assert both_given["state"] == "checking" and both_check == {"state": "answered", "confidence": both_given["confidence"]}
+    assert len(agreeing.bodies) == 1, "the judge is asked once, when the mark is settled"
+    sure, sure_given, sure_check = served(_choice(0.9), FakeJudge(_choice(0.9)))
+    assert sure["valid"] and sure_given["state"] == "checking" and sure_check["state"] == "answered" and not sure["selection"]["warned"]
+    unsettled = unsettled_check(sure_given)
+    assert unsettled["state"] == "warned" and unsettled["reason"].endswith("the second check of this reading did not run."),         "an answer the choice stands behind is stored as not judged twice until its mark is settled"
 
 
 def test_an_analysis_runs_the_chosen_program_on_both_emitters():

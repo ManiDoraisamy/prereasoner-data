@@ -95,4 +95,10 @@ def served(schema: str, serve, /, *args, mode: str | None = None, **kwargs):
     from engine.prepared import request_database
 
     with analysis_execution_context(None, schema, execution_mode=mode), request_database():
-        return enforce_execution_response(serve(*args, **kwargs), mode)
+        response = enforce_execution_response(serve(*args, **kwargs), mode)
+        # The engine answers first: an answer's mark is settled, or the retry it is owed run, by its caller
+        # (the chat service, after it has shown the answer). A live suite reads the settled answer.
+        owner = getattr(serve, "__self__", None)
+        if isinstance(response, dict) and hasattr(owner, "settled") and len(args) >= 2:
+            response = owner.settled(response, args[0], args[1])
+        return response

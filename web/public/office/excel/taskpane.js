@@ -114,7 +114,9 @@ function renderTurns() {
       ? `<div class="turn-content"><div class="answer error" role="alert">${renderer.escapeHtml(turn.reply)}</div></div>`
       : renderer.renderAssistantTurn({reply: turn.reply, reasoningHtml,
         // The answer's mark and its Retry (engine check, owner 2026-11-21): the delegated click below re-asks.
-        checkHtml: renderer.renderCheck ? renderer.renderCheck(turn.check, `data-retry="${index}"`) : '',
+        // A turn still running shows its mark with no Retry.
+        checkHtml: !renderer.renderCheck ? '' : turn.pending ? renderer.renderCheck(turn.check)
+          : renderer.renderCheck(turn.check, `data-retry="${index}"`),
         afterHtml: renderer.renderResultLink(turn.reply, analysisUrl)});
     thread.insertAdjacentHTML('beforeend', renderer.renderTurn({question: turn.question, assistantHtml}));
   });
@@ -175,7 +177,8 @@ function mapReasoning(response) {
   });
 }
 
-function awaitStream(turnId) {
+// ``onLive(turn, engineRuns)``: called as the turn's stream changes, so the pane can show the reply as it is written.
+function awaitStream(turnId, onLive) {
   const unsubs = [];
   const engineRuns = {};
   const watchedJobs = new Set();
@@ -201,11 +204,13 @@ function awaitStream(turnId) {
         unsubs.push(onValue(ref(database, `runs/${auth.currentUser.uid}/${call.jobId}`), trace => {
           engineRuns[call.jobId] = trace.val() || {};
           readyJobs.add(call.jobId);
+          if (onLive) onLive(latestTurn, engineRuns);
           finishIfReady();
         }, error => {
           clearTimeout(timer); unsubscribe(); reject(error);
         }));
       }
+      if (onLive) onLive(latestTurn, engineRuns);
       finishIfReady();
       if (run.status === 'error') {
         clearTimeout(timer); unsubscribe(); reject(new Error(run.error || 'The analysis could not be completed.'));
@@ -236,7 +241,19 @@ async function ask(question, retry = false) {
     state.history.push({role: 'user', content: question});
     state.turns.push({question, reply: 'Working on your question…', reasoning: [], pending: true});
     renderTurns();
-    const streamResult = awaitStream(turnId);
+    // The engine answers first (owner, 2026-11-27): the reply is the answer as soon as it is written, and the last
+    // engine call's mark shows beside it while it is still being checked; the settled turn replaces this one.
+    const streamResult = awaitStream(turnId, (run, runs) => {
+      const pending = state.turns[state.turns.length - 1];
+      if (!pending || !pending.pending || typeof run.reply !== 'string' || !run.reply) return;
+      const calls = run.calls && typeof run.calls === 'object' ? Object.values(run.calls) : [];
+      const last = calls.length ? runs[calls[calls.length - 1].jobId] : null;
+      const check = (last && last.check) || null;
+      if (pending.reply === run.reply && JSON.stringify(pending.check || null) === JSON.stringify(check)) return;
+      pending.reply = run.reply;
+      pending.check = check;
+      renderTurns();
+    });
     let response;
     const activeSheet = await readActiveSheet();
     const chat = () => api('/chat', {

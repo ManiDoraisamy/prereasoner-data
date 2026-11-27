@@ -5915,6 +5915,48 @@ again (`JUDGE_ATTEMPTS` stays 1), and a failed first call leaves a second alread
 seed, so two askings can pick differently, as one asking's answer already could from the next; evaluations replay a
 body's recorded answer by its hash and are unchanged.
 
+## The answer is served before the judge has answered, and settled after (2026-11-27)
+
+Owner, 2026-11-27: "yes, always serve the answer before the judge has answered. Latency to see answer is very
+important. Its like our CoT like reasoning models. Wrong answer and then changing to correct answer in real time is
+actually interpretability." At release 95e2a7af's gate the judge's wait was a median 3.7 s and a p90 of 10.0 s of a
+request's 6.1 s and 13.7 s, and 4 of 117 right answers were warned because the judge was slow; asking it a second
+time saved little, since a slow judge is the provider's moment (the section above).
+
+**What changes.** The Decisions path gives its answer as the choice left it and no longer waits for the judge
+(`engine/program/answer.py`: `answer` holds the judge's question in `Answer.awaited`; `ask` sends it and `judged`
+applies the key). Serving answers at once: a decided answer with `check` `checking`, an erred one as its likeliest
+reading with `check` `erred`, each with a token (`engine/tables.py` `checking_check`, `seal_pending`). The caller
+settles it after the answer is on screen: `POST /api/check` for the mark, `/api/reason` with `retry: true` and the
+token for the retry an erred answer is owed. Which answer is served and how its mark is decided do not change: the
+choice, the two judges' rule and the retry are the same code asked later. The dev replay's labels are the
+reference's with the judge asked after the choice.
+
+**One path.** There is no switch and no second way to serve: every caller of `/api/reason` settles what the answer
+is owed. The chat service does it in the same turn (`mcp_server/engine_client.py` `settle`); the MCP tool returns
+the settled answer (`settled_query`); the live suites and evaluators settle in process (`TableQuery.settled`,
+`KnowledgeReasoner.settled`, `regress/live_schema.py` `served`), and an evaluator that reads the selection asks the
+judge with it (`select_query(..., judged=True)`). The retry of an erred answer is one more engine call of the turn,
+under its own job, as a modify of the revision the first answer stored: the thread shows the first answer, then the
+retry's in its place, and the workbook keeps both revisions.
+
+**The token.** What settling needs travels with the answer and comes back: the judge's request body and, for every
+key the judge may answer with (and for no answer), the mark that leaves, already worded; or, for an erred answer,
+the reading the retry replaces. It is sealed (HMAC under a key derived from the deployment's Decisions key, so no
+new configuration) and dated (`PENDING_SECONDS`, 15 minutes), so the judge is only ever sent a question this engine
+built. It is the HTTP response's alone: the live trace and the stored revision hold the mark without it. A stored
+answer whose mark was never settled reads as not judged twice, which is what it is. Storing the pending state in
+Postgres instead would have put a write and a read on every answer and a migration in the release; an in-process
+future would be lost to another instance or to an instance whose CPU is throttled once the response is sent.
+
+**What it costs.** The judge used to be asked beside the choice and is now asked after the answer, so a mark
+arrives about as late as the choice call took (under a second) later than before; the judge is no longer asked at
+all for an answer whose mark does not depend on it (an erred one, one with a reading alike), which was a call spent
+for nothing. The composer stays closed until the turn has settled.
+
+**Not changed.** `CLAUDE.md` says every own-data answer is served with its mark; the mark now arrives after the
+answer, and the sentence is the owner's to change.
+
 ## A figure of the first or the last lines reads lines taken by place (2026-11-27)
 
 Step 2 of the build plan the owner approved on 2026-11-26. "What was the average age of the first three on the

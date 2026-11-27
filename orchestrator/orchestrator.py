@@ -994,6 +994,36 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             else:
                                 pending_decomposition = identity
                         if shaped.get("status") in {"answered", "clarify", "error"}:
+                            due, _pending = engine_client.pending_of(shaped)
+                            if due:
+                                # Answer first (owner, 2026-11-27: "always serve the answer before the judge has
+                                # answered"): the engine's answer is on screen now, and what it is still owed
+                                # follows in the same turn. Its mark is settled (the second judge is asked), or,
+                                # for an answer served most likely wrong, its retry is asked as one more engine
+                                # call of the turn and that answer takes this one's place, in view.
+                                if shaped.get("status") == "answered":
+                                    early = _terminal_fallback(shaped)
+                                    if stream_buffer is not None:
+                                        stream_buffer.update(early)
+                                    else:
+                                        _emit("reply", early)
+                                retry_job = None
+                                if due == "retry":
+                                    retry_job = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
+                                    _emit(f"calls/{call_idx}", {"jobId": retry_job, "question": question,
+                                                                "analysis": analysis_spec, "retry": True})
+                                    call_idx += 1
+                                with request_timing.span("engine_settle"):
+                                    settled = await engine_client.settle(
+                                        shaped, question, tables, job_id, conv, retry_job_id=retry_job,
+                                        base_url=engine_base_url, token=bearer_token, request_id=job_id, client=http,
+                                        analysis=analysis_spec, use=use, source_hash=source_hash,
+                                        active_sheet=active_sheet,
+                                    )
+                                if settled is not shaped:
+                                    traces.append({"jobId": retry_job, "question": question,
+                                                   "read_as": settled.get("read_as"), "engine": settled})
+                                    shaped = settled
                             terminal_query = shaped
                         tool_results.append({
                             "type": "tool_result", "tool_use_id": block.id,

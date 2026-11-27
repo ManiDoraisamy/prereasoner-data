@@ -73,6 +73,11 @@ the reason its icon opens on. The engine never asks back for its own uncertainty
 wrong is retried by a written query (`engine/retry.py`), and `clarify` then means the question is wrong. A tool call
 with `retry: true` (the person's Retry, `/chat` `retry`) has the engine's retry answer it.
 
+The engine answers first and settles after (2026-11-27): `/api/reason` may return an answer whose `check` is
+`checking` (its second judge not yet asked) or `erred` with a `pending` token (its retry due). The tool returns the
+settled answer: the shared client asks `POST /api/check` for the mark, or the owed retry, before it returns
+(`mcp_server/engine_client.py` `settled_query`), so a tool result never carries a `pending` token.
+
 The orchestrator's `prereasoner_query` schema also has an optional `dataset_ops` array for a fact the user
 states about their own data's meaning, such as "these amounts are in euros". Each item is a closed
 `set_measure_metadata` or `clear_measure_metadata` op naming an uploaded `table` and measure `column`, with

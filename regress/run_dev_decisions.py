@@ -438,12 +438,12 @@ class DemoRequests:
                 database.connection.deserialize((self.maps / f"{item.book}.main.sqlite").read_bytes())
                 database.connection.deserialize((self.maps / f"{item.book}.kb.sqlite").read_bytes(), name="knowledgebase")
                 database.link_with(lambda _tables: maps_links(record))
-                return self.world.select_query(item.question, normalize_tables(self.tables[item.book]))
+                return self.world.select_query(item.question, normalize_tables(self.tables[item.book]), judged=True)
         with request_scope(), request_memo(), request_database():
             self.world.begin_request()
             try:
                 self.world.link_request(DEMO_AS_OF)
-                return self.world.select_query(item.question, normalize_tables(self.tables[item.book]))
+                return self.world.select_query(item.question, normalize_tables(self.tables[item.book]), judged=True)
             finally:
                 self.world.end_request()
 
@@ -513,7 +513,7 @@ def main() -> int:
                             tables = tables_of(item, args.csv)
                             request.enter_context(scratch_database())
                             book = item.book
-                        selection = planner.select_query(item.question, tables)
+                        selection = planner.select_query(item.question, tables, judged=True)
                     shown = selection.selected if selection.selected is not None else selection.erred
                     rows = selection.answer(shown) if shown is not None else ()
                     kind = kind_of(selection)

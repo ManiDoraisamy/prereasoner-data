@@ -71,6 +71,7 @@ jobs:
           done
           node web/tests/home_demo.test.js
           node web/tests/workbook_reference.test.js
+          node web/tests/turn_check.test.js
       - name: Install browser test dependencies
         run: npm ci
       - name: Install Chromium

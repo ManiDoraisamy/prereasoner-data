@@ -10,6 +10,49 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## The answer is served before the judge has answered, and settled after: every dev and demo label is the reference's with the judge asked after the choice; on this machine the answer reached the reply 3.7 to 5.0 s before its mark settled (2026-11-27)
+
+- Owner, 2026-11-27: "yes, always serve the answer before the judge has answered. Latency to see answer is very
+  important. Its like our CoT like reasoning models. Wrong answer and then changing to correct answer in real time is
+  actually interpretability." At release 95e2a7af's gate the judge's wait was a median 3.7 s and a p90 of 10.0 s of a
+  request's 6.1 s and 13.7 s (2.9 s and 6.6 s without it), and 4 of 117 right answers were warned by a slow judge.
+- **What changed** (`DECISIONS.md`): the Decisions path gives its answer as the choice left it; serving answers with
+  `check` `checking` (a decided answer) or `erred` (the likeliest reading of one most likely wrong) and a sealed
+  token; the caller settles it after the answer is on screen, the mark by `POST /api/check`, an erred answer's retry
+  by `/api/reason` with `retry` and the token. The chat service writes the answer to the reply, then settles it in
+  the same turn; the web rail, the Sheets sidebar and the Excel pane show the reply as it is written with its mark
+  beside it (a quiet pulse while it is being checked). Which answer is served and how its mark is decided are the
+  same code, asked later.
+- **Nothing an evaluator measures moved.** The dev replay with the judge asked after the choice
+  (`python -m regress.run_dev_decisions --sets wtq,messy,freshdev --tag afirst`, and `--sets demo --demo-maps`):
+  0 misses, 0 mismatches, every label the reference's (WikiTableQuestions dev 300, messy 120, fresh dev 176, demo
+  91). No recorded answer was missing: the judge's body is the same body.
+- **End to end on this machine** (a local engine, the chat turn in process, real Decisions, judge and retry calls;
+  the machine was busy with two benchmark runs, so the times are long and only their order is read):
+
+  | Question (neartail-orders) | The answer in the reply | The turn ended | What followed the answer |
+  |---|---|---|---|
+  | how many orders in Paris | 29.8 s: 5 | 33.5 s | its mark, 3.7 s later: unmarked |
+  | total amount in Paris | 15.5 s: 129 | 19.7 s | its mark, 4.2 s later: unmarked |
+  | What share of the total amount comes from Paris? | 20.5 s: 0.623 | 25.5 s | its mark, 5.0 s later: unmarked |
+  | which customer placed the order with the second highest amount in Paris and on what date | 16.1 s | 19.8 s | its mark, 3.7 s later: warned, with its reason |
+  | how many more orders did Paris have than Lyon | 18.5 s: 1, marked most likely wrong | 30.9 s | the retry's answer in its place: 2, marked retried |
+  | what is the total shipping cost | 15.4 s: 207, marked most likely wrong | 37.0 s | the retry's word: the sheet holds no shipping cost |
+
+  The engine's line for a question no longer holds the judge's wait; settling has its own (`[timing] check`, with
+  `decisions_judge_ms`), and the chat's line has `engine_settle_ms`. No token was left in a finished turn.
+- **To read at the gate**: the time from asking to the answer on screen, in the browser, against 95e2a7af's.
+- The retry of an erred answer is no longer asked before the first answer is given, so the person sees the first
+  answer for as long as the retry takes (about 5 s in production), marked most likely wrong, then the retry's.
+- Not measured: the three clients' live drawing was not driven on this machine; the release gate drives it.
+- tests: `test_a_warned_answer_is_served_with_what_else_it_may_mean` and
+  `test_an_answer_most_likely_wrong_is_retried_never_asked_back` (serving asks neither the judge nor the retry; the
+  token settles the mark and runs the retry; a forged token does neither),
+  `test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it` (the answer comes back before the judge is
+  asked), `test_the_answer_is_shown_before_its_mark_is_settled_or_its_retry_runs` (the chat turn),
+  `test_a_pending_mark_is_settled_by_its_own_route`, `test_a_settled_mark_replaces_the_stored_one_on_its_own_revision`,
+  `web/tests/turn_check.test.js`; the hermetic suite.
+
 ## Why the product as served is 77.5% beside Gemini 4 Neon's 85.9%: Neon rewrites one answer in ten, and the retry was never told where to put the answer; told, it is right on 37 of the 56 DataBench test answers it rewrites (was 24) and 61 of 95 on the WikiTableQuestions sample (was 58) (2026-11-27)
 
 - Owner, 2026-11-27: "tell me why Engine alone is 74.6%, but Prereasoner as served is only 77.5%? Doesnt it have neon

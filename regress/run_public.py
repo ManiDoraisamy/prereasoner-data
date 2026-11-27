@@ -406,7 +406,7 @@ def run_engine(system: str, items, limits, sql, sink, done, ledger: Ledger, batc
                         tables = dev.tables_of(item)
                         request.enter_context(scratch_database())
                         book = item.book
-                    selection = planner.select_query(item.question, tables)
+                    selection = planner.select_query(item.question, tables, judged=True)
                     shown = selection.selected if selection.selected is not None else selection.erred
                     rows = selection.answer(shown) if shown is not None else ()
                     kind = dev.kind_of(selection)
@@ -814,7 +814,7 @@ def oracle(run: str, boost: float, limit: int | None, set_name: str = "wtq-train
                 mapped += bool(state["boost"])
                 with scratch_database():
                     try:
-                        planner.select_query(item.question, tables)
+                        planner.select_query(item.question, tables, judged=True)
                     except Stop:
                         pass
                     except Exception as error:       # a reading call the store lacks: the question is not measured
@@ -1109,7 +1109,7 @@ def run_judge(source: str, set_name: str, run: str, sizes: tuple[int, int], limi
                     request.enter_context(scratch_database())
                     book = item.book
                 captured.clear()
-                selection = planner.select_query(item.question, tables)
+                selection = planner.select_query(item.question, tables, judged=True)
                 if captured:
                     asked_of_book[item.question] = captured[0]
                 elif item.question in asked_of_book:

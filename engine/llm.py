@@ -320,17 +320,24 @@ def _post_judge(payload: bytes) -> dict:
 JUDGE_TRANSPORT = _post_judge
 
 
-def judge(state: dict, instructions: str, options: Sequence[tuple[str, str]]) -> str:
-    """One judgement: the key of the option the second judge picks for a closed question. Raises LLMUnavailable and
+def judged_key(payload: bytes, keys: Sequence[str]) -> str:
+    """The key the second judge answers one body with (``judge_payload``), one of ``keys``. The body is built when the
+    answer is chosen and sent when its mark is settled (engine/program/answer.py ask). Raises LLMUnavailable and
     nothing else."""
-    answer = JUDGE_TRANSPORT(judge_payload(state, instructions, options))
+    answer = JUDGE_TRANSPORT(payload)
     try:
         choice = json.loads(answer.get("text") or "")["choice"]
     except (ValueError, KeyError, TypeError) as exc:
         raise LLMUnavailable(f"Judge answer is not its JSON ({type(exc).__name__})") from None
-    if choice not in {key for key, _text in options}:
+    if choice not in set(keys):
         raise LLMUnavailable("Judge answer is not one of its options")
     return choice
+
+
+def judge(state: dict, instructions: str, options: Sequence[tuple[str, str]]) -> str:
+    """One judgement: the key of the option the second judge picks for a closed question. Raises LLMUnavailable and
+    nothing else."""
+    return judged_key(judge_payload(state, instructions, options), [key for key, _text in options])
 
 
 def decide(state: dict, questions: dict) -> Decision:

@@ -401,31 +401,49 @@ wrote.
    the same answer. The likeliest answer is answered at `T_FLAG` or more, warned from `T_ERR` (or when another
    answer's reading reads word for word like it), and most likely wrong (`ERRED`) below that or when "none of these"
    is likelier. It is never asked back for (owner, 2026-11-21). Two judges must agree for an answer to go unmarked
-   (owner, 2026-11-26): beside the choice, the same question (the same sheet description, instruction and options)
-   goes to a second model (`engine/llm.py:judge`, `JUDGE_MODEL`: Gemini 4 Neon at low thinking), which answers with
-   one option's key; an answer the choice would give unmarked waits for it and is warned when the judge picks another
-   answer (shown as what it may also mean), picks none, or does not answer (`PoolSelection.doubt`). An answer the
-   choice warns only because its own probability is below `T_FLAG` waits for the judge too and is given unmarked
-   where the judge picks it (2026-11-27). The answer served is the choice's in every case; an answer with a reading
-   worded alike and a most-likely-wrong one do not wait. The wait ends by the clock at the judge's own limit
-   (`JUDGE_TIMEOUT_SECONDS` after it was asked); a judge call still out `JUDGE_SECOND_SECONDS` on is made a second
-   time beside the first and the first of the two to answer is read (`engine/llm.py` `_first_to_answer`); and a
-   compound question's part, whose listing alone is read, asks no judge (`select_query(..., marked=False)`). On unseen tables the answers given unmarked and wrong fell from 13.6%
-   and 12.8% to 6.7% and 5.8% (`spider/results/RESULTS.md`).
+   (owner, 2026-11-26): the same question (the same sheet description, instruction and options) goes to a second
+   model (`engine/llm.py:judged_key`, `JUDGE_MODEL`: Gemini 4 Neon at low thinking), which answers with one option's
+   key; an answer the choice would give unmarked is warned when the judge picks another answer (shown as what it may
+   also mean), picks none, or does not answer (`PoolSelection.doubt`). An answer the choice warns only because its
+   own probability is below `T_FLAG` is given unmarked where the judge picks it too (2026-11-27). The answer served
+   is the choice's in every case; an answer with a reading worded alike and a most-likely-wrong one ask no judge, and
+   neither does a compound question's part, whose listing alone is read (`select_query(..., marked=False)`).
+   **The answer is given before the judge is asked** (owner, 2026-11-27: "always serve the answer before the judge
+   has answered"): `answer` returns as the choice left it, holding the judge's question where the mark depends on it
+   (`Answer.awaited`); `ask` sends it, bounded by the clock at `JUDGE_TIMEOUT_SECONDS` (a call still out
+   `JUDGE_SECOND_SECONDS` on is made a second time, `engine/llm.py` `_first_to_answer`), and `judged` applies the
+   key. An evaluator reads the mark with the selection (`select_query(..., judged=True)`); serving settles it after
+   the answer (step 9). On unseen tables the answers given unmarked and wrong fell from 13.6% and 12.8% to 6.7% and
+   5.8% (`spider/results/RESULTS.md`).
 6. `select_query` records it as a `PoolSelection`: the listed candidates (each its typed AST, SQL, answer probability
    and read-as line), ranked by that probability; `selected` (answered or warned), `warned` and `uncertain` (the
    coordinates the runner-up answer reads differently), or `erred` (the likeliest, when it is most likely wrong:
    nothing is decided, so compose and the search may answer it). A question longer than
    `decomposition.ONE_QUERY_WORDS` (30) words whose answer is most likely wrong asks, in an analysis, for the
    decomposition proposal (`decomposition.declined_compound`); one it answers is answered.
-8. Any other erred answer is retried (`engine/retry.py`): Gemini 4 Neon (`engine/llm.py:write_query`, the Developer
-   API, low thinking) reads the workbook the Decisions path reads (`TableQuery.workbook`: each compiled table with
-   the columns the request's links reach, `retry.workbook_tables`; columns typed by their cells, row counts, first
-   lines, a text column's few values, the tab in view) and writes one SQLite SELECT, which the one guard checks and the request's
-   database runs read-only over TEMP typed copies (a failed query goes back once with its error). Its rows are the
-   answer; its word that the tables cannot answer the question is the one question back; a retry that cannot answer
-   leaves the likeliest reading served, marked most likely wrong. The person's Retry (`retry: true` on `/chat` and
-   `/api/reason`, `TableQuery.retry_answer`) runs the same retry.
+8. Any other erred answer is owed its retry (`engine/retry.py`): Gemini 4 Neon (`engine/llm.py:write_query`, the
+   Developer API, low thinking) reads the workbook the Decisions path reads (`TableQuery.workbook`: each compiled
+   table with the columns the request's links reach, `retry.workbook_tables`; columns typed by their cells, row
+   counts, first lines, a text column's few values, the tab in view) and writes one SQLite SELECT with the answer in
+   its first column (`retry.ANSWER_FIRST`), which the one guard checks and the request's database runs read-only
+   over TEMP typed copies (a failed query goes back once with its error). Its rows are the answer; its word that the
+   tables cannot answer the question is the one question back; a retry that cannot answer leaves the likeliest
+   reading served, marked most likely wrong. The person's Retry (`retry: true` on `/chat` and `/api/reason`,
+   `TableQuery.retry_answer`) runs the same retry.
+9. **Answer first, then settle** (owner, 2026-11-27: latency to the answer comes first, and an answer changed in view
+   is the reasoning shown). `TableQuery.serve` asks neither the judge nor the retry. It serves the decided answer
+   with `check` `checking` (`checking_check`), or the likeliest reading of an erred one with `check` `erred`, each
+   carrying a sealed, dated token (`seal_pending`: the judge's question and the mark each of its answers leaves, or
+   the reading the retry replaces). The caller settles it: `POST /api/check` asks the judge and returns the mark
+   (`settle_check`), streams it on the answer's live trace and stores it on the analysis revision
+   (`conversations.settle_analysis_check`); `/api/reason` with `retry: true` and the token runs the owed retry, as a
+   modify of the stored revision. The chat service does this in the same turn after it has written the answer to the
+   reply (`orchestrator._run_turn`, `mcp_server/engine_client.py` `settle`): the mark settles in place, or the
+   retry's answer takes the first one's place as one more engine call of the turn. The MCP tool returns the settled
+   answer (`settled_query`); the live suites settle in process (`KnowledgeReasoner.settled`). The token is in the
+   HTTP response only: the live trace and the stored revision hold the mark without it, and a stored answer not yet
+   settled is kept as not judged twice. At release 95e2a7af's gate the judge's wait was a median 3.7 s and a p90 of
+   10.0 s of a request's 6.1 s and 13.7 s.
 7. In an analysis, as every served request is, the chosen program's one plan runs through both deterministic
    emitters on the request's database (`TableQuery._execute_deterministic`), in exact decimals, and its rows are
    shown as the sheet spells them. Outside one (an evaluator), the answer is the rows the choice read. Either way
@@ -436,7 +454,8 @@ wrote.
 The served response carries `read_as`, the chosen program's plain reading, which the thread shows as the turn's
 "read as" line, and a `coverage` record certifying the reading (the world routes keep their own wording gate in
 `KnowledgeQuery._uncovered`). Every own-data answer carries its mark, `check` (`engine/tables.py:answer_check`,
-`retried_check`): `answered`, `warned` (with `coordinates`, `also_read_as`), `erred` or `retried` (with the retry's
+`retried_check`, `checking_check`): `checking` while its second judge is asked (a quiet pulse, no reason), then
+`answered`, `warned` (with `coordinates`, `also_read_as`), `erred` or `retried` (with the retry's
 query, model and reason), each with the reason its icon opens on beside a Retry (`web/public/lib/turn-renderer.js`
 `renderCheck`, in the web rail, the Sheets sidebar and the Excel pane); the reply is the answer alone. A total or average of a named column whose cells are not all
 numbers is refused naming them (`engine/query_contract.unreadable_operand`) before any route reads it

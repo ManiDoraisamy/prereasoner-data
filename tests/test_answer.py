@@ -19,6 +19,8 @@ import engine.program.stock as stock
 from engine import config
 from engine.answer_presentation import warned_reason
 from engine.program.answer import ANSWERED, ERRED, WARNED, answer, prepare
+from engine.program.answer import ask as ask_judge
+from engine.program.answer import judged as with_judgement
 from engine.program.closed import DOUBT_ANOTHER, DOUBT_NONE, DOUBT_UNREAD, UNJUDGED, awaits_judge
 from engine.program.catalog import Catalog
 from engine.program.closed import (CHOICE_NONE, CHOOSE_K, NONE, SAID_OPTIONS_MOST, T_ERR, T_FLAG, TAB_IN_VIEW_CONVENTION, W, answer_key, choice_record, choose_answer, fused_reading, preview,
@@ -427,9 +429,11 @@ def test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it() -> None
     another answer warns it, with the judge's reading as what it may also mean, none warns it, and so does a judge that
     did not answer. The answer served is the choice's in every case. An answer the choice warned only because its own
     probability is low is given unmarked where the judge picks it too (2026-11-27: on the 896, 33 such answers were
-    right and 7 wrong); one with a reading alike, and a most-likely-wrong one, are as the choice left them. The path
-    asks the judge the choice's own question, beside the choice; an answer waits for it no longer than the judge's
-    limit by the clock, and a compound question's part asks no judge at all."""
+    right and 7 wrong); one with a reading alike, and a most-likely-wrong one, are as the choice left them. The judge
+    is asked the choice's own question, and only after the answer is given (owner, 2026-11-27: "always serve the answer
+    before the judge has answered"): the path's answer comes back as the choice left it, holding the judge's question,
+    and its mark is settled by asking (``ask``) and applying the key (``judged``). A mark waits for the judge no longer
+    than the judge's limit by the clock, and a compound question's part asks no judge at all."""
     answers = ["a", "a", "b", "c"]
     sure = {"r00": 0.5, "r01": 0.3, "r02": 0.1, "r03": 0.05, NONE: 0.05}
     alone = choose_answer(sure, answers)
@@ -466,10 +470,15 @@ def test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it() -> None
         return _reading_rule(name, criteria_question, state)
 
     def ask(judge):
-        return _with_transport(FakeTransport(rule), lambda: answer(question, prepared, RequestTables(prepared.catalog)), judge)
+        def settled():
+            given = answer(question, prepared, RequestTables(prepared.catalog))
+            assert given.awaited is not None and (given.kind, given.doubt) == (ANSWERED, None), "given as the choice left it"
+            assert not getattr(judge, "bodies", None), "the answer is given before the judge is asked"
+            return with_judgement(given, ask_judge(given.awaited))
+        return _with_transport(FakeTransport(rule), settled, judge)
     same = FakeJudge(rule)
     both = ask(same)
-    assert (both.kind, both.doubt) == (ANSWERED, None)
+    assert (both.kind, both.doubt, both.awaited) == (ANSWERED, None, None) and len(same.bodies) == 1
     body = same.bodies[0]
     assert body["model"] == config.JUDGE_MODEL and body["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
     keys = body["generationConfig"]["responseJsonSchema"]["properties"]["choice"]["enum"]
@@ -485,7 +494,7 @@ def test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it() -> None
     assert warned_reason("the total of Amount", None, 0.9, False, DOUBT_NONE) == "I read this as “the total of Amount”, 90% sure, but a second check found no reading that answers the question as asked."
     assert warned_reason("the total of Amount", None, 0.9, False, DOUBT_UNREAD).endswith("; the second check of this reading did not run.")
 
-    # by the clock: an answer waits for the judge no longer than the judge's limit, then is served as not judged twice
+    # by the clock: a mark waits for the judge no longer than the judge's limit, then says the answer was not judged twice
     import engine.program.answer as path
 
     def slow(payload):
@@ -500,12 +509,12 @@ def test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it() -> None
         path.JUDGE_TIMEOUT_SECONDS = held
     assert (late.kind, late.doubt) == (WARNED, DOUBT_UNREAD) and late.rows == both.rows
     time.sleep(0.7)     # the late judge's thread ends before the next test's transports are swapped
-    assert waited < 0.6, f"the answer waited {waited:.2f} s for a judge whose limit was 0.05 s"
+    assert waited < 0.6, f"the mark waited {waited:.2f} s for a judge whose limit was 0.05 s"
 
     # a compound question's part is a step of a plan: its listing is read, so it asks no judge and keeps the choice's kind
     unasked = FakeJudge(lambda name, criteria_question, state: {NONE: 0.9})
     part = _with_transport(FakeTransport(rule), lambda: answer(question, prepared, RequestTables(prepared.catalog), marked=False), unasked)
-    assert unasked.bodies == [] and (part.kind, part.doubt) == (ANSWERED, None) and part.listed_rows == both.listed_rows
+    assert unasked.bodies == [] and (part.kind, part.doubt, part.awaited) == (ANSWERED, None, None) and part.listed_rows == both.listed_rows
 
 
 def test_a_failed_call_reaches_the_caller() -> None:
