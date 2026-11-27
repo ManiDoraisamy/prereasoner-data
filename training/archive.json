@@ -489,7 +489,7 @@
    "weights": "only"
   },
   "scratch-records": {
-   "bytes": 321038303,
+   "bytes": 322592385,
    "exclude": [
     "archive",
     "worktrees",
@@ -506,15 +506,17 @@
     "release-924a7b19",
     "release-568b1f0a",
     "release-95e2a7af",
+    "release-b47c950e",
     "chat-1a442963",
     "chat-1d9929b2",
     "chat-48abf835",
     "chat-6d239ad1",
     "chat-b9b0fe50",
+    "chat-b47c950e",
     "open-20261124/sheetcache"
    ],
-   "files": 4133,
-   "note": "working records of the 2026-11 sessions: accuracy and parity runs, patches, cutover scripts, gate logs and captures through release 95e2a7af, the 2026-11-24 sheet-reading diagnosis scripts, the 2026-11-26 steps 2-4 gates, diffs and step 4's listings, the 924a7b19, 568b1f0a and 95e2a7af build logs, the 2026-11-27 build plan's working files (the diffs and call batches of the two changes not kept), and the 2026-11-27 judge probe (scripts, the demo set's judge bodies, each call's time)",
+   "files": 4169,
+   "note": "working records of the 2026-11 sessions: accuracy and parity runs, patches, cutover scripts, gate logs and captures through release b47c950e (answer first), the 2026-11-24 sheet-reading diagnosis scripts, the 2026-11-26 steps 2-4 gates, diffs and step 4's listings, build logs through b47c950e, the 2026-11-27 build plan's working files (the diffs and call batches of the two changes not kept), the judge probe (scripts, the demo set's judge bodies, each call's time), the retry at default thinking's recorded calls, and the answer-first end-to-end script and logs",
    "packed": "2026-11-27",
    "packed_from": [
     "prereasoner-scratch",
@@ -522,10 +524,10 @@
    ],
    "parts": [
     {
-     "bytes": 49932703,
+     "bytes": 50059203,
      "path": "scratch-records/part-0000.tar.zst",
-     "revision": "4d59b13c68fb224ad134e3216bcb9eff5e89ccd4",
-     "sha256": "cbc869d168672fb322fc05f8fdcfe538a62ea6ec932ca8f0fb1c569a44e2b05f"
+     "revision": "208875f22fb4eeae41f7cf01ec1903fbbe877f75",
+     "sha256": "89a3d90cf3f10204259fcba99cdc058e2a2f778f80270643ef69f728439c7c3e"
     }
    ],
    "restore": "archive",
