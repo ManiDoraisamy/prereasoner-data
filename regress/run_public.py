@@ -22,7 +22,9 @@ Systems:
                choice left it (judged: false), since those runs read what is built, not the marks.
   prereasoner  the same, served: an erred answer retried by Gemini 4 Neon's written query (engine/retry.py); a failed
                retry serves the erred pick.
-  neon, opus   Gemini 4 Neon at its default thinking and Claude Opus 5.5 at its default effort write the query for
+  neon, opus, fable
+               Gemini 4 Neon at its default thinking, Claude Opus 5.5 at its default effort (medium) and Claude Fable
+               5.2 at its default effort (high) write the query for
                every question: the retry's own prompt (columns with their types, the row count, the first rows, the
                values of short text columns) over the question's table as the dataset ships it, one SQL table
                (raw_tables), plus one line stating the answer format. The query runs through the same guard,
@@ -78,11 +80,13 @@ from regress import eval_sets
 PUBLIC = eval_sets.SETS / "public"
 SAMPLES = PUBLIC / "samples"
 WORK = eval_sets.REPO / "regress" / "results" / "public"
-SYSTEMS = ("engine", "prereasoner", "neon", "opus")
-NEON_MODEL, OPUS_MODEL = "gemini-4-neon", "claude-opus-5-5"
+FRONTIER = ("neon", "opus", "fable")     # the systems in which a model writes the query for every question
+SYSTEMS = ("engine", "prereasoner", *FRONTIER)
+NEON_MODEL, OPUS_MODEL, FABLE_MODEL = "gemini-4-neon", "claude-opus-5-5", "claude-fable-5-2"
 # Dollars per million tokens (input; output with thinking) on 2026-11-22: OpenRouter's model list for Gemini 4 Neon, the
-# Claude API's price table for Opus 5.5, Google's Decisions API page for gemini-decision-1 (no output charge).
-PRICES = {"decisions": (0.10, 0.0), "retry": (3.0, 15.0), "neon": (3.0, 15.0), "opus": (4.0, 20.0)}
+# Claude API's price table for Opus 5.5, Google's Decisions API page for gemini-decision-1 (no output charge). Fable
+# 5.2: the Claude API's price table on 2026-11-27.
+PRICES = {"decisions": (0.10, 0.0), "retry": (3.0, 15.0), "neon": (3.0, 15.0), "opus": (4.0, 20.0), "fable": (8.0, 40.0)}
 # The judge test's models, dollars per million tokens in and out (the Gemini Developer API's price page, 2026-11-26;
 # Gemini 3.8 Flash's doubles on 2027-01-01).
 JUDGES = {"gemini-4-neon": (3.0, 15.0), "gemini-4-hydrogen": (1.5, 7.5), "gemini-3.8-flash": (0.75, 3.75),
@@ -212,9 +216,10 @@ _ANTHROPIC = None
 _ANTHROPIC_LOCK = threading.Lock()
 
 
-def opus_send(payload: bytes) -> dict:
-    """Claude Opus 5.5 at its default effort (medium; thinking is always on), the answer held to the retry's JSON schema
-    by structured outputs, the format line added. No refusal fallback: a fallback model's answer is not Opus 5.5's."""
+def _claude_send(model: str, name: str, payload: bytes) -> dict:
+    """A Claude model at its default effort (Opus 5.5: medium, Fable 5.2: high; thinking is always on), the answer held
+    to the retry's JSON schema by structured outputs, the format line added. No refusal fallback: a fallback model's
+    answer is not the model's."""
     import anthropic
     global _ANTHROPIC
     with _ANTHROPIC_LOCK:
@@ -227,16 +232,24 @@ def opus_send(payload: bytes) -> dict:
     schema = dict(llm.QUERY_SCHEMA, additionalProperties=False)
     try:
         response = _ANTHROPIC.messages.create(
-            model=OPUS_MODEL, max_tokens=16000, system=system,
+            model=model, max_tokens=16000, system=system,
             messages=[{"role": "assistant" if role == "model" else "user", "content": text} for role, text in turns],
             output_config={"format": {"type": "json_schema", "schema": schema}})
     except anthropic.APIError as error:
-        raise llm.LLMUnavailable(f"Opus call failed ({type(error).__name__}: {str(error)[:120]})") from None
+        raise llm.LLMUnavailable(f"{name} call failed ({type(error).__name__}: {str(error)[:120]})") from None
     if response.stop_reason == "refusal":
-        raise llm.LLMUnavailable("Opus declined")
+        raise llm.LLMUnavailable(f"{name} declined")
     text = "".join(block.text for block in response.content if block.type == "text")
     return {"text": text, "stop_reason": response.stop_reason,
             "usage": {"promptTokenCount": response.usage.input_tokens, "candidatesTokenCount": response.usage.output_tokens}}
+
+
+def opus_send(payload: bytes) -> dict:
+    return _claude_send(OPUS_MODEL, "Opus", payload)
+
+
+def fable_send(payload: bytes) -> dict:
+    return _claude_send(FABLE_MODEL, "Fable", payload)
 
 
 # ---------------------------------------------------------------------------------------------------------- the sets
@@ -416,7 +429,7 @@ def run_frontier(system: str, items, sink, done, ledger: Ledger, batch: str, thr
     from engine.retry import retry
     from engine.tables import TableQuery
 
-    llm.QUERY_TRANSPORT = Recorded(system, ledger, {"neon": neon_send, "opus": opus_send}[system], batch)
+    llm.QUERY_TRANSPORT = Recorded(system, ledger, {"neon": neon_send, "opus": opus_send, "fable": fable_send}[system], batch)
     guard = TableQuery().guard
     started, count, lock = time.time(), [0], threading.Lock()
 
@@ -490,7 +503,7 @@ def records(run: str, name: str, system: str) -> dict:
 
 
 def verdict(row: dict, system: str) -> bool:
-    return bool(row["right"] if system in ("neon", "opus") else row["served"] if system == "prereasoner" else row["engine"])
+    return bool(row["right"] if system in FRONTIER else row["served"] if system == "prereasoner" else row["engine"])
 
 
 def wilson(right: int, n: int, z: float = 1.96) -> tuple[float, float]:

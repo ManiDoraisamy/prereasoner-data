@@ -369,8 +369,9 @@ A kept change re-measures them with `--record --keep` (new Decisions bodies are 
 `python -m regress.eval_sets pack`, and commits the references and calls with the change.
 
 The public benchmark (`regress/run_public.py`) runs the engine alone, the engine as served (an erred answer retried),
-Gemini 4 Neon and Claude Opus 5.5 on DataBench test and the committed WikiTableQuestions test samples, and the engine
-on the training find set read for diagnosis; `--compare`, `--summary` and `--census` read the committed records.
+Gemini 4 Neon, Claude Opus 5.5 and Claude Fable 5.2 on DataBench test and the committed WikiTableQuestions test
+samples, and the engine on the training find set read for diagnosis; `--compare`, `--summary` and `--census` read the
+committed records.
 
 ## Spider Accuracy
 

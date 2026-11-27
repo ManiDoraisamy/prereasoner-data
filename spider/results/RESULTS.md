@@ -10,6 +10,47 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Claude Fable 5.2 on the public benchmark: 407 of DataBench test's 450 within the upload limit (90.4%) and 863 of the 1,000 WikiTableQuestions test sample (86.3%), level with Gemini 4 Neon (399, 859) at a quarter of its time, ahead of Claude Opus 5.5 on WikiTableQuestions (841); the engine alone 339 and 746 (2026-11-27)
+
+- Owner, 2026-11-27, on the best path against Neon and Fable: "Fine with spend". `regress/run_public.py` takes
+  `--system fable`: Claude Fable 5.2 (`claude-fable-5-2`) writes the query for every question at its default effort
+  (high; thinking is always on), with the retry's own prompt and answer schema, as Gemini 4 Neon and Claude Opus 5.5
+  (at its default, medium) were asked on 2026-11-22. Run `2026-11-27-fable`, every question of both sets. One
+  question failed and counts as wrong (`db/080_Books/11`: the retry's guard refused the query).
+
+  | | DataBench test, all 522 | Within the upload limit, 450 | WikiTableQuestions test sample, 1,000 | A question's time, median / p90 (DataBench; WikiTableQuestions) | A question's cost |
+  |---|---|---|---|---|---|
+  | Claude Fable 5.2 writing every query | 475 (91.0%, 88.2-93.2) | 407 (90.4%, 87.4-92.8) | 863 (86.3%, 84.0-88.3) | 3.8 s / 11.8 s; 3.5 s / 8.3 s | $0.028 |
+  | Gemini 4 Neon writing every query | 466 (89.3%, 86.3-91.6) | 399 (88.7%, 85.4-91.3) | 859 (85.9%, 83.6-87.9) | 14.1 s / 51.2 s; 13.7 s / 45.9 s | $0.032 |
+  | Claude Opus 5.5 writing every query | 468 (89.7%, 86.7-92.0) | 404 (89.8%, 86.6-92.2) | 841 (84.1%, 81.7-86.2) | 3.1 s / 18.9 s; 3.2 s / 6.8 s | $0.012 |
+  | Prereasoner as served (release 4a3b86e5) | 346 | 346 (76.9%, 72.8-80.5) | 775 (77.5%, 74.8-80.0) | | |
+  | The engine alone | 339 | 339 (75.3%, 71.1-79.1) | 746 (74.6%, 71.8-77.2) | | |
+
+  The intervals are Wilson's at 95%. The engine refuses the 72 questions on the two sheets over the upload limit, so
+  its count is the same in both DataBench columns. Its rows are the last full runs of each set: DataBench at the
+  three readings (`2026-11-26-readings`), WikiTableQuestions at the answer form (`2026-11-26-answers`; the readings
+  kept since were run on their own questions only). The served rows are release 4a3b86e5's (`2026-11-26-release`),
+  before those readings.
+- **Fable against the other two models**, on the questions where they differ (sign test, all questions). DataBench:
+  Fable right and Neon wrong on 15, the reverse on 6 (p = 0.08); against Opus 17 and 10 (p = 0.25).
+  WikiTableQuestions: against Neon 29 and 25 (p = 0.68); against Opus 39 and 17 (p = 0.005). Fable is level with
+  Neon on both sets and ahead of Opus on WikiTableQuestions; it answers in a quarter of Neon's time at about Neon's
+  cost, and at more than twice Opus's cost. All three models are right on 382 of the 450 and 803 of the 1,000; at
+  least one is right on 420 and 894.
+- **Fable against the engine**, within the upload limit. Fable is right on 75 DataBench questions and 151
+  WikiTableQuestions questions the engine alone misses; the engine is right on 7 of Fable's 43 DataBench misses and
+  34 of its 137 WikiTableQuestions misses, and on 3 and 20 questions that all three models miss. The engine alone
+  trails Fable by 15.1 points on DataBench and 11.7 on WikiTableQuestions; as served, by 13.5 and 8.8. One of the
+  two right (no system does this: nothing tells which one is right): 414 of 450 and 897 of 1,000.
+- Cost: $43.27 for 1,538 calls on the 1,522 questions at $8 and $40 a million tokens in and out, about 1,560 tokens
+  in and 400 out a question with thinking. Neon's $0.032 a question is mostly its thinking (about 1,840 tokens out
+  a call at $15 a million); Opus writes about 260 tokens out a call at $20 a million, $0.012 a question.
+- Records: `regress/sets/public/records/2026-11-27-fable/` (`databench-test`, `wtq-test`) beside
+  `2026-11-22-benchmark/` (`neon`, `opus`); the recorded calls `regress/sets/public/calls/fable/`, so
+  `python -m regress.run_public --run 2026-11-27-fable --set wtq-test --system fable` replays from a clone at no
+  cost.
+
+
 ## A figure of the first or the last lines (step 2 of the build plan): "the average age of the first three on the list" reads lines taken by place; WikiTableQuestions training's questions that take lines by place 440 -> 446 of 521 with no loss, a fresh 1,000 720 -> 721, the 896 and the demo set unchanged (2026-11-27)
 
 - Step 2 of the build plan (owner, 2026-11-26: "Go ahead with this plan"). A rank took lines by where they stand
