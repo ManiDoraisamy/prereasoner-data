@@ -10,6 +10,50 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A cell's list items and parts as lines and columns (step 1 of the build plan): not kept; on the DataBench training questions read for it 107 -> 114 of 138, on unread ones 87 -> 89 of 121 with 3 more unmarked and wrong, and DataBench dev builds and picks no more (281, 262) with 2 more unmarked and wrong (2026-11-27)
+
+- Step 1 of the build plan (owner, 2026-11-26: "Go ahead with this plan"): the largest family among DataBench test's
+  misses, 23 of 111, is a cell that holds a list or a record. Built: the columns whose cells hold a list (in
+  brackets, or items set apart by a mark), a record of named values, a fixed number of parts or a part in brackets
+  are found by their marks alone; one Decisions call before the reading asks, a closed question a column, what the
+  question needs of each (the whole cell or a part); a part asked for joins the workbook as a column ("Ratings ->
+  rooms", "Labels -> number of items") and a list's single items as a table of one line per item, for that question
+  only. Kept only if unread questions gain, the 896's picks and unmarked wrong are no worse, and the demo set is at
+  parity.
+- Measured, the engine alone, no second judge except on the dev sets (`regress/run_public.py`, `--books` the
+  workbooks that hold such a column; the unread DataBench questions are the 368 the seeded 400 leave on the same 38
+  workbooks, `--skip 400 --size 400`, read in totals):
+
+  | Set | Questions | Right | Wins / losses | Built | Unmarked wrong |
+  |---|---|---|---|---|---|
+  | DataBench training, read while building | 138 | 107 -> 114 | 8 / 1 | 116 -> 121 | 11 -> 9 |
+  | WikiTableQuestions training, read while building | 224 | 174 -> 174 | 3 / 3 | 199 -> 204 | 28 -> 29 |
+  | DataBench training, unread | 121 | 87 -> 89 | 4 / 2 | 96 -> 97 | 15 -> 18 |
+  | DataBench dev, two judges (`run_dev_decisions --tag parts`) | 300 | pick 262 -> 262 | 2 / 2 | 281 -> 281 | 9 -> 11 |
+  | Demo, two judges | 91 | pick 86 -> 86 | 0 / 0 | 87 -> 87 | 0 -> 0, every record at parity |
+
+  On the unread DataBench questions the parts joined the workbook of 20 of the 121, of which 12 were right before
+  and 14 after; the other 101 paid the parts call alone. The median question on those workbooks took 4.0 s -> 6.0 s
+  (one more Decisions call before the reading, and the workbook's preparation with its parts).
+- **Not kept.** The gain is on the questions read for it. On unread ones it is 2 answers of 121 with 3 more given
+  unmarked and wrong, DataBench dev builds no answer it did not build and gives 2 more unmarked and wrong under two
+  judges, and WikiTableQuestions is level: a part offered as a column wins a question and loses another ("in what
+  city did his last 1st place finish occur?" took the venue's first part where the whole cell was the answer). The
+  fresh WikiTableQuestions sample and the other dev sets were not run once DataBench dev had failed the gate.
+- Found while building, worth knowing if it is tried again: a column a program printed mixes bracketed lists, bare
+  single values and "[]", and one printed without commas reads as one item under a literal; the parts question
+  answers each column by itself, so one question asked for the items of five lists, each a table of its own (171 s
+  on a 19,000-line sheet of 300 columns, about 12 s a table by its profile); two questions on one workbook asking different
+  parts need the request's database to hold both workbooks, each table named by what it gained.
+- Records: `regress/sets/public/records/2026-11-27-parts/` (with it: `databench-train`, `wtq-train`),
+  `2026-11-27-parts-before/wtq-train`, `2026-11-27-parts-unread/` and `2026-11-27-parts-unread-before/` (the unread
+  DataBench questions, the baseline all 368 at the head: 284 right, 310 built, a baseline for what follows), DataBench
+  training's baseline `2026-11-26-readings/`; the dev sets' records and summary
+  `regress/sets/dev_decisions/records/cellparts/`. The baselines replay from the committed calls; the runs with the
+  change need its code, whose diff and call batches are in the archive (`prereasoner-scratch/open-20261127/`,
+  `step1-final.diff`, `step1-calls/`). Decisions and judge spend about $2, the baselines included.
+
+
 ## Release 568b1f0a (a warned answer both judges pick goes unmarked, a compound question's parts ask no judge, the judge's wait ends by the clock) live; Chrome gate 102 of 102 fresh, 77 of 78 existing; a request's p90 in production 17.4 s -> 11.9 s; 5 of 115 answers that waited for the judge were warned because it took longer than 15 s (2026-11-27)
 
 - Engine `prereasoner-api-00358-zax` (`engine@sha256:bb084799...`, Cloud Build 00a95b90: build, offline regression
