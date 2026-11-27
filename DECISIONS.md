@@ -5885,3 +5885,21 @@ Two latency defects of the first release are fixed with it. A compound question 
 read (`engine/decomposition.py`), so it asks no judge at all (`select_query(..., marked=False)`), which also spares
 its call. And the judge's 15 s limit was a socket's, which a slow connection or a late body outlasts: the wait now
 ends by the clock, 15 s after the judge was asked, and the answer is served as not judged twice.
+
+### A judge still out after 8 s is asked a second time (2026-11-27)
+
+Release 568b1f0a's gate found what the clock costs when the provider is slow: 5 of the 115 answers that waited for
+the judge reached the 15 s, three of them within two minutes, and each, a right answer, was served warned as not
+judged twice. A call held that long is one call's bad luck more often than the model's, so the judge's body is sent
+a second time beside the first when the first is still out `JUDGE_SECOND_SECONDS` (8 s) on, and whichever answers
+first is the judgement (`engine/llm.py` `_post_judge`, `_first_to_answer`). Of 4,401 recorded judge calls 5.1% were
+out at 8 s, which is what the second asking adds to the judge's cost (about $0.0008 a question), and 8.7% took
+longer than the 7 s it leaves a second call, so two calls that are slow independently both miss on about one answer
+in two thousand, against one in two hundred for a single call. A slow spell holds calls together, so the share is
+read in production: the request's `[timing]` line counts `judge_second`, and the waits that still end by the clock
+are read at the next gate.
+
+It is the same body to the same model, not a third opinion and not a retry: a call that fails at once is not made
+again (`JUDGE_ATTEMPTS` stays 1), and a failed first call leaves a second already out to answer. The judge takes no
+seed, so two askings can pick differently, as one asking's answer already could from the next; evaluations replay a
+body's recorded answer by its hash and are unchanged.

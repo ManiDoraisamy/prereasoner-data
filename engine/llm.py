@@ -238,9 +238,15 @@ def write_query(system: str, prompt: str) -> WrittenQuery:
 # text, no SQL and no program. Gemini 4 Neon at its low thinking level answered in 4.9 s at the median, 8.3 s at p90
 # and 11 s at p95 (2026-11-26, 606 questions; 16 took over 15 s); it takes no temperature or seed. One attempt within
 # 15 s: an answer waits no longer for its second judge, and one the judge does not reach in time is warned as unread.
+# A call still out after 8 s is sent a second time beside the first, and the first of the two to answer is the
+# judgement: the provider's slow spells hold a call for 15 s and more (release 568b1f0a's gate: 5 of 115 waits ended
+# by the clock, each answer right and served warned), and of 4,401 recorded calls 5.1% were out at 8 s and 0.5% at
+# 15 s, so the second asking adds a twentieth to the judge's cost and leaves a second call 7 s, which 91% of calls
+# answer within.
 JUDGE_THINKING = "low"
 JUDGE_MAX_OUTPUT_TOKENS = 16384
 JUDGE_TIMEOUT_SECONDS = 15.0
+JUDGE_SECOND_SECONDS = 8.0
 JUDGE_ATTEMPTS = 1
 JUDGE_SYSTEM = ("You answer one closed question about a person's spreadsheet. STATE describes the spreadsheet and the "
                 "question asked of it, QUESTION says what to choose, and OPTIONS lists the options by key. Reply with the "
@@ -262,14 +268,41 @@ def judge_payload(state: dict, instructions: str, options: Sequence[tuple[str, s
     return json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8")
 
 
+def _first_to_answer(call, after: float):
+    """``call()``'s answer, the call made a second time beside the first when the first is still out ``after`` seconds
+    on: the answer of whichever returns first. A call that fails leaves the other to answer, and when none is left
+    the first failure is raised; a first call that fails before ``after`` is not made again."""
+    import contextvars
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+
+    from engine import request_timing
+
+    pool = ThreadPoolExecutor(max_workers=2)
+    try:
+        out = {pool.submit(contextvars.copy_context().run, call)}
+        if not wait(out, timeout=after).done:
+            request_timing.count("judge_second")
+            out.add(pool.submit(contextvars.copy_context().run, call))
+        failure = None
+        while out:
+            done, out = wait(out, return_when=FIRST_COMPLETED)
+            for one in done:
+                if one.exception() is None:
+                    return one.result()
+                failure = failure or one.exception()
+        raise failure
+    finally:
+        pool.shutdown(wait=False)     # a call still out ends by its own limit
+
+
 def _post_judge(payload: bytes) -> dict:
-    """The judge's answer to one body: {"text": its JSON answer, "usage": {...}, "seconds": the call's time}. Raises
-    LLMUnavailable."""
+    """The judge's answer to one body: {"text": its JSON answer, "usage": {...}, "seconds": the time to it}. The call
+    is made a second time when it is still out JUDGE_SECOND_SECONDS on (_first_to_answer). Raises LLMUnavailable."""
     body = json.loads(payload.decode("utf-8"))
     model = body.pop("model")
+    url, data = QUERY_ENDPOINT.format(model=model), json.dumps(body, ensure_ascii=False).encode("utf-8")
     clock = time.perf_counter()
-    result = _post_developer(QUERY_ENDPOINT.format(model=model), json.dumps(body, ensure_ascii=False).encode("utf-8"),
-                             JUDGE_TIMEOUT_SECONDS, JUDGE_ATTEMPTS, "Judge")
+    result = _first_to_answer(lambda: _post_developer(url, data, JUDGE_TIMEOUT_SECONDS, JUDGE_ATTEMPTS, "Judge"), JUDGE_SECOND_SECONDS)
     try:
         parts = result["candidates"][0]["content"]["parts"]
     except (KeyError, IndexError, TypeError):
