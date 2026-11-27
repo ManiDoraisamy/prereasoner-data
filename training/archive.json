@@ -489,7 +489,7 @@
    "weights": "only"
   },
   "scratch-records": {
-   "bytes": 322592385,
+   "bytes": 323057396,
    "exclude": [
     "archive",
     "worktrees",
@@ -507,16 +507,18 @@
     "release-568b1f0a",
     "release-95e2a7af",
     "release-b47c950e",
+    "release-5ada49a1",
     "chat-1a442963",
     "chat-1d9929b2",
     "chat-48abf835",
     "chat-6d239ad1",
     "chat-b9b0fe50",
     "chat-b47c950e",
+    "chat-5ada49a1",
     "open-20261124/sheetcache"
    ],
-   "files": 4169,
-   "note": "working records of the 2026-11 sessions: accuracy and parity runs, patches, cutover scripts, gate logs and captures through release b47c950e (answer first), the 2026-11-24 sheet-reading diagnosis scripts, the 2026-11-26 steps 2-4 gates, diffs and step 4's listings, build logs through b47c950e, the 2026-11-27 build plan's working files (the diffs and call batches of the two changes not kept), the judge probe (scripts, the demo set's judge bodies, each call's time), the retry at default thinking's recorded calls, and the answer-first end-to-end script and logs",
+   "files": 4197,
+   "note": "working records of the 2026-11 sessions: accuracy and parity runs, patches, cutover scripts, gate logs and captures through release 5ada49a1 (four marks from the engine alone), the 2026-11-24 sheet-reading diagnosis scripts, the 2026-11-26 steps 2-4 gates, diffs and step 4's listings, build logs through b47c950e, the 2026-11-27 build plan's working files (the diffs and call batches of the two changes not kept), the judge probe (scripts, the demo set's judge bodies, each call's time), the retry at default thinking's recorded calls, the answer-first end-to-end script and logs, and the four-marks change's replay logs, results drafts and gate (driver, captures, timing lines)",
    "packed": "2026-11-27",
    "packed_from": [
     "prereasoner-scratch",
@@ -524,10 +526,10 @@
    ],
    "parts": [
     {
-     "bytes": 50059203,
+     "bytes": 50083855,
      "path": "scratch-records/part-0000.tar.zst",
-     "revision": "208875f22fb4eeae41f7cf01ec1903fbbe877f75",
-     "sha256": "89a3d90cf3f10204259fcba99cdc058e2a2f778f80270643ef69f728439c7c3e"
+     "revision": "0152548bd252aea412cd7ef8fecdf7379b1ed484",
+     "sha256": "d63081c450751e472c986edcf37c7ac23cc55f527e25641853111e3f00366ce0"
     }
    ],
    "restore": "archive",
