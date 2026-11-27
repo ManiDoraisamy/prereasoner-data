@@ -10,6 +10,49 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## A figure of the first or the last lines (step 2 of the build plan): "the average age of the first three on the list" reads lines taken by place; WikiTableQuestions training's questions that take lines by place 440 -> 446 of 521 with no loss, a fresh 1,000 720 -> 721, the 896 and the demo set unchanged (2026-11-27)
+
+- Step 2 of the build plan (owner, 2026-11-26: "Go ahead with this plan"). A rank took lines by where they stand
+  and showed their cells, and an aggregate read every line its conditions kept: a total, an average or a count of
+  the first or the last few had no program, 7 of the 37 questions unbuilt among WikiTableQuestions training's
+  questions that take lines by place. An aggregate may now take its lines first (`Agg.taken`, `DECISIONS.md`): a
+  total, an average, a lowest or a highest of the first or last N lines its conditions keep, or a count of the
+  table's first or last N lines that meet its conditions. Offered only where the order call reads the first or last
+  lines, the question states how many and the reading holds that figure; no closed question is added.
+- Measured, the engine alone, no second judge except on the dev sets:
+
+  | Set | Questions | Right | Wins / losses | Built | Unmarked wrong |
+  |---|---|---|---|---|---|
+  | WikiTableQuestions training, lines by place (`--size 3125 --order-read`), read while building | 521 | 440 -> 446 | 6 / 0 | 486 -> 492 | 33 -> 33 |
+  | WikiTableQuestions fresh sample `wtq-fresh2`, never read | 1,000 | 720 -> 721 | 1 / 0 | 829 -> 830 | 128 -> 127 |
+  | The 896 with two judges (`run_dev_decisions --tag taken --record --keep`) | 896 | pick 735 -> 735 | 0 / 0 | 800 -> 800 | 30 -> 30, every label the reference's |
+  | Demo with two judges | 91 | pick 86 -> 86 | 0 / 0 | 87 -> 87 | 0 -> 0, every record at parity |
+
+  On the training questions the new reading is served on 10, 9 of them right (3 were right before); on the fresh
+  sample on 1, wrong before and right after. The six wins are the questions it was built for ("how many people voted
+  for the top 4 parties?", "what was the average number of fans in attendance in the first three games?"). On the
+  896 two listings changed (one WikiTableQuestions dev question, one fresh dev question) and no label; their sets'
+  references are re-kept. DataBench's questions seldom take lines by place: its dev set and the demo set replay
+  with no record changed, and its public sets were not run.
+- Found while measuring. A condition on a printed line's label joined lines taken by place and the program refused
+  to be built, which lost nine training questions their whole listing: the decoder now builds none under such a
+  condition. And the number that says how many lines are taken was read again as a condition's number ("how many of
+  the top 15 are from Sweden" as the first 15 lines where Rank is also at most 15, a reading worded like the plain
+  one, so a right dev answer was served warned): no condition holds a column against that number
+  (`is_sound`). Without that rule the fresh sample served the new reading on 5 questions (3 right before, 4 after);
+  with it on 1, the other four keeping the reading they had.
+- The gain is small because the family is: 7 of 3,125 training questions, 1 of a fresh 1,000. Left unbuilt from the
+  same step, each rarer still in the training sets: the one at a stated place of a ranking, the different values
+  among lines taken, the first few different values by appearance, a figure over the top lines by a measure.
+- Records: `regress/sets/public/records/2026-11-27-taken/` (`wtq-train`, `wtq-fresh2`) against
+  `2026-11-26-readings/wtq-train` and `2026-11-27-head/wtq-fresh2`; the dev references and
+  `regress/sets/dev_decisions/records/taken/`. Decisions and judge spend $0.15.
+- tests: `test_a_figure_of_lines_taken_by_place` (the form on both emitters, the cells cited, the decoder's gates, a
+  printed line's condition, the count read once); tests.test_program 103, tests.test_answer 32, tests.test_sql_ast
+  91, tests.test_deterministic_emitters 75, tests.test_decomposition 16, tests.test_compose 39, tests.test_connected
+  18, tests.test_enrichment 37 pass.
+
+
 ## A rank's stated count read again as a condition's number ("the 6 lowest levels ... where the level is above 6"): a rule against it not kept; DataBench training's read questions 144 -> 145 of 199 with 4 fewer unmarked and wrong, unread ones 115 -> 112 of 166 (2026-11-27)
 
 - Found reading DataBench training's misses: 27 of its 400 served readings keep a stated number of lines or groups

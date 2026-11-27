@@ -5903,3 +5903,35 @@ It is the same body to the same model, not a third opinion and not a retry: a ca
 again (`JUDGE_ATTEMPTS` stays 1), and a failed first call leaves a second already out to answer. The judge takes no
 seed, so two askings can pick differently, as one asking's answer already could from the next; evaluations replay a
 body's recorded answer by its hash and are unchanged.
+
+## A figure of the first or the last lines reads lines taken by place (2026-11-27)
+
+Step 2 of the build plan the owner approved on 2026-11-26. "What was the average age of the first three on the
+list?", "how many people voted for the top 4 parties?": a rank took lines by where they stand and showed their
+cells, and an aggregate read every line its conditions kept, so a figure over the first or the last few had no
+program (7 of the 37 questions left unbuilt among WikiTableQuestions training's questions that take lines by place).
+
+- **The form.** An aggregate may take its lines first (`engine/program/language.py` `Agg.taken`, `Taken(end,
+  count)`). A total, an average, a lowest or a highest reads the first (or last) `count` of the lines its conditions
+  keep ("the first three home games"); a count takes the table's first lines and counts those its conditions keep
+  ("how many of the first ten games were wins"), since a count of the first of the kept lines says nothing. Where
+  there are no more lines than it takes, all are read. A median, a size, a longest run and a condition on a printed
+  line take none. The number says how many lines are taken, so no condition holds a column against that same number
+  (`is_sound`): "how many of the top 15 are from Sweden" read as the first 15 lines where Rank is also at most 15
+  was a reading worded like the plain one, and its right answer was served warned.
+- **The query.** The deterministic plan lowers no aggregate over a limited sub-select (`engine/deterministic/lower.py`
+  takes no derived table), so where the taken lines end is found when the program is lowered, on the catalog's own
+  condition masks (`CatalogTable.taken_cut`, the masks `tests.test_program` holds to the SQL), and the query keeps
+  the lines on the taken side of that place (`_line <= cut`). Both emitters run that query: they verify the figure
+  over the lines, and the place of the cut is the lowering's. The cells an answer cites and its spreadsheet formula
+  read the same lines (`output.kept_lines`).
+- **When it is offered.** Only where the order call reads the first or the last lines, the question states how
+  many, and the reading holds a figure, and that figure, likelier than not; a list of the first lines' cells stays a
+  rank's. Not on a table whose lines name their currency, whose figures are given per currency. No closed question
+  is added: every body sent is the one sent before.
+- **Left unbuilt** from the same step of the plan, each a family of 3 to 5 of DataBench test's 111 misses and none
+  frequent in the training sets: the one at a stated place of a ranking ("the second highest": 15 of
+  WikiTableQuestions training's questions, 14 already right), the different values among lines taken, the first few
+  different values by appearance, and a figure over the top lines by a measure ("the two heaviest").
+
+The measurements are in `spider/results/RESULTS.md`.

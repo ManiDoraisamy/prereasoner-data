@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from engine.program.names import (A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BETWEEN, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, GT, LT, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, LONGEST_RUN, RUN, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
+from engine.program.names import (ORDER_ENDS, A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BETWEEN, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, GT, LT, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, LONGEST_RUN, RUN, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
                                   MINUS, NE, NUMBER_AGGREGATES, SERIES_AGGREGATES, OVER, PLUS, RANK, RANK_ENTITIES, ROW_OPS, SHOW, SLOT_AGGREGATE, SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE,
                                   SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION, SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, GRAINS, BREAKDOWN_GRAINS, PERCENT_OP, coordinate)
 from engine.program.semantics import fold, number_text
@@ -412,6 +412,21 @@ class Show:
 
 
 @dataclass(frozen=True, slots=True)
+class Taken:
+    """Lines taken by where they stand, before a figure reads them: the ``count`` data lines that stand first (FIRST)
+    or last (LAST) as the sheet lists them. A total, an average, a lowest or a highest reads the first of the lines
+    its conditions keep ("the average attendance of the first three home games"); a count takes the table's first
+    lines and counts those its conditions keep ("how many of the first ten games were wins"). Where there are no more
+    lines than ``count``, all are taken."""
+    end: str
+    count: int
+
+    def __post_init__(self):
+        if self.end not in ORDER_ENDS or not isinstance(self.count, int) or self.count < 2:
+            raise ValueError("lines are taken from the first or the last of a table, two or more of them")
+
+
+@dataclass(frozen=True, slots=True)
 class Agg:
     """f of a measure over the data lines the conditions keep. Blanks and text cells are skipped; count takes no measure, a distinct count a column. magnitude states the result by its size.
     A median (MEDIAN) is the middle of the kept numbers, the mean of the two middle ones of an even count; a standard deviation (DEVIATION) is the sample's, as a spreadsheet's STDEV, and of fewer than two numbers there is none.
@@ -421,8 +436,12 @@ class Agg:
     table: str
     where: tuple[Condition, ...] = ()
     magnitude: bool = False
+    taken: Taken | None = None     # the figure reads lines taken by place (Taken), not every line the conditions keep
 
     def __post_init__(self):
+        if self.taken is not None and (self.function not in (*NUMBER_AGGREGATES, COUNT) or self.magnitude or addresses_printed(self.where)
+                                       or (self.function == COUNT and not self.where)):
+            raise ValueError("lines taken by place give a total, an average, a lowest or a highest, or a count of those a condition keeps")
         if self.function == LONGEST_RUN:
             if self.measure is not None or not self.where or self.magnitude or addresses_printed(self.where):
                 raise ValueError("a longest run counts data lines a condition keeps, and nothing else")
@@ -623,6 +642,19 @@ def _sides(program: "Check") -> tuple["Program", ...]:
     return (program.left,) + ((program.right,) if program.right is not None else ())
 
 
+def _compares_with(condition: Condition, number: float) -> bool:
+    """Does the condition hold a column against this number: above or below it, equal to it, between it and another?"""
+    if isinstance(condition, Compare):
+        return condition.number == number
+    if isinstance(condition, Equals):
+        return isinstance(condition.value, (int, float)) and not isinstance(condition.value, bool) and condition.value == number
+    if isinstance(condition, Between):
+        return number in (condition.low, condition.high)
+    if isinstance(condition, OneOf):
+        return any(not isinstance(value, str) and value == number for value in condition.values)
+    return False
+
+
 def is_sound(program: Program) -> bool:
     """A program that says something: a column does not rank or show under a condition fixing that same column to one value, nor group or rank by itself. Conditions are free otherwise: a measure may compare with a number (61.2), a list may hold a word (18.2)."""
     if isinstance(program, Calc):
@@ -636,6 +668,10 @@ def is_sound(program: Program) -> bool:
         return program.step is not None or not fixed.intersection(program.shown)
     measured = set(measure_columns(program.measure)) if program.measure is not None else set()
     if isinstance(program, Agg):
+        # lines taken by place: the number says how many lines ("the top 15"), and no condition holds a column
+        # against that same number ("... where Rank is at most 15" reads it twice)
+        if program.taken is not None and any(_compares_with(condition, program.taken.count) for condition in program.where):
+            return False
         return not fixed & measured
     if isinstance(program, Breakdown):      # a group fixed to one value is one figure, an agg; the unit too
         return not fixed & (measured | set(program.groups)) and not measured & set(program.groups)
@@ -738,6 +774,8 @@ def _body_coordinates(program: Program) -> list[str]:
             names.extend(measure_coordinates(program.measure))
         if program.magnitude:
             names.append(coordinate(SLOT_SIZE, STATED_BY_SIZE))
+        if program.taken is not None:     # the lines taken by place: the end is the order slot's, how many a stated number
+            names.extend((coordinate(SLOT_ORDER, program.taken.end), coordinate(SLOT_NUMBER, number_text(program.taken.count))))
     elif isinstance(program, Breakdown):     # the unit is the sheet's, not the question's: it fills no coordinate
         names.append(coordinate(SLOT_AGGREGATE, program.function))
         if program.measure is not None:
@@ -818,5 +856,5 @@ def _type_of_column(column: Col, column_kind) -> str:
     return A_NUMBER if kind == "number" else A_DATE if kind in ("date", "period") else A_NAME
 
 
-__all__ = ["Absent", "Across", "Agg", "Between", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "LineOrder", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size", "Words",
+__all__ = ["Absent", "Across", "Agg", "Taken", "Between", "Breakdown", "Calc", "Check", "OneOf", "Col", "Compare", "CompareColumns", "CompareLine", "Condition", "Contains", "DateOf", "Equals", "InPeriod", "InYears", "InSection", "IsBlank", "IsNumber", "LineOrder", "Measure", "NotEquals", "OnLine", "PercentOf", "PeriodSpan", "Program", "Rank", "RowArithmetic", "SECTION", "Show", "Size", "Words",
            "TOGETHER", "addresses_printed", "answer_type_of", "coordinates", "shown_together", "conditions_of", "form_of", "measure_columns", "tables_of", "peers_name"]

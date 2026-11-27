@@ -10,7 +10,7 @@ from dataclasses import replace
 from engine.deterministic import AnalysisPlan, lower_calculation, lower_select_query
 from engine.program.catalog import Catalog
 from engine.program.language import (Absent, Between, LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed)
-from engine.program.names import AFTER, ANY, DEVIATION, IS, MEDIAN, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
+from engine.program.names import AFTER, ANY, FIRST, DEVIATION, IS, MEDIAN, SAME, ANYWHERE, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, EQ, EVERY, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, NO, OVER, PLUS, STARTS, SUM, TIMES
 from engine.program.semantics import fold as fold_text
 from engine.program.store import (DATE, INTEGER, LABEL, LABEL_LENGTH, LINE, ONE_ROW, PEER_FOLD, PEER_NAME, PEER_NUMBER, REAL, ROLE, SECTION_FOLD, SECTION_PATH, SECTION_TEXT, TEXT, day_column, fold_column,
                                   number_column, peers_table, sql_table, table_columns, table_id_of, text_column, words_column)
@@ -230,7 +230,12 @@ def _agg_query(program: Agg, catalog: Catalog) -> SelectQuery:
     if program.magnitude:
         value = Abs(value)
     every_line = addresses_printed(program.where) or (program.measure is not None and _reads_printed(program.measure, catalog.table(table)))
-    where = _where(None if every_line else _data_lines(table), *map(_condition, program.where), guard)
+    cut = None
+    if program.taken is not None:     # lines taken by place: each line's place against where the last of them stands
+        end = catalog.table(table).taken_cut(program.where, program.taken, program.function == COUNT)
+        if end is not None:
+            cut = Comparison(ColumnRef(sql_table(table), LINE, SQLType.INTEGER), "<=" if program.taken.end == FIRST else ">=", Literal(end, SQLType.INTEGER))
+    where = _where(None if every_line else _data_lines(table), *map(_condition, program.where), guard, cut)
     return SelectQuery((SelectItem(value, VALUE),), sql_table(table), where=where)
 
 

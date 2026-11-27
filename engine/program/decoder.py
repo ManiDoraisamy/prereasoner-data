@@ -17,8 +17,8 @@ from typing import Callable, Sequence
 from engine.program.catalog import Catalog, CatalogTable
 from engine.program.index import Atom, TableIndex, index_of
 from engine.program.semantics import fold
-from engine.program.language import (Absent, Between, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, LineOrder, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
-from engine.program.names import (BETWEEN, FIRST, LAST, LONGEST_RUN, LOWEST, RUN, SERIES_AGGREGATES, SLOT_ORDER, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
+from engine.program.language import (Absent, Between, Words, Across, Agg, Taken, addresses_printed, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, LineOrder, NotEquals, OnLine, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, answer_type_of, is_sound, measure_columns, measure_coordinates, peers_name, period_from_name, shown_together)
+from engine.program.names import (BETWEEN, FIRST, LAST, ORDER_ENDS, LONGEST_RUN, LOWEST, RUN, SERIES_AGGREGATES, SLOT_ORDER, A_COUNT, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, ANY, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, EVERY, EVERY_COLUMN, GT, IS, LT, NEIGHBOURS, NO, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, AGG, ANCHORS, ANYWHERE, AVG, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, MAX, MIN, MINUS, NE, NUMBER_AGGREGATES, OVER, PLUS, RANK, ROW_OPS, SHOW, SLOT_AGGREGATE,
                                   SLOT_ANSWER_TYPE, SLOT_BLANK, SLOT_CALC_LEFT, SLOT_CALC_OP, SLOT_COMPARISON, SLOT_CONDITIONS, SLOT_CONTAINS, SLOT_DIRECTION, SLOT_ENTITY, SLOT_FILTER, SLOT_FORM, SLOT_KEY, SLOT_LINE, SLOT_LISTING, SLOT_MEASURE, SLOT_NUMBER, SLOT_PEERS, SLOT_PERIOD, SLOT_ROW_OP, SLOT_SECTION,
                                   SLOT_SHOWN, SLOT_SIZE, SLOT_TABLE, SLOT_VALUE, STATED_BY_SIZE, SUM, TIMES, BREAKDOWN_GRAINS, GRAIN_CALENDAR_MONTH, GRAIN_YEAR, PERCENT_OP, coordinate, slot_of)
 from engine.program.scoring import DEFAULT_WEIGHTS, Reading, ScoredProgram, Weights, score_program
@@ -901,6 +901,21 @@ class _Search:
             if read > 0:
                 frames += self.condition_frames(agg + read + self.type_score(A_NUMBER), (plain,), lambda options, where, f=function: Agg(f, options[0], table.id, where), table, index, placed)
         count = agg + s(coordinate(SLOT_AGGREGATE, COUNT)) + self.type_score(A_COUNT)
+        # a figure of lines taken by place ("the average age of the first three on the list", "how many of the first ten
+        # games were wins"): only where the order call reads the first or the last lines, the question states how
+        # many, and the reading holds a figure, and that figure, likelier than not (a list of the first lines' cells is
+        # a rank's, below); not where the lines name their currency, whose figures are given per currency
+        for end in ORDER_ENDS if unit is None and s(coordinate(SLOT_FORM, AGG)) > 0 else ():
+            placed_at = s(coordinate(SLOT_ORDER, end))
+            for n, stated in self.rank_counts() if placed_at > 0 else ():
+                taken = Taken(end, n)
+                for function in NUMBER_AGGREGATES:
+                    read = s(coordinate(SLOT_AGGREGATE, function))
+                    if read > 0:
+                        base = agg + read + self.type_score(A_NUMBER) + placed_at + s(stated)
+                        frames += self.condition_frames(base, (measures,), lambda options, where, f=function, t=taken: _taken(f, options[0], table.id, where, t), table, index, atoms, max_policy=2)
+                if s(coordinate(SLOT_AGGREGATE, COUNT)) > 0:
+                    frames += self.condition_frames(count + placed_at + s(stated), (), lambda options, where, t=taken: _taken(COUNT, None, table.id, where, t), table, index, atoms, min_conditions=1, max_policy=2)
         # "the US and Jamaica combined", "members from Lawton and Oklahoma City": a total or a count over a choice of named
         # values is one figure over both; an average, a lowest or a highest of a choice is a rank's question
         frames += self.condition_frames(count, (), lambda options, where: Agg(COUNT, None, table.id, where), table, index, placed, choices=True)
@@ -1283,6 +1298,14 @@ def _versus_aggregate(table_id, options, where, function, op, said=None):
     if a == b:
         return None
     return Check(VERSUS, Agg(function, a, table_id, where), op=op, right=Agg(function, b, table_id, where), said=said)
+
+
+def _taken(function, measure, table_id, where, taken):
+    """A figure of lines taken by place, or None under a condition that addresses printed lines: only data lines stand
+    in line, so a label's line is no one of the first or the last."""
+    if addresses_printed(where):
+        return None
+    return Agg(function, measure, table_id, where, taken=taken)
 
 
 def _longest_run(table_id, where):

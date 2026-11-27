@@ -1558,6 +1558,77 @@ def test_lines_taken_by_place_answer_a_question_read_as_a_list():
     assert not any(isinstance(scored.program, Rank) and isinstance(scored.program.measure, LineOrder) for scored in Decoder(catalog).decode(Reading(unplaced), k=50).programs)
 
 
+def test_a_figure_of_lines_taken_by_place():
+    """"What was the average age of the first three on the list?", "how many people voted for the top 4 parties?": a
+    figure over the first or the last lines as listed had no program (7 of the 37 questions WikiTableQuestions'
+    training set left unbuilt): a rank took lines by place and showed their cells, and an aggregate read every line
+    its conditions kept. Taken takes the lines first. A total, an average, a lowest or a highest reads the first of
+    the lines its conditions keep; a count takes the table's first lines and counts those its conditions keep; where
+    there are no more lines than it takes, all are read. Both emitters agree, the cells an answer cites are the taken
+    lines', and the decoder offers it only where the order slot is read and the question states how many."""
+    from engine.program.language import Taken, addresses_printed
+    from engine.program.names import FIRST, GE, LAST, MEDIAN, SLOT_LINE, coordinate
+    from engine.program.output import cells_used
+    rows = [["Year", "Venue", "Books"], [2001, "Paris", 498.0], [2002, "Rome", 640.0], [2003, "Oslo", 80.0], [2004, "Rome", 300.0], [2005, "Lima", 120.0]]
+    catalog, table, tables = _setup(rows)
+    year, venue, books = (Col(table.id, position) for position in range(3))
+    first3 = Agg(AVG, books, table.id, (), taken=Taken(FIRST, 3))
+    assert abs(_one(_answer(first3, tables)) - (498 + 640 + 80) / 3) < 1e-9
+    assert _one(_answer(Agg(SUM, books, table.id, (), taken=Taken(LAST, 2)), tables)) == 420.0
+    assert _one(_answer(Agg(MIN, books, table.id, (), taken=Taken(FIRST, 2)), tables)) == 498.0
+    # the conditions keep lines first: of 2002 on, the first two are 2002 and 2003; the first two Rome lines are both
+    assert _one(_answer(Agg(MAX, books, table.id, (Compare(year, GE, 2002.0),), taken=Taken(FIRST, 2)), tables)) == 640.0
+    assert _one(_answer(Agg(SUM, books, table.id, (Compare(year, GE, 2002.0),), taken=Taken(LAST, 2)), tables)) == 420.0
+    assert _one(_answer(Agg(SUM, books, table.id, (Equals(venue, "Rome"),), taken=Taken(FIRST, 2)), tables)) == 940.0
+    # a count takes the table's lines, then its conditions: one of the first three venues is Rome, one of the last two
+    assert _one(_answer(Agg(COUNT, None, table.id, (Equals(venue, "Rome"),), taken=Taken(FIRST, 3)), tables)) == 1.0
+    assert _one(_answer(Agg(COUNT, None, table.id, (Equals(venue, "Rome"),), taken=Taken(LAST, 2)), tables)) == 1.0
+    assert _one(_answer(Agg(COUNT, None, table.id, (Equals(venue, "Rome"),), taken=Taken(FIRST, 4)), tables)) == 2.0
+    # no more lines than it takes: all of them
+    assert _one(_answer(Agg(SUM, books, table.id, (), taken=Taken(FIRST, 9)), tables)) == 1638.0
+    assert _one(_answer(Agg(SUM, books, table.id, (), taken=Taken(FIRST, 5)), tables)) == 1638.0
+    assert read_as(first3, catalog) == 'the average of Books of the first 3 lines on "Sheet1"'
+    assert read_as(Agg(COUNT, None, table.id, (Equals(venue, "Rome"),), taken=Taken(LAST, 2)), catalog) == 'the number of the last 2 lines on "Sheet1" where Venue is "Rome"'
+    names = coordinates(first3, catalog.column_kind)
+    assert names.count("order:first") == 1 and "number:3" in names, names
+    assert cells_used(first3, tables, ()) == ("'Sheet1'!C2", "'Sheet1'!C3", "'Sheet1'!C4"), cells_used(first3, tables, ())
+    for bad in (lambda: Taken(FIRST, 1), lambda: Taken("middle", 3), lambda: Agg(COUNT, None, table.id, (), taken=Taken(FIRST, 3)),
+                lambda: Agg(MEDIAN, books, table.id, (), taken=Taken(FIRST, 3)), lambda: Agg(SUM, books, table.id, (), magnitude=True, taken=Taken(FIRST, 3))):
+        try:
+            bad()
+        except ValueError:
+            continue
+        raise AssertionError("lines taken by place accepted what they cannot say")
+
+    # the number says how many lines are taken, so no condition holds a column against it too ("how many of the top
+    # 15 are from Sweden" read as the first 15 lines where Rank is at most 15: a right answer served warned, WikiTableQuestions dev)
+    assert not is_sound(Agg(COUNT, None, table.id, (Compare(year, GE, 3.0), Equals(venue, "Rome")), taken=Taken(FIRST, 3)))
+    assert not is_sound(Agg(SUM, books, table.id, (Compare(year, GE, 3.0),), taken=Taken(FIRST, 3)))
+    assert is_sound(Agg(SUM, books, table.id, (Compare(year, GE, 2002.0),), taken=Taken(FIRST, 3))) and is_sound(Agg(SUM, books, table.id, (Compare(year, GE, 3.0),)))
+
+    def taken(reading):
+        return [scored.program for scored in Decoder(catalog).decode(reading, k=50).programs if isinstance(scored.program, Agg) and scored.program.taken is not None]
+    asked = Reading({name: 1.0 for name in names})
+    assert Decoder(catalog).decode(asked, k=50).programs[0].program == first3, Decoder(catalog).decode(asked, k=50).programs[:3]
+    counted = Agg(COUNT, None, table.id, (Equals(venue, "rome"),), taken=Taken(FIRST, 3))     # a value as the decoder reads it, folded
+    assert taken(Reading({name: 1.0 for name in coordinates(counted, catalog.column_kind)}))[0] == counted
+    unplaced = Reading({name: 1.0 for name in names if name != "order:first"})
+    assert not taken(unplaced), "a figure of lines taken by place only where the order slot is read"
+    unstated = Reading({name: 1.0 for name in names if name != "number:3"})
+    assert not taken(unstated), "and only where the question states how many"
+    listed = Reading({name: 1.0 for name in names if name not in ("form:agg", "aggregate:avg")})
+    assert not taken(listed), "and only where the reading holds a figure: the first lines' cells are a rank's to list"
+    # a condition on a printed line's label joins no lines taken by place (it raised, and the question lost its listing:
+    # "the average silver medal count of the first five ranked nations" on a table that prints a total)
+    printed = rows + [["Total", "", 1638.0]]
+    catalog2, table2, tables2 = _setup(printed)
+    labelled = {name.replace(table.id, table2.id): 1.0 for name in names} | {coordinate(SLOT_LINE, table2.id, "total"): 1.0}
+    decoded = [scored.program for scored in Decoder(catalog2).decode(Reading(labelled), k=50).programs]
+    assert Agg(AVG, Col(table2.id, 2), table2.id, (), taken=Taken(FIRST, 3)) in decoded
+    assert any(addresses_printed(program.where) for program in decoded), "the label's line is read, by programs that may read it"
+    assert not any(isinstance(program, Agg) and program.taken is not None and addresses_printed(program.where) for program in decoded)
+
+
 def test_a_median_and_a_standard_deviation():
     """"What is the median monthly income?", "what is the standard deviation of the scores?": 7 of DataBench test's 450
     questions within the product's limit ask for one, and every aggregate was a total, an average, a lowest, a highest
@@ -2399,7 +2470,7 @@ def test_explain_carries_the_named_contributions():
 
 TESTS = [
     test_the_answer_says_yes_or_no_and_a_cell_as_the_sheet_writes_it,
-    test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down, test_a_date_key_groups_by_its_month_of_any_year_named_as_the_column_writes_it, test_the_most_lines_in_a_row, test_a_measures_spread_is_its_highest_less_its_lowest, test_lines_are_taken_by_where_they_stand, test_lines_taken_by_place_answer_a_question_read_as_a_list, test_a_median_and_a_standard_deviation, test_a_check_compares_how_many_different_values_with_a_stated_number, test_a_number_between_two_stated_numbers, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_a_score_opening_with_a_mark_gets_the_mark_as_its_own_part, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
+    test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down, test_a_date_key_groups_by_its_month_of_any_year_named_as_the_column_writes_it, test_the_most_lines_in_a_row, test_a_measures_spread_is_its_highest_less_its_lowest, test_lines_are_taken_by_where_they_stand, test_lines_taken_by_place_answer_a_question_read_as_a_list, test_a_figure_of_lines_taken_by_place, test_a_median_and_a_standard_deviation, test_a_check_compares_how_many_different_values_with_a_stated_number, test_a_number_between_two_stated_numbers, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_a_score_opening_with_a_mark_gets_the_mark_as_its_own_part, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,
     test_partial_value_match, test_case_and_spacing_do_not_count, test_periods, test_blanks, test_ties_keep_every_tied_line, test_units, test_mixed_columns, test_repeated_rows, test_sections_nested_bands_and_the_section_shown, test_python_masks_agree_with_the_sql,
     test_calc_shapes, test_rank_across_peer_columns, test_a_rank_keeps_as_many_as_the_question_states, test_the_decoder_proposes_how_many_a_question_states, test_a_check_says_yes_or_no, test_the_decoder_checks_only_when_the_reading_names_a_check, test_a_choice_among_named_values, test_a_choice_among_named_numbers, test_a_check_asks_what_the_top_one_is, test_a_check_asks_whether_the_top_one_is_the_same_or_compares_two_aggregates, test_a_check_answers_in_the_questions_own_words, test_a_read_takes_the_line_after_or_before_the_kept_one, test_new_ast_nodes_render_and_validate, test_plan_schema_holds_only_what_a_query_reads, test_perfect_readings_give_the_gold_first, test_decoder_is_deterministic_and_order_free, test_the_list_does_not_depend_on_hash_order,

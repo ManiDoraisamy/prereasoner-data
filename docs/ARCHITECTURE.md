@@ -393,7 +393,9 @@ wrote.
    asks for a median or a standard deviation, and whether it keeps rows whose number lies between two numbers it
    states: what the reading call's aggregate and comparison questions do not offer). The fused reading feeds the
    decoder's 50 most probable
-   programs, each run by the verifier on the request's store tables.
+   programs, each run by the verifier on the request's store tables. Lines taken by where they stand answer with
+   their cells (a rank by `LineOrder`) or, where the question states how many and the reading holds a figure, with
+   a total, an average, a lowest, a highest or a count of them (`Agg.taken`, "the average age of the first three").
 5. The programs that returned rows are listed. One Decisions call weighs them (each its read-as line and a preview
    of its answer, and "none of these"); per answer, a candidate's probability is summed over the candidates returning
    the same answer. The likeliest answer is answered at `T_FLAG` or more, warned from `T_ERR` (or when another

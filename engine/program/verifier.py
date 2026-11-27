@@ -158,7 +158,7 @@ def _label_agrees(line, program: Program) -> bool:
 
 def printed_tie_evidence(program: Program, value: float, tables: RequestTables) -> list[Evidence]:
     """Does this computed number sit exactly on a printed line of the column it adds? Only under answer_location.txt's conditions, and each line that matches is cited by address."""
-    if not isinstance(program, Agg) or program.function != SUM or addresses_printed(program.where) or program.measure is None:
+    if not isinstance(program, Agg) or program.function != SUM or addresses_printed(program.where) or program.measure is None or program.taken is not None:
         return []
     out: list[Evidence] = []
     if value == 0 or significant_digits(value) < TIE_DIGITS:

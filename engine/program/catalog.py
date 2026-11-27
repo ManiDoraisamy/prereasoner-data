@@ -9,7 +9,7 @@ import hashlib
 from functools import cached_property
 
 from engine.program.language import (Between, Col, Compare, CompareColumns, CompareLine, Condition, LineOrder, Contains, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, NotEquals, OnLine, OneOf, SECTION)
-from engine.program.names import ANYWHERE, ENDS, EQ, GE, GT, LE, LT, NE, STARTS
+from engine.program.names import ANYWHERE, ENDS, EQ, FIRST, GE, GT, LE, LT, NE, STARTS
 from engine.program.semantics import cell_day, cell_fold, cell_number, cell_text, cell_written, duration_numbers, fold, is_filled
 from engine.sheet.model import Cell, Column, Context, Line, SheetModel, Table
 from engine.sheet.names import LABEL, NOTE, PRINTED_ROLES, RECORD, V_DATE, V_NUMBER, V_PERIOD, V_TEXT
@@ -248,6 +248,21 @@ class CatalogTable:
             want = fold(condition.text)
             return want in self.label_folds[i] if want else not self.label_folds[i]
         raise TypeError(f"unknown condition: {type(condition).__name__}")
+
+    def taken_cut(self, where: tuple[Condition, ...], taken, counted: bool) -> int | None:
+        """Where lines taken by place end (engine/program/language.py Taken): the place of the last of the first
+        ``count`` lines, or of the first of the last ``count``, among the data lines ``where`` keeps; for a count
+        (``counted``) among all the data lines, since a count applies its conditions to the lines taken. None where
+        there are no more lines than it takes: nothing is cut. The query compares each line's place with it
+        (engine/program/lowering.py), and the cells an answer cites are read the same way (output.kept_lines)."""
+        mask = self.data_mask
+        if not counted:
+            for condition in where:
+                mask &= self.condition_mask(condition)
+        lines = [i for i in range(len(self.lines)) if mask >> i & 1]
+        if len(lines) <= taken.count:
+            return None
+        return lines[taken.count - 1] if taken.end == FIRST else lines[-taken.count]
 
     def line_number(self, condition: CompareLine) -> float | None:
         """The number a CompareLine compares with: its column's cell on the first data line whose key is its value; for a

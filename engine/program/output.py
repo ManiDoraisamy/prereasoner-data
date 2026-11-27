@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from engine.program.catalog import Catalog, CatalogTable, KIND_FAMILY
 from engine.program.index import index_of
 from engine.program.language import (Between, LineOrder, Words, Across, Agg, Breakdown, Calc, Check, Col, OneOf, Compare, CompareColumns, CompareLine, Condition, Contains, DateOf, Equals, InPeriod, InYears, InSection, IsBlank, IsNumber, Measure, NotEquals, PercentOf, Program, Rank, RowArithmetic, SECTION, Show, Size, addresses_printed, answer_type_of, measure_columns)
-from engine.program.names import (A_PERCENT, AFTER, ANY, DEVIATION, MEDIAN, SAME, ANYWHERE, EQ, GRAIN_CALENDAR_MONTH, GRAIN_MONTH, GRAIN_YEAR, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
+from engine.program.names import (A_PERCENT, AFTER, ANY, FIRST, DEVIATION, MEDIAN, SAME, ANYWHERE, EQ, GRAIN_CALENDAR_MONTH, GRAIN_MONTH, GRAIN_YEAR, EVERY, IS, NO, AVG, COUNT, COUNT_DISTINCT, LONGEST_RUN, ENDS, ENTITY_GROUP, ENTITY_LINE, GE, GT, HIGHEST, LE, LT, MAX, MIN, MINUS, NE, OVER, PLUS, STARTS, SUM, TIMES)
 from engine.program.scoring import ScoredProgram
 from engine.program.semantics import fold, number_text, share_forms
 from engine.program.store import RequestTables
@@ -254,6 +254,11 @@ def read_as(program: Program, catalog: Catalog) -> str:
         return f"{head} for each {each} {place}" + (f" where {where}" if where else "")
     if isinstance(program, Agg):
         where = _where_words(catalog, program.where)
+        if program.taken is not None:     # lines taken by place: the first or last of those the conditions keep; a count's, of the table's
+            lines = f"the {program.taken.end} {program.taken.count} lines"
+            if program.function == COUNT:
+                return f"the number of {lines} {place} where {where}"
+            return f"the {_AGG_WORDS[program.function]} of {_measure_words(catalog, program.measure)} of {lines} {place}" + (f" where {where}" if where else "") + _units_added(program, table, catalog)
         if program.function in (COUNT, LONGEST_RUN):
             head = f"the {_AGG_WORDS[program.function]} {place}"
         elif program.function == COUNT_DISTINCT:
@@ -343,7 +348,12 @@ def kept_lines(program: Program, table: CatalogTable, index) -> list[int]:
     mask = table.all_mask if every_line else table.data_mask
     for condition in program.where:
         mask &= index.mask(condition)
-    return [i for i in range(len(table.lines)) if mask >> i & 1]
+    kept = [i for i in range(len(table.lines)) if mask >> i & 1]
+    if isinstance(program, Agg) and program.taken is not None:     # lines taken by place: those on the taken side of the cut
+        cut = table.taken_cut(program.where, program.taken, program.function == COUNT)
+        if cut is not None:
+            kept = [i for i in kept if (i <= cut if program.taken.end == FIRST else i >= cut)]
+    return kept
 
 
 def _read_line(program: Show, table: CatalogTable, kept: list[int]) -> int | None:
@@ -671,7 +681,7 @@ def _agg_formula(program: Agg, table: CatalogTable, tables: RequestTables) -> st
     criteria = _criteria(catalog, program.where)
     plain = criteria is not None and _plain_range(table)
     if program.function == COUNT:
-        if plain and criteria:
+        if plain and criteria and program.taken is None:     # lines taken by place are no whole range: their cells are listed
             return f"=COUNTIFS({','.join(criteria)})"
         cells = compress(cells_used(program, tables, ()))
         return "=COUNTA(" + ",".join(cells) + ")" if cells else "=0"
@@ -679,7 +689,7 @@ def _agg_formula(program: Agg, table: CatalogTable, tables: RequestTables) -> st
         cells = compress(cells_used(Show(program.table, (program.measure,), program.where, listing=True), tables, ()))
         return "=COUNTA(UNIQUE(VSTACK(" + ",".join(cells) + ")))" if cells else "=0"
     function = program.function
-    if isinstance(program.measure, Col) and plain and (not criteria or function in _IFS):     # no MEDIANIFS: its kept cells are listed
+    if isinstance(program.measure, Col) and plain and program.taken is None and (not criteria or function in _IFS):     # no MEDIANIFS: its kept cells are listed
         target = _range(table, program.measure.position)
         body = f"{_IFS[function]}({target},{','.join(criteria)})" if criteria else f"{_SHEET_FUNCTION[function]}({target})"
     elif isinstance(program.measure, (RowArithmetic, PercentOf, Size, Across, Words)):
