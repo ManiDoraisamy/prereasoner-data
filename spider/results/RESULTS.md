@@ -10,6 +10,60 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release 95e2a7af (a figure of the first or the last lines, a judge still out after 8 s asked a second time) live; Chrome gate 77 of 78 existing and 101 of 102 fresh, the one miss a follow-up the chat's ten-requests-a-minute budget refused, right when asked again; the second asking shows no gain: 4 of 117 answers that waited for the judge were still warned by the clock (2026-11-27)
+
+- Engine `prereasoner-api-00360-qag` (`engine@sha256:d5eaad46...`, Cloud Build a1d2cbb1: build, offline regression
+  gate, runtime server smoke, live product suite, 84 min), tag `taken`, health ok, the release smoke job ok (execution
+  c7smc), 100% of traffic from 2026-11-27 12:11 UTC, both engine jobs on the image; the chat service and Hosting
+  unchanged (nothing under `web/` or `orchestrator/` moved since 4a3b86e5). It holds 95e2a7af (the figure of lines
+  taken by place, two entries below) and c75db2c5 (the judge's second asking, `DECISIONS.md`). Rollback
+  `prereasoner-api-00358-zax`. CI green on 95e2a7af. Owner, 2026-11-27: "Deploy." and "Shift traffic, always".
+- **Chrome gate** on the deployed site (Claude in Chrome on the owner's account, harness and captures in
+  `prereasoner-scratch/gate-95e2a7af/`). Existing conversations first (the 24 of 568b1f0a's fresh pass): 77 of 78,
+  the miss customer-orders "in GBP for the whole of Europe?" as at every gate since b9b0fe50. Fresh pass: 101 of 102
+  on the 24 datasets, the six uploads among them. The miss is customer-orders' eleventh question, "average amount in
+  US dollars": the chat service answered `429 chat request budget exceeded`. It gives one person 10 requests in 60 s
+  (`orchestrator/server.py` `CHAT_GATE`), and the gate's driver sent that conversation's twelve questions inside a
+  minute, each answer now back in 3 to 6 s; at the last gate they took long enough that the budget was never met.
+  Asked again in the same conversation after the gate: 412.55 USD in 6 s (expected ~414.82, the value the existing
+  pass's answer passed with). The budget is unchanged; the driver now leaves 7.5 s between questions.
+  The first request the new revision served took 63 s in the browser (the chat returned 502 and the page read the
+  answer from the analysis; its engine request 38.7 s, 21.6 s of it SQL on a cold instance).
+- **Production's times** (`[timing]`, 194 requests of this gate against 195 of the last one's,
+  `gate-95e2a7af/timing-prereasoner-api-00360-qag.json`):
+
+  | | Release 568b1f0a | This release |
+  |---|---|---|
+  | A request's total: median / p90 / longest | 5.9 s / 11.9 s / 34.5 s (the cold one) | 6.1 s / 13.7 s / 38.7 s (the cold one) |
+  | Requests over 15 s | 13 | 15 |
+  | Requests that waited for the judge | 115 | 117 |
+  | The wait: median / p90 / longest | 4.0 s / 8.8 s / 14.8 s | 3.7 s / 10.0 s / 14.8 s |
+  | Waits of 8 s or more (asked a second time in this release) | 12 | 15 |
+  | Waits that ended by the clock, the answer warned | 5 | 4 |
+
+  Two more requests took over 30 s (32.2 s and 30.3 s, 15.3 s and 11.0 s of them SQL), at the times the
+  bank-marketing sheet's slow questions were asked (39 s and 36 s in the browser).
+- **The judge's second asking shows no gain at this gate.** The provider was slower than at the last gate (15 waits
+  of 8 s or more against 12), every one of the 15 was asked a second time, and 4 still reached the clock, their
+  right answers served warned as not judged twice: supplier-report "How many payments are listed?", procurement
+  "What is the total Net PO Value?", intake "how many Treatment Agreement documents" and leads "What is the total
+  budget from August 11 to August 15, 2026?". Four of fifteen is more than two calls slow on their own would give
+  (8.7% of recorded calls take longer than the 7 s a second call has), so a slow spell holds both calls, as the
+  decision feared; the count is small. Of the other 11 waits, 8 ended between 10 and 12.5 s (3 at the last gate),
+  where a second call answering in its usual 2 to 4.5 s would land, but which call answered could not be read: the
+  `[timing]` line printed a counter only when it was not 1, so `judge_second` never appeared.
+  **Fixed forward** (be1c01cc): the line prints a counter of one (only a span that ran once goes without its count), and counts
+  `judge_second_answered` when the second asking's answer is the one read. The second asking stays at 8 s until a
+  gate has read which call answers.
+- The marks at this gate: existing 47 unmarked and none warned of the 47 answers that carry a mark; fresh 54 and 5 of
+  59, the four above and leads "total budget in Germany", which the judge does not pick, as at the last two gates.
+- Not changed by this release: the 896 and the demo set's records (the entry two below measured the release's one
+  change to the answers by replay: every label the reference's).
+- tests (be1c01cc): `test_an_event_counted_once_is_printed` (fails on the old line),
+  `test_a_judge_still_out_is_asked_a_second_time_and_the_first_answer_is_read` (both counts, and a first call that
+  answers late while the second is out); tests.test_request_timing 12, tests.test_llm 14 pass.
+
+
 ## Claude Fable 5.2 on the public benchmark: 407 of DataBench test's 450 within the upload limit (90.4%) and 863 of the 1,000 WikiTableQuestions test sample (86.3%), level with Gemini 4 Neon (399, 859) at a quarter of its time, ahead of Claude Opus 5.5 on WikiTableQuestions (841); the engine alone 339 and 746 (2026-11-27)
 
 - Owner, 2026-11-27, on the best path against Neon and Fable: "Fine with spend". `regress/run_public.py` takes
