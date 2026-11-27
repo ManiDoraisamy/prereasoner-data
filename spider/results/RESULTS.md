@@ -10,6 +10,45 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release 568b1f0a (a warned answer both judges pick goes unmarked, a compound question's parts ask no judge, the judge's wait ends by the clock) live; Chrome gate 102 of 102 fresh, 77 of 78 existing; a request's p90 in production 17.4 s -> 11.9 s; 5 of 115 answers that waited for the judge were warned because it took longer than 15 s (2026-11-27)
+
+- Engine `prereasoner-api-00358-zax` (`engine@sha256:bb084799...`, Cloud Build 00a95b90: build, offline regression
+  gate, runtime server smoke, live product suite, 79 min), tag `marks`, health ok, the release smoke job ok (execution
+  7657n), 100% of traffic from 2026-11-27 02:57 UTC, both engine jobs on the image; the chat service and Hosting
+  unchanged (nothing under `web/` or `orchestrator/` moved since 4a3b86e5). It holds 568b1f0a, the entry below.
+  Rollback `prereasoner-api-00356-qul`. CI green on 568b1f0a and 444426e1. Owner, 2026-11-26: "Go ahead with this
+  plan", the release of step 0 being its first step.
+- **Chrome gate** on the deployed site (Claude in Chrome on the owner's account, harness and captures in
+  `prereasoner-scratch/gate-568b1f0a/`). Existing conversations first (the 24 of 924a7b19's fresh pass): 77 of 78,
+  the miss customer-orders "in GBP for the whole of Europe?" as at every gate since b9b0fe50. Fresh pass: 102 of 102
+  on the 24 datasets, the six uploads among them, the account's storage no longer full. The first request the new
+  revision served took 137 s in the browser (the chat returned 502 and the page read the answer from the analysis; its
+  engine request 34.5 s, 16 s of it SQL on a cold instance); the next one took 18 s.
+- **Production's times** (`[timing]`, 195 requests of this gate against 191 of the last one's,
+  `gate-568b1f0a/timing-prereasoner-api-00358-zax.json`):
+
+  | | Release 924a7b19 | This release |
+  |---|---|---|
+  | A request's total: median / p90 / longest | 6.1 s / 17.4 s / 30.5 s | 5.9 s / 11.9 s / 34.5 s (the cold one) |
+  | Requests over 15 s | 22 | 13 |
+  | Requests that waited for the judge | 126 | 115 |
+  | The wait: median / p90 / longest | 3.7 s / 14.8 s / 26.5 s | 4.0 s / 8.8 s / 14.8 s |
+
+  The three-part demo questions' follow-ups (complex-promotions, complex-category-gaps) took 9 to 24 s in the browser
+  against 30 to 60 s, the cold first request apart: their parts ask no judge.
+- **Found at the gate, to fix forward: a judge slower than 15 s warns its answer.** Five waits ended by the clock
+  (14.7 to 14.8 s, three of them within two minutes: the provider's slow spells), and their answers were served
+  warned as not judged twice: bank-deposits "total deposits for JPMorgan Chase" in the existing pass, and in the
+  fresh one neartail-orders "What percentage of orders are from Lyon?", neartail-orders-xlsx "total amount in Paris",
+  ecommerce "total quantity for VIP customers" and shipping "How many deliveries weigh more than 3 kg?", each right
+  and each given unmarked at the last gate, where no call reached the limit (the last release's call had the same
+  15 s, on its socket, so it would have warned them too). The marks at this gate: existing 46 unmarked and 1 warned
+  of the 47 answers that carry a mark, fresh 54 and 5 of 59 (the fifth is leads "total budget in Germany", which the
+  judge does not pick, as at the last gate). A slow judge is to be asked a second time while the first call is still
+  out, so one slow call costs neither the 15 s nor the mark.
+- Not changed by this release: every listing and answer (the step 0 entry below measured the marks by replay).
+
+
 ## A warned answer both judges pick goes unmarked, and a compound question's parts ask no judge: on the fresh 1,000 marked answers 35.9% -> 30.7% with 5.2% unmarked and wrong, on the 896 28.6% -> 24.2% with 3.3% (2026-11-27)
 
 - Step 0 of the build plan (owner, 2026-11-26: "Go ahead with this plan"): the marks, from answers already recorded.
