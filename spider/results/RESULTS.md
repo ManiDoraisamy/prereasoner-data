@@ -10,6 +10,57 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release b47c950e (the answer first; the retry told where to put the answer) live; Chrome gate 78 of 78 existing and 102 of 102 fresh; the answer is on screen at a median 5.0 s where it was 10.3 s, its mark 4.8 s after it; the engine's time for a question 6.1 s -> 2.8 s (2026-11-27)
+
+- Owner, 2026-11-27: "yes, always serve the answer before the judge has answered." Three parts, in this order,
+  since an engine that answers first needs a caller that settles the answer: the chat service
+  `prereasoner-chat-00245-ses` (`chat@sha256:f441f8c2...`, Cloud Build 7ddaa585), 100% of traffic; the web files of
+  b47c950e (`firebase deploy --only hosting`); the engine `prereasoner-api-00362-mok` (`engine@sha256:25d91056...`,
+  Cloud Build d436a2a0: build, offline regression gate, runtime server smoke, live product suite, 76 min), tag
+  `afirst`, health ok, the release smoke job ok (execution z8xwb), 100% of traffic from 2026-11-27 17:13 UTC, both
+  engine jobs on the image. It holds b47c950e and 17ab728e (the two entries below). Rollback: engine
+  `prereasoner-api-00360-qag` first, then chat `prereasoner-chat-00243-jar` and
+  `firebase hosting:clone prereasoner-inference:b2478b039dd66b50 prereasoner-inference:live`. CI green on b47c950e
+  and bdc31d86, the Sheets sidebar's browser test among its jobs.
+- **Chrome gate** on the deployed site (Claude in Chrome on the owner's account, harness and captures in
+  `prereasoner-scratch/gate-b47c950e/`). Existing conversations first (the 24 of 95e2a7af's fresh pass): 78 of 78;
+  customer-orders "in GBP for the whole of Europe?", missed at every gate since b9b0fe50, read 1,888.87 GBP this
+  time. Fresh pass: 102 of 102 on the 24 datasets, the six uploads among them, no request refused.
+- **The answer first, in the browser.** The gate's driver now records when the reply first holds the answer and
+  when the turn settles.
+
+  | | Before (the same driver, engine 00360-qag) | This release, fresh pass |
+  |---|---|---|
+  | Follow-ups whose mark depends on the judge | 11 | 47 |
+  | Asking to the answer on screen: median / p90 | 10.3 s (it appeared when the turn settled) | 5.0 s / 6.8 s |
+  | Asking to the settled mark: median / p90 | 10.3 s | 10.0 s / 14.3 s |
+  | The mark after the answer: median / p90 | 0 | 4.8 s / 8.1 s |
+
+  Every one of the 47 showed the pulse of an answer being checked first, then its mark. The existing pass, run
+  right after the traffic moved with instances still cold: 46 such answers at a median 7.2 s (p90 17.3 s), the mark
+  3.9 s later.
+- **Production's times** (`[timing]`, `gate-b47c950e/timing-prereasoner-api-00362-mok.json`): a question
+  (`reason`, 197) a median 2.8 s, p90 5.7 s, longest 27.5 s (a cold instance), 5 over 15 s, against 6.1 s, 13.7 s,
+  38.7 s and 15 at the last gate; no question's line holds a judge wait. Settling a mark (`check`, 107): a median
+  4.0 s, p90 7.1 s. The timing line now shows the judge's second asking: made on 6 of the 107, its answer the one
+  read on 1, the first call answering late on 3, neither in time on 2.
+- **Marks.** Fresh pass: 56 unmarked and 3 warned of 59. Leads "total budget in Germany" is the one the judge does
+  not pick, as at every gate. The other two are right answers whose judge was still out at the 15 s clock
+  (supplier-report "What is the total amount paid to PHOENIX SOFTWARE LTD?" and neartail-orders "how many orders in
+  Lyon"): they were on screen at 7.0 s and 4.2 s, and warned 15 s later. A slow judge no longer delays an answer;
+  it still warns a right one. Existing pass: 46 unmarked and 1 warned of 47, and that one is not a new answer: the
+  chat inspected the revision the last gate stored for "How many payments are listed?", which that gate's slow
+  judge had left warned.
+- **Found at the gate, not fixed here.** A stored revision keeps the mark it was stored with, so an answer a slow
+  judge once left warned is shown warned whenever it is inspected again. And the 15 s clock was set when the answer
+  waited for it; with the answer already on screen it could be longer, at the price of the composer staying closed
+  that long.
+- **Not driven**: the Sheets sidebar and the Excel pane in their hosts. Both show the reply as it is written and its
+  mark beside it by the same code path the web rail uses; the sidebar's browser test passes in CI.
+- An erred answer was not met at this gate (no demo question is marked most likely wrong), so the retry replacing a
+  served answer was seen on this machine only (the entry below).
+
+
 ## The answer is served before the judge has answered, and settled after: every dev and demo label is the reference's with the judge asked after the choice; on this machine the answer reached the reply 3.7 to 5.0 s before its mark settled (2026-11-27)
 
 - Owner, 2026-11-27: "yes, always serve the answer before the judge has answered. Latency to see answer is very
