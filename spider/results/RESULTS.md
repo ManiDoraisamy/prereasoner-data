@@ -10,6 +10,60 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Why the product as served is 77.5% beside Gemini 4 Neon's 85.9%: Neon rewrites one answer in ten, and the retry was never told where to put the answer; told, it is right on 37 of the 56 DataBench test answers it rewrites (was 24) and 61 of 95 on the WikiTableQuestions sample (was 58) (2026-11-27)
+
+- Owner, 2026-11-27: "tell me why Engine alone is 74.6%, but Prereasoner as served is only 77.5%? Doesnt it have neon
+  fallback? Should the base case be 85.9% of Neon + whatever our engine got right on top of neon?" Read from the
+  committed records, no new call: release 4a3b86e5's served run (`2026-11-26-release`) beside Neon alone on the same
+  questions (`2026-11-22-benchmark`).
+
+  | The engine's mark, WikiTableQuestions sample | Questions | Engine right | Served right | Neon alone right |
+  |---|---|---|---|---|
+  | Unmarked | 787 | 651 | 651 (the engine's answer) | 692 |
+  | Warned | 111 | 62 | 62 (the engine's answer) | 96 |
+  | Most likely wrong, rewritten by the retry | 102 | 29 | 62 | 71 |
+  | All | 1,000 | 742 | 775 | 859 |
+
+  The retry writes a query for the answers marked most likely wrong and for no other (`CLAUDE.md`: never for a
+  decided answer): 102 of 1,000. The gain from 742 to 775 is those 102, and on the other 898 the engine's answer
+  stands, where Neon alone is right more often even on the unmarked ones. DataBench test (450 within the upload
+  limit) reads the same: unmarked 350 (engine 298, Neon 322), warned 29 (11, 23), rewritten 71 (engine 12, served 37,
+  Neon alone 54); 321, 346 and 399 in all.
+- **The retry was also weaker than Neon alone on the answers it rewrites** (62 against 71 of 102; 37 against 54 of
+  71), for three reasons the records show. The benchmark added a line to the prompt of the models it compares, "Put
+  the answer itself in the first output column: one row holding the value for a single answer, one row per item for
+  a list; supporting columns may follow it", and the retry's own prompt had none: its right values stood behind a
+  label column and were graded wrong on 9 of the 71 DataBench answers and 2 of the 102 (each right once that
+  column is put first). The retry runs Neon at low thinking (about 5 s) and the benchmark ran it at its default
+  (about 14 s). And the retry reads the engine's compiled copy of the sheet where the benchmark's models read the
+  table as shipped: on two DataBench questions the same query gave another number (an average text length of 806.30
+  against 806.75, a count of 7 against 8).
+- **Fixed: the rule is the retry's own** (`engine/retry.py` `ANSWER_FIRST`, the same sentence), so every model that
+  writes a query reads one prompt and the benchmark adds nothing. Measured at head with the same engine answers
+  (every question's mark the same before and after), no second judge:
+
+  | Set | Rewritten | The retry right | Wins / losses | Served right |
+  |---|---|---|---|---|
+  | WikiTableQuestions test sample | 95 of 1,000 | 58 -> 61 | 5 / 2 | 777 -> 780 |
+  | DataBench test, within the upload limit | 56 of 450 | 24 -> 37 | 13 / 0 | 352 -> 365 |
+
+  The retry now returns supporting columns more often (one column on 46 of the 95 against 68), so a retried reply
+  more often lists the answer and then what it was computed from.
+- **The owner's second question, by replay of the same records** (Neon's benchmark answers standing in for what a
+  retry would write): Neon also rewriting the warned answers 818 of 1,000 and 375 of 450; Neon writing a query for
+  every question 859 and 399; that, with the engine's answer where Neon gives none, 869 and 406; always the right
+  one of the two 894 and 415. The two give the same answer on 756 of the 1,000 (right 93.5% of the time; 314 of
+  450, 97.1%); where they differ Neon is right 152 times, the engine 35, neither 57, and the engine's mark does not
+  find the 35 (among its unmarked answers 68 to 27). Neon on every question is what the rule forbids, and is the
+  owner's ruling.
+- A written model's recorded answers stay replayable: they were kept under the retry's body as it was before the
+  rule moved into it, and the request they answered is the same text (`regress/run_public.py` `recorded_key`; 40
+  Fable answers replayed at no cost with the same query each).
+- Records: `regress/sets/public/records/2026-11-27-retry-before/` and `2026-11-27-retry-after/` (`wtq-test`,
+  `databench-test`, system `prereasoner`, `--unjudged`); retry spend $2.06. The retry at Neon's default thinking is
+  being measured on the same answers.
+- tests: `test_the_retry_is_told_to_put_the_answer_first`.
+
 ## The judge's second asking, measured live: a call sent beside a slow one is slow too (median 7.8 s against 4.3 s), so it saves 3 of the 23 answers the clock would warn; a slow judge is the provider's moment, not the question (2026-11-27)
 
 - Release 95e2a7af's gate could not read which of the judge's two calls answered (the entry below), so the calls

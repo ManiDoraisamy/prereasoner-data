@@ -2275,6 +2275,43 @@ def test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alon
     assert not refused.answered and refused.error.startswith("guard:") and len(prompts) == 2 and "IT FAILED: guard:" in prompts[1]
 
 
+def test_the_retry_is_told_to_put_the_answer_first():
+    """The public benchmark told the models it compares to put the answer itself in the first output column, and the
+    retry was never told: of the 71 DataBench test answers it rewrote at release 4a3b86e5, 9 held the right values
+    behind a label column and were graded wrong (2 of 102 on WikiTableQuestions), which no written model's were. The
+    rule is the retry's own (engine/retry.py ANSWER_FIRST): it reaches the model in the system instruction, the
+    benchmark adds nothing to the prompt, and an answer it recorded for a written model before the rule moved is found
+    by the body it was recorded under."""
+    import json
+
+    import regress.run_public as public
+    from engine import llm
+    from engine.retry import ANSWER_FIRST, SYSTEM
+
+    assert SYSTEM.endswith(" " + ANSWER_FIRST) and "first output column" in ANSWER_FIRST and "one row per item for a list" in ANSWER_FIRST
+    sent = []
+
+    def transport(payload):
+        sent.append(payload)
+        return {"text": json.dumps({"answerable": True, "sql": EAST, "reason": "Adds Amount over the East rows."}), "usage": {}}
+
+    planner, held = _hermetic_planner(), llm.QUERY_TRANSPORT
+    llm.QUERY_TRANSPORT = transport
+    try:
+        retried = planner.retry_answer(_orders_request(), "total amount for East")
+    finally:
+        llm.QUERY_TRANSPORT = held
+    assert retried["check"]["state"] == "retried" and len(sent) == 1
+    system = json.loads(sent[0].decode("utf-8"))["systemInstruction"]["parts"][0]["text"]
+    assert system == SYSTEM, "the rule reaches the model with the prompt"
+    told, _turns = public._query_parts(sent[0])
+    assert told == SYSTEM, "the benchmark sends the written models the retry's prompt, nothing added"
+    before = json.loads(sent[0].decode("utf-8"))
+    before["systemInstruction"]["parts"][0]["text"] = SYSTEM[: -len(" " + ANSWER_FIRST)]
+    assert public.recorded_key(sent[0]) == llm.decision_hash(json.dumps(before, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    assert public.recorded_key(sent[0]) != llm.decision_hash(sent[0])
+
+
 def test_a_warned_answer_is_served_with_what_else_it_may_mean():
     """Between closed.T_ERR and T_FLAG, where the second judge does not pick the answer too, it is served and its
     ``check`` is warned: the reason its mark opens on says how it was read, how sure the choice was and what else the
@@ -2483,6 +2520,7 @@ TESTS = [
     test_the_selection_is_the_decisions_paths_listed_candidates,
     test_an_answer_most_likely_wrong_is_retried_never_asked_back,
     test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alone,
+    test_the_retry_is_told_to_put_the_answer_first,
     test_a_warned_answer_is_served_with_what_else_it_may_mean,
     test_an_analysis_runs_the_chosen_program_on_both_emitters,
     test_a_long_question_the_path_asks_back_asks_for_the_decomposition,
@@ -2579,6 +2617,7 @@ NEEDS_TORCH = (
     test_the_selection_is_the_decisions_paths_listed_candidates,
     test_an_answer_most_likely_wrong_is_retried_never_asked_back,
     test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alone,
+    test_the_retry_is_told_to_put_the_answer_first,
     test_a_warned_answer_is_served_with_what_else_it_may_mean,
     test_an_analysis_runs_the_chosen_program_on_both_emitters,
     test_a_long_question_the_path_asks_back_asks_for_the_decomposition,

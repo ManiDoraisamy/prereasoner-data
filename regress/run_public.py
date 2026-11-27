@@ -26,9 +26,12 @@ Systems:
                Gemini 4 Neon at its default thinking, Claude Opus 5.5 at its default effort (medium) and Claude Fable
                5.2 at its default effort (high) write the query for
                every question: the retry's own prompt (columns with their types, the row count, the first rows, the
-               values of short text columns) over the question's table as the dataset ships it, one SQL table
-               (raw_tables), plus one line stating the answer format. The query runs through the same guard,
-               read-only, with the same one repair, on the full table, graded as the engine's rows are.
+               values of short text columns, the answer in the first output column) over the question's table as
+               the dataset ships it, one SQL table (raw_tables). The query runs through the same guard, read-only,
+               with the same one repair, on the full table, graded as the engine's rows are. Until 2026-11-27 the
+               answer-format rule was a line this run added to the prompt; it is the retry's own now
+               (engine/retry.py ANSWER_FIRST), the request sent is the same text, and an answer recorded before then
+               is found by the body it was recorded under (recorded_key).
 
 Every API answer is kept by its request body's hash: the Decisions API's in regress/sets/calls, each written model's in
 regress/sets/public/calls/<system>/, so a rerun replays it and a clone reproduces the records. New answers go to this
@@ -92,8 +95,6 @@ PRICES = {"decisions": (0.10, 0.0), "retry": (3.0, 15.0), "neon": (3.0, 15.0), "
 JUDGES = {"gemini-4-neon": (3.0, 15.0), "gemini-4-hydrogen": (1.5, 7.5), "gemini-3.8-flash": (0.75, 3.75),
           "gemini-3.5-flash-lite": (0.30, 2.50)}
 PRICES.update({f"judge {model}": price for model, price in JUDGES.items()})
-FORMAT = ("Put the answer itself in the first output column: one row holding the value for a single answer, one row "
-          "per item for a list; supporting columns may follow it.")
 DATABENCH_TRAIN, DATABENCH_TRAIN_SEED = 400, 20261122
 
 
@@ -169,12 +170,12 @@ class Recorded:
     """engine.llm's query transport over one written model's recorded answers (its own folder, since each system
     rewrites the same body its own way): a body held is replayed; a new one sent (after the ledger's check) and kept."""
 
-    def __init__(self, name: str, ledger: Ledger, send, batch: str, meter: str | None = None):
-        self.name, self.ledger, self.send, self.meter = name, ledger, send, meter or name
+    def __init__(self, name: str, ledger: Ledger, send, batch: str, meter: str | None = None, key=llm.decision_hash):
+        self.name, self.ledger, self.send, self.meter, self.key = name, ledger, send, meter or name, key
         self.store = eval_sets.CallStore(PUBLIC / "calls" / name, batch)
 
     def __call__(self, payload: bytes) -> dict:
-        digest = llm.decision_hash(payload)
+        digest = self.key(payload)
         held = self.store.get(digest)
         if held is not None:
             return held
@@ -187,9 +188,24 @@ class Recorded:
         return answer
 
 
+def recorded_key(payload: bytes) -> str:
+    """The key a written model's answer is kept under: the retry's body as it was before its prompt held the
+    answer-format rule (engine/retry.py ANSWER_FIRST). The benchmark's runs of 2026-11-22 to 2026-11-27 were keyed by
+    that body and added the rule's text to what they sent, so the request a model sees is the same and its recorded
+    answers stay the answers to it."""
+    from engine.retry import ANSWER_FIRST
+
+    body = json.loads(payload.decode("utf-8"))
+    part = body["systemInstruction"]["parts"][0]
+    if not part["text"].endswith(" " + ANSWER_FIRST):
+        raise ValueError("the retry's prompt no longer ends with its answer-format rule: the written models' recorded answers are keyed by it")
+    part["text"] = part["text"][: -len(" " + ANSWER_FIRST)]
+    return llm.decision_hash(json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
 def _query_parts(payload: bytes) -> tuple[str, list[tuple[str, str]]]:
     body = json.loads(payload.decode("utf-8"))
-    system = "".join(part.get("text", "") for part in body["systemInstruction"]["parts"]) + " " + FORMAT
+    system = "".join(part.get("text", "") for part in body["systemInstruction"]["parts"])
     turns = [(content.get("role") or "user", "".join(part.get("text", "") for part in content["parts"])) for content in body["contents"]]
     return system, turns
 
@@ -429,7 +445,8 @@ def run_frontier(system: str, items, sink, done, ledger: Ledger, batch: str, thr
     from engine.retry import retry
     from engine.tables import TableQuery
 
-    llm.QUERY_TRANSPORT = Recorded(system, ledger, {"neon": neon_send, "opus": opus_send, "fable": fable_send}[system], batch)
+    llm.QUERY_TRANSPORT = Recorded(system, ledger, {"neon": neon_send, "opus": opus_send, "fable": fable_send}[system], batch,
+                                   key=recorded_key)
     guard = TableQuery().guard
     started, count, lock = time.time(), [0], threading.Lock()
 

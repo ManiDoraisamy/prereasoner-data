@@ -37,6 +37,11 @@ ROW_LIMIT = 10_000            # rows a retried answer returns at most
 QUERY_SECONDS = 15.0          # a written query runs this long at most
 REPAIRS = 1                   # a failed query is sent back with its error this many times
 
+# Where the answer stands in the rows the query returns. The public benchmark told the models it compares this so and
+# the retry was not told: its right values then stood behind a label column (9 of the 71 DataBench test answers it
+# rewrote at release 4a3b86e5, 2 of 102 on WikiTableQuestions).
+ANSWER_FIRST = ("Put the answer itself in the first output column: one row holding the value for a single answer, one row "
+                "per item for a list; supporting columns may follow it.")
 SYSTEM = (
     "You answer a person's question about their spreadsheet by writing ONE SQLite SELECT statement over the tables "
     "described. A column named \"a → b\" holds what the sheet's column a reaches (a bank's country, a country's "
@@ -49,7 +54,7 @@ SYSTEM = (
     "COUNT, and a filter matches the values the tables actually hold (match text case-insensitively when the "
     "question's spelling differs). If the tables do not hold what the question asks, set answerable to false, leave "
     "sql empty, and say in one sentence, in the person's terms, what is missing. The reason is one plain sentence "
-    "saying how the query reads the question."
+    "saying how the query reads the question. " + ANSWER_FIRST
 )
 
 
@@ -256,4 +261,4 @@ def _value(value):
     return value
 
 
-__all__ = ["Retried", "retry", "SYSTEM", "workbook_tables"]
+__all__ = ["ANSWER_FIRST", "Retried", "retry", "SYSTEM", "workbook_tables"]
