@@ -489,7 +489,7 @@
    "weights": "only"
   },
   "scratch-records": {
-   "bytes": 319329994,
+   "bytes": 321038303,
    "exclude": [
     "archive",
     "worktrees",
@@ -513,8 +513,8 @@
     "chat-b9b0fe50",
     "open-20261124/sheetcache"
    ],
-   "files": 4105,
-   "note": "working records of the 2026-11 sessions: accuracy and parity runs, patches, cutover scripts, gate logs and captures through release 568b1f0a, the 2026-11-24 sheet-reading diagnosis scripts, the 2026-11-26 steps 2-4 gates, diffs and step 4's listings, the 924a7b19, 568b1f0a and 95e2a7af build logs, and the 2026-11-27 build plan's working files: the diffs and call batches of the two changes not kept (a cell's parts, the stated-count rule) and of the figure of lines taken by place (release and chat build copies are code at their commits, not kept)",
+   "files": 4133,
+   "note": "working records of the 2026-11 sessions: accuracy and parity runs, patches, cutover scripts, gate logs and captures through release 95e2a7af, the 2026-11-24 sheet-reading diagnosis scripts, the 2026-11-26 steps 2-4 gates, diffs and step 4's listings, the 924a7b19, 568b1f0a and 95e2a7af build logs, the 2026-11-27 build plan's working files (the diffs and call batches of the two changes not kept), and the 2026-11-27 judge probe (scripts, the demo set's judge bodies, each call's time)",
    "packed": "2026-11-27",
    "packed_from": [
     "prereasoner-scratch",
@@ -522,10 +522,10 @@
    ],
    "parts": [
     {
-     "bytes": 49730149,
+     "bytes": 49932703,
      "path": "scratch-records/part-0000.tar.zst",
-     "revision": "f0dc98894531231778994e55e9df8d6376e68700",
-     "sha256": "22ade910f456d3d6e481a07132c56cbab6744cdf8420b1e3111e6e95e95b725e"
+     "revision": "4d59b13c68fb224ad134e3216bcb9eff5e89ccd4",
+     "sha256": "cbc869d168672fb322fc05f8fdcfe538a62ea6ec932ca8f0fb1c569a44e2b05f"
     }
    ],
    "restore": "archive",
