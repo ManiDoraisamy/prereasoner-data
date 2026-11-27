@@ -263,7 +263,7 @@ def test_a_compose_refusal_is_the_answer_in_serving_and_evaluation_alike():
              "rows": [["Paris", "not-a-number"], ["Lyon", "310"], ["Paris", "95"]]}
     reader = SimpleNamespace(present=lambda question: {"GROUP"})
     planner = _hermetic_planner()
-    planner.select_query = lambda question, tables: PoolSelection((), (), None)   # no reading the upload answers
+    planner.select_query = lambda question, tables, marked=True: PoolSelection((), (), None)   # no reading the upload answers
     record = full_eval.predict(planner, ComposeEngine(reader=None), reader, [sheet],
                                "total amount by city in Europe")
     assert record["stage"] == "compose_clarify" and record["ok"] is False, record

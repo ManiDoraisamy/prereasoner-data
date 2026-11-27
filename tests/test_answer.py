@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import sys
+import time
 
 import torch
 
@@ -18,7 +19,7 @@ import engine.program.stock as stock
 from engine import config
 from engine.answer_presentation import warned_reason
 from engine.program.answer import ANSWERED, ERRED, WARNED, answer, prepare
-from engine.program.closed import DOUBT_ANOTHER, DOUBT_NONE, DOUBT_UNREAD, UNJUDGED
+from engine.program.closed import DOUBT_ANOTHER, DOUBT_NONE, DOUBT_UNREAD, UNJUDGED, awaits_judge
 from engine.program.catalog import Catalog
 from engine.program.closed import (CHOICE_NONE, CHOOSE_K, NONE, SAID_OPTIONS_MOST, T_ERR, T_FLAG, TAB_IN_VIEW_CONVENTION, W, answer_key, choice_record, choose_answer, fused_reading, preview,
                                    reading_record, said_record, said_scores, said_spans, sheet_state, value_set_question)
@@ -424,8 +425,11 @@ def test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it() -> None
     and wrong, and no threshold on the choice's own probability reaches 8% within 20% marked. An answer the choice would
     give unmarked stays unmarked only where the second judge (engine/llm.py judge) picks a listing of the same answer;
     another answer warns it, with the judge's reading as what it may also mean, none warns it, and so does a judge that
-    did not answer. The answer served is the choice's in every case, and an answer the choice itself warned or erred is
-    as the choice left it. The path asks the judge the choice's own question, beside the choice."""
+    did not answer. The answer served is the choice's in every case. An answer the choice warned only because its own
+    probability is low is given unmarked where the judge picks it too (2026-11-27: on the 896, 33 such answers were
+    right and 7 wrong); one with a reading alike, and a most-likely-wrong one, are as the choice left them. The path
+    asks the judge the choice's own question, beside the choice; an answer waits for it no longer than the judge's
+    limit by the clock, and a compound question's part asks no judge at all."""
     answers = ["a", "a", "b", "c"]
     sure = {"r00": 0.5, "r01": 0.3, "r02": 0.1, "r03": 0.05, NONE: 0.05}
     alone = choose_answer(sure, answers)
@@ -441,8 +445,16 @@ def test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it() -> None
     unsure = {"r00": 0.3, "r01": 0.2, "r02": 0.3, "r03": 0.1, NONE: 0.1}      # 0.5: warned by the choice alone
     left = choose_answer(unsure, answers, judged="r03")
     assert choose_answer(unsure, answers).kind == WARNED and (left.kind, left.runner_up, left.doubt) == (WARNED, 2, None)
+    both_pick = choose_answer(unsure, answers, judged="r01")      # the judge picks a listing of the same answer
+    assert (both_pick.kind, both_pick.pick, both_pick.doubt) == (ANSWERED, 0, None), "low by the choice alone, and both judges pick it"
+    assert [choose_answer(unsure, answers, judged=key).kind for key in (NONE, UNJUDGED)] == [WARNED, WARNED]
+    assert awaits_judge(alone) and awaits_judge(choose_answer(unsure, answers))
+    same_words = ['the total of Amount on "orders"', 'the total of Amount on "orders"']
+    alike = choose_answer({"r00": 0.87, "r01": 0.1}, ["a", "b"], same_words, judged="r00")
+    assert (alike.kind, alike.doubt) == (WARNED, None) and not awaits_judge(choose_answer({"r00": 0.87, "r01": 0.1}, ["a", "b"], same_words)), \
+        "the sheet's two readings read alike: no judge settles which is meant"
     lost = choose_answer({"r00": 0.2, "r02": 0.1, NONE: 0.7}, answers, judged="r00")
-    assert (lost.kind, lost.doubt) == (ERRED, None)
+    assert (lost.kind, lost.doubt) == (ERRED, None) and not awaits_judge(lost)
 
     _use_fake_reader()
     prepared = _with_transport(FakeTransport(lambda *a: {}), lambda: prepare(_workbook()))
@@ -472,6 +484,28 @@ def test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it() -> None
     assert reason.startswith(f"I read this as “{doubted.read_as}”") and reason.endswith("”, which gives another answer.") and "a second check read it as" in reason
     assert warned_reason("the total of Amount", None, 0.9, False, DOUBT_NONE) == "I read this as “the total of Amount”, 90% sure, but a second check found no reading that answers the question as asked."
     assert warned_reason("the total of Amount", None, 0.9, False, DOUBT_UNREAD).endswith("; the second check of this reading did not run.")
+
+    # by the clock: an answer waits for the judge no longer than the judge's limit, then is served as not judged twice
+    import engine.program.answer as path
+
+    def slow(payload):
+        time.sleep(0.6)
+        return same(payload)
+    held, path.JUDGE_TIMEOUT_SECONDS = path.JUDGE_TIMEOUT_SECONDS, 0.05
+    try:
+        clock = time.perf_counter()
+        late = ask(slow)
+        waited = time.perf_counter() - clock
+    finally:
+        path.JUDGE_TIMEOUT_SECONDS = held
+    assert (late.kind, late.doubt) == (WARNED, DOUBT_UNREAD) and late.rows == both.rows
+    time.sleep(0.7)     # the late judge's thread ends before the next test's transports are swapped
+    assert waited < 0.6, f"the answer waited {waited:.2f} s for a judge whose limit was 0.05 s"
+
+    # a compound question's part is a step of a plan: its listing is read, so it asks no judge and keeps the choice's kind
+    unasked = FakeJudge(lambda name, criteria_question, state: {NONE: 0.9})
+    part = _with_transport(FakeTransport(rule), lambda: answer(question, prepared, RequestTables(prepared.catalog), marked=False), unasked)
+    assert unasked.bodies == [] and (part.kind, part.doubt) == (ANSWERED, None) and part.listed_rows == both.listed_rows
 
 
 def test_a_failed_call_reaches_the_caller() -> None:

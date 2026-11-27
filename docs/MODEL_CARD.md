@@ -255,8 +255,8 @@ resolve this source-label ambiguity.
   at 0.575 or more (`T_FLAG`), warned from 0.42 (`T_ERR`) or when two readings are worded alike, and most
   likely wrong below 0.42 or when "none of these" is likelier. A second judge (Gemini 4 Neon at low
   thinking) answers the same closed question with the key of one option; an answer the first choice would
-  give unmarked is warned unless the judge picks it too. The engine never asks back for its own
-  uncertainty.
+  give unmarked is warned unless the judge picks it too, and one it would warn for its probability alone
+  is given unmarked where the judge picks it too. The engine never asks back for its own uncertainty.
 - Retry: an answer most likely wrong, or one the person retries, is answered by one SQLite SELECT that
   Gemini 4 Neon writes over the workbook (`engine/retry.py`); it is guarded, run read-only, and shown
   with its SQL and the reason for its mark. It is the one place a model writes SQL. The person is asked

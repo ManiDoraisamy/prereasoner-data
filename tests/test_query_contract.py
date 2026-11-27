@@ -34,7 +34,7 @@ def test_final_results_keep_more_than_fifty_rows():
     query = to_query(program, catalog)
     rows = tuple((i,) for i in range(1000))
     planner = _hermetic_planner()
-    planner.select_query = lambda question, tables: PoolSelection(
+    planner.select_query = lambda question, tables, marked=True: PoolSelection(
         (ScoredQuery(query, render_query(query), 0.9, ('the different Amount on "orders"',)),), (0,), 0, 0.9,
         programs=(program,), rows=(rows,), catalog=catalog)
     result = planner.serve([table], 'show Amount')

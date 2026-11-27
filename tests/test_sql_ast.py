@@ -1092,7 +1092,7 @@ def test_spider_ingestion_keeps_discovered_and_declared_relationships():
     declared = [{"from_table": "shipments", "from_col": "destination_id", "to_table": "ports", "to_col": "id"}]
     planner = _hermetic_planner()
     # The evaluator's own selection is production's (TableQuery.select_query); this test reads its ingestion.
-    planner.select_query = lambda question, tables: PoolSelection((), (), None)
+    planner.select_query = lambda question, tables, marked=True: PoolSelection((), (), None)
     cache = {}
     with patch.object(planner, "schema", wraps=planner.schema) as schema:
         actual = ast_predict(planner, tables, "How many shipments use carrier Alpha?", declared, cache)
@@ -1137,7 +1137,7 @@ def test_declared_self_relationship_keeps_unrelated_queries_and_source_rows():
     assert graph.reachable({"employees"}) == {"employees"}
     assert graph.join_trees({"employees", "artists"}) == ()
     assert graph.join_trees({"employees"})[0].joins == ()
-    planner.select_query = lambda question, tables: PoolSelection((), (), None)
+    planner.select_query = lambda question, tables, marked=True: PoolSelection((), (), None)
     ast_predict(planner, tables, "List employee names", declared)
     assert json.dumps(tables, sort_keys=True) == before
     for malformed in ({**declared[0], "to_table": "absent"},
@@ -2127,11 +2127,13 @@ def _choice(first, none=0.0):
     return rule
 
 
-def _decided(rule, call):
-    from tests.test_answer import FakeTransport, _use_fake_reader, _with_transport
+def _decided(rule, call, judge=None):
+    """``call`` with a fake API answering by ``rule`` and a second judge that picks what the rule favours (``judge``:
+    another judge's rule, as a judge that picks none for a test of an answer the two do not both pick)."""
+    from tests.test_answer import FakeJudge, FakeTransport, _use_fake_reader, _with_transport
     _use_fake_reader()
     transport = FakeTransport(rule)
-    return _with_transport(transport, call), transport
+    return _with_transport(transport, call, None if judge is None else FakeJudge(judge)), transport
 
 
 def test_the_selection_is_the_decisions_paths_listed_candidates():
@@ -2274,15 +2276,18 @@ def test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alon
 
 
 def test_a_warned_answer_is_served_with_what_else_it_may_mean():
-    """Between closed.T_ERR and T_FLAG the answer is served and its ``check`` is warned: the reason its mark opens on
-    says how it was read, how sure the choice was and what else the question may mean, with the coordinates the
-    runner-up reads differently. The reply is the answer alone (the reason moved from the reply to the mark,
-    2026-11-21). Contrast: an answer the choice stands behind is answered."""
+    """Between closed.T_ERR and T_FLAG, where the second judge does not pick the answer too, it is served and its
+    ``check`` is warned: the reason its mark opens on says how it was read, how sure the choice was and what else the
+    question may mean, with the coordinates the runner-up reads differently. The reply is the answer alone (the reason
+    moved from the reply to the mark, 2026-11-21). Contrast: an answer the choice stands behind is answered, and so
+    is one in that band that both judges pick (2026-11-27)."""
     from engine.answer_presentation import terminal_reply
     from mcp_server.engine_client import shape_reason_response
+    from tests.test_answer import NONE
 
     planner = _hermetic_planner()
-    response, _ = _decided(_choice(0.47, none=0.44), lambda: planner.serve(_orders_request(), "total amount for East"))
+    unpicked = lambda name, question, state: {NONE: 0.9}     # noqa: E731
+    response, _ = _decided(_choice(0.47, none=0.44), lambda: planner.serve(_orders_request(), "total amount for East"), unpicked)
     assert response["valid"] and response["result"]["rows"] and response["selection"]["warned"], response["selection"]
     check = response["check"]
     assert check["state"] == "warned" and check["reason"].startswith("I read this as “") and "% sure" in check["reason"]
@@ -2293,6 +2298,9 @@ def test_a_warned_answer_is_served_with_what_else_it_may_mean():
     assert "not sure" not in terminal_reply(shaped)
     sure, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
     assert sure["valid"] and sure["check"]["state"] == "answered" and not sure["selection"]["warned"]
+    both, _ = _decided(_choice(0.47, none=0.44), lambda: planner.serve(_orders_request(), "total amount for East"))
+    assert both["check"]["state"] == "answered" and not both["selection"]["warned"] and both["result"]["rows"] == response["result"]["rows"], \
+        "low by the choice alone, and the second judge picks it too"
 
 
 def test_an_analysis_runs_the_chosen_program_on_both_emitters():

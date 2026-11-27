@@ -941,9 +941,12 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
     Two judges that must agree (owner, 2026-11-26): ``judged`` is the key a second judge picked for the same question
     (engine/llm.py judge; UNJUDGED when its call failed; None when it is not asked, as before the choice is known). An
     answer the choice would give unmarked stays unmarked only where the judge picked a listing of the same answer;
-    another answer (then the runner-up), none, or no answer warns it (``doubt``). The answer served is the choice's
-    in every case, and a warned or erred answer is as the choice left it. On unseen tables the unmarked wrong fell
-    from 13.6% and 12.8% to 6.7% and 5.8% (spider/results/RESULTS.md, 2026-11-26)."""
+    another answer (then the runner-up), none, or no answer warns it (``doubt``). And an answer the choice warns only
+    because its own probability is low (below T_FLAG, no reading alike) is given unmarked where the judge picked it
+    too: the two agree, which the choice's probability alone could not say (the 896: 33 such answers right, 7 wrong;
+    spider/results/RESULTS.md, 2026-11-27). The answer served is the choice's in every case; an answer with a reading
+    alike, and a most-likely-wrong one, are as the choice left them. On unseen tables the unmarked wrong fell from
+    13.6% and 12.8% to 6.7% and 5.8% (2026-11-26)."""
     probabilities = probabilities or {}
     none = probabilities.get(NONE, 0.0)
     mass, first = answer_masses(probabilities, answers)
@@ -963,19 +966,29 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
         kind = ANSWERED
     served = min((key for key in probabilities if key != NONE and answers[int(key[1:])] == best), key=lambda key: (-probabilities[key], int(key[1:])))
     other, doubt = alike if alike is not None else runner_up, None
-    if kind == ANSWERED and judged is not None:
-        if judged == UNJUDGED:
-            doubt = DOUBT_UNREAD
-        elif judged == NONE:
-            doubt = DOUBT_NONE
-        elif answers[int(judged[1:])] != best:
-            other, doubt = int(judged[1:]), DOUBT_ANOTHER
-        if doubt is not None:
+    if judged is not None and alike is None and kind != ERRED:
+        agreed = judged not in (UNJUDGED, NONE) and answers[int(judged[1:])] == best
+        if kind == WARNED:
+            kind = ANSWERED if agreed else WARNED
+        elif not agreed:
             kind = WARNED
+            if judged == UNJUDGED:
+                doubt = DOUBT_UNREAD
+            elif judged == NONE:
+                doubt = DOUBT_NONE
+            else:
+                other, doubt = int(judged[1:]), DOUBT_ANOTHER
     return AnswerChoice(kind, int(served[1:]), other, mass[best], none, alike, doubt)
 
 
+def awaits_judge(choice: AnswerChoice) -> bool:
+    """Whether an answer's mark depends on the second judge (choose_answer): one the choice would give unmarked, or
+    warned only because its own probability is low. An answer with a reading alike stays warned and a
+    most-likely-wrong one is retried whatever the judge says, so neither waits for it."""
+    return choice.alike is None and choice.kind in (ANSWERED, WARNED)
+
+
 __all__ = ["ORDER_QUESTION", "order_record", "order_scores", "ANSWERED", "CHOOSE_K", "DOUBT_ANOTHER", "DOUBT_NONE", "DOUBT_UNREAD", "ERRED", "T_ERR", "T_FLAG", "UNJUDGED", "W", "WARNED",
-           "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses", "judge_options",
+           "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses", "awaits_judge", "judge_options",
            "choice_record", "choose_answer", "convert_choice", "convert_record", "fused_reading", "reading_record", "said_record", "sheet_state",
            "value_set_question", "value_set_scores"]

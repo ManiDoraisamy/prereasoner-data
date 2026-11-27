@@ -407,10 +407,12 @@ class TableQuery:
         return sims[0][0] if sims and sims[0][1] > 0.3 else None
 
     # ---------- planning ----------
-    def select_query(self, question, tables):
+    def select_query(self, question, tables, marked=True):
         """Choose the query to serve for an own-data question over the request's ``tables``; returns a
         ``PoolSelection`` (engine/sql_rank.py). This is the one own-data selection: serving, the compose probe,
         decomposition leaves and the evaluators (the Spider evaluator, the messy benchmark, the dev replay) call it.
+        ``marked`` is False for a compound question's part, whose listing alone is read: it asks no second judge
+        (engine/program/answer.py), and its answer is kept apart from a marked one of the same question.
 
         The tables are one workbook, a tab per table in their order, each its ``grid`` (``table_grid``), prepared once
         per content (engine/prepared.py prepared_workbook), with the stock reading's vectors its conversation keeps for
@@ -440,8 +442,8 @@ class TableQuery:
             key, prepared, targets = self.workbook(question, tables, database)
             hold_sheet_vectors(tables, database)
             store = database.program_tables(key, prepared.catalog)
-            said = database.answered(key, question,
-                                     lambda: answer(question, prepared, store, database.active_sheet))
+            said = database.answered(key if marked else (key, "unmarked"), question,
+                                     lambda: answer(question, prepared, store, database.active_sheet, marked))
         mass, _first = answer_masses(said.probabilities, said.listed_answers)
         scores = [mass.get(answer_id, 0.0) for answer_id in said.listed_answers]
         pool = []

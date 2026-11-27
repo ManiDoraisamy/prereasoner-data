@@ -1,0 +1,31 @@
+{
+ "demo": {
+  "n": 91,
+  "misses": 0,
+  "errors": 0,
+  "mismatches": 8,
+  "labels": {
+   "asked": 4,
+   "right": 84,
+   "wrong": 1,
+   "flagged_right": 2
+  },
+  "reference_labels": {
+   "asked": 4,
+   "right": 84,
+   "wrong": 1,
+   "flagged_right": 2
+  },
+  "seconds": 403.6,
+  "gate": {
+   "built": 87,
+   "reference_built": 87,
+   "pick": 86,
+   "reference_pick": 86,
+   "wins": 0,
+   "losses": 0,
+   "unwarned_wrong": 1,
+   "reference_unwarned_wrong": 1
+  }
+ }
+}

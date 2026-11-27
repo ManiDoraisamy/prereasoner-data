@@ -13,8 +13,10 @@
             the fused reading -> the typed k-best decoder, top DECODE_K,
             every program verified on the request's tables -> the candidate order of the engine's prior chooser -> the
             candidates that returned rows -> the choice record -> one decide call, and beside it the second
-            judge's call over the same question (engine/llm.py judge) -> the per-answer decision: an answer the choice
-            would give unmarked waits for the judge and stays unmarked only where the judge picks it too.
+            judge's call over the same question (engine/llm.py judge) -> the per-answer decision: an answer whose
+            mark depends on the judge (closed.awaits_judge) waits for it, by the clock no longer than the judge's
+            own limit, and is unmarked only where the judge picks it too. A compound question's part asks no judge:
+            only its listing is read.
 
 No model writes SQL or a program here: the API returns probabilities over options the engine built, the decoder builds
 every program from the reading, and the verifier runs each one. Every external call goes through engine.llm.decide, and
@@ -23,15 +25,17 @@ LLMUnavailable reaches the caller: a question is not answered from a reading the
 from __future__ import annotations
 
 import contextvars
-from concurrent.futures import ThreadPoolExecutor
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 
-from engine.llm import LLMUnavailable, decide, judge
+from engine.llm import JUDGE_TIMEOUT_SECONDS, LLMUnavailable, decide, judge
 from engine.named.chooser import PRIOR, score_candidates
 from engine.named.units import Target
 from engine.program.catalog import Catalog
-from engine.program.closed import (ANSWERED, ERRED, UNJUDGED, WARNED, answer_key, choice_record, choose_answer, convert_choice, convert_record, fused_reading,
-                                   judge_options, order_record, reading_record, said_record, value_set_question)
+from engine.program.closed import (ANSWERED, ERRED, UNJUDGED, WARNED, answer_key, awaits_judge, choice_record, choose_answer, convert_choice, convert_record,
+                                   fused_reading, judge_options, order_record, reading_record, said_record, value_set_question)
 from engine.program.dates import typed_dates
 from engine.program.decoder import Decoder
 from engine.program.language import Program, coordinates
@@ -99,6 +103,16 @@ def _judged(state: dict, question: dict) -> str:
         return UNJUDGED
 
 
+def _judgement(judging: Future, asked: float) -> str:
+    """The judge's key for an answer that waits for it, or UNJUDGED when it has not answered JUDGE_TIMEOUT_SECONDS
+    after it was asked (``asked``, time.monotonic): the call's own limit is a socket's, which a slow connection or a
+    late body outlasts, and an answer does not wait longer than the limit says."""
+    try:
+        return judging.result(timeout=max(0.0, JUDGE_TIMEOUT_SECONDS - (time.monotonic() - asked)))
+    except FutureTimeout:
+        return UNJUDGED
+
+
 def prepare(workbook: WorkbookPayload) -> Prepared:
     """A workbook ready for questions. Raises LLMUnavailable when the date-typing call fails."""
     with span("program_compile"):
@@ -131,10 +145,12 @@ def convert_target(question: str, catalog: Catalog, targets: list[str], active_s
     return convert_choice(decision.fields["convert"], criteria)
 
 
-def answer(question: str, prepared: Prepared, tables: RequestTables, active_sheet: str | None = None) -> Answer:
+def answer(question: str, prepared: Prepared, tables: RequestTables, active_sheet: str | None = None, marked: bool = True) -> Answer:
     """One question over a prepared workbook, its programs run on tables (the request's, over prepared.catalog).
     active_sheet: the tab the client has in view when the question is asked; on a workbook of several tabs both records
-    name it. Raises LLMUnavailable."""
+    name it. marked: whether the answer's mark is wanted; a compound question's part (engine/decomposition.py) is a
+    step of a plan whose listing alone is read, so it asks no second judge and its kind is the choice's own. Raises
+    LLMUnavailable."""
     catalog = prepared.catalog
     in_view = active_sheet
     with span("program_read"):
@@ -160,21 +176,23 @@ def answer(question: str, prepared: Prepared, tables: RequestTables, active_shee
         listed = [candidate for candidate in score_candidates(verified, fused, catalog, PRIOR) if candidate.rows]
         lines = tuple(read_as(candidate.verified.scored.program, catalog) for candidate in listed)
         answers = tuple(answer_key(candidate.rows) for candidate in listed)
-    probabilities, judging = None, None
+    probabilities, judging, asked = None, None, 0.0
     if listed:
         with span("decisions_choose"):
             state, questions = choice_record(catalog, question, [(line, candidate.rows) for line, candidate in zip(lines, listed)], in_view)
-            # the second judge reads the same question beside the choice; only an answer the choice gives unmarked waits for it
-            beside = ThreadPoolExecutor(max_workers=1)
-            judging = beside.submit(contextvars.copy_context().run, _judged, state, questions["reading"])
-            beside.shutdown(wait=False)
+            if marked:
+                # the second judge reads the same question beside the choice; only an answer whose mark depends on it waits
+                beside = ThreadPoolExecutor(max_workers=1)
+                asked = time.monotonic()
+                judging = beside.submit(contextvars.copy_context().run, _judged, state, questions["reading"])
+                beside.shutdown(wait=False)
             choice = decide(state, questions)
         probabilities, tokens = choice.fields["reading"], tokens + choice.tokens
     worded = tuple(in_header_words(candidate.verified.scored.program, catalog) for candidate in listed)
     decision = choose_answer(probabilities, answers, worded)
-    if decision.kind == ANSWERED and judging is not None:
+    if judging is not None and awaits_judge(decision):
         with span("decisions_judge"):
-            decision = choose_answer(probabilities, answers, worded, judging.result())
+            decision = choose_answer(probabilities, answers, worded, _judgement(judging, asked))
     chosen = listed[decision.pick] if decision.pick is not None else None
     uncertain: tuple[str, ...] = ()
     if decision.kind == WARNED and decision.runner_up is not None:

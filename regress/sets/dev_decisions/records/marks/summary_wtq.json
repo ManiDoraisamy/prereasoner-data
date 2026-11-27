@@ -1,0 +1,33 @@
+{
+ "wtq": {
+  "n": 300,
+  "misses": 0,
+  "errors": 0,
+  "mismatches": 10,
+  "labels": {
+   "flagged_wrong": 17,
+   "right": 201,
+   "asked": 31,
+   "wrong": 28,
+   "flagged_right": 23
+  },
+  "reference_labels": {
+   "flagged_wrong": 16,
+   "right": 200,
+   "asked": 33,
+   "wrong": 28,
+   "flagged_right": 23
+  },
+  "seconds": 1358.1,
+  "gate": {
+   "built": 260,
+   "reference_built": 259,
+   "pick": 235,
+   "reference_pick": 234,
+   "wins": 2,
+   "losses": 1,
+   "unwarned_wrong": 28,
+   "reference_unwarned_wrong": 28
+  }
+ }
+}

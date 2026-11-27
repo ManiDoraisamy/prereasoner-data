@@ -5869,3 +5869,19 @@ for this one call in `CLAUDE.md`, whose ownership map names it. A failed judge c
 check did not run") and never fails the request. Evaluations replay its answers by body hash
 (`regress/sets/judge_calls`, `regress/sets/public/calls/judge`); a run that reads what is built and not the marks
 asks no judge (`--unjudged`, `regress/eval_sets.py` `judge_unasked`).
+
+### The two judges also clear a warning, and a compound question's parts ask no judge (2026-11-27)
+
+Step 0 of the build plan the owner approved on 2026-11-26. The judges' recorded answers on the 896 showed what the
+first rule left on the table: of the answers the choice warns only because its own probability is below `T_FLAG`,
+the judge picks the same answer on 40, and 33 of those are right. Such an answer is now given unmarked
+(`engine/program/closed.py` `choose_answer`, `awaits_judge`); it waits for the judge as an unmarked one does. An
+answer with a reading worded alike stays warned (the sheet cannot tell the two apart, whatever a judge picks), and a
+most-likely-wrong one is retried as before. With a judge answering, `T_FLAG` no longer decides a mark; it remains
+the choice's own kind where no judge is asked.
+
+Two latency defects of the first release are fixed with it. A compound question waited for the judge once per part
+(four or five waits in one request, 16 to 26 s in production): a part is a step of a plan whose listing alone is
+read (`engine/decomposition.py`), so it asks no judge at all (`select_query(..., marked=False)`), which also spares
+its call. And the judge's 15 s limit was a socket's, which a slow connection or a late body outlasts: the wait now
+ends by the clock, 15 s after the judge was asked, and the answer is served as not judged twice.

@@ -445,7 +445,7 @@ def _leaf_readings(planner, slug, node, tables, *, feeds_cross: bool, question: 
     from engine.deterministic.lower import UnsupportedDeterministicPlan
     from engine.program.lowering import shown_plan
 
-    selection = planner.select_query(node["question"], tables)
+    selection = planner.select_query(node["question"], tables, marked=False)     # a step of the plan: no mark, no second judge
     if selection.catalog is not None:
         from engine.program.store import column_lineage
         if lineage is not None:

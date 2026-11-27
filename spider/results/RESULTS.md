@@ -10,7 +10,57 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
-## Release 924a7b19 (two judges that must agree, lines by place, three readings) live; on a fresh 1,000 the answers given unmarked and wrong fall from 12.9% to 4.4% with 35.9% marked, the engine's own right answers 748 -> 749; Chrome gate 97 of 97 fresh on 23 datasets (one not run: the account's storage is full), 77 of 78 existing; a compound question waits for the judge once per part (2026-11-27)
+## A warned answer both judges pick goes unmarked, and a compound question's parts ask no judge: on the fresh 1,000 marked answers 35.9% -> 30.7% with 5.2% unmarked and wrong, on the 896 28.6% -> 24.2% with 3.3% (2026-11-27)
+
+- Step 0 of the build plan (owner, 2026-11-26: "Go ahead with this plan"): the marks, from answers already recorded.
+  Every record of the 896 names its question's judge call (`judge_call`), so the second judge's answers on answers
+  the choice itself warned or held most likely wrong were read from the store, none asked:
+
+  | The 896: the choice alone | The judge picks the same answer: right / wrong | Another answer | None |
+  |---|---|---|---|
+  | given unmarked (724) | 617 / 23 | 10 / 6 | 37 / 31 |
+  | warned, its probability below `T_FLAG` (96) | 33 / 7 | 6 / 11 | 12 / 27 |
+  | warned, a reading worded alike (2) | 1 / 0 | 0 / 1 | |
+  | most likely wrong (74, one with nothing listed) | 6 / 1 | 2 / 7 | 11 / 46 |
+
+- **The rule.** An answer the choice warns only because its own probability is low is given unmarked where the judge
+  picks it too (33 right, 7 wrong on the 896); it waits for the judge as an unmarked one does
+  (`engine/program/closed.py` `choose_answer`, `awaits_judge`). An answer with a reading worded alike stays warned,
+  and a most-likely-wrong one is retried as before: the judge agrees on 7 of the 74, too few to change what a retry
+  is. With a judge answering, the two judges' agreement alone separates unmarked from warned.
+- Measured by replay, every listing, probability and answer unchanged, at $0.03 (one judge call not recorded
+  before). The fresh sample as served (`--run 2026-11-27-marks` against the release's `2026-11-26-fresh3`;
+  `regress/run_public.py --compare` prints it) and the 896 with the demo set (`regress/run_dev_decisions.py --tag
+  marks --record --keep`, records `regress/sets/dev_decisions/records/marks/`, references kept):
+
+  | | Release 924a7b19 | With the rule |
+  |---|---|---|
+  | Fresh 1,000: unmarked and wrong | 44 (4.4%) | 52 (5.2%, 4.0-6.8) |
+  | Fresh 1,000: unmarked and right | 597 | 641 |
+  | Fresh 1,000: marked | 359 (35.9%) | 307 (30.7%) |
+  | The 896: unmarked and wrong | 23 (2.6%) | 30 (3.3%) |
+  | The 896: unmarked and right | 617 | 649 |
+  | The 896: marked | 256 (28.6%) | 217 (24.2%) |
+  | Demo, 91: unmarked right / unmarked wrong / warned / erred | 82 / 0 / 5 / 4 | 84 / 0 / 3 / 4 |
+
+  Of the answers given unmarked on the fresh sample 641 of 693 are right (92.5%; 93.1% at the release). Against the
+  owner's bar on unseen tables as served (80% right, 8% unmarked and wrong, 20% marked): 78.0% right, 5.2%, 30.7%.
+- **A compound question's parts ask no judge.** A part is a step of a plan whose listing alone is read
+  (`engine/decomposition.py` `_leaf_readings`), so its mark was never used, and its wait for the judge was the 16 to
+  26 s the release's gate measured on compound questions: `select_query(..., marked=False)` asks none and keeps the
+  part's answer apart from a marked one of the same question. **The wait ends by the clock**: 15 s after the judge
+  was asked the answer is served as not judged twice (`engine/program/answer.py` `_judgement`); the judge's own limit
+  was a socket's. Their effect on production's times is read at the next gate.
+- Left as they are: a most-likely-wrong answer the judge picks too (6 right, 1 wrong on the 896) is still retried;
+  a judge's pick of the same figure in another shape (the one-group breakdown beside the total) still counts as
+  another answer; the judge's answer to one body can differ from one asking to the next (the release gate's "total
+  budget in Germany": unmarked in the existing conversation, warned in the fresh one).
+- tests: `test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it` (the rule, the clock, a part asking no
+  judge), `test_a_warned_answer_is_served_with_what_else_it_may_mean`; tests.test_answer 32, tests.test_sql_ast 91,
+  tests.test_program 102, tests.test_decomposition 16, tests.test_compose 39, the offline regression gate pass.
+
+
+## Release 924a7b19 (two judges that must agree, lines by place, three readings) live; on a fresh 1,000 the answers given unmarked and wrong fall from 12.9% to 4.4% with 35.9% marked, the engine's own right answers 748 -> 749; Chrome gate 102 of 102 fresh, 77 of 78 existing; a compound question waits for the judge once per part (2026-11-27)
 
 - Engine `prereasoner-api-00356-qul` (`engine@sha256:033caa12...`, Cloud Build 446e5412: build, offline regression
   gate, runtime server smoke, live product suite, 92 min, each demo question's four modes now waiting for the judge),
@@ -69,11 +119,14 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
   `prereasoner-scratch/gate-924a7b19/`, archived). Existing conversations first (the 24 of 4a3b86e5's fresh pass):
   77 of 78, the miss customer-orders "in GBP for the whole of Europe?" read as an average after the conversation's
   last turn asked one, as at every gate since b9b0fe50; 65 records byte-identical to 4a3b86e5's, 13 differing by the
-  day's exchange rates; no answer warned. Fresh pass: 97 of 97 on 23 of the 24 datasets (81 byte-identical, 16 by the
-  day's rates); **eval-neartail-ecommerce was not run**: its 942 KB upload was refused, the account's 256 MB of
-  conversations being full of earlier gates' chats, which the owner clears. Two fresh answers carry a warning, both
-  right: "number of leads" on a 4,521-line upload, whose judge call did not answer in time, and "total budget in
-  Germany", where the judge picked the one-group breakdown by currency, the same 33,000 in another shape.
+  day's exchange rates; no answer warned. Fresh pass: 102 of 102 on the 24 datasets (of the first 97 records, 81
+  byte-identical and 16 by the day's rates). eval-neartail-ecommerce's 942 KB upload was refused at first, the
+  account's 256 MB of conversations being full of earlier gates' chats; the owner had them deleted ("They are all
+  created by you for testing. Delete as when required"): the 347 conversations of earlier gates, each by the app's own
+  delete call, 268 MB -> 57 MB, the 24 the next gate reopens and 109 other test conversations left; the dataset then
+  ran, 5 of 5. Two fresh answers carry a warning, both right: "number of leads" on a 4,521-line upload, whose judge
+  call did not answer in time, and "total budget in Germany", where the judge picked the one-group breakdown by
+  currency, the same 33,000 in another shape.
 - Evaluation: a judge call that fails while a reference is recorded is asked again (three attempts, each as served)
   and a set with a miss is skipped, not the run (`regress/run_dev_decisions.py` `JudgeReplay`); every record names
   its question's judge call from the choice's own body (`judge_call`, `regress/eval_sets.py` `judge_call_of`), so
