@@ -1,4 +1,4 @@
-"""retry.py — the own-data retry: Gemini 4 Neon writes one query when the Decisions path's answer is most likely wrong,
+"""retry.py — the own-data retry: Gemini 4 Neon writes one query when the Decisions path's answer is very likely wrong,
 or when the person retries an answer.
 
 Owner's decision, 2026-11-21: the path never asks back for its own uncertainty ("you can't push your failure to

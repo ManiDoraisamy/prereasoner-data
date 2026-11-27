@@ -35,16 +35,22 @@ decisions belong in `DECISIONS.md`, and measured SQL results belong in
   verification deterministic, and make provider migration transparent to users. Own-data selection may
   use an external closed-choice model (owner's decision, 2026-11-20): it answers closed questions whose
   options the engine built, returns probabilities only, and never writes text, SQL, or a program. It is
-  called only through `engine/llm.py`. A second judge of the choice (owner's decision, 2026-11-26) answers the
-  same closed question with the key of one option the engine built; it sets an answer's mark, never the answer.
+  called only through `engine/llm.py`. An answer's mark is the engine's own (owner, 2026-11-27): the second judge
+  of the choice (2026-11-26) is removed, and no other model is asked about an answer the engine gives.
   The turn's read-as line shows the
   plain reading of the query that ran (never a paragraph in the answer).
 - Never ask back for the engine's own uncertainty (owner, 2026-11-21: "never ask back unless the question is
-  wrong. You can't push your failure to users"). Every own-data answer is served with its mark (the response's
-  `check`): a warning icon when the engine is unsure, an error icon when the answer is most likely wrong. A click
-  on the icon shows the reason and a Retry; Retry, and an erred answer at once, runs the retry (`engine/retry.py`):
-  Gemini 4 Neon writes one SQLite query over the request's tables, served with its query and reason. The person is
-  asked only when the question is wrong: the retry says the sheet cannot answer it.
+  wrong. You can't push your failure to users"). Every own-data answer is served at once with its mark (the
+  response's `check`), from the engine alone: one of four levels of the choice's own probability, each its own icon
+  (owner, 2026-11-27: "never ever wait for neon to show engine's answer. Always show engine's answer immediately ...
+  and show only icons for: Very likely correct, likely Correct, likely Wrong, Very likely Wrong"). Neither the
+  answer nor the question box ever waits for another model. A click on the icon shows the reason. An answer very
+  likely wrong is retried at once in the background (`engine/retry.py`: Gemini 4 Neon writes one SQLite query over
+  the request's tables): its icon loads, and the retry's answer, served with its query and reason, takes its place
+  in view. A likely-wrong answer offers the same Retry on a click. The person is asked only when the question is
+  wrong: the retry says the sheet cannot answer it.
+- Raise accuracy in the engine (owner, 2026-11-27). Never propose a longer wait for Neon, a wider set of answers
+  Neon checks or rewrites, or Neon as the route to an accuracy figure.
 
 ## Non-negotiable outcome
 
@@ -79,11 +85,11 @@ Extend these owners. Do not build parallel replacements.
 | Own-data typed SQL AST and rendering | `engine/sql_ast.py` and the focused `engine/sql_*.py` modules |
 | Dual SQL/Python source plan, emission, and parity runtime | `engine/deterministic/`; it consumes the typed-AST winner and never becomes a second planner |
 | Bounded compound-question proposal validation and typed leaf-plan fusion | `engine/decomposition.py`; the existing AST planner still owns every leaf and `engine/deterministic/` still owns the one executable DAG |
-| Own-data reading and choice (the Decisions path): the stock reading, the closed questions and their records, the decoder, the verifier, the choice and the per-answer decision (`T_ERR`, `T_FLAG`: answered, warned, erred; never asked back; an answer goes unmarked only where the second judge picks it too) | `engine/program/` (`answer.py`, `closed.py`, `stock.py`, `dates.py`, `decoder.py`, `verifier.py`, `lowering.py`, `store.py`, and `connected.py`: the request's links placed on the workbook, what they reach, the columns they add) with the sheet compiler `engine/sheet/`, called only by `engine/tables.py:TableQuery.select_query`; stock bge-m3 pinned by hash under `base_models` in `engine/data/weights_manifest.json` |
+| Own-data reading and choice (the Decisions path): the stock reading, the closed questions and their records, the decoder, the verifier, the choice and the per-answer decision (`T_ERR`, `T_FLAG`, `T_SURE`: the four levels of an answer's mark, from the choice's own probability; never asked back) | `engine/program/` (`answer.py`, `closed.py`, `stock.py`, `dates.py`, `decoder.py`, `verifier.py`, `lowering.py`, `store.py`, and `connected.py`: the request's links placed on the workbook, what they reach, the columns they add) with the sheet compiler `engine/sheet/`, called only by `engine/tables.py:TableQuery.select_query`; stock bge-m3 pinned by hash under `base_models` in `engine/data/weights_manifest.json` |
 | Own-data query selection (the request's grids read as one workbook, the Decisions path's listed candidates as the pool, the length rule) — the ONE selection used by serving, the compose probe, the hybrid search's check, decomposition leaves, the Spider evaluator, the dev replay and the offline regression gate | `engine/tables.py:TableQuery.select_query` |
 | GPU lease loop shared by training packages | `training/readers/lease.py` (the experiments folder `training/readers/data/experiments/` stays gitignored) |
-| The one LLM client: Gemini on Vertex AI for the chat orchestrator, starter questions and reference generation, the Gemini Developer API's Decisions endpoint (`decide`) for the own-data closed questions, and Gemini 4 Neon for the choice's second judge (`judge`) and for the retry (`write_query`) | `engine/llm.py` |
-| The own-data retry: an answer most likely wrong (closed.ERRED), or one the person retries, gets one written SQLite query over typed copies of the workbook the Decisions path reads (`TableQuery.workbook`: its compiled tables with the columns the request's links reach), guarded, read-only, served with its query; the answer's mark and its reason (`check`: `engine/tables.py` `answer_check`, `retried_check`) | `engine/retry.py`, called only by `engine/tables.py` (`TableQuery.serve`, `TableQuery.retry_answer`); the clients render the mark through `web/public/lib/turn-renderer.js` `renderCheck` |
+| The one LLM client: Gemini on Vertex AI for the chat orchestrator, starter questions and reference generation, the Gemini Developer API's Decisions endpoint (`decide`) for the own-data closed questions, and Gemini 4 Neon for the retry (`write_query`) | `engine/llm.py` |
+| The own-data retry: an answer very likely wrong (closed.ERRED), which the client that shows it retries in the background at once, or one the person retries, gets one written SQLite query over typed copies of the workbook the Decisions path reads (`TableQuery.workbook`: its compiled tables with the columns the request's links reach), guarded, read-only, served with its query; the answer's mark, its level and its reason (`check`: `engine/tables.py` `answer_check`, `level_of`, `retried_check`) | `engine/retry.py`, called only by `engine/tables.py` (`TableQuery.retry_answer`); the clients draw the mark, start the owed retry and put its answer in the turn's place through `web/public/lib/turn-renderer.js` (`renderCheck`, `owesRetry`, `revisedTurn`) |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |
 | Compose serving host + world-grounding lookup | `engine/knowledge_compose.py` |
@@ -188,10 +194,9 @@ Consolidation is part of each phase, not a future cleanup phase.
   (probabilities over options the engine built, no generated text) may take the readers' place in
   reading a question and choosing among the built candidates; it enters production only by replacing
   them in one migration under the one implementation rule, never as a path beside them. One written query
-  is the owner's exception (2026-11-21): the retry (`engine/retry.py`), for an answer the choice holds most
-  likely wrong or one the person retries, never for a decided answer and never as a second selection. A second
-  judge of the choice (owner, 2026-11-26: `engine/llm.py` `judge`, the key of one option the engine built) warns
-  an answer the two judges do not both pick; it never changes which answer is served. No
+  is the owner's exception (2026-11-21): the retry (`engine/retry.py`), for an answer the choice holds very
+  likely wrong or one the person retries, never for a decided answer and never as a second selection. No model
+  judges the choice (owner, 2026-11-27; a second judge set the mark from 2026-11-26 until then). No
   question-specific word lists or
   patches: a rule in the decoder or builder must be generic semantics (dates, a pinned column, list
   marks) that hold across schemas.

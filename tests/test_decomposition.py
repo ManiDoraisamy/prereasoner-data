@@ -403,7 +403,7 @@ def _names_listing(catalog):
 
 def _leaf_planner(selections):
     planner = Mock()
-    planner.select_query.side_effect = lambda leaf, _tables, marked=True: selections(leaf)
+    planner.select_query.side_effect = lambda leaf, _tables: selections(leaf)
     planner.guard.return_value = (True, None)
     return planner
 

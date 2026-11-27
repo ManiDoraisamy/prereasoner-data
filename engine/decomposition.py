@@ -147,7 +147,7 @@ def declined_compound(selection, question) -> dict[str, Any] | None:
     """The decomposition a long question needs, or None.
 
     A question longer than ``ONE_QUERY_WORDS`` words whose answer the one own-data selection
-    (engine/tables.py:TableQuery.select_query) holds most likely wrong is read as the bounded subquestions of a
+    (engine/tables.py:TableQuery.select_query) holds very likely wrong is read as the bounded subquestions of a
     decomposition proposal instead, each short enough to read; one it answers is answered. A short one is retried
     (engine/retry.py), never asked about."""
     if selection is None or selection.selected is not None or one_query_length(question):
@@ -445,7 +445,7 @@ def _leaf_readings(planner, slug, node, tables, *, feeds_cross: bool, question: 
     from engine.deterministic.lower import UnsupportedDeterministicPlan
     from engine.program.lowering import shown_plan
 
-    selection = planner.select_query(node["question"], tables, marked=False)     # a step of the plan: no mark, no second judge
+    selection = planner.select_query(node["question"], tables)     # a step of the plan: its listing is read
     if selection.catalog is not None:
         from engine.program.store import column_lineage
         if lineage is not None:

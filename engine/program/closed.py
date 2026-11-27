@@ -25,7 +25,7 @@ option's term W * (log p - log 1/n) replaces the stock score (the value slot is 
 p(none))); an added question's option joins the reading only when the API holds it likelier than none. ``choose_answer``
 is the decision: a candidate's probability is summed over the listed candidates that return the same answer; the
 likeliest answer is given when none is not likelier and its probability reaches T_ERR, with a warning below T_FLAG, and
-is most likely wrong (ERRED) otherwise: it is never asked back for (owner, 2026-11-21: "never ask back unless the
+is very likely wrong (ERRED) otherwise: it is never asked back for (owner, 2026-11-21: "never ask back unless the
 question is wrong"), it is retried (engine/retry.py) and, when the retry cannot answer, served marked as such.
 
 W, T_ERR and T_FLAG are the CLEF path's own, fixed before the Decisions measurement (decisions-probe-20261118): W was
@@ -57,13 +57,13 @@ from engine.program.words import YEARS_FROM
 from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
 
 W = 2.0                    # an API probability's weight on the decoder's reading
-T_ERR = 0.42               # below this, the likeliest answer is most likely wrong: retried, never asked back
-T_FLAG = 0.575             # below this, the likeliest answer is given with a warning
+# The answer's mark is the choice's own probability of it, in four levels (owner, 2026-11-27: the answer and its mark
+# at once, from the engine alone; nothing waits for another model). On unseen tables (WikiTableQuestions fresh sample
+# 3, 2026-11-27) the answers of each level were right 90%, 78%, 56% and 32% of the time.
+T_ERR = 0.42               # below this, the likeliest answer is very likely wrong: owed its retry, never asked back
+T_FLAG = 0.575             # below this, the likeliest answer is likely wrong
+T_SURE = 0.90              # from this up it is very likely correct; between T_FLAG and it, likely correct
 CHOOSE_K = 50              # candidates the choice offers
-# What a second judge's answer says of an answered answer (choose_answer): it picked another answer, it picked none, or
-# it did not answer. Any of them warns.
-DOUBT_ANOTHER, DOUBT_NONE, DOUBT_UNREAD = "another", "none", "unread"
-UNJUDGED = "unjudged"      # the second judge's call failed: no key of its own
 P_FLOOR = 1e-4             # a probability is read no smaller than this
 SCORE_DIGITS = 4
 ANSWERED, WARNED, ERRED = "answered", "warned", "erred"
@@ -884,13 +884,6 @@ def choice_record(catalog: Catalog, question: str, listed: Sequence[tuple[str, S
     return sheet_state(catalog, question, active_sheet), {"reading": {"instructions": CHOICE_INSTRUCTION, "criteria": criteria}}
 
 
-def judge_options(question: Mapping) -> list[tuple[str, str]]:
-    """The choice question's options as the second judge reads them (engine/llm.py judge): each key and its text, in
-    the decoder's order, none last."""
-    criteria = question["criteria"]
-    return [(key, criteria[key]) for key in criteria if key != NONE] + ([(NONE, criteria[NONE])] if NONE in criteria else [])
-
-
 def answer_key(rows: Sequence[Sequence]) -> str:
     """An answer's identity: candidates returning the same rows give the same answer."""
     return hashlib.sha1(json.dumps([list(row) for row in rows], default=str, ensure_ascii=False).encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
@@ -902,16 +895,15 @@ class AnswerChoice:
     listings returning it the one the choice gave the most probability (the first among equals), so the read-as served
     is the reading the choice preferred; runner_up: the first listing of the next likeliest answer; mass: the likeliest
     answer's probability, summed over the candidates returning it; alike: the listing of another answer that reads word
-    for word like a reading of this one (in the sheet's header words), or None; doubt: what the second judge said of an
-    answer the choice alone would give unmarked (DOUBT_ANOTHER: it picked another answer, then the runner-up;
-    DOUBT_NONE: it picked none; DOUBT_UNREAD: it did not answer), or None."""
+    for word like a reading of this one (in the sheet's header words), or None; sure: an answered answer the choice
+    gives T_SURE or more (very likely correct; below it, likely correct)."""
     kind: str
     pick: int | None
     runner_up: int | None
     mass: float | None
     none: float
     alike: int | None = None
-    doubt: str | None = None
+    sure: bool = False
 
 
 def answer_masses(probabilities: Mapping[str, float] | None, answers: Sequence[str]) -> tuple[dict[str, float], dict[str, int]]:
@@ -926,27 +918,18 @@ def answer_masses(probabilities: Mapping[str, float] | None, answers: Sequence[s
     return mass, first
 
 
-def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[str], lines: Sequence[str] = (),
-                  judged: str | None = None) -> AnswerChoice:
+def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[str], lines: Sequence[str] = ()) -> AnswerChoice:
     """Per answer, not per candidate: the API spreads its probability over readings that return the same answer (a right
     answer at ranks 0, 5, 9 and 12 read 0.33, 0.28 and 0.13 on three of them), so a candidate's probability is summed over
     the listed candidates whose answer (answers[i], answer_key) is the same (answer_masses). The likeliest answer, ties to
-    the earlier listing, is most likely wrong (ERRED) when none is likelier or it is below T_ERR, warned below T_FLAG,
-    and answered otherwise; it is served in every case, and ERRED with no answer when nothing was listed. It is warned
+    the earlier listing, is very likely wrong (ERRED) when none is likelier or it is below T_ERR, likely wrong (WARNED)
+    below T_FLAG, and answered otherwise: likely correct, or very likely correct from T_SURE up (``sure``). It is
+    served in every case, with that mark and at once: nothing here waits for another model. ERRED with no answer when
+    nothing was listed. It is warned
     too when a reading of it reads, word for word (``lines``: each listing's read-as in the sheet's own header words,
     output.in_header_words), like a reading the choice was offered of another answer (``alike``): "total Amount" on a
     sheet with two columns headed Amount read "the total of Amount" for both, 40 and 60, and the question cannot tell
-    which it means; the served reading names its column by the sheet's letter ("Amount [C]").
-
-    Two judges that must agree (owner, 2026-11-26): ``judged`` is the key a second judge picked for the same question
-    (engine/llm.py judge; UNJUDGED when its call failed; None when it is not asked, as before the choice is known). An
-    answer the choice would give unmarked stays unmarked only where the judge picked a listing of the same answer;
-    another answer (then the runner-up), none, or no answer warns it (``doubt``). And an answer the choice warns only
-    because its own probability is low (below T_FLAG, no reading alike) is given unmarked where the judge picked it
-    too: the two agree, which the choice's probability alone could not say (the 896: 33 such answers right, 7 wrong;
-    spider/results/RESULTS.md, 2026-11-27). The answer served is the choice's in every case; an answer with a reading
-    alike, and a most-likely-wrong one, are as the choice left them. On unseen tables the unmarked wrong fell from
-    13.6% and 12.8% to 6.7% and 5.8% (2026-11-26)."""
+    which it means; the served reading names its column by the sheet's letter ("Amount [C]")."""
     probabilities = probabilities or {}
     none = probabilities.get(NONE, 0.0)
     mass, first = answer_masses(probabilities, answers)
@@ -965,30 +948,11 @@ def choose_answer(probabilities: Mapping[str, float] | None, answers: Sequence[s
     else:
         kind = ANSWERED
     served = min((key for key in probabilities if key != NONE and answers[int(key[1:])] == best), key=lambda key: (-probabilities[key], int(key[1:])))
-    other, doubt = alike if alike is not None else runner_up, None
-    if judged is not None and alike is None and kind != ERRED:
-        agreed = judged not in (UNJUDGED, NONE) and answers[int(judged[1:])] == best
-        if kind == WARNED:
-            kind = ANSWERED if agreed else WARNED
-        elif not agreed:
-            kind = WARNED
-            if judged == UNJUDGED:
-                doubt = DOUBT_UNREAD
-            elif judged == NONE:
-                doubt = DOUBT_NONE
-            else:
-                other, doubt = int(judged[1:]), DOUBT_ANOTHER
-    return AnswerChoice(kind, int(served[1:]), other, mass[best], none, alike, doubt)
+    other = alike if alike is not None else runner_up
+    return AnswerChoice(kind, int(served[1:]), other, mass[best], none, alike, kind == ANSWERED and mass[best] >= T_SURE)
 
 
-def awaits_judge(choice: AnswerChoice) -> bool:
-    """Whether an answer's mark depends on the second judge (choose_answer): one the choice would give unmarked, or
-    warned only because its own probability is low. An answer with a reading alike stays warned and a
-    most-likely-wrong one is retried whatever the judge says, so neither waits for it."""
-    return choice.alike is None and choice.kind in (ANSWERED, WARNED)
-
-
-__all__ = ["ORDER_QUESTION", "order_record", "order_scores", "ANSWERED", "CHOOSE_K", "DOUBT_ANOTHER", "DOUBT_NONE", "DOUBT_UNREAD", "ERRED", "T_ERR", "T_FLAG", "UNJUDGED", "W", "WARNED",
-           "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses", "awaits_judge", "judge_options",
+__all__ = ["ORDER_QUESTION", "order_record", "order_scores", "ANSWERED", "CHOOSE_K", "ERRED", "T_ERR", "T_FLAG", "T_SURE", "W", "WARNED",
+           "AnswerChoice", "ReadingRecord", "answer_key", "answer_masses",
            "choice_record", "choose_answer", "convert_choice", "convert_record", "fused_reading", "reading_record", "said_record", "sheet_state",
            "value_set_question", "value_set_scores"]

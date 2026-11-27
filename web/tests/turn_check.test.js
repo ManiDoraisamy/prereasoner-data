@@ -1,32 +1,106 @@
-// Dependency-free checks of an answer's mark as every client draws it (lib/turn-renderer.js renderCheck).
-// Owner, 2026-11-27: the answer is served before its second check has answered. While it is being checked its mark
-// is a quiet pulse with no reason and no Retry; it then settles into no mark, or a warning with its reason.
+// Dependency-free checks of an answer's mark as every client draws it (lib/turn-renderer.js).
+// Owner, 2026-11-27: "never ever wait for neon to show engine's answer. Always show engine's answer immediately ... and
+// show only icons for: Very likely correct, likely Correct, likely Wrong, Very likely Wrong. And the icon can change
+// into retry loading for errors like Very likely Wrong". The mark is the engine's own (check.level), on screen with
+// the answer: there is no state in which an answer waits for its mark. An answer very likely wrong is retried in the
+// background: its icon loads, and the retry's answer takes its place in the turn and in the transcript.
 const assert = require('assert');
 const path = require('path');
 
 require(path.join(__dirname, '..', 'public', 'lib', 'turn-renderer.js'));
 const R = globalThis.PrereasonerTurnRenderer;
 
-const checking = R.renderCheck({state: 'checking', confidence: 0.9}, 'data-retry="0"');
-assert.match(checking, /class="turn-check check-checking"/);
-assert.match(checking, /role="status"/);
-assert.match(checking, /Checking this answer/);
-assert.ok(!/<details|<button|checkretry/.test(checking), 'an answer being checked has no reason to open and no Retry');
-
-assert.strictEqual(R.renderCheck({state: 'answered', confidence: 0.9}, 'data-retry="0"'), '', 'an answered answer has no mark');
+// Four levels, four icons, each with its reason on a click.
+const levels = {
+  very_likely_correct: ['answered', 'Very likely correct'],
+  likely_correct: ['answered', 'Likely correct'],
+  likely_wrong: ['warned', 'Likely wrong'],
+  very_likely_wrong: ['erred', 'Very likely wrong']
+};
+const icons = new Set();
+Object.keys(levels).forEach(level => {
+  const html = R.renderCheck({state: levels[level][0], level, reason: 'I read this as "the total of Amount", 70% sure.'}, 'data-retry="0"');
+  assert.match(html, new RegExp('<details class="turn-check check-' + level + '">'));
+  assert.match(html, new RegExp('aria-label="' + levels[level][1] + '"'));
+  assert.match(html, /I read this as &quot;the total of Amount&quot;, 70% sure\./);
+  icons.add(/<summary[^>]*>([^<]+)<\/summary>/.exec(html)[1]);
+  // the Retry is offered where the engine doubts its answer, never on one it stands behind
+  assert.strictEqual(/checkretry/.test(html), level === 'likely_wrong' || level === 'very_likely_wrong', level);
+});
+assert.strictEqual(icons.size, 4, 'each level has its own icon');
 assert.strictEqual(R.renderCheck(null, 'data-retry="0"'), '');
+assert.strictEqual(R.renderCheck({state: 'checking'}, 'data-retry="0"'), '', 'no waiting state is drawn');
 
-const warned = R.renderCheck({state: 'warned', reason: 'I read this as "the total of Amount", 50% sure.'}, 'data-retry="0"');
-assert.match(warned, /<details class="turn-check check-warned">/);
-assert.match(warned, /I read this as &quot;the total of Amount&quot;, 50% sure\./);
-assert.match(warned, /<button type="button" class="checkretry" data-retry="0">Retry<\/button>/);
+// A turn stored before the four levels holds its state alone.
+assert.match(R.renderCheck({state: 'warned', reason: 'r'}, 'data-retry="0"'), /check-likely_wrong/);
+assert.match(R.renderCheck({state: 'erred', reason: 'r'}, 'data-retry="0"'), /check-very_likely_wrong/);
+assert.strictEqual(R.renderCheck({state: 'answered'}, 'data-retry="0"'), '', 'a stored answer with no level has no mark');
 
-// The turn's mark is its last engine call's: an answer served most likely wrong, then its retry's.
-const traces = [
-  {jobId: 't_0', engine: {check: {state: 'erred', reason: 'This answer is most likely wrong.'}}},
-  {jobId: 't_1', engine: {check: {state: 'retried', reason: 'My reading was most likely wrong, so Gemini 4 Neon wrote this query.'}}}
+// An answer served very likely wrong is owed its retry; while the retry runs the icon loads and offers no Retry.
+const erred = {state: 'erred', level: 'very_likely_wrong', confidence: 0.31,
+  reason: 'This answer is very likely wrong. I read this as “the count of Region”, 31% sure.'};
+assert.ok(R.owesRetry(erred));
+assert.ok(!R.owesRetry({state: 'warned', level: 'likely_wrong'}), 'a likely-wrong answer stays the engine\'s');
+assert.ok(!R.owesRetry({state: 'answered', level: 'likely_correct'}) && !R.owesRetry(null));
+const loading = R.renderCheck(erred, 'data-retry="0"', true);
+assert.match(loading, /check-very_likely_wrong check-retrying/);
+assert.match(loading, /role="status"/);
+assert.match(loading, /<span class="checkspin"><\/span>/);
+assert.match(loading, /Very likely wrong\. Retrying/);
+assert.ok(!/checkretry/.test(loading), 'a retry that is running offers no second one');
+
+// The retry's answer takes the turn's place and keeps what the first answer was.
+const turn = {reply: '42\n\n3 rows could not be matched.', check: erred};
+const retriedCheck = {state: 'retried', level: 'likely_correct', confidence: null,
+  reason: 'Retried: Gemini 4 Neon wrote this query. Adds Amount over the East rows.', retry: {sql: 'SELECT SUM("Amount") FROM "orders"'}};
+const revised = R.revisedTurn(turn, {reply: '876.50', check: retriedCheck});
+assert.strictEqual(revised.replaced, true);
+assert.strictEqual(revised.reply, '876.50');
+assert.deepStrictEqual(revised.check.first, {reply: '42', reason: erred.reason});
+const shown = R.renderCheck(revised.check, 'data-retry="0"');
+assert.match(shown, /check-likely_correct/);
+assert.match(shown, /First answer: 42 This answer is very likely wrong\./);
+assert.match(shown, /SELECT SUM\(&quot;Amount&quot;\) FROM &quot;orders&quot;/);
+assert.match(shown, /checkretry/, 'a retried answer can be retried again');
+assert.ok(!R.owesRetry(revised.check));
+
+// The retry's word that the sheet cannot answer the question takes the turn's place, with no mark.
+const unanswerable = R.revisedTurn(turn, {reply: 'The sheet does not hold what this question asks.', check: null});
+assert.deepStrictEqual(unanswerable, {replaced: true, reply: 'The sheet does not hold what this question asks.', check: null});
+
+// A retry that did not answer leaves the turn's answer, its mark saying so; it is not asked again by itself.
+const failed = R.revisedTurn(turn, {reply: 'x', check: {state: 'erred', level: 'very_likely_wrong',
+  reason: 'The retry could not write a query that runs on this sheet.', retry: {sql: null}}});
+assert.strictEqual(failed.replaced, false);
+assert.strictEqual(failed.reply, turn.reply);
+assert.match(failed.check.reason, /very likely wrong\..*The retry could not write a query that runs on this sheet\.$/);
+assert.ok(!R.owesRetry(failed.check));
+const lost = R.revisedTurn(turn, null);
+assert.strictEqual(lost.replaced, false);
+assert.match(lost.check.reason, /The retry did not finish\.$/);
+assert.ok(!R.owesRetry(lost.check));
+assert.match(R.renderCheck(lost.check, 'data-retry="0"'), /checkretry/, 'the person can still retry it');
+
+// The transcript the assistant reads: the retry is asked with what came before the turn, and its answer replaces the
+// turn's there.
+const history = [
+  {role: 'user', content: 'total amount'}, {role: 'assistant', content: '900'},
+  {role: 'user', content: 'how many regions'}, {role: 'assistant', content: turn.reply},
+  {role: 'user', content: 'and for East?'}, {role: 'assistant', content: '120'}
 ];
-assert.strictEqual(R.turnCheck(traces).state, 'retried');
-assert.strictEqual(R.turnCheck([{jobId: 't_0', engine: {check: {state: 'checking'}}}]).state, 'checking');
+assert.deepStrictEqual(R.historyBefore(history, 'how many regions', turn.reply), history.slice(0, 2));
+assert.deepStrictEqual(R.historyBefore(history, 'a question it never held', 'x'), history);
+const after = R.revisedHistory(history, 'how many regions', turn.reply, '876.50');
+assert.strictEqual(after[3].content, '876.50');
+assert.strictEqual(after.length, 6);
+assert.strictEqual(history[3].content, turn.reply, 'the transcript passed in is not changed');
+
+// The turn's mark is its last engine call's.
+const traces = [
+  {jobId: 't_0', engine: {check: {state: 'answered', level: 'likely_correct'}}},
+  {jobId: 't_1', engine: {check: erred}}
+];
+assert.strictEqual(R.turnCheck(traces).level, 'very_likely_wrong');
+assert.strictEqual(R.turnCheck([{jobId: 't_0', engine: {}}]), null);
 
 console.log('turn check: ok');

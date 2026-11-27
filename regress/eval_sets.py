@@ -545,40 +545,6 @@ class CallStore:
                 sink.write(json.dumps({"hash": digest, **answer}, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def choice_question(payload: bytes) -> tuple[dict, dict] | None:
-    """(STATE, the choice's question) of a Decisions body that is the choice's call (engine/program/closed.py
-    choice_record: its one question carries the choice's instruction), None for any other call. A body's keys are
-    sorted, which leaves the options in the decoder's order (r00, r01, ...) with none first; closed.judge_options puts
-    none last again."""
-    from engine.program.closed import CHOICE_INSTRUCTION
-    body = json.loads(payload.decode("utf-8"))
-    question = (body.get("questions") or {}).get("reading") or {}
-    if question.get("instructions") != CHOICE_INSTRUCTION:
-        return None
-    return json.loads(body["input"].split("\n", 1)[1]), question
-
-
-def judge_call_of(payload: bytes) -> str | None:
-    """The body hash of the second judge's call for the question a Decisions body chooses on (None for a body that is
-    not the choice's): engine.llm.judge sends the same STATE, instruction and options (judge_payload over
-    closed.judge_options), so a record names its question's judge call whether or not the answer waited for it."""
-    import engine.llm as llm
-    from engine.program.closed import judge_options
-    choice = choice_question(payload)
-    if choice is None:
-        return None
-    state, question = choice
-    return llm.decision_hash(llm.judge_payload(state, question["instructions"], judge_options(question)))
-
-
-def judge_unasked(_payload: bytes) -> dict:
-    """engine.llm's judge transport (JUDGE_TRANSPORT) for a run that reads no mark (a diagnosis run on training
-    questions, the Spider evaluator): the second judge is not asked, so an answer the choice gives unmarked comes back
-    unjudged (engine/program/closed.py DOUBT_UNREAD) and the run records it as the choice left it."""
-    import engine.llm as llm
-    raise llm.LLMUnavailable("the second judge is not asked in this run")
-
-
 def pack(folder: Path = CALLS) -> None:
     """Each plain batch of ``folder`` compressed to .jsonl.gz (sorted by hash, no timestamp, so the same answers give
     the same bytes), the plain file removed. A batch packed before keeps its lines: a run still writing it starts the

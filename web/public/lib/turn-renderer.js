@@ -389,37 +389,99 @@
       '" target="_blank" rel="noopener noreferrer">See all ' + escapeHtml(match[1]) + ' rows in Prereasoner &#8599;</a>';
   }
 
-  // An answer's mark: the engine's ``check`` (engine/tables.py answer_check), on the turn's last engine call. A warned
-  // answer is one the engine is not sure of, an erred one most likely wrong, a retried one Gemini 4 Neon's written
-  // query (engine/retry.py). A click opens its reason and a Retry (owner, 2026-11-21: never ask back; show the mark).
+  // An answer's mark: the engine's ``check`` (engine/tables.py answer_check), on the turn's last engine call. It is one
+  // of four levels, from the engine alone and on screen with the answer (owner, 2026-11-27: "show only icons for: Very
+  // likely correct, likely Correct, likely Wrong, Very likely Wrong"). A click opens its reason. An answer very likely
+  // wrong is retried at once, in the background (engine/retry.py: Gemini 4 Neon writes the query): its icon loads
+  // while the retry runs, the question box stays open, and the retry's answer takes its place in view. A likely-wrong
+  // or retried answer offers the same Retry. A turn stored before the four levels holds its state alone.
   var CHECK_MARKS = {
-    warned: {icon: '&#9888;', label: 'Not sure'},
-    erred: {icon: '&#9940;', label: 'Most likely wrong'},
-    retried: {icon: '&#8635;', label: 'Retried'}
+    very_likely_correct: {icon: '&#10004;', label: 'Very likely correct'},
+    likely_correct: {icon: '&#10003;', label: 'Likely correct'},
+    likely_wrong: {icon: '&#9888;', label: 'Likely wrong'},
+    very_likely_wrong: {icon: '&#10006;', label: 'Very likely wrong'}
   };
+  var STATE_LEVELS = {warned: 'likely_wrong', erred: 'very_likely_wrong', retried: 'likely_correct'};
+
+  function checkLevel(check) {
+    if (!check) return '';
+    return CHECK_MARKS[check.level] ? check.level : (STATE_LEVELS[check.state] || '');
+  }
 
   function turnCheck(traces) {
     var list = (traces || []).filter(function (trace) { return trace && trace.engine && trace.engine.check; });
     return list.length ? list[list.length - 1].engine.check : null;
   }
 
-  // ``retryAttrs``: the attributes the Retry button carries (a client's own handler); none, no button.
-  // An answer is served before its second check has answered (engine/tables.py checking_check; owner, 2026-11-27:
-  // the answer first). While it is being checked its mark is a quiet pulse with no reason and no Retry: it settles
-  // into no mark or a warning, in view.
-  function renderCheck(check, retryAttrs) {
-    if (check && check.state === 'checking') {
-      return '<span class="turn-check check-checking" role="status" title="Checking this answer" ' +
-        'aria-label="Checking this answer"><span class="checkpulse"></span></span>';
+  // Whether an answer is owed the retry (engine/tables.py owes_retry): it was served very likely wrong and no retry
+  // of it has run.
+  function owesRetry(check) {
+    return !!check && check.state === 'erred' && checkLevel(check) === 'very_likely_wrong' && !check.retry;
+  }
+
+  // Where a turn sits in the transcript the assistant reads ([{role, content}]): the index of its question, the last
+  // user message with that text whose answer is ``reply``; -1 when the transcript no longer holds it.
+  function historyIndex(history, question, reply) {
+    var list = history || [];
+    for (var at = list.length - 2; at >= 0; at--) {
+      if (list[at] && list[at + 1] && list[at].role === 'user' && list[at].content === question &&
+          list[at + 1].role === 'assistant' && list[at + 1].content === reply) return at;
     }
-    var mark = check && CHECK_MARKS[check.state];
+    return -1;
+  }
+
+  // The transcript a turn's retry is asked with: what came before the turn (all of it when the turn is not found).
+  function historyBefore(history, question, reply) {
+    var at = historyIndex(history, question, reply);
+    return at < 0 ? (history || []).slice() : history.slice(0, at);
+  }
+
+  // The transcript after a retry's answer took a turn's place.
+  function revisedHistory(history, question, was, now) {
+    var at = historyIndex(history, question, was), list = (history || []).slice();
+    if (at >= 0) list[at + 1] = {role: 'assistant', content: now};
+    return list;
+  }
+
+  function firstLine(text) {
+    var line = String(text || '').split('\n').filter(function (part) { return part.trim(); })[0] || '';
+    return line.length > 160 ? line.slice(0, 157) + '...' : line;
+  }
+
+  // A turn after its retry came back. ``turn``: {reply, check} as shown. ``retried``: the chat's answer to the same
+  // question asked with retry:true ({reply, check}), or null when it did not come back. The retry's answer takes the
+  // turn's place and keeps what the first answer was (``check.first``); its word that the sheet cannot answer the
+  // question takes the turn's place with no mark; a retry that did not answer leaves the turn, its mark saying so.
+  function revisedTurn(turn, retried) {
+    var was = (turn && turn.check) || {}, now = retried && retried.check;
+    if (retried && retried.reply && now && now.state === 'retried') {
+      return {replaced: true, reply: retried.reply, check: Object.assign({}, now, {
+        first: {reply: firstLine(turn.reply), reason: String(was.reason || '')}})};
+    }
+    if (retried && retried.reply && !now) return {replaced: true, reply: retried.reply, check: null};
+    var why = (now && now.reason) || 'The retry did not finish.';
+    return {replaced: false, reply: turn.reply, check: Object.assign({}, was, {
+      reason: (was.reason ? was.reason + ' ' : '') + why, retry: (now && now.retry) || {failed: true}})};
+  }
+
+  // ``retryAttrs``: the attributes the Retry button carries (a client's own handler); none, no button. ``retrying``:
+  // the turn's retry is running, so its icon loads and offers no Retry.
+  function renderCheck(check, retryAttrs, retrying) {
+    var level = checkLevel(check), mark = CHECK_MARKS[level];
     if (!mark) return '';
-    var retry = check.retry || {};
+    var retry = check.retry || {}, first = check.first || null;
+    var label = retrying ? mark.label + '. Retrying' : mark.label;
     var sql = retry.sql ? '<pre class="checksql">' + escapeHtml(retry.sql) + '</pre>' : '';
-    var button = retryAttrs != null ? '<button type="button" class="checkretry" ' + retryAttrs + '>Retry</button>' : '';
-    return '<details class="turn-check check-' + escapeAttribute(check.state) + '">' +
-      '<summary class="checkmark" title="' + mark.label + '" aria-label="' + mark.label + '">' + mark.icon + '</summary>' +
-      '<div class="checkbody"><p class="checkreason">' + escapeHtml(check.reason || mark.label) + '</p>' + sql + button +
+    var before = first && first.reply ? '<p class="checkfirst">First answer: ' + escapeHtml(first.reply) +
+      (first.reason ? ' ' + escapeHtml(first.reason) : '') + '</p>' : '';
+    var offered = !retrying && retryAttrs != null &&
+      (level === 'likely_wrong' || level === 'very_likely_wrong' || check.state === 'retried');
+    var button = offered ? '<button type="button" class="checkretry" ' + retryAttrs + '>Retry</button>' : '';
+    return '<details class="turn-check check-' + level + (retrying ? ' check-retrying' : '') + '">' +
+      '<summary class="checkmark" title="' + label + '" aria-label="' + label + '"' +
+      (retrying ? ' role="status"' : '') + '>' + (retrying ? '<span class="checkspin"></span>' : mark.icon) + '</summary>' +
+      '<div class="checkbody"><p class="checklevel">' + label + '</p>' +
+      (check.reason ? '<p class="checkreason">' + escapeHtml(check.reason) + '</p>' : '') + before + sql + button +
       '</div></details>';
   }
 
@@ -453,6 +515,11 @@
     renderMarkdown: renderMarkdown,
     renderReasoningPanel: renderReasoningPanel,
     renderReasoningTree: renderReasoningTree,
+    checkLevel: checkLevel,
+    historyBefore: historyBefore,
+    owesRetry: owesRetry,
+    revisedHistory: revisedHistory,
+    revisedTurn: revisedTurn,
     renderResultLink: renderResultLink,
     renderStepLink: renderStepLink,
     renderTurn: renderTurn,

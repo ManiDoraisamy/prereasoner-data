@@ -242,7 +242,7 @@ nothing the readings do not say except the joins.
 
 Grammar support does not imply perfect language coverage. A valid AST can still be absent
 because the closed choices read the question wrongly or the program language cannot hold its shape;
-such an answer is marked, or retried when it is most likely wrong.
+such an answer is marked, or retried when it is very likely wrong.
 
 Arithmetic is handled by `engine/calculations/`, not by SQL-string templates. A specification
 detects explicit syntax, binds role-named numeric columns, and plans a `BinaryExpr` tree, with
@@ -286,7 +286,7 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | Module | Responsibility |
 |---|---|
 | `engine/program/`, `engine/sheet/` | The Decisions path that replaced `engine/readers/` (deleted 2026-11-20): the sheet compiler, the closed questions, the decoder, the verifier and the per-answer decision ([ARCHITECTURE.md](ARCHITECTURE.md#own-data-sql-planner)). |
-| `engine/retry.py` | The retry of an answer most likely wrong: one guarded, read-only SQLite query Gemini 4 Neon writes. |
+| `engine/retry.py` | The retry of an answer very likely wrong: one guarded, read-only SQLite query Gemini 4 Neon writes. |
 | `engine/sql_ast.py` | Immutable AST, validation, and rendering. |
 | `engine/sql_dates.py` | Calendar phrases of a question as typed date comparisons; the month words a query realized. |
 | `engine/sql_durations.py` | Duration phrases of a question, the date columns a span runs between, and the duration words a query realized. |

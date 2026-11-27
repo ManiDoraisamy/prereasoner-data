@@ -307,10 +307,9 @@ class PoolSelection:
     equals. ``selected`` is the decided candidate, answered or, below closed.T_FLAG, ``warned``: ``uncertain`` then
     names the coordinates the runner-up answer (first listed at ``runner_up``) reads differently
     (engine/program/language.coordinates); ``alike`` when that reading reads word for word like the answer's own (in
-    the sheet's header words); ``doubt`` when it is warned because the second judge did not pick it
-    (engine/program/closed.py DOUBT_*: another answer, then ``runner_up``; none; or no answer). When the likeliest answer is most likely wrong (engine/program/closed.py ERRED) the path
+    the sheet's header words). When the likeliest answer is very likely wrong (engine/program/closed.py ERRED) the path
     decides nothing (``selected`` is None, so compose and the search may answer it) and ``erred`` is the likeliest
-    candidate, served marked as most likely wrong when its retry (engine/retry.py) cannot answer: None when none
+    candidate, served marked as very likely wrong when its retry (engine/retry.py) cannot answer: None when none
     returned rows.
     ``confidence`` is the likeliest answer's probability and ``probabilities`` the choice's own, per listing (r00, r01,
     ..., and none). ``programs``, ``rows`` and ``catalog`` hold each candidate's program, the rows it returned as the
@@ -318,9 +317,7 @@ class PoolSelection:
     workbook it reads; ``tables`` the request's tables the programs
     run on (engine/program/store.py, on the request's database). ``converts``: the request's money columns could be
     read in another currency, so the path's own convert question read whether the question wants its answer in one
-    (engine/program/answer.py convert_target). ``pending``: the selection is as the choice left it and its mark
-    awaits the second judge (engine/tables.py PendingMark: the judge's question, and the path's answer with a key of
-    the judge's applied); None once the judge's answer is applied, or where no judge is asked."""
+    (engine/program/answer.py convert_target). ``sure``: the decided answer is very likely correct (closed.T_SURE)."""
     pool: tuple[ScoredQuery, ...]
     ranking: tuple[int, ...]
     selected: int | None
@@ -336,12 +333,11 @@ class PoolSelection:
     tables: object = None
     converts: bool = False
     alike: bool = False
-    doubt: str | None = None
-    pending: object = None
+    sure: bool = False
 
     @property
     def candidate(self) -> ScoredQuery | None:
-        """The member decided, or None when the likeliest answer is most likely wrong."""
+        """The member decided, or None when the likeliest answer is very likely wrong."""
         return None if self.selected is None else self.pool[self.selected]
 
     def plan(self, index: int, slug: str, whole_tables: bool = False):
@@ -382,7 +378,7 @@ class PoolSelection:
 
     def record(self) -> dict:
         """JSON evidence: the pool's size, the decided member and its place in the ranking, the likeliest answer's
-        probability, and the likeliest member when its answer is most likely wrong."""
+        probability, and the likeliest member when its answer is very likely wrong."""
         evidence = {
             "pool_size": len(self.pool),
             "eligible": len(self.ranking),
@@ -390,7 +386,7 @@ class PoolSelection:
             "confidence": None if self.confidence is None else round(self.confidence, 4),
             "erred": self.erred,
             "warned": self.warned,
-            "doubt": self.doubt,
+            "sure": self.sure,
         }
         if self.selected is not None:
             evidence.update(rank=self.ranking.index(self.selected), score=round(self.pool[self.selected].score, 6))

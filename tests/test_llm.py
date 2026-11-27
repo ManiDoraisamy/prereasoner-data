@@ -161,125 +161,6 @@ def test_the_retry_query_sends_one_sorted_body_and_reads_its_json_answer():
         _unavailable(lambda: llm.write_query("rules", "p"))
 
 
-def test_the_judge_sends_the_choices_question_and_reads_one_key():
-    """judge() puts one closed question to JUDGE_MODEL on the Developer API (engine/program/answer.py, the choice's
-    second judge): the STATE the Decisions endpoint is given, the instruction and the options in the order given, the
-    answer held by a JSON schema to one option's key, at the low thinking level, keys sorted so a question gives one
-    body (a recorded answer replays by its hash). Its thought parts are not the answer; an answer that is not its JSON,
-    a key that is no option, a failed call and a missing key reach the caller as LLMUnavailable."""
-    import json
-    from urllib.parse import urlparse
-
-    sent = []
-    state = {"question": "total amount", "workbook": []}
-    options = [("r00", "the total of Amount -> answer: 7"), ("r01", "the number of lines -> answer: 3"), ("none", "None of these.")]
-
-    def post(url, payload, timeout, attempts, label):
-        sent.append((url, json.loads(payload.decode("utf-8")), timeout, attempts))
-        return {"candidates": [{"content": {"parts": [{"text": "weighing...", "thought": True}, {"text": json.dumps({"choice": "r01"})}]}}],
-                "usageMetadata": {"promptTokenCount": 40, "candidatesTokenCount": 3, "thoughtsTokenCount": 9}}
-
-    with patch.object(llm, "_post_developer", post), patch.object(llm, "JUDGE_TRANSPORT", llm._post_judge):
-        assert llm.judge(state, "Choose the reading.", options) == "r01"
-    url, body, timeout, attempts = sent[0]
-    assert urlparse(url).path.endswith(f"/models/{config.JUDGE_MODEL}:generateContent") and "model" not in body
-    assert (timeout, attempts) == (llm.JUDGE_TIMEOUT_SECONDS, llm.JUDGE_ATTEMPTS)
-    generation = body["generationConfig"]
-    assert generation["thinkingConfig"] == {"thinkingLevel": "low"} and "temperature" not in generation
-    assert generation["responseJsonSchema"]["properties"]["choice"]["enum"] == ["r00", "r01", "none"]
-    prompt = body["contents"][0]["parts"][0]["text"]
-    assert prompt == ("STATE:\n" + json.dumps(state) + "\n\nQUESTION: Choose the reading.\n\nOPTIONS:\n"
-                      "r00: the total of Amount -> answer: 7\nr01: the number of lines -> answer: 3\nnone: None of these.")
-    assert llm.judge_payload(state, "Choose.", options) == llm.judge_payload(state, "Choose.", options)
-    assert json.loads(llm.judge_payload(state, "Choose.", options, "gemini-4-hydrogen", "medium"))["model"] == "gemini-4-hydrogen"
-    for text in ("r01", json.dumps({"choice": "r07"}), json.dumps({"pick": "r01"})):
-        with patch.object(llm, "JUDGE_TRANSPORT", lambda payload, text=text: {"text": text}):
-            _unavailable(lambda: llm.judge(state, "Choose.", options))
-    with patch.dict("os.environ", {"GOOGLE_API_KEY": ""}), patch.object(llm, "JUDGE_TRANSPORT", llm._post_judge):
-        _unavailable(lambda: llm.judge(state, "Choose.", options))
-
-
-def test_a_judge_still_out_is_asked_a_second_time_and_the_first_answer_is_read():
-    """The provider holds a call now and then for longer than an answer waits for its second judge (release
-    568b1f0a's gate: five right answers served warned). A call still out JUDGE_SECOND_SECONDS on is made a second
-    time beside the first and the first to answer is the judgement. A call that answers in time is made once; one
-    that fails at once is not made again; and when the first fails while the second is out, the second answers. The
-    request's timing line counts the second asking, and its answer when that is the one read (release 95e2a7af's gate
-    could see neither)."""
-    import json
-    import threading
-    import time
-
-    from engine import request_timing
-
-    state = {"question": "total amount", "workbook": []}
-    options = [("r00", "the total of Amount -> answer: 7"), ("none", "None of these.")]
-    answer = {"candidates": [{"content": {"parts": [{"text": json.dumps({"choice": "r00"})}]}}]}
-    held = threading.Event()
-
-    def posting(first):
-        sent = []
-
-        def post(url, payload, timeout, attempts, label):
-            sent.append(len(sent))
-            if sent[-1] == 0:
-                return first()
-            return answer
-        return sent, post
-
-    def stalled():
-        held.wait(10)
-        return {"candidates": [{"content": {"parts": [{"text": json.dumps({"choice": "none"})}]}}]}
-
-    def stalled_then_failed():
-        held.wait(10)
-        raise llm.LLMUnavailable("Judge call failed (TimeoutError)")
-
-    def failed():
-        raise llm.LLMUnavailable("Judge call failed (503)")
-
-    def late_first(url, payload, timeout, attempts, label):
-        late_sent.append(len(late_sent))
-        if late_sent[-1] == 0:
-            time.sleep(0.4)
-            return answer
-        return stalled()
-
-    def counted(run):
-        token = request_timing.begin("judge")
-        try:
-            return run(), dict(request_timing._CTX.get().counters)
-        finally:
-            request_timing.end(token)
-
-    late_sent = []
-    try:
-        with patch.object(llm, "JUDGE_TRANSPORT", llm._post_judge), patch.object(llm, "JUDGE_SECOND_SECONDS", 0.05):
-            sent, post = posting(stalled)
-            with patch.object(llm, "_post_developer", post):
-                key, counters = counted(lambda: llm.judge(state, "Choose.", options))
-                assert key == "r00" and sent == [0, 1], "the second call answered while the first was held"
-                assert counters == {"judge_second": 1, "judge_second_answered": 1}, counters
-            sent, post = posting(lambda: answer)
-            with patch.object(llm, "_post_developer", post):
-                key, counters = counted(lambda: llm.judge(state, "Choose.", options))
-                assert key == "r00" and sent == [0], "a call that answers in time is made once"
-                assert counters == {}, counters
-            sent, post = posting(failed)
-            with patch.object(llm, "_post_developer", post):
-                _unavailable(lambda: llm.judge(state, "Choose.", options))
-                assert sent == [0], "a call that fails at once is not made again"
-            sent, post = posting(stalled_then_failed)
-            with patch.object(llm, "_post_developer", post):
-                assert llm.judge(state, "Choose.", options) == "r00" and sent == [0, 1]
-            with patch.object(llm, "_post_developer", late_first):
-                key, counters = counted(lambda: llm.judge(state, "Choose.", options))
-                assert key == "r00" and late_sent == [0, 1], "the first call answered late, the second still out"
-                assert counters == {"judge_second": 1}, counters
-    finally:
-        held.set()
-
-
 def test_json_request_is_deterministic_and_carries_the_schema():
     models = _Models(reply='{"sql": "SELECT 1"}')
     with _gemini(), _serving(models):
@@ -536,8 +417,6 @@ TESTS = [
     test_a_decision_sends_one_sorted_body_and_returns_each_questions_options,
     test_json_request_is_deterministic_and_carries_the_schema,
     test_the_retry_query_sends_one_sorted_body_and_reads_its_json_answer,
-    test_the_judge_sends_the_choices_question_and_reads_one_key,
-    test_a_judge_still_out_is_asked_a_second_time_and_the_first_answer_is_read,
     test_failures_reach_callers_only_as_unavailable,
     test_stream_yields_chunks_and_fails_as_unavailable,
     test_one_client_per_process_is_created_under_a_lock,

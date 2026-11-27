@@ -221,14 +221,14 @@ def test_single_call_phase_prints_no_count():
 
 def test_an_event_counted_once_is_printed():
     """A counter printed only when it was not 1, so an event that happens once in a request was never seen: release
-    95e2a7af's gate could not tell how often the judge was asked a second time (`judge_second`), and
+    95e2a7af's gate could not tell how often a call was made a second time, and
     `world_lookup_skipped` and `deterministic_python_fallback` had never printed. Only a span's own count is left out
     at 1."""
     def run():
         token = request_timing.begin("rid9")
         try:
             with request_timing.span("serve"):
-                request_timing.count("judge_second")
+                request_timing.count("world_lookup_skipped")
                 request_timing.count("rows_n")            # no span is named `rows`: a counter of its own
             request_timing.emit("t")
         finally:
@@ -236,7 +236,7 @@ def test_an_event_counted_once_is_printed():
 
     _, out = _capture(run)
     f = _fields(out)
-    assert f.get("judge_second") == "1" and f.get("rows_n") == "1", f"an event counted once must print: {out}"
+    assert f.get("world_lookup_skipped") == "1" and f.get("rows_n") == "1", f"an event counted once must print: {out}"
     assert "serve_n=" not in out, f"a span that ran once still carries no count: {out}"
 
 

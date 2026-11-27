@@ -511,7 +511,7 @@ def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
 
     def host_of(decided):
         planner = _hermetic_planner()
-        planner.select_query = lambda question, tables, marked=True: PoolSelection(
+        planner.select_query = lambda question, tables: PoolSelection(
             (reading,), (0,), 0 if decided else None, 0.9 if decided else 0.2, None if decided else 0)
         planner.serve = Mock(return_value=served)
         host = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)

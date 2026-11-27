@@ -68,14 +68,16 @@ verification. See the execution contract for the transient direct-request slug a
 - `clarify`: the engine rejected a query that would drop or ambiguously realize part of the question;
 - `error`: transport, server, or malformed-response failure.
 
-Each carries the engine's `check` when it has one: the answer's mark (`answered`, `warned`, `erred`, `retried`) and
-the reason its icon opens on. The engine never asks back for its own uncertainty (2026-11-21): an answer most likely
-wrong is retried by a written query (`engine/retry.py`), and `clarify` then means the question is wrong. A tool call
-with `retry: true` (the person's Retry, `/chat` `retry`) has the engine's retry answer it.
+Each carries the engine's `check` when it has one: the answer's mark (`state`: `answered`, `warned`, `erred`,
+`retried`; `level`: `very_likely_correct`, `likely_correct`, `likely_wrong`, `very_likely_wrong`, from the choice's
+own probability) and the reason its icon opens on. The mark comes with the answer, from the engine alone
+(2026-11-27): nothing is settled after. The engine never asks back for its own uncertainty (2026-11-21): an answer
+very likely wrong is retried by a written query (`engine/retry.py`), and `clarify` then means the question is wrong.
+A call with `retry: true` (`/chat` `retry`) has the engine's retry answer it.
 
-The engine answers first and settles after (2026-11-27): `/api/reason` may return an answer whose `check` is
-`checking` (its second judge not yet asked) or `erred` with a `pending` token (its retry due). The tool returns the
-settled answer: the shared client asks `POST /api/check` for the mark, or the owed retry, before it returns
+A chat client shows an answer served very likely wrong at once and asks its retry in the background
+(`web/public/lib/turn-renderer.js` `owesRetry`, `revisedTurn`). A tool call returns one answer and cannot revise
+it, so the shared client retries such an answer before it returns (`mcp_server/engine_client.py` `settled_query`).
 (`mcp_server/engine_client.py` `settled_query`), so a tool result never carries a `pending` token.
 
 The orchestrator's `prereasoner_query` schema also has an optional `dataset_ops` array for a fact the user

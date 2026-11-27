@@ -732,45 +732,6 @@ def test_modify_renames_the_analysis_in_place_without_its_dropped_filter():
             raise AssertionError(f"renamed orders_in_paris to {other}")
 
 
-def test_a_settled_mark_replaces_the_stored_one_on_its_own_revision():
-    """An answer is served and stored before its second judge has answered (owner, 2026-11-27): its revision holds the
-    mark of an answer not judged twice until POST /api/check settles it. The settled mark replaces the stored
-    revision's ``check`` alone, on a completed revision of an analysis its owner holds, and nothing else of the
-    workbook; an analysis that is not the caller's is not touched."""
-    import json
-
-    class Cursor:
-        rowcount = 1
-
-        def __init__(self, owned=True):
-            self.one, self.owned, self.statements = None, owned, []
-
-        def execute(self, statement, params=None):
-            text = str(statement)
-            self.statements.append((text, params))
-            if "SELECT a.slug" in text:
-                self.one = ("total_sales", "old", 2, False) if self.owned else None
-
-        def fetchone(self):
-            return self.one
-
-    mark = {"state": "warned", "confidence": 0.9, "reason": "I read this as “the total of Amount”."}
-    cursor = Cursor()
-    with patch.object(conversations, "_pg", return_value=_Connection(cursor)):
-        assert conversations.settle_analysis_check("user", "c_" + "2" * 32, "a_" + "1" * 32, 2, mark) is True
-    update = [(statement, params) for statement, params in cursor.statements if statement.startswith("UPDATE")]
-    assert len(update) == 1 and "jsonb_set(response, '{check}'" in update[0][0] and '"chat"."analysis_revision"' in update[0][0]
-    assert json.loads(update[0][1][0]) == mark and update[0][1][1:] == ("a_" + "1" * 32, 2, "complete")
-    stranger = Cursor(owned=False)
-    with patch.object(conversations, "_pg", return_value=_Connection(stranger)):
-        try:
-            conversations.settle_analysis_check("someone else", "c_" + "2" * 32, "a_" + "1" * 32, 2, mark)
-            raise AssertionError("another person's analysis was settled")
-        except conversations.NotOwned:
-            pass
-    assert not any(statement.startswith("UPDATE") for statement, _ in stranger.statements)
-
-
 def test_failed_modify_keeps_a_zero_payload_revision_tombstone():
     class Cursor:
         def __init__(self):
@@ -937,7 +898,6 @@ TESTS = [
     test_analysis_reservation_rejects_a_superseded_source_snapshot,
     test_modify_reclaims_abandoned_pending_rows_without_reusing_failed_numbers,
     test_modify_renames_the_analysis_in_place_without_its_dropped_filter,
-    test_a_settled_mark_replaces_the_stored_one_on_its_own_revision,
     test_failed_modify_keeps_a_zero_payload_revision_tombstone,
     test_decomposition_probe_cancels_its_empty_revision_without_a_gap,
     test_historical_revision_uses_its_own_input_hash_and_rejects_zero,

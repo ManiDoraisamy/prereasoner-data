@@ -858,3 +858,104 @@ test('a settled chat answer from a Google source shows the source as current',as
   await expect(page.locator('.turn-answer').last()).toHaveText('Your total is 180.');
   await expect(page.locator('#syncstate')).toHaveClass(/current/);
 });
+
+// Owner, 2026-11-27: "never ever wait for neon to show engine's answer. Always show engine's answer immediately ... and
+// show only icons ... And the icon can change into retry loading for errors like Very likely Wrong". The engine's
+// answer and its mark are on screen at once and the question box is open; the retry of an answer served very likely
+// wrong is another /chat request (retry:true, the transcript before the turn) the page sends by itself, and its
+// answer takes the turn's place wherever the turn is by then. Until then the turn held the question box for the
+// second judge's mark and for the retry.
+test('an answer very likely wrong is shown at once and replaced in place by its background retry',async({page})=>{
+  await mockAuth(page);
+  await page.addInitScript(()=>{
+    sessionStorage.setItem('pr_world_tables',JSON.stringify([{name:'orders',data:'order_id,city,amount\n1,Paris,120\n2,Lyon,60'}]));
+    sessionStorage.setItem('pr_world_q','total amount');
+  });
+  const erred={state:'erred',level:'very_likely_wrong',confidence:0.31,reason:'This answer is very likely wrong. I read this as “the count of city”, 31% sure.'};
+  const retried={state:'retried',level:'likely_correct',confidence:null,reason:'Retried: Gemini 4 Neon wrote this query. Adds amount over every order.',
+    retry:{sql:'SELECT SUM("amount") FROM "orders"',model:'gemini-4-neon'}};
+  const sent=[]; let release; const held=new Promise(resolve=>{release=resolve;});
+  await page.route('**/chat',async route=>{
+    const body=route.request().postDataJSON(); sent.push(body);
+    const response=await route.fetch(), json=await response.json();
+    if(body.retry){ await held; json.reply='180'; json.traces[0].engine.check=retried; }
+    else if(body.message==='total amount'){ json.reply='2'; json.traces[0].engine.check=erred;
+      json.history=[{role:'user',content:'total amount'},{role:'assistant',content:'2'}]; }
+    else json.traces[0].engine.check={state:'answered',level:'very_likely_correct',confidence:0.95,reason:'I read this as “the total of amount where city is Paris”, 95% sure.'};
+    await route.fulfill({response,json});
+  });
+  await page.goto('/reason');
+  // the engine's answer and its mark, at once; the retry is out, the icon loads, and the question box is open
+  const first=page.locator('.turn-pair').first();
+  await expect(first.locator('.convmsg')).toContainText('2');
+  await expect(first.locator('.turn-check')).toHaveClass(/check-very_likely_wrong check-retrying/);
+  await expect(first.locator('.checkspin')).toBeVisible();
+  await expect(page.locator('#chatsend')).toBeEnabled();
+  await expect.poll(()=>sent.length).toBe(2);
+  expect(sent[1].retry).toBe(true);
+  expect(sent[1].message).toBe('total amount');
+  expect(sent[1].history).toEqual([]);
+  expect(sent[1].turnId).toBeUndefined();
+  // a follow-up is asked and answered while the retry is still out
+  await page.locator('#chatq').fill('only Paris');
+  await page.locator('#chatsend').click();
+  await expect(page.locator('.turn-answer').last()).toContainText('The Paris total is 120.');
+  await expect(page.locator('.turn-pair').last().locator('.turn-check')).toHaveClass(/check-very_likely_correct/);
+  await expect(first.locator('.turn-check')).toHaveClass(/check-retrying/);
+  await expect(first.locator('.convmsg')).toContainText('2');
+  // the retry comes back: its answer takes the first turn's place, and the mark keeps what the first answer was
+  release();
+  await expect(first.locator('.turn-check')).toHaveClass(/check-likely_correct/);
+  await expect(first.locator('.turn-check')).not.toHaveClass(/check-retrying/);
+  await expect(first.locator('.convmsg')).toContainText('180');
+  await first.locator('.turn-check summary').click();
+  await expect(first.locator('.checkfirst')).toContainText('First answer: 2 This answer is very likely wrong.');
+  await expect(first.locator('.checksql')).toContainText('SELECT SUM("amount") FROM "orders"');
+  await expect(first.locator('.checkretry')).toBeVisible();
+  expect(sent.filter(body=>body.retry).length).toBe(1);
+  // the transcript the next question is asked with holds the retry's answer in the first turn's place
+  await page.locator('#chatq').fill('top selling products');
+  await page.locator('#chatsend').click();
+  await expect.poll(()=>sent.length).toBe(4);
+  expect(sent[3].history[1]).toEqual({role:'assistant',content:'180'});
+});
+
+// The same retry coming back while its turn is still the last one: the answer changes in view, the workbook opens the
+// retry's stored analysis, and a retry that does not come back leaves the first answer with its mark and a Retry.
+for(const outcome of ['answers','fails'])test('a retry that '+outcome+' settles the live turn in place',async({page})=>{
+  await mockAuth(page);
+  await page.addInitScript(()=>{
+    sessionStorage.setItem('pr_world_tables',JSON.stringify([{name:'orders',data:'order_id,city,amount\n1,Paris,120\n2,Lyon,60'}]));
+    sessionStorage.setItem('pr_world_q','total amount');
+  });
+  const sent=[];
+  await page.route('**/chat',async route=>{
+    const body=route.request().postDataJSON(); sent.push(body);
+    if(body.retry&&outcome==='fails')return route.fulfill({status:503,json:{error:'Prereasoner is busy; try again shortly'}});
+    const response=await route.fetch(), json=await response.json();
+    json.reply=body.retry?'180':'2';
+    json.traces[0].engine.check=body.retry
+      ? {state:'retried',level:'likely_correct',confidence:null,reason:'Retried: Gemini 4 Neon wrote this query.',retry:{sql:'SELECT SUM("amount") FROM "orders"'}}
+      : {state:'erred',level:'very_likely_wrong',confidence:0.31,reason:'This answer is very likely wrong.'};
+    await route.fulfill({response,json});
+  });
+  await page.goto('/reason');
+  const turn=page.locator('.turn-pair').last();
+  await expect.poll(()=>sent.length).toBe(2);
+  await expect(turn.locator('.turn-check')).not.toHaveClass(/check-retrying/);
+  await expect(page.locator('#chatsend')).toBeEnabled();
+  await expect(page.locator('.analysiserror')).toHaveCount(0);
+  if(outcome==='answers'){
+    await expect(turn.locator('.turn-answer')).toContainText('180');
+    await expect(turn.locator('.turn-check')).toHaveClass(/check-likely_correct/);
+    await expect(page.locator('.wb.result tbody')).toContainText('180');
+  }else{
+    await expect(turn.locator('.turn-answer')).toContainText('2');
+    await expect(turn.locator('.turn-check')).toHaveClass(/check-very_likely_wrong/);
+    await turn.locator('.turn-check summary').click();
+    await expect(turn.locator('.checkreason')).toContainText('This answer is very likely wrong. The retry did not finish.');
+    await expect(turn.locator('.checkretry')).toBeVisible();
+  }
+  await page.waitForTimeout(500);
+  expect(sent.filter(body=>body.retry).length).toBe(1);        // the page asks the owed retry once, never in a loop
+});

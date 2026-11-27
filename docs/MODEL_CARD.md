@@ -9,7 +9,7 @@ layer. Learned components provide embeddings, Schema.org property probabilities,
 structural relevance signals. Own-data questions take the Decisions path: an external closed-choice
 model answers closed questions whose options the engine built, and the engine's deterministic decoder
 builds every program it decides as a typed AST, which the engine validates, renders, and executes. An
-answer the engine holds most likely wrong is retried with one SQLite query that Gemini 4 Neon writes,
+answer the engine holds very likely wrong is retried with one SQLite query that Gemini 4 Neon writes,
 guarded, run read-only and shown with its SQL; that retry is the one place a model writes SQL.
 Selection, route ownership, source-key authorization, calculation semantics, SQL rendering, and
 execution are deterministic for fixed inputs and pinned artifacts. Gemini, an external model that is
@@ -251,13 +251,13 @@ resolve this source-label ambiguity.
 - Closed choices: Gemini's Decisions API (external, see [Gemini](#gemini-external-always-on)) answers
   closed questions whose options the engine built and returns probabilities only, never text, SQL, or a
   program. The deterministic decoder builds the reading's 50 most probable programs as typed ASTs, the
-  verifier runs them, and one more closed question weighs those that returned rows, per answer: answered
-  at 0.575 or more (`T_FLAG`), warned from 0.42 (`T_ERR`) or when two readings are worded alike, and most
-  likely wrong below 0.42 or when "none of these" is likelier. A second judge (Gemini 4 Neon at low
-  thinking) answers the same closed question with the key of one option; an answer the first choice would
-  give unmarked is warned unless the judge picks it too, and one it would warn for its probability alone
-  is given unmarked where the judge picks it too. The engine never asks back for its own uncertainty.
-- Retry: an answer most likely wrong, or one the person retries, is answered by one SQLite SELECT that
+  verifier runs them, and one more closed question weighs those that returned rows, per answer. The answer
+  is served at once with its mark, one of four levels of that probability: very likely correct at 0.90 or
+  more (`T_SURE`), likely correct from 0.575 (`T_FLAG`), likely wrong from 0.42 (`T_ERR`) or when two
+  readings are worded alike, and very likely wrong below 0.42 or when "none of these" is likelier. No
+  other model is asked about an answer (a second judge set the mark from 2026-11-26 to 2026-11-27). The
+  engine never asks back for its own uncertainty.
+- Retry: an answer very likely wrong (retried in the background, after it is shown), or one the person retries, is answered by one SQLite SELECT that
   Gemini 4 Neon writes over the workbook (`engine/retry.py`); it is guarded, run read-only, and shown
   with its SQL and the reason for its mark. It is the one place a model writes SQL. The person is asked
   only when the retry says the sheet does not hold what is asked.

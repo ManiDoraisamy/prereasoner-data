@@ -68,7 +68,6 @@ from engine.conversations import (
     fail_analysis,
     get_analysis_revision,
     get_analysis_turn,
-    settle_analysis_check,
     get_conversation,
     list_analyses,
     load_dataset_ops,
@@ -95,13 +94,12 @@ from engine.request_limits import (
 from engine.request_validation import (
     RequestValidationError,
     upload_row_limit_error,
-    validate_check_request,
     validate_reason_request,
     validate_tables,
     validate_import_metadata,
 )
 from engine.sheet_sessions import clear_sheet_session, restore_sheet_session, save_sheet_session
-from engine.tables import PendingInvalid, csv_table, normalize_tables, settle_check, table_name, unsettled_check
+from engine.tables import csv_table, normalize_tables, table_name
 from engine.trace import drain_request, emitter, request_stream, stream_final
 
 # Questions run in parallel on these shared objects: each request's own state is request-local
@@ -174,7 +172,6 @@ PAID_BUDGET = PostgresRequestBudget(_pg, {
 })
 
 WORLD_ROUTES = ("/api/reason", "/api/knowledge")
-CHECK_ROUTE = "/api/check"                # settles the mark of an answer served while it was being checked
 DIM_ROUTE = "/api/dimension"
 
 
@@ -560,8 +557,6 @@ class H(BaseHTTPRequestHandler):
         path = self.path.rstrip("/")
         if path in WORLD_ROUTES:
             self._post_world()
-        elif path == CHECK_ROUTE:
-            self._post_check()
         elif path == DIM_ROUTE:
             self._post_dimension()
         elif path == "/api/converse":
@@ -953,16 +948,10 @@ class H(BaseHTTPRequestHandler):
                 ), request_timing.span("serve"):
                     active = table_name(req["active_sheet"]) if req.get("active_sheet") else None
                     if req.get("retry"):
-                        # An answer's retry (engine/retry.py), the person's or the one an answer served most likely
-                        # wrong is owed (``pending``): the retry's written query answers it.
-                        try:
-                            res = MODEL.retry(tabs, req.get("question", ""), active_sheet=active, as_of=req.get("as_of"),
-                                              explicit_fks=serve_kwargs.get("explicit_fks", ()),
-                                              pending=req.get("pending"))
-                        except PendingInvalid as exc:
-                            discard_analysis()
-                            emit("error", str(exc)); emit("status", "error")
-                            self._send(400, json_dumps({"error": str(exc)})); return
+                        # An answer's retry (engine/retry.py): the retry's written query answers it. A client sends
+                        # it for the person, or by itself for an answer served very likely wrong.
+                        res = MODEL.retry(tabs, req.get("question", ""), active_sheet=active, as_of=req.get("as_of"),
+                                          explicit_fks=serve_kwargs.get("explicit_fks", ()))
                     else:
                         res = MODEL.serve(
                             tabs, req.get("question", ""), conv, req.get("as_of"),
@@ -1006,10 +995,7 @@ class H(BaseHTTPRequestHandler):
                         and not res.get("clarify") and not res.get("error"):
                     res = decorate_analysis_response(res, analysis)
                     try:
-                        # An answer still being checked is stored as not judged twice until POST /api/check
-                        # settles its mark; the token that settles it is the response's alone.
-                        kept = res if "pending" not in (res.get("check") or {}) else {**res, "check": unsettled_check(res["check"])}
-                        snapshot = complete_analysis(sub, conv, analysis, req.get("question", ""), kept)
+                        snapshot = complete_analysis(sub, conv, analysis, req.get("question", ""), res)
                     except QuotaExceeded as exc:
                         discard_analysis()
                         # The calculation is valid even if its durable workbook cannot
@@ -1081,45 +1067,6 @@ class H(BaseHTTPRequestHandler):
                                 py_fallback=getattr(self, "_py_fallback", None))
             request_timing.end(timing_token)
             request_deadline.end(deadline_token)
-
-    # ---------------- /api/check (the mark of an answer served before its second judge answered) ----------------
-    def _post_check(self):
-        """POST /api/check {pending, jobId?, conversation_id?, analysis?: {analysis_id, revision}} -> {check}. The
-        own-data path serves an answer before its second judge is asked (owner, 2026-11-27): its ``check`` is
-        ``checking`` and carries a token. This asks the judge and returns the mark its answer leaves
-        (engine/tables.py settle_check), streams it on the run's live trace and stores it on the analysis revision.
-        One timing line, as a question has."""
-        timing_token = request_timing.begin(self.headers.get("X-Request-Id") or uuid.uuid4().hex[:12])
-        try:
-            req = self._read_json()
-            if req is None:
-                return
-            try:
-                req = validate_check_request(req)
-            except RequestValidationError as exc:
-                self._send(exc.status_code, json_dumps({"error": str(exc)})); return
-            sub, uid = _verify_principal(_bearer(self.headers, req))
-            if not sub:
-                self._send(401, json_dumps({"error": "sign in required (no valid Google token)"})); return
-            try:
-                check = settle_check(req["pending"])
-            except PendingInvalid as exc:
-                self._send(400, json_dumps({"error": str(exc)})); return
-            if req.get("jobId"):
-                emitter(uid, req["jobId"])("check", check)
-            if req.get("conversation_id") and req.get("analysis"):
-                try:
-                    settle_analysis_check(sub, req["conversation_id"], req["analysis"]["analysis_id"],
-                                          req["analysis"]["revision"], check)
-                except Exception as exc:                 # noqa: BLE001 - the mark is returned whether or not it is stored
-                    print(f"check not stored: {type(exc).__name__}", flush=True)
-            self._send(200, json_dumps({"check": check}))
-        except Exception as e:                           # noqa: BLE001
-            print(f"check request failed: {type(e).__name__}", flush=True)
-            self._send(500, json_dumps({"error": "internal server error"}))
-        finally:
-            request_timing.emit("check", status=getattr(self, "_status", None))
-            request_timing.end(timing_token)
 
     # ---------------- /api/dimension (stateless, authenticated) ----------------
     def _post_dimension(self):

@@ -38,7 +38,6 @@ Env contract:
   GEMINI_MODEL         Vertex AI Gemini model id (default gemini-3.8-flash)
   DECISIONS_MODEL      Gemini Developer API closed-choice model id (default gemini-decision-1)
   QUERY_MODEL          Gemini Developer API model that writes the own-data retry's query (default gemini-4-neon)
-  JUDGE_MODEL          Gemini Developer API model that judges the own-data choice a second time (default gemini-4-neon)
   GOOGLE_API_KEY       Gemini Developer API key for the Decisions API and the retry (a deployment secret; never logged)
   GEMINI_LOCATION      Vertex AI location (default global)
   GOOGLE_CLOUD_PROJECT Google Cloud project whose Vertex AI serves Gemini. Credentials are Application Default
@@ -220,7 +219,6 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_LOCATION = os.environ.get("GEMINI_LOCATION", "global")
 DECISIONS_MODEL = os.environ.get("DECISIONS_MODEL", "gemini-decision-1")
 QUERY_MODEL = os.environ.get("QUERY_MODEL", "gemini-4-neon")
-JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "gemini-4-neon")
 GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT") or None
 # The engine's own port (8080 by default) — NOT the orchestrator's PORT. Kept literal so a launcher that
 # injects PORT for the orchestrator process (e.g. a dev-server manager) can't accidentally point the MCP

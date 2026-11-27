@@ -43,7 +43,7 @@
         // `contextRead`: getSidebarContext has answered; until it does, nothing is known of the script or the sheet.
         // `sourceHash` names the conversation's stored copy of the sheet the sidebar last uploaded.
         // `leftOut`: the tabs the last read left out, each told once (`leftOutTold`, kept with the saved chat).
-        var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '', ready: false,
+        var state = {conversationId: null, turns: [], history: [], revisions: [], tables: [], syncedFingerprint: '', ready: false,
           uploadOnce: false, contextRead: false, sourceHash: '', uploading: null, savedReadMs: 0,
           restored: false, sheetError: '', uid: null, signedIn: null, busy: false, live: null, scope: 'auto',
           loading: null, loaded: null, restoring: null, print: '', readMs: 0, syncedAt: 0, syncing: false,
@@ -246,7 +246,7 @@
           var reading = R.renderAsks(turn.asks || [], turn.question);
           return R.renderTurn({question: turn.question, assistantHtml: (reading ? '<div class="turn-reading">' + reading + '</div>' : '') +
             R.renderAssistantTurn({reasoningHtml: reasoningHtml(turn, false), reply: turn.reply || 'No answer was returned.',
-              checkHtml: R.renderCheck ? R.renderCheck(turn.check, 'data-retry="' + index + '"') : '',
+              checkHtml: R.renderCheck ? R.renderCheck(turn.check, 'data-retry="' + index + '"', turn.retrying) : '',
               afterHtml: R.renderResultLink(turn.reply, analysisUrl(turn))})});
         }
 
@@ -305,8 +305,7 @@
             '<div class="statusline"><span class="spin"></span>' + R.escapeHtml(live.status) +
             elapsedHtml(live.startedAt) + '</div>' +
             reasoningHtml(live, true) +
-            // The engine answers first (owner, 2026-11-27): the reply is the answer already, and its mark shows
-            // beside it while it is still being checked (no Retry on a turn still running).
+            // The reply is the engine's answer, and its mark is on screen with it (no Retry on a turn still running).
             (live.reply ? '<div class="turn-answer convmsg answer">' + (R.renderCheck ? R.renderCheck(live.check) : '') +
               R.renderMarkdown(live.reply) + '</div>' : '') +
             '</div>'});
@@ -338,7 +337,9 @@
         // An empty sidebar is the composer and three starter questions, under the reading status while the
         // sheet is read. A chat adds the header: New chat, and the sheet's sync time.
         function render() {
-          var html = state.turns.map(turnHtml).join('');
+          var html = state.turns.map(function (turn, index) {
+            return '<div data-turn="' + index + '">' + turnHtml(turn, index) + '</div>';
+          }).join('');
           if (state.live) html += '<div id="liveTurn">' + liveHtml(state.live) + '</div>';
           var empty = !html;
           if (empty && state.sheetError) html = '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) + '</div>';
@@ -362,6 +363,56 @@
           state.conversationId = null;
           state.syncedFingerprint = '';
           state.sourceHash = '';
+        }
+
+        // A turn whose retry started or came back repaints alone: the thread keeps its place and its open panels.
+        function renderTurn(turn) {
+          var index = state.turns.indexOf(turn), element = threadEl.querySelector('[data-turn="' + index + '"]');
+          if (index < 0 || !element) return render();
+          element.innerHTML = turnHtml(turn, index);
+          tick();
+        }
+
+        // The answers retries put in a turn's place: a transcript the server built from an older one (a question
+        // asked while the retry was out) takes them again.
+        function revisedTranscript(history) {
+          return state.revisions.reduce(function (list, revision) {
+            return R.revisedHistory(list, revision.question, revision.was, revision.now);
+          }, history);
+        }
+
+        // Retry (engine/retry.py: Gemini 4 Neon writes the query): the turn's question asked again with retry, in the
+        // background. The turn's icon loads, the composer stays open, and the retry's answer takes the turn's place in
+        // view (owner, 2026-11-27: "never ever wait for neon to show engine's answer ... the icon can change into
+        // retry loading"). It runs at once for an answer served very likely wrong, and on a click of the mark's Retry.
+        async function retryTurn(turn) {
+          if (!turn || turn.retrying || turn.error || !turn.question || !R.revisedTurn) return;
+          var was = {reply: turn.reply, check: turn.check}, conversation = state.conversationId, retried = null;
+          turn.retrying = true;
+          renderTurn(turn);
+          try {
+            var history = R.historyBefore(state.history, turn.question, turn.reply);
+            var response = await callServer('askPrereasoner', state.uploadOnce
+              ? {question: turn.question, conversationId: conversation, sourceHash: state.sourceHash, history: history, retry: true}
+              : {question: turn.question, tables: state.tables, conversationId: conversation, history: history, retry: true});
+            response = window.RESULT_WIRE ? window.RESULT_WIRE.decode(response) : response;
+            if (response && response.reply && response.traces) retried = finishedTurn(turn.question, response);
+          } catch (_) {}
+          turn.retrying = false;
+          if (state.conversationId !== conversation || state.turns.indexOf(turn) < 0) return;   // a new chat by now
+          var now = R.revisedTurn(was, retried);
+          turn.check = now.check;
+          if (now.replaced) {
+            turn.reply = now.reply;
+            turn.asks = retried.asks;
+            turn.analysis = retried.analysis;
+            turn.steps = retried.steps;
+            state.revisions.push({question: turn.question, was: was.reply, now: now.reply});
+            state.history = revisedTranscript(state.history).slice(-24);
+          }
+          renderTurn(turn);
+          callServer('savePrereasonerSheetConversation', {conversationId: state.conversationId, state: snapshot()})
+            .catch(function () {});
         }
 
         // A live event repaints only the running turn, so earlier turns keep their open panels.
@@ -444,7 +495,12 @@
         }
 
         function snapshot() {
-          return {client: 'google-sheets-addon', version: 2, turns: state.turns.slice(-24),
+          var turns = state.turns.slice(-24).map(function (turn) {    // a retry still out is not a saved turn's state
+            var kept = Object.assign({}, turn);
+            delete kept.retrying;
+            return kept;
+          });
+          return {client: 'google-sheets-addon', version: 2, turns: turns,
             history: state.history.slice(-24), syncedFingerprint: state.syncedFingerprint,
             syncedSourceHash: state.sourceHash, readMs: state.readMs || state.savedReadMs,
             leftOutTold: Object.keys(state.leftOutTold)};
@@ -541,8 +597,8 @@
           }).catch(function () {}).then(function () { state.uploading = null; });
         }
 
-        // `asked`: a starter question, asked without taking the draft out of the composer. `retry`: an answer's Retry.
-        async function submit(asked, retry) {
+        // `asked`: a starter question, asked without taking the draft out of the composer.
+        async function submit(asked) {
           var question = (asked || questionEl.value).trim();
           if (!question || state.busy) return;
           if (!asked) questionEl.value = '';
@@ -611,9 +667,9 @@
             var ask = function () {
               return callServer('askPrereasoner', state.uploadOnce
                 ? {question: question, conversationId: state.conversationId, sourceHash: state.sourceHash,
-                   history: state.history, turnId: live.turnId, retry: retry === true}
+                   history: state.history, turnId: live.turnId}
                 : {question: question, tables: tables, conversationId: state.conversationId,
-                   history: state.history, turnId: live.turnId, retry: retry === true});
+                   history: state.history, turnId: live.turnId});
             };
             var response;
             try {
@@ -642,10 +698,9 @@
             state.conversationId = response.conversationId || live.conversationId || state.conversationId;
             var turn = response.traces ? finishedTurn(question, response)
               : {question: question, reply: live.reply, asks: live.asks, analysis: live.analysis || null, steps: live.steps,
-                 conversationId: state.conversationId,
-                 check: live.check && live.check.state !== 'checking' ? live.check : null};
+                 conversationId: state.conversationId, check: live.check || null};
             state.turns = state.turns.concat([turn]).slice(-24);
-            state.history = response.history && response.history.length ? response.history.slice(-24)
+            state.history = response.history && response.history.length ? revisedTranscript(response.history).slice(-24)
               : state.history.concat([{role: 'user', content: question}, {role: 'assistant', content: turn.reply}]).slice(-24);
             state.syncedFingerprint = print;
             state.live = null;
@@ -656,6 +711,8 @@
               callServer('savePrereasonerSheetConversation', {conversationId: state.conversationId, state: snapshot()})
                 .catch(function () {});
             }
+            // An answer very likely wrong: its retry starts now, in the background; the composer is open.
+            if (R.owesRetry && R.owesRetry(turn.check)) retryTurn(turn);
           } catch (error) {
             state.live = null;
             keepFailed(question, error);
@@ -672,11 +729,9 @@
           event.preventDefault();
           submit();
         });
-        threadEl.addEventListener('click', function (event) {   // an answer mark's Retry: the turn's question, retried
+        threadEl.addEventListener('click', function (event) {   // an answer mark's Retry: the turn's question, retried in place
           var button = event.target.closest('[data-retry]');
-          if (!button || state.busy) return;
-          var turn = state.turns[Number(button.getAttribute('data-retry'))];
-          if (turn && turn.question) submit(turn.question, true);
+          if (button) retryTurn(state.turns[Number(button.getAttribute('data-retry'))]);
         });
         questionEl.addEventListener('keydown', function (event) {
           if (!state.busy && event.key === 'Enter' && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
@@ -693,6 +748,7 @@
             state.conversationId = null;
             state.turns = [];
             state.history = [];
+            state.revisions = [];
             state.syncedFingerprint = '';
             state.sourceHash = '';
             render();

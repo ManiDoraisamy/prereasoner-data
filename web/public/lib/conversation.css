@@ -48,16 +48,19 @@ a.steplink:hover,a.steplink:focus-visible{border-color:#b9a8e8;background:#faf9f
 .turn-check{float:right;margin:-3px -4px 4px 8px;font:13px/1.45 Inter,Arial,sans-serif}
 .turn-check>summary{list-style:none;cursor:pointer;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:14px;user-select:none}
 .turn-check>summary::-webkit-details-marker{display:none}
-.check-warned>summary{color:#a86200;background:#fff3dc}
-.check-erred>summary{color:#b3261e;background:#fde8e6}
-.check-checking{width:22px;height:22px;display:flex;align-items:center;justify-content:center}
-.checkpulse{width:8px;height:8px;border-radius:50%;background:#b9b3c6;animation:checkpulse 1.2s ease-in-out infinite}
-@keyframes checkpulse{0%,100%{opacity:.35}50%{opacity:1}}
-@media (prefers-reduced-motion:reduce){.checkpulse{animation:none}}
-.check-retried>summary{color:#4a3aa8;background:#eeeafc}
+.check-very_likely_correct>summary{color:#fff;background:#1e8e3e}
+.check-likely_correct>summary{color:#1e7a36;background:#e3f4e7}
+.check-likely_wrong>summary{color:#a86200;background:#fff3dc}
+.check-very_likely_wrong>summary{color:#fff;background:#c5221f}
+.check-retrying>summary{color:#b3261e;background:#fde8e6}
+.checkspin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:checkspin .8s linear infinite}
+@keyframes checkspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.checkspin{animation:none}}
 .turn-check[open]{float:none;margin:0 0 8px;padding:8px 10px;border:1px solid #e7e2ed;border-radius:8px;background:#faf9fc}
 .turn-check[open]>summary{margin-bottom:4px}
+.checklevel{margin:0 0 4px;font-weight:600;color:#302a3b}
 .checkreason{margin:0 0 6px;color:#302a3b}
+.checkfirst{margin:0 0 6px;color:#6b6478}
 .checksql{margin:0 0 6px;padding:6px 8px;max-height:140px;overflow:auto;white-space:pre-wrap;border-radius:6px;background:#f2eff7;font:12px Consolas,monospace}
 .checkretry{padding:4px 12px;border:1px solid #6040dc;border-radius:6px;background:#6040dc;color:#fff;font:600 12px Inter,Arial,sans-serif;cursor:pointer}
 .checkretry:hover{background:#4c30c0}

@@ -10,18 +10,13 @@ import hashlib
 import json
 import math
 import sys
-import time
 
 import torch
 
 import engine.llm as llm
 import engine.program.stock as stock
-from engine import config
-from engine.answer_presentation import warned_reason
 from engine.program.answer import ANSWERED, ERRED, WARNED, answer, prepare
-from engine.program.answer import ask as ask_judge
-from engine.program.answer import judged as with_judgement
-from engine.program.closed import DOUBT_ANOTHER, DOUBT_NONE, DOUBT_UNREAD, UNJUDGED, awaits_judge
+from engine.program.closed import T_SURE
 from engine.program.catalog import Catalog
 from engine.program.closed import (CHOICE_NONE, CHOOSE_K, NONE, SAID_OPTIONS_MOST, T_ERR, T_FLAG, TAB_IN_VIEW_CONVENTION, W, answer_key, choice_record, choose_answer, fused_reading, preview,
                                    reading_record, said_record, said_scores, said_spans, sheet_state, value_set_question)
@@ -93,46 +88,16 @@ def _no_retry_call(_payload):
     raise llm.LLMUnavailable("no retry model in a hermetic test")
 
 
-class FakeJudge:
-    """A hermetic test's second judge (engine/llm.py JUDGE_TRANSPORT): it reads the judge's body back into the choice's
-    question and picks the option the test's own rule favours most for it (rule("reading", question, state), the first
-    option when it favours none), so it agrees with a fake choice answering by the same rule; a test of a disagreeing
-    judge gives it another rule. With no rule the judge fails as an outage would, and no test reaches the network."""
-
-    def __init__(self, rule=None):
-        self.rule, self.bodies = rule, []
-
-    def __call__(self, payload: bytes) -> dict:
-        if self.rule is None:
-            raise llm.LLMUnavailable("no second judge in a hermetic test")
-        body = json.loads(payload.decode("utf-8"))
-        self.bodies.append(body)
-        prompt = body["contents"][0]["parts"][0]["text"]
-        state_text, rest = prompt[len("STATE:\n"):].split("\n\nQUESTION: ", 1)
-        instructions, listed = rest.split("\n\nOPTIONS:\n", 1)
-        keys = body["generationConfig"]["responseJsonSchema"]["properties"]["choice"]["enum"]
-        criteria = dict(line.split(": ", 1) for line in listed.split("\n"))
-        assert list(criteria) == keys, "the options listed are the keys the answer may be"
-        favoured = self.rule("reading", {"instructions": instructions, "criteria": criteria}, json.loads(state_text)) or {}
-        choice = max(favoured, key=lambda key: (favoured[key], -keys.index(key))) if favoured else keys[0]
-        return {"text": json.dumps({"choice": choice}), "usage": {}, "seconds": 0.0}
-
-
-def _with_transport(transport, call, judge=None):
-    """``call`` with the Decisions transport replaced by ``transport``, no retry model, and the second judge a FakeJudge
-    answering by the transport's own rule (``judge``: another judge transport)."""
-    held = llm.DECISIONS_TRANSPORT
-    held_query, held_judge = llm.QUERY_TRANSPORT, llm.JUDGE_TRANSPORT
+def _with_transport(transport, call):
+    """``call`` with the Decisions transport replaced by ``transport`` and no retry model."""
+    held, held_query = llm.DECISIONS_TRANSPORT, llm.QUERY_TRANSPORT
     llm.DECISIONS_TRANSPORT = transport
     if llm.QUERY_TRANSPORT is llm._post_query:
         llm.QUERY_TRANSPORT = _no_retry_call
-    if judge is not None or llm.JUDGE_TRANSPORT is llm._post_judge:
-        llm.JUDGE_TRANSPORT = judge if judge is not None else FakeJudge(getattr(transport, "rule", None))
     try:
         return call()
     finally:
-        llm.DECISIONS_TRANSPORT = held
-        llm.QUERY_TRANSPORT, llm.JUDGE_TRANSPORT = held_query, held_judge
+        llm.DECISIONS_TRANSPORT, llm.QUERY_TRANSPORT = held, held_query
 
 
 def _option(question, needle):
@@ -200,7 +165,7 @@ def test_ties_go_to_the_earlier_listing() -> None:
 
 def test_thresholds_err_warn_and_answer() -> None:
     erred = choose_answer({"r00": T_ERR - 0.01, "r01": 0.2, NONE: 0.1}, ["a", "b"])
-    assert erred.kind == ERRED and erred.pick == 0, "most likely wrong, still served (retried in serving), never asked"
+    assert erred.kind == ERRED and erred.pick == 0, "very likely wrong, still served (retried by the client), never asked"
     assert choose_answer({"r00": T_ERR, "r01": 0.2, NONE: 0.1}, ["a", "b"]).kind == WARNED
     assert choose_answer({"r00": T_FLAG - 1e-9, NONE: 0.1}, ["a"]).kind == WARNED
     assert choose_answer({"r00": T_FLAG, NONE: 0.1}, ["a"]).kind == ANSWERED
@@ -422,99 +387,46 @@ def test_answer_reads_decodes_and_chooses_through_its_calls() -> None:
     assert said.program is said.listed_programs[said.pick]
 
 
-def test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it() -> None:
-    """Two judges that must agree (owner, 2026-11-26): on unseen tables 13.6% and 12.8% of answers were given unmarked
-    and wrong, and no threshold on the choice's own probability reaches 8% within 20% marked. An answer the choice would
-    give unmarked stays unmarked only where the second judge (engine/llm.py judge) picks a listing of the same answer;
-    another answer warns it, with the judge's reading as what it may also mean, none warns it, and so does a judge that
-    did not answer. The answer served is the choice's in every case. An answer the choice warned only because its own
-    probability is low is given unmarked where the judge picks it too (2026-11-27: on the 896, 33 such answers were
-    right and 7 wrong); one with a reading alike, and a most-likely-wrong one, are as the choice left them. The judge
-    is asked the choice's own question, and only after the answer is given (owner, 2026-11-27: "always serve the answer
-    before the judge has answered"): the path's answer comes back as the choice left it, holding the judge's question,
-    and its mark is settled by asking (``ask``) and applying the key (``judged``). A mark waits for the judge no longer
-    than the judge's limit by the clock, and a compound question's part asks no judge at all."""
+def test_an_answer_carries_one_of_four_marks_from_the_choice_alone() -> None:
+    """Owner, 2026-11-27: "never ever wait for neon to show engine's answer. Always show engine's answer immediately
+    ... and show only icons for: Very likely correct, likely Correct, likely Wrong, Very likely Wrong." The mark is the
+    level of the choice's own probability of the answer (closed.T_ERR, T_FLAG, T_SURE), known the moment the answer
+    is: very likely correct from T_SURE up, likely correct from T_FLAG, likely wrong below it or where another answer's
+    reading reads alike, very likely wrong below T_ERR or where none is likelier. No other model is asked about an
+    answer: the path makes its Decisions calls, the choice last, and the answer holds nothing pending. Until
+    2026-11-27 a second judge (Gemini 4 Neon) settled the mark after the answer and the question box waited for it,
+    a median 4.8 s and up to 15 s at release b47c950e's gate."""
     answers = ["a", "a", "b", "c"]
-    sure = {"r00": 0.5, "r01": 0.3, "r02": 0.1, "r03": 0.05, NONE: 0.05}
-    alone = choose_answer(sure, answers)
-    assert (alone.kind, alone.pick, alone.runner_up, alone.doubt) == (ANSWERED, 0, 2, None)
-    agreed = choose_answer(sure, answers, judged="r01")       # another listing of the same answer
-    assert (agreed.kind, agreed.pick, agreed.runner_up, agreed.doubt) == (ANSWERED, 0, 2, None)
-    another = choose_answer(sure, answers, judged="r03")
-    assert (another.kind, another.pick, another.runner_up, another.doubt) == (WARNED, 0, 3, DOUBT_ANOTHER)
-    nothing = choose_answer(sure, answers, judged=NONE)
-    assert (nothing.kind, nothing.pick, nothing.runner_up, nothing.doubt) == (WARNED, 0, 2, DOUBT_NONE)
-    unread = choose_answer(sure, answers, judged=UNJUDGED)
-    assert (unread.kind, unread.pick, unread.doubt) == (WARNED, 0, DOUBT_UNREAD)
-    unsure = {"r00": 0.3, "r01": 0.2, "r02": 0.3, "r03": 0.1, NONE: 0.1}      # 0.5: warned by the choice alone
-    left = choose_answer(unsure, answers, judged="r03")
-    assert choose_answer(unsure, answers).kind == WARNED and (left.kind, left.runner_up, left.doubt) == (WARNED, 2, None)
-    both_pick = choose_answer(unsure, answers, judged="r01")      # the judge picks a listing of the same answer
-    assert (both_pick.kind, both_pick.pick, both_pick.doubt) == (ANSWERED, 0, None), "low by the choice alone, and both judges pick it"
-    assert [choose_answer(unsure, answers, judged=key).kind for key in (NONE, UNJUDGED)] == [WARNED, WARNED]
-    assert awaits_judge(alone) and awaits_judge(choose_answer(unsure, answers))
+
+    def marked(probabilities, lines=()):
+        choice = choose_answer(probabilities, answers[:len([key for key in probabilities if key != NONE])] if lines else answers, lines)
+        return choice.kind, choice.sure
+
+    assert T_ERR < T_FLAG < T_SURE < 1
+    assert marked({"r00": 0.6, "r01": 0.32, "r02": 0.05, NONE: 0.03}) == (ANSWERED, True), "0.92: very likely correct"
+    assert marked({"r00": 0.5, "r01": 0.4, "r02": 0.05, NONE: 0.05}) == (ANSWERED, True), "exactly T_SURE"
+    assert marked({"r00": 0.5, "r01": 0.2, "r02": 0.2, NONE: 0.1}) == (ANSWERED, False), "0.70: likely correct"
+    assert marked({"r00": 0.3, "r01": 0.2, "r02": 0.3, "r03": 0.1, NONE: 0.1}) == (WARNED, False), "0.50: likely wrong"
+    assert marked({"r00": 0.2, "r02": 0.1, NONE: 0.7}) == (ERRED, False), "none is likelier: very likely wrong"
+    assert marked({"r00": 0.3, "r02": 0.3, "r03": 0.3, NONE: 0.1}) == (ERRED, False), "0.30: very likely wrong"
     same_words = ['the total of Amount on "orders"', 'the total of Amount on "orders"']
-    alike = choose_answer({"r00": 0.87, "r01": 0.1}, ["a", "b"], same_words, judged="r00")
-    assert (alike.kind, alike.doubt) == (WARNED, None) and not awaits_judge(choose_answer({"r00": 0.87, "r01": 0.1}, ["a", "b"], same_words)), \
-        "the sheet's two readings read alike: no judge settles which is meant"
-    lost = choose_answer({"r00": 0.2, "r02": 0.1, NONE: 0.7}, answers, judged="r00")
-    assert (lost.kind, lost.doubt) == (ERRED, None) and not awaits_judge(lost)
+    alike = choose_answer({"r00": 0.95, "r01": 0.04}, ["a", "b"], same_words)
+    assert (alike.kind, alike.sure) == (WARNED, False), "two readings worded alike: likely wrong however sure the choice"
 
     _use_fake_reader()
     prepared = _with_transport(FakeTransport(lambda *a: {}), lambda: prepare(_workbook()))
-    question = "total amount for East"
 
     def rule(name, criteria_question, state):     # the choice holds its first listing likeliest
         if name == "reading":
-            return {next(option for option in criteria_question["criteria"] if option != NONE): 0.8}
+            return {next(option for option in criteria_question["criteria"] if option != NONE): 0.93}
         return _reading_rule(name, criteria_question, state)
 
-    def ask(judge):
-        def settled():
-            given = answer(question, prepared, RequestTables(prepared.catalog))
-            assert given.awaited is not None and (given.kind, given.doubt) == (ANSWERED, None), "given as the choice left it"
-            assert not getattr(judge, "bodies", None), "the answer is given before the judge is asked"
-            return with_judgement(given, ask_judge(given.awaited))
-        return _with_transport(FakeTransport(rule), settled, judge)
-    same = FakeJudge(rule)
-    both = ask(same)
-    assert (both.kind, both.doubt, both.awaited) == (ANSWERED, None, None) and len(same.bodies) == 1
-    body = same.bodies[0]
-    assert body["model"] == config.JUDGE_MODEL and body["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
-    keys = body["generationConfig"]["responseJsonSchema"]["properties"]["choice"]["enum"]
-    assert keys == [f"r{at:02d}" for at in range(len(both.listed_rows))] + [NONE], "the choice's own options, none last"
-    other = next(at for at, key in enumerate(both.listed_answers) if key != both.listed_answers[both.pick])
-    doubted = ask(FakeJudge(lambda name, criteria_question, state: {f"r{other:02d}": 0.9}))
-    assert (doubted.kind, doubted.doubt, doubted.runner_up) == (WARNED, DOUBT_ANOTHER, other)
-    assert doubted.rows == both.rows and doubted.read_as == both.read_as, "the answer served is the choice's"
-    assert doubted.uncertain, "what the judge's reading reads differently is named"
-    assert (ask(FakeJudge(lambda name, criteria_question, state: {NONE: 0.9})).doubt, ask(FakeJudge()).doubt) == (DOUBT_NONE, DOUBT_UNREAD)
-    reason = warned_reason(doubted.read_as, doubted.listed_read_as[other], doubted.mass, False, doubted.doubt)
-    assert reason.startswith(f"I read this as “{doubted.read_as}”") and reason.endswith("”, which gives another answer.") and "a second check read it as" in reason
-    assert warned_reason("the total of Amount", None, 0.9, False, DOUBT_NONE) == "I read this as “the total of Amount”, 90% sure, but a second check found no reading that answers the question as asked."
-    assert warned_reason("the total of Amount", None, 0.9, False, DOUBT_UNREAD).endswith("; the second check of this reading did not run.")
-
-    # by the clock: a mark waits for the judge no longer than the judge's limit, then says the answer was not judged twice
-    import engine.program.answer as path
-
-    def slow(payload):
-        time.sleep(0.6)
-        return same(payload)
-    held, path.JUDGE_TIMEOUT_SECONDS = path.JUDGE_TIMEOUT_SECONDS, 0.05
-    try:
-        clock = time.perf_counter()
-        late = ask(slow)
-        waited = time.perf_counter() - clock
-    finally:
-        path.JUDGE_TIMEOUT_SECONDS = held
-    assert (late.kind, late.doubt) == (WARNED, DOUBT_UNREAD) and late.rows == both.rows
-    time.sleep(0.7)     # the late judge's thread ends before the next test's transports are swapped
-    assert waited < 0.6, f"the mark waited {waited:.2f} s for a judge whose limit was 0.05 s"
-
-    # a compound question's part is a step of a plan: its listing is read, so it asks no judge and keeps the choice's kind
-    unasked = FakeJudge(lambda name, criteria_question, state: {NONE: 0.9})
-    part = _with_transport(FakeTransport(rule), lambda: answer(question, prepared, RequestTables(prepared.catalog), marked=False), unasked)
-    assert unasked.bodies == [] and (part.kind, part.doubt, part.awaited) == (ANSWERED, None, None) and part.listed_rows == both.listed_rows
+    transport = FakeTransport(rule)
+    given = _with_transport(transport, lambda: answer("total amount for East", prepared, RequestTables(prepared.catalog)))
+    assert (given.kind, given.sure) == (ANSWERED, True) and given.rows and given.read_as
+    assert list(transport.bodies[-1]["questions"]) == ["reading"], "the choice is the path's last call"
+    assert not hasattr(given, "awaited") and not hasattr(llm, "JUDGE_TRANSPORT") and not hasattr(llm, "judge"), \
+        "no other model is asked about an answer"
 
 
 def test_a_failed_call_reaches_the_caller() -> None:
@@ -605,43 +517,20 @@ def test_packing_a_batch_again_keeps_what_was_packed() -> None:
         assert store.get("c3") == {"answers": {}, "tokens": 3} and store.get("a1") is not None
 
 
-def test_a_record_names_its_questions_judge_call_from_the_choices_own_body() -> None:
-    """An evaluation names the second judge's call of a question from the choice's Decisions body alone
-    (regress/eval_sets.py judge_call_of): the hash of the very body engine.llm.judge sends for it, whose sorted keys put
-    none first and closed.judge_options puts last again. A body that is not the choice's names none."""
-    from engine.program.closed import CHOICE_INSTRUCTION, judge_options
-    from regress import eval_sets
-    state = {"sheet": "orders", "columns": ["Amount", "Units"]}
-    question = {"instructions": CHOICE_INSTRUCTION,
-                "criteria": {"r00": 'the total of Amount on "orders" -> 100', "r01": 'the total of Units on "orders" -> 7', NONE: CHOICE_NONE}}
-    body = llm.decisions_payload(state, {"reading": question})
-    read_state, read = eval_sets.choice_question(body)
-    assert read_state == state and read["instructions"] == CHOICE_INSTRUCTION and read["criteria"] == question["criteria"]
-    assert list(read["criteria"]) == [NONE, "r00", "r01"] and [key for key, _text in judge_options(read)] == ["r00", "r01", NONE]
-    assert eval_sets.judge_call_of(body) == llm.decision_hash(llm.judge_payload(state, CHOICE_INSTRUCTION, judge_options(question)))
-    other = llm.decisions_payload(state, {"reading": {"instructions": "Which column is the measure?", "criteria": {"c00": "Amount", "c01": "Units"}}})
-    assert eval_sets.choice_question(other) is None and eval_sets.judge_call_of(other) is None
-
-
 def test_the_dev_replay_runs_from_a_clean_clone() -> None:
     """The dev replay's reference and the Decisions answers it reads are committed (regress/sets): each set's reference
     holds every one of its questions once, a served label each, and the recorded answers hold every call the reference
-    made, so a clone replays the 896 dev questions and the 91 demo ones without the API or any file of this machine.
-    Where a reference asked the second judge, every answer that read the judge's answer (given unmarked, or warned by
-    it) names that call, and the judge's recorded answers hold it."""
+    made, so a clone replays the 896 dev questions and the 91 demo ones without the API or any file of this machine."""
     from regress import eval_sets
-    from regress.run_dev_decisions import JUDGE_CALLS, SETS, reference
+    from regress.run_dev_decisions import SETS, reference
     sizes = {"messy": 120, "wtq": 300, "databench": 300, "freshdev": 176, "demo": 91}
-    store, judged = eval_sets.CallStore(), eval_sets.CallStore(JUDGE_CALLS)
+    store = eval_sets.CallStore()
     for name in SETS:
         held = reference(name)
         assert len(held) == sizes[name], (name, len(held))
         assert all(row["label"] in ("right", "flagged_right", "flagged_wrong", "wrong", "asked") for row in held.values()), name
         missing = [digest for row in held.values() for digest in row.get("calls") or [] if store.get(digest) is None]
         assert not missing, f"{name}: {len(missing)} calls of the reference are not recorded"
-        read = [row for row in held.values() if row.get("judged") and (row["kind"] == ANSWERED or row.get("doubt"))]
-        unheld = [row["id"] for row in read if judged.get(row.get("judge_call") or "") is None]
-        assert not unheld, f"{name}: the judge's answer {len(unheld)} answers read is not recorded"
 
 
 def test_a_warmed_reader_owns_its_weights_and_reads_the_same() -> None:
@@ -688,10 +577,10 @@ TESTS = [
     test_a_year_written_with_letters_offers_the_ten_or_hundred_years_it_begins, test_a_sheet_without_days_or_years_asks_no_period, test_fused_reading_reads_the_api_against_the_uniform_share_and_values_against_none,
     test_value_sets_ask_about_the_likeliest_values, test_choice_record_lists_each_candidate_with_its_answer_and_none,
     test_the_request_body_is_sorted_and_hashable, test_answer_reads_decodes_and_chooses_through_its_calls, test_said_spans_are_the_questions_own_words,
-    test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_an_answer_stays_unmarked_only_where_the_second_judge_picks_it,
+    test_said_words_join_the_reading_only_above_none, test_an_either_or_is_answered_in_the_questions_words, test_an_answer_carries_one_of_four_marks_from_the_choice_alone,
     test_a_failed_call_reaches_the_caller,
     test_a_batch_another_run_is_writing_is_read_to_its_last_whole_line, test_packing_a_batch_again_keeps_what_was_packed, test_text_dates_are_typed_when_the_workbook_loads, test_digit_dates_ask_the_order_only_when_the_column_never_shows_it,
-    test_a_record_names_its_questions_judge_call_from_the_choices_own_body, test_the_dev_replay_runs_from_a_clean_clone,
+    test_the_dev_replay_runs_from_a_clean_clone,
 ]
 
 if __name__ == "__main__":

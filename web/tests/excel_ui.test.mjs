@@ -46,11 +46,19 @@ for (const [file, text] of addonSources) {
 }
 // Upload once (2026-10-02): the workbook goes to the conversation when it changes, and a question names it.
 assert.match(pane, /api\('\/api\/conversation\/sync', \{id: state\.conversationId \|\| '', question, tables\}\)/);
-assert.match(pane, /api\('\/chat', \{\s*message: question, history: baseHistory,\s*conversation_id: state\.conversationId, source_hash: state\.sourceHash, active_sheet: activeSheet, turnId,\s*\.\.\.\(retry \? \{retry: true\} : \{\}\)\s*\}, \[409\]\)/);
-// An answer's mark (engine check) and its Retry: the turn keeps its check, the thread's delegated click re-asks it
-// with retry:true (engine/retry.py, owner 2026-11-21).
+assert.match(pane, /api\('\/chat', \{\s*message: question, history: baseHistory,\s*conversation_id: state\.conversationId, source_hash: state\.sourceHash, active_sheet: activeSheet, turnId\s*\}, \[409\]\)/);
+// An answer's mark (the engine's check, one of four levels) is on screen with the answer. Its Retry runs in place, in
+// the background (owner, 2026-11-27): the turn's question asked again with retry:true and what came before the turn,
+// the composer never busy for it, at once for an answer served very likely wrong and on a click of the mark's Retry.
 assert.match(pane, /check: renderer\.turnCheck \? renderer\.turnCheck\(response\.traces\) : null/);
-assert.match(pane, /renderer\.renderCheck\(turn\.check, `data-retry="\$\{index\}"`\)/);
-assert.match(pane, /ask\(turn\.question, true\)/);
+assert.match(pane, /renderer\.renderCheck\(turn\.check, `data-retry="\$\{index\}"`, turn\.retrying\)/);
+assert.match(pane, /if \(renderer\.owesRetry && renderer\.owesRetry\(answered\.check\)\) retryTurn\(answered\);/);
+assert.match(pane, /if \(button && auth\.currentUser\) retryTurn\(state\.turns\[Number\(button\.dataset\.retry\)\]\);/);
+const retry = /async function retryTurn\(turn\) \{[\s\S]*?\n\}\n/.exec(pane)[0];
+assert.match(retry, /message: turn\.question, history: renderer\.historyBefore\(state\.history, turn\.question, turn\.reply\),/);
+assert.match(retry, /retry: true/);
+assert.match(retry, /renderer\.revisedTurn\(was, retried\)/);
+assert.doesNotMatch(retry, /setBusy/, 'a retry never closes the composer');
+assert.doesNotMatch(pane, /checking/, 'no answer waits for its mark');
 assert.doesNotMatch(pane, /api\('\/chat', \{[^}]*tables/);
-console.log('Excel and shared conversation UI: 18 checks passed');
+console.log('Excel and shared conversation UI: 25 checks passed');

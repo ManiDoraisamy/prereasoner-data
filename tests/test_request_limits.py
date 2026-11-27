@@ -52,81 +52,16 @@ def test_server_500_logs_where_it_failed_without_user_data():
         "the exception MESSAGE may quote user data — log positions only")
 
 
-def test_a_pending_mark_is_settled_by_its_own_route():
-    """Owner, 2026-11-27: "always serve the answer before the judge has answered". An answer is served with its mark
-    being checked and a sealed token (engine/tables.py checking_check); POST /api/check asks the second judge and
-    returns the mark, streams it on the answer's own live trace and stores it on the analysis revision. The token is
-    bounded text; on /api/reason it travels only with retry (the retry an answer served most likely wrong is owed).
-    A token this engine did not seal is a 400 and never reaches the judge; no principal, no check."""
-    import json
-    import threading
-    import urllib.error
-    import urllib.request
-    from http.server import ThreadingHTTPServer
-    from unittest.mock import patch
-
+def test_an_answer_leaves_nothing_to_settle():
+    """Owner, 2026-11-27: the answer comes with its mark, from the engine alone. No route settles a mark after the
+    answer (POST /api/check answered the second judge's mark from 2026-11-27's first release until its second), and a
+    retry is the question with ``retry`` and nothing else: a request names no token."""
     from engine import server
-    from engine.request_validation import MAX_PENDING_CHARS, RequestValidationError, validate_check_request, validate_reason_request
-    from engine.tables import PendingInvalid
+    from engine.request_validation import validate_reason_request
 
-    stored = {"analysis_id": "a_" + "1" * 32, "revision": 2}
-    cid = "c_" + "2" * 32
-    ok = validate_check_request({"pending": "p1.body.mac", "jobId": "t1_0", "conversation_id": cid, "analysis": {**stored, "slug": "x"}})
-    assert ok == {"pending": "p1.body.mac", "jobId": "t1_0", "conversation_id": cid, "analysis": stored}
-    assert validate_check_request({"pending": "p"})["analysis"] is None
-    for bad in ({}, {"pending": ""}, {"pending": 7}, {"pending": "x" * (MAX_PENDING_CHARS + 1)}, ["p"],
-                {"pending": "p", "analysis": {"analysis_id": "a_1", "revision": 1}},
-                {"pending": "p", "analysis": {"analysis_id": stored["analysis_id"], "revision": True}}):
-        try:
-            validate_check_request(bad)
-        except RequestValidationError:
-            continue
-        raise AssertionError(f"accepted {bad}")
-    assert validate_reason_request({"question": "total", "data": "a\n1\n", "retry": True, "pending": "p1.b.m"})["pending"] == "p1.b.m"
-    assert validate_reason_request({"question": "total", "data": "a\n1\n"})["pending"] is None
-    try:
-        validate_reason_request({"question": "total", "data": "a\n1\n", "pending": "p1.b.m"})
-        raise AssertionError("a pending token without retry was accepted")
-    except RequestValidationError:
-        pass
-
-    mark = {"state": "warned", "confidence": 0.9, "reason": "I read this as “the total of Amount”."}
-    seen = {"settled": [], "emitted": [], "stored": []}
-
-    def settle(pending):
-        if pending != "p1.sealed.mac":
-            raise PendingInvalid("the pending token was not issued here")
-        seen["settled"].append(pending)
-        return mark
-
-    def post(body, principal=("user-a", "uid-a")):
-        httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.H)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
-        try:
-            with patch.object(server, "_verify_principal", lambda _token: principal), \
-                    patch.object(server, "settle_check", settle), \
-                    patch.object(server, "emitter", lambda uid, job: (lambda node, value: seen["emitted"].append((uid, job, node, value)))), \
-                    patch.object(server, "settle_analysis_check", lambda *args: seen["stored"].append(args)):
-                request = urllib.request.Request(f"http://127.0.0.1:{httpd.server_address[1]}/api/check",
-                                                 data=json.dumps(body).encode("utf-8"), method="POST",
-                                                 headers={"Content-Type": "application/json"})
-                try:
-                    with urllib.request.urlopen(request, timeout=10) as response:
-                        return response.status, json.loads(response.read())
-                except urllib.error.HTTPError as error:
-                    return error.code, json.loads(error.read())
-        finally:
-            httpd.shutdown(); httpd.server_close(); thread.join(5)
-
-    status, body = post({"pending": "p1.sealed.mac", "jobId": "t1_0", "conversation_id": cid, "analysis": stored})
-    assert (status, body) == (200, {"check": mark}), (status, body)
-    assert seen["emitted"] == [("uid-a", "t1_0", "check", mark)], "the settled mark reaches the answer's live trace"
-    assert seen["stored"] == [("user-a", cid, stored["analysis_id"], 2, mark)], "and its stored revision"
-    status, body = post({"pending": "p1.forged.mac", "jobId": "t1_0"})
-    assert status == 400 and "not issued here" in body["error"] and len(seen["settled"]) == 1
-    assert post({"pending": "p1.sealed.mac"}, principal=(None, None))[0] == 401 and len(seen["settled"]) == 1
-    assert post({"jobId": "t1_0"})[0] == 400
+    assert not hasattr(server, "CHECK_ROUTE") and "/api/check" not in server.WORLD_ROUTES
+    request = validate_reason_request({"question": "total amount", "tables": [{"name": "orders", "data": "a\n1\n"}], "retry": True})
+    assert request["retry"] is True and "pending" not in request
 
 
 def test_chat_authenticates_without_a_database_and_signs_with_the_firebase_uid():
@@ -1233,7 +1168,7 @@ def test_physical_columns_obey_excel_bounds_even_without_a_declared_range():
 
 
 TESTS = [
-    test_a_pending_mark_is_settled_by_its_own_route,
+    test_an_answer_leaves_nothing_to_settle,
     test_physical_columns_obey_excel_bounds_even_without_a_declared_range,
     test_physical_import_metadata_survives_validation_storage_and_source_identity,
     test_parsed_table_cache_binds_source_positions_and_returns_fresh_metadata,

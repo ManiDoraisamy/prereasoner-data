@@ -16,10 +16,9 @@ Sets (regress/eval_sets.py loads them; a sample is a committed list of ids, regr
   databench-train  DataBench train 001-049 (at most 60,000 rows), 400 seeded questions; never a gate
 Systems:
   engine       the Decisions path alone (engine/tables.py TableQuery.select_query): the erred answer's likeliest pick
-               is its answer, no model writes a query. Its records hold every listed answer's grade (built right), the
-               mark it is served with (kind) and, where the second judge warned an answer the choice gave unmarked,
-               why (doubt). --unjudged, and every training set, asks no second judge: an answer is recorded as the
-               choice left it (judged: false), since those runs read what is built, not the marks.
+               is its answer, no model writes a query. Its records hold every listed answer's grade (built right) and
+               the mark it is served with (kind, and level: one of the four, engine/tables.py level_of), the choice's
+               own. A run recorded before 2026-11-27 holds the marks a second judge (Gemini 4 Neon) also set (doubt).
   prereasoner  the same, served: an erred answer retried by Gemini 4 Neon's written query (engine/retry.py); a failed
                retry serves the erred pick.
   neon, opus, fable
@@ -55,10 +54,6 @@ usage: python -X utf8 -m regress.run_public --run NAME --set SET --system SYSTEM
                    lines, by default; series_figure, a median or a standard deviation)
        python -X utf8 -m regress.run_public --run NAME --set wtq-train --size 3125 --ids FILE   (the questions FILE lists: another run's subset, for its before)
        python -X utf8 -m regress.run_public --run NAME-1 --set SET --system SYSTEM --shard 1 3   (one of three parts, by workbook; then --run NAME --set SET --system SYSTEM --merge NAME-1 NAME-2 NAME-3)
-       python -X utf8 -m regress.run_public --run NAME --set wtq-test --judge SOURCE_RUN [--judges gemini-4-neon:low ...]
-                   [--judge-sizes 150 50] [--cap 15]
-                   (the judge test: the choice's question on SOURCE_RUN's questions put to other models, nothing
-                   served; one replay asks every judge named, each MODEL:THINKING; rerun it to print its numbers)
 """
 from __future__ import annotations
 
@@ -90,11 +85,6 @@ NEON_MODEL, OPUS_MODEL, FABLE_MODEL = "gemini-4-neon", "claude-opus-5-5", "claud
 # Claude API's price table for Opus 5.5, Google's Decisions API page for gemini-decision-1 (no output charge). Fable
 # 5.2: the Claude API's price table on 2026-11-27.
 PRICES = {"decisions": (0.10, 0.0), "retry": (3.0, 15.0), "neon": (3.0, 15.0), "opus": (4.0, 20.0), "fable": (8.0, 40.0)}
-# The judge test's models, dollars per million tokens in and out (the Gemini Developer API's price page, 2026-11-26;
-# Gemini 3.8 Flash's doubles on 2027-01-01).
-JUDGES = {"gemini-4-neon": (3.0, 15.0), "gemini-4-hydrogen": (1.5, 7.5), "gemini-3.8-flash": (0.75, 3.75),
-          "gemini-3.5-flash-lite": (0.30, 2.50)}
-PRICES.update({f"judge {model}": price for model, price in JUDGES.items()})
 DATABENCH_TRAIN, DATABENCH_TRAIN_SEED = 400, 20261122
 
 
@@ -370,19 +360,15 @@ def _stage_fields(selection, shown, listed_right) -> dict:
 
 
 # ------------------------------------------------------------------------------------------------------------- runs
-def run_engine(system: str, items, limits, sql, sink, done, ledger: Ledger, batch: str, threads: int, unjudged: bool = False) -> None:
+def run_engine(system: str, items, limits, sql, sink, done, ledger: Ledger, batch: str, threads: int) -> None:
     import torch
     import regress.run_dev_decisions as dev
-    from engine import config
     from engine.prepared import scratch_database
-    from engine.program.answer import ANSWERED, ERRED
-    from engine.program.closed import DOUBT_UNREAD
-    from engine.tables import TableQuery
+    from engine.program.answer import ERRED
+    from engine.tables import TableQuery, level_of
 
     torch.set_num_threads(threads)
     llm.DECISIONS_TRANSPORT = Decisions(ledger, batch)
-    llm.JUDGE_TRANSPORT = (eval_sets.judge_unasked if unjudged
-                           else Recorded("judge", ledger, llm.JUDGE_TRANSPORT, batch, meter=f"judge {config.JUDGE_MODEL}"))
     if system == "prereasoner":
         llm.QUERY_TRANSPORT = Recorded("retry", ledger, llm.QUERY_TRANSPORT, batch)
     planner = TableQuery()
@@ -406,17 +392,12 @@ def run_engine(system: str, items, limits, sql, sink, done, ledger: Ledger, batc
                         tables = dev.tables_of(item)
                         request.enter_context(scratch_database())
                         book = item.book
-                    selection = planner.select_query(item.question, tables, judged=True)
+                    selection = planner.select_query(item.question, tables)
                     shown = selection.selected if selection.selected is not None else selection.erred
                     rows = selection.answer(shown) if shown is not None else ()
                     kind = dev.kind_of(selection)
                     right = dev.graded(item, rows)
-                    if selection.doubt == DOUBT_UNREAD:     # no second judge answered: unasked, or its provider failed
-                        row.update(judged=False, infra=not unjudged)
-                        kind = ANSWERED if unjudged else kind
-                    elif selection.doubt is not None:
-                        row["doubt"] = selection.doubt
-                    row.update(kind=kind, engine=right, served=right, confidence=selection.confidence, answer=_first(rows),
+                    row.update(kind=kind, level=level_of(selection), engine=right, served=right, confidence=selection.confidence, answer=_first(rows),
                                listed=len(selection.rows), listed_right=[bool(dev.graded(item, selection.answer(at))) for at in range(len(selection.rows))],
                                read_as=selection.pool[shown].evidence[0] if shown is not None else "")
                     row.update(_stage_fields(selection, shown, row["listed_right"]))
@@ -539,7 +520,7 @@ def sign_test(wins: int, losses: int) -> float:
 
 def engine_records(run: str, name: str) -> dict:
     """The engine's own answers of a run: its engine records, else its served ones, which hold the engine's answer
-    (``engine``) and its marks (``kind``, ``doubt``) beside what the retry served."""
+    (``engine``) and its mark (``kind``, ``level``) beside what the retry served."""
     try:
         return records(run, name, "engine")
     except SystemExit:
@@ -548,21 +529,22 @@ def engine_records(run: str, name: str) -> dict:
 
 def compare(run_a: str, run_b: str, name: str, system: str) -> dict:
     """Right and built (some listed answer right) in each run, wins and losses of b against a, the marks of each, and
-    of the answers the second judge warned (``doubt``: the choice gave them unmarked) how many were right and wrong.
-    With the engine system a run that was served is read for the engine's own answers (engine_records), so a release's
-    served run compares with the engine alone before it."""
+    for a run whose records hold the four levels (engine/tables.py level_of; since 2026-11-27) how many answers carry
+    each and how many of those are right. With the engine system a run that was served is read for the engine's own
+    answers (engine_records), so a release's served run compares with the engine alone before it."""
     a, b = ((engine_records(run, name) if system == "engine" else records(run, name, system)) for run in (run_a, run_b))
     ids = sorted(set(a) & set(b))
     out = {"questions": len(ids)}
     for label, held in ((run_a, a), (run_b, b)):
         marks = collections.Counter((held[i].get("kind"), verdict(held[i], system)) for i in ids)
-        doubts = collections.Counter((held[i]["doubt"], verdict(held[i], system)) for i in ids if held[i].get("doubt"))
+        levels = collections.Counter((held[i]["level"], bool(held[i].get("engine"))) for i in ids if held[i].get("level"))
         out[label] = {"right": sum(verdict(held[i], system) for i in ids), "built": sum(any(held[i].get("listed_right") or []) for i in ids),
                       "unmarked right": marks[("answered", True)], "unmarked wrong": marks[("answered", False)],
                       "warned right": marks[("warned", True)], "warned wrong": marks[("warned", False)],
                       "erred": marks[("erred", True)] + marks[("erred", False)], "refused": marks[("refused", False)],
                       "errors": marks[("error", False)],
-                      "warned by the second judge": {f"{doubt}, the answer {'right' if right else 'wrong'}": n for (doubt, right), n in sorted(doubts.items())}}
+                      "the engine's answers by level": {level: {"answers": levels[(level, True)] + levels[(level, False)], "right": levels[(level, True)]}
+                                                        for level in sorted({level for level, _right in levels})}}
     wins = sum(verdict(b[i], system) and not verdict(a[i], system) for i in ids)
     losses = sum(verdict(a[i], system) and not verdict(b[i], system) for i in ids)
     out.update(wins=wins, losses=losses, sign_test_p=round(sign_test(wins, losses), 4))
@@ -786,7 +768,6 @@ def oracle(run: str, boost: float, limit: int | None, set_name: str = "wtq-train
     items, sql = written_queries(set_name, teacher)       # every question with a query; the run's unbuilt are kept below
     items = [item for item in items if item.id in targets and item.id in sql][:limit]
     llm.DECISIONS_TRANSPORT = dev.Replay(eval_sets.CallStore(), WORK / "oracle_misses")
-    llm.JUDGE_TRANSPORT = eval_sets.judge_unasked
     state: dict = {}
     real_decode, real_verify = Decoder.decode, answer_module.verify
 
@@ -814,7 +795,7 @@ def oracle(run: str, boost: float, limit: int | None, set_name: str = "wtq-train
                 mapped += bool(state["boost"])
                 with scratch_database():
                     try:
-                        planner.select_query(item.question, tables, judged=True)
+                        planner.select_query(item.question, tables)
                     except Stop:
                         pass
                     except Exception as error:       # a reading call the store lacks: the question is not measured
@@ -952,316 +933,6 @@ def stages(run: str, set_name: str = "wtq-train", teacher: str | None = None) ->
     return {stage: counts[stage] for stage in STAGES}
 
 
-# ------------------------------------------------------------------------------------------------------ the judge test
-JUDGE_SEED = 20261126
-JUDGE_STRATA = ("choice miss", "right", "not built")
-
-
-def judge_body(state: dict, question: dict, model: str, thinking: str) -> bytes:
-    """The choice's one closed question (engine/program/closed.py choice_record) as the served second judge is given it
-    (engine/llm.py judge_payload over closed.judge_options: the same STATE, instruction and options, in the decoder's
-    order with none last), for any judge model and thinking level."""
-    from engine.program.closed import judge_options
-    return llm.judge_payload(state, question["instructions"], judge_options(question), model, thinking)
-
-
-def choice_kind(row: dict) -> str | None:
-    """A record's mark as the Decisions choice alone left it: an answer only the second judge warned (doubt) was
-    answered unmarked by the choice."""
-    return "answered" if row.get("doubt") else row.get("kind")
-
-
-def judge_strata(held: dict) -> dict[str, str]:
-    """An engine run's questions by what another judge of their listings can change: a choice miss (an answer listed
-    was right, another was picked), right (picked right, a wrong answer listed beside it) or not built (no answer
-    listed right, answered unmarked: what a second judge's disagreement would mark). No judge changes the others."""
-    strata = {}
-    for key, row in held.items():
-        flags = row.get("listed_right") or []
-        if row.get("kind") in ("error", "refused") or not flags:
-            continue
-        if row["engine"]:
-            if not all(flags):
-                strata[key] = "right"
-        elif any(flags):
-            strata[key] = "choice miss"
-        elif choice_kind(row) == "answered":
-            strata[key] = "not built"
-    return strata
-
-
-def judge_system(model: str, thinking: str) -> str:
-    """The records' name of one judge's rows in a run: judge-<model>-<thinking>."""
-    return f"judge-{model}-{thinking}"
-
-
-def run_judge(source: str, set_name: str, run: str, sizes: tuple[int, int], limit: int | None, ledger: Ledger, batch: str,
-              threads: int, judges: tuple[tuple[str, str], ...] = ((NEON_MODEL, llm.JUDGE_THINKING),)) -> None:
-    """--judge SOURCE (owner, 2026-11-26): the choice's closed question, as the one selection asked it on the questions
-    of engine run SOURCE, put to each judge (a model at a thinking level) instead (judge_body); its pick graded by
-    that listing's grade, nothing served. Asked: every choice miss of the run, and seeded samples of sizes[0] right
-    questions and sizes[1] unbuilt ones answered unmarked (judge_strata), the same questions for every judge. Each
-    question is replayed once from the recorded Decisions answers, and its pick and listings must equal its record's
-    (parity) before the judges are asked. Each row names its judge and holds both picks (choice_*: the Decisions
-    choice's; pick_*: the judge's), whether they return the same answer, and the probability the Decisions choice
-    gave the answer the judge picked.
-    Writes regress/results/public/<run>/<set>/judge-<model>-<thinking>.jsonl, one file per judge; the judges' answers go
-    to regress/sets/public/calls/judge/."""
-    import random
-    import torch
-    import regress.run_dev_decisions as dev
-    from engine.named.names import NONE
-    from engine.prepared import scratch_database
-    from engine.program.closed import answer_key, answer_masses
-    from engine.tables import TableQuery
-
-    held = records(source, set_name, "engine")
-    strata = judge_strata(held)
-    chosen = {key for key, stratum in strata.items() if stratum == "choice miss"}
-    for stratum, n in zip(JUDGE_STRATA[1:], sizes):
-        pool = sorted(key for key, value in strata.items() if value == stratum)
-        chosen |= set(random.Random(f"{JUDGE_SEED}/{set_name}/{stratum}").sample(pool, min(n, len(pool))))
-    items, _limits, _sql = items_of(set_name, None, 0)
-    items = sorted((item for item in items if item.id in chosen), key=lambda item: item.book)
-    targets = {judge: WORK / run / set_name / f"{judge_system(*judge)}.jsonl" for judge in judges}
-    done: dict[tuple[str, str], set[str]] = {}
-    for judge, target in targets.items():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        done[judge] = set()
-        if target.exists():     # rows a provider failed are asked again, so the file holds each question once
-            kept = [row for row in map(json.loads, filter(str.strip, target.read_text(encoding="utf-8").splitlines())) if not row.get("infra")]
-            target.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in kept), encoding="utf-8", newline="\n")
-            done[judge] = {row["id"] for row in kept}
-    items = [item for item in items if any(item.id not in done[judge] for judge in judges)][:limit]
-    print(f"judge {set_name}: {len(chosen)} questions, {len(judges)} judges, {len(items)} to replay; "
-          f"spend ${ledger.total():.2f} of ${ledger.cap:g}", flush=True)
-
-    torch.set_num_threads(threads)
-    decisions = Decisions(ledger, batch)
-    lock, captured, unrecorded = threading.Lock(), [], [0]
-
-    def transport(payload: bytes) -> dict:
-        choice = eval_sets.choice_question(payload)
-        with lock:
-            if choice is not None:
-                captured.append(choice)
-            if decisions.store.get(llm.decision_hash(payload)) is None:
-                unrecorded[0] += 1
-        return decisions(payload)
-
-    llm.DECISIONS_TRANSPORT = transport
-    llm.JUDGE_TRANSPORT = eval_sets.judge_unasked     # the replay reads the choice alone: this test asks its judges itself
-    asked = {judge: Recorded("judge", ledger, llm._post_judge, batch, meter=f"judge {judge[0]}") for judge in judges}
-    planner = TableQuery()
-
-    def ask(judge: tuple[str, str], row: dict, payload: bytes, listed_right: list[bool], answers: list[str], mass: dict, none_p: float):
-        try:
-            answer = asked[judge](payload)
-            choice = json.loads(answer.get("text") or "")["choice"]
-            at = None if choice == NONE else int(choice[1:])
-        except BudgetStop:
-            return judge, None
-        except Exception as error:
-            return judge, {**row, "pick": None, "error": f"{type(error).__name__}: {str(error)[:200]}", "infra": _infra(error)}
-        usage = answer.get("usage") or {}
-        shown = row["choice_at"]
-        row.update(pick=choice, pick_at=at, pick_right=at is not None and listed_right[at],
-                   same_answer=at is not None and shown is not None and answers[at] == answers[shown],
-                   pick_mass=round(mass.get(answers[at], 0.0), 4) if at is not None else None, none_p=round(none_p, 4),
-                   tokens_in=int(usage.get("promptTokenCount") or 0),
-                   tokens_out=int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0),
-                   seconds=answer.get("seconds"))
-        return judge, row
-
-    pending: list = []
-    with contextlib.ExitStack() as files, ThreadPoolExecutor(4) as pool, contextlib.ExitStack() as request:
-        sinks = {judge: files.enter_context(open(target, "a", encoding="utf-8", newline="\n")) for judge, target in targets.items()}
-
-        def put(judge: tuple[str, str], row: dict) -> None:
-            sinks[judge].write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
-            sinks[judge].flush()
-
-        def write(wait: bool) -> None:
-            while pending and (wait or pending[0].done() or len(pending) > 12 * len(judges)):
-                judge, row = pending.pop(0).result()
-                if row is not None:
-                    put(judge, row)
-
-        book, tables, count, started = None, None, 0, time.time()
-        asked_of_book: dict[str, tuple] = {}     # a question asked twice of one workbook is answered from the request's cache
-        for item in items:
-            if ledger.stopped:
-                break
-            record = held[item.id]
-            wanted = [judge for judge in judges if item.id not in done[judge]]
-            base = {"id": item.id, "book": item.book, "question": item.question, "stratum": strata[item.id]}
-            rest = {"choice_at": record.get("shown_at"), "choice_right": bool(record["engine"]), "choice_kind": choice_kind(record),
-                    "choice_mass": record.get("confidence"),
-                    "difference": _choice_difference(record.get("shown_coordinates") or [], record.get("right_coordinates") or [])
-                    if strata[item.id] == "choice miss" else ""}
-            rows = {judge: {**base, "model": judge[0], "thinking": judge[1], **rest} for judge in wanted}
-            try:
-                if item.book != book:
-                    book, tables = None, None
-                    request.close()
-                    asked_of_book.clear()
-                    tables = dev.tables_of(item)
-                    request.enter_context(scratch_database())
-                    book = item.book
-                captured.clear()
-                selection = planner.select_query(item.question, tables, judged=True)
-                if captured:
-                    asked_of_book[item.question] = captured[0]
-                elif item.question in asked_of_book:
-                    captured.append(asked_of_book[item.question])
-            except Exception as error:
-                book, tables = None, None
-                request.close()
-                for judge, row in rows.items():
-                    put(judge, {**row, "pick": None, "error": f"{type(error).__name__}: {str(error)[:200]}", "infra": _infra(error)})
-                continue
-            shown = selection.selected if selection.selected is not None else selection.erred
-            listed_right = [bool(dev.graded(item, selection.answer(at))) for at in range(len(selection.rows))]
-            parity = shown == record.get("shown_at") and listed_right == record.get("listed_right") and len(captured) == 1
-            if not parity:
-                for judge, row in rows.items():
-                    put(judge, {**row, "parity": False, "pick": None, "error": "the replay differs from the record"})
-                continue
-            answers = [answer_key(listed) for listed in selection.rows]
-            mass, _first = answer_masses(selection.probabilities, answers)
-            none_p = float((selection.probabilities or {}).get(NONE, 0.0))
-            for judge, row in rows.items():
-                row["parity"] = True
-                pending.append(pool.submit(ask, judge, row, judge_body(*captured[0], *judge), listed_right, answers, mass, none_p))
-            write(False)
-            count += 1
-            if count % 25 == 0:
-                print(f"judge {set_name} {count} replayed, {round(time.time() - started)}s, spend ${ledger.total():.2f}", flush=True)
-        write(True)
-    print(("STOPPED at the cap; " if ledger.stopped else "") + f"judge {set_name}: {count} replayed, "
-          f"{unrecorded[0]} Decisions bodies not recorded before, spend ${ledger.total():.2f}", flush=True)
-
-
-def judge_summary(run: str, source: str, set_name: str, model: str = NEON_MODEL, thinking: str = llm.JUDGE_THINKING) -> dict:
-    """The judge test's numbers on one set (run_judge): per stratum, how many were asked of how many there are and
-    the judge's picks graded; and, with each sampled stratum scaled to its count (every choice miss is asked), the
-    set's right if the judge's pick were served (its none serving the Decisions choice's pick, as an erred answer's
-    likeliest pick is served), with a 95% interval from the right sample's losses, and its unmarked wrong and unmarked
-    right under two marks: agreement (unmarked only where the Decisions choice answered unmarked and the judge picked
-    the same answer; another answer warned, none erred) and today's thresholds over the Decisions probability of the
-    judge's answer (unmarked at engine/program/closed.py T_FLAG and above, none less likely). And the judge asked only
-    where the Decisions choice marks its answer (warned or erred), its unmarked answers kept: the latency of the rest
-    unchanged. Latency and spend per call from the recorded answers, at the judge's price (JUDGES)."""
-    from engine.program.closed import T_FLAG
-    held = records(source, set_name, "engine")
-    strata = judge_strata(held)
-    population = collections.Counter(strata.values())
-    rows = [row for row in records(run, set_name, judge_system(model, thinking)).values() if row.get("pick") is not None and row.get("parity")]
-    out: dict = {"judge": {"model": model, "thinking": thinking},
-                 "questions": len(held), "right now": sum(bool(row["engine"]) for row in held.values()),
-                 "unmarked wrong now": sum(choice_kind(row) == "answered" and not row["engine"] for row in held.values()),
-                 "unmarked right now": sum(choice_kind(row) == "answered" and bool(row["engine"]) for row in held.values())}
-    delta = unmarked_wrong = unmarked_right = threshold_wrong = threshold_right = escalated = 0.0
-    variance = escalated_variance = wrong_variance = 0.0
-    for stratum in JUDGE_STRATA:
-        asked = [row for row in rows if row["stratum"] == stratum]
-        if not asked:
-            continue
-        scale = population[stratum] / len(asked)
-        served = [row["pick_right"] if row["pick_at"] is not None else row["choice_right"] for row in asked]
-        block = {"of": population[stratum], "asked": len(asked), "judge right": sum(row["pick_right"] for row in asked),
-                 "judge none": sum(row["pick_at"] is None for row in asked),
-                 "same answer as the choice": sum(row["same_answer"] for row in asked),
-                 "the choice right": sum(row["choice_right"] for row in asked)}
-        if stratum == "choice miss":
-            block["judge right by how the choice's pick differs"] = dict(collections.Counter(
-                f"{row['difference']} {'right' if row['pick_right'] else 'wrong'}" for row in asked).most_common())
-        change = [int(now) - int(row["choice_right"]) for now, row in zip(served, asked)]
-        delta += scale * sum(change)
-        marked = [c if row["choice_kind"] != "answered" else 0 for c, row in zip(change, asked)]
-        escalated += scale * sum(marked)
-        if stratum != "choice miss" and len(asked) > 1:
-            for values, kept in ((change, "all"), (marked, "marked")):
-                mean = sum(values) / len(asked)
-                spread = population[stratum] ** 2 * sum((c - mean) ** 2 for c in values) / (len(asked) - 1) / len(asked)
-                if kept == "all":
-                    variance += spread
-                else:
-                    escalated_variance += spread
-        flagged = [int(row["choice_kind"] == "answered" and row["same_answer"] and not now) for now, row in zip(served, asked)]
-        if stratum != "choice miss" and len(asked) > 1:
-            mean = sum(flagged) / len(asked)
-            wrong_variance += population[stratum] ** 2 * sum((f - mean) ** 2 for f in flagged) / (len(asked) - 1) / len(asked)
-        for now, row in zip(served, asked):
-            agreed = row["choice_kind"] == "answered" and row["same_answer"]
-            unmarked_wrong += scale * (agreed and not now)
-            unmarked_right += scale * (agreed and now)
-            p = row["pick_mass"]
-            clean = p is not None and row["none_p"] <= p and p >= T_FLAG
-            threshold_wrong += scale * (clean and not now)
-            threshold_right += scale * (clean and now)
-        out[stratum] = block
-    unasked_clean = sum(1 for key, row in held.items() if key not in strata and choice_kind(row) == "answered")
-    unasked_wrong = sum(1 for key, row in held.items() if key not in strata and choice_kind(row) == "answered" and not row["engine"])
-    half = 1.96 * math.sqrt(variance)
-    seconds = sorted(row["seconds"] for row in rows if row.get("seconds") is not None)
-    price = JUDGES[model]
-    usd = [(row["tokens_in"] * price[0] + row["tokens_out"] * price[1]) / 1e6 for row in rows]
-    out["the judge's pick served"] = {
-        "right": round(out["right now"] + delta, 1), "interval": [round(out["right now"] + delta - half, 1), round(out["right now"] + delta + half, 1)],
-        "agreement marks": {"unmarked wrong": round(unmarked_wrong + unasked_wrong, 1),
-                            "unmarked wrong interval": [round(unmarked_wrong + unasked_wrong - 1.96 * math.sqrt(wrong_variance), 1),
-                                                       round(unmarked_wrong + unasked_wrong + 1.96 * math.sqrt(wrong_variance), 1)],
-                            "unmarked right": round(unmarked_right + unasked_clean - unasked_wrong, 1)},
-        "today's thresholds over the judge's answer": {"unmarked wrong": round(threshold_wrong + unasked_wrong, 1),
-                                                  "unmarked right": round(threshold_right + unasked_clean - unasked_wrong, 1)}}
-    half = 1.96 * math.sqrt(escalated_variance)
-    out["the judge asked only where the choice marks its answer"] = {
-        "asked of": sum(choice_kind(row) in ("warned", "erred") for row in held.values()),
-        "right": round(out["right now"] + escalated, 1),
-        "interval": [round(out["right now"] + escalated - half, 1), round(out["right now"] + escalated + half, 1)],
-        "unmarked wrong": out["unmarked wrong now"]}
-    if seconds:
-        out["per call"] = {"seconds p50": seconds[len(seconds) // 2], "seconds p90": seconds[int(len(seconds) * 0.9)],
-                           "tokens in": round(sum(row["tokens_in"] for row in rows) / len(rows)),
-                           "tokens out with thinking": round(sum(row["tokens_out"] for row in rows) / len(rows)),
-                           "usd": round(sum(usd) / len(usd), 4), "usd asked": round(sum(usd), 2)}
-    return out
-
-
-def judges_agreeing(run: str, source: str, set_name: str, judges: tuple[tuple[str, str], ...]) -> dict:
-    """The marks when every judge named must agree (run_judge's rows of one run): an answer is unmarked only where the
-    Decisions choice answered it unmarked and each of the judges picked the same answer; unmarked wrong and unmarked
-    right on the set, each sampled stratum scaled to its count as judge_summary scales it, and the unmarked wrong's
-    95% interval from the sampled strata."""
-    held = records(source, set_name, "engine")
-    strata = judge_strata(held)
-    population = collections.Counter(strata.values())
-    rows_of = [{key: row for key, row in records(run, set_name, judge_system(*judge)).items() if row.get("pick") is not None and row.get("parity")}
-               for judge in judges]
-    shared = set(rows_of[0]).intersection(*rows_of[1:])
-    wrong = right = variance = 0.0
-    for stratum in JUDGE_STRATA:
-        keys = sorted(key for key in shared if strata[key] == stratum)
-        if not keys:
-            continue
-        scale = population[stratum] / len(keys)
-        agreed = [rows_of[0][key]["choice_kind"] == "answered" and all(rows[key]["same_answer"] for rows in rows_of) for key in keys]
-        flagged = [int(ok and not rows_of[0][key]["choice_right"]) for ok, key in zip(agreed, keys)]
-        wrong += scale * sum(flagged)
-        right += scale * sum(ok and rows_of[0][key]["choice_right"] for ok, key in zip(agreed, keys))
-        if stratum != "choice miss" and len(keys) > 1:
-            mean = sum(flagged) / len(keys)
-            variance += population[stratum] ** 2 * sum((f - mean) ** 2 for f in flagged) / (len(keys) - 1) / len(keys)
-    unasked_clean = sum(1 for key, row in held.items() if key not in strata and choice_kind(row) == "answered")
-    unasked_wrong = sum(1 for key, row in held.items() if key not in strata and choice_kind(row) == "answered" and not row["engine"])
-    half = 1.96 * math.sqrt(variance)
-    return {"judges": [f"{model}:{thinking}" for model, thinking in judges], "questions": len(held), "asked": len(shared),
-            "unmarked wrong": round(wrong + unasked_wrong, 1),
-            "unmarked wrong interval": [round(wrong + unasked_wrong - half, 1), round(wrong + unasked_wrong + half, 1)],
-            "unmarked right": round(right + unasked_clean - unasked_wrong, 1)}
-
-
 def keep(run: str) -> None:
     """The run's working records packed into regress/sets/public/records/<run>/ (no timestamp in the archives)."""
     for path in sorted((WORK / run).glob("*/*.jsonl")):
@@ -1286,7 +957,6 @@ def main() -> int:
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--cap", type=float, default=30.0)
     parser.add_argument("--redo-errors", action="store_true", help="rerun the rows recorded as errors or provider failures")
-    parser.add_argument("--unjudged", action="store_true", help="ask no second judge: an answer is recorded as the choice left it (every training set runs so)")
     parser.add_argument("--squall", help="wtq-train: only the questions whose SQUALL query matches this pattern (one family, for diagnosis)")
     parser.add_argument("--match", help="training sets: only the questions whose text matches this pattern (one family, for diagnosis; never a gate)")
     parser.add_argument("--books", type=Path, help="training sets: only the questions on the workbooks this file lists, one per line (the tables a reading change touches, for diagnosis; never a gate)")
@@ -1304,11 +974,6 @@ def main() -> int:
     parser.add_argument("--teacher", help="with --oracle or --stages on a test sample: the run whose neon records hold the written queries")
     parser.add_argument("--merge", nargs="+", metavar="RUN", help="with --run and --set: the shards' records of a set gathered into one run")
     parser.add_argument("--boost", type=float, default=4.0)
-    parser.add_argument("--judge", metavar="SOURCE", help="with --run and --set: the choice's question on engine run SOURCE's questions put to a judge model (diagnosis; nothing served)")
-    parser.add_argument("--judges", nargs="+", default=[f"{NEON_MODEL}:{llm.JUDGE_THINKING}"], metavar="MODEL:THINKING",
-                        help=f"with --judge: the judges, each a model ({', '.join(sorted(JUDGES))}) at a thinking level; one replay asks them all")
-    parser.add_argument("--judge-sizes", nargs=2, type=int, default=(150, 50), metavar=("RIGHT", "UNBUILT"),
-                        help="with --judge: the seeded samples of right questions and of unbuilt ones answered unmarked (every choice miss is asked)")
     args = parser.parse_args()
     if args.new_sample:
         record = new_sample(args.new_sample, args.size or 1000, args.seed)
@@ -1346,18 +1011,6 @@ def main() -> int:
     if not (args.run and args.set):
         parser.error("--run and --set are required")
     ledger = Ledger(args.run, args.cap)
-    if args.judge:
-        judges = tuple(tuple(spec.split(":", 1)) for spec in args.judges)
-        if any(len(judge) != 2 or judge[0] not in JUDGES for judge in judges):
-            parser.error(f"--judges takes MODEL:THINKING, the model one of {', '.join(sorted(JUDGES))}")
-        run_judge(args.judge, args.set, args.run, tuple(args.judge_sizes), args.limit, ledger,
-                  f"{args.run}-{args.set}-judge-{os.getpid()}", args.threads, judges)
-        for judge in judges:
-            print(json.dumps(judge_summary(args.run, args.judge, args.set, *judge), indent=1))
-        if len(judges) > 1:     # every pair of them that must agree, and all of them
-            for group in [*map(tuple, __import__("itertools").combinations(judges, 2)), *([judges] if len(judges) > 2 else [])]:
-                print(json.dumps(judges_agreeing(args.run, args.judge, args.set, group)))
-        return 0
     batch = f"{args.run}-{args.set}-{args.system}-{os.getpid()}"     # run names carry their date
     items, limits, sql = items_of(args.set, args.size, args.skip)
     if args.squall:
@@ -1397,8 +1050,7 @@ def main() -> int:
           f"spend so far ${ledger.total():.2f} of ${args.cap:g}", flush=True)
     with open(target, "a", encoding="utf-8", newline="\n") as sink:
         if args.system in ("engine", "prereasoner"):
-            run_engine(args.system, items, limits, sql, sink, done, ledger, batch, args.threads,
-                       args.unjudged or args.set.startswith(("wtq-train", "databench-train")))
+            run_engine(args.system, items, limits, sql, sink, done, ledger, batch, args.threads)
         else:
             run_frontier(args.system, items, sink, done, ledger, batch, args.threads)
     print(("STOPPED at the cap; " if ledger.stopped else "") + f"done {args.run} {args.set} {args.system}, spend ${ledger.total():.2f}", flush=True)

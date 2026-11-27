@@ -77,7 +77,17 @@ const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
 // routing control that runs the deterministic /api/reason path without the orchestrator.
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
-let CHECK=null,RETRY_ASK=false;                   // the turn's answer mark (engine check: warned / erred / retried); the next turn is a Retry
+let CHECK=null;                                   // the turn's answer mark (engine check: one of four levels, with the answer)
+// A turn's Retry runs in the background (retryTurn): RETRYING while the live turn's is out, REVISED once its answer took
+// the turn's place. TURN_KEY names the live turn, so a retry that comes back finds its turn wherever it is by then.
+let RETRYING=false,REVISED=false,TURN_SEQ=1,TURN_KEY=1;
+// The answers retries put in a turn's place ({q, was, now}): a transcript the server built from an older one (a
+// question asked while the retry was out) takes them again.
+let REVISIONS=[];
+function revisedTranscript(history){
+  const shared=window.PrereasonerTurnRenderer;
+  return shared&&shared.revisedHistory?REVISIONS.reduce((list,r)=>shared.revisedHistory(list,r.q,r.was,r.now),history):history;
+}
 let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
 let EDITED=false,LASTQ=null;                     // the user edited an input cell (-> offer Recalculate); the last question run
 let RECALCULATING=false,SOURCE_RECALC_ERROR=false;
@@ -531,18 +541,67 @@ function turnHtml(){                                          // the CURRENT (li
   return notice+turnHtmlBody();
 }
 // An answer's mark and its Retry (turn-renderer.js renderCheck): ``index`` is the archived turn's place in CHAT, none
-// for the live turn. Retry asks the turn's question again with retry:true (engine/retry.py), owner 2026-11-21.
-function checkMark(check,index){
+// for the live turn; ``retrying``, its retry is out. The direct path asks no model, so it offers no Retry.
+function checkMark(check,index,retrying){
   const shared=window.PrereasonerTurnRenderer;
-  return shared&&shared.renderCheck?shared.renderCheck(check,'onclick="retryTurn('+(index==null?'':index)+')"'):'';
+  return shared&&shared.renderCheck?shared.renderCheck(check,ORCH?'onclick="retryTurn('+(index==null?'':index)+')"':null,!!retrying):'';
 }
-function retryTurn(index){
-  if(!SETTLED&&!FAILMSG)return;
-  const q=index==null?question:(CHAT[index]&&CHAT[index].q);
-  if(!q)return;
-  archiveTurn(); question=q; RETRY_ASK=true;
-  try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
-  resetRun(); paint(); startRun();
+// An archived turn's markup, from what it keeps: written when the turn is archived, when its retry comes back, and
+// when a saved chat opens (``saved``: a saved turn shows its analysis on either path).
+function archivedTurnHtml(t,index,saved){
+  const heading=analysisHeading(t.analysis), asks=t.asks||'';
+  const meta=(heading||asks)?'<div class="cot archived">'+(heading?'<div class=cotbar>'+heading+'</div>':'')+asks+'</div>':'';
+  return ((ORCH||saved)?meta:'')+'<div class=convmsg>'+checkMark(t.check||null,index,t.retrying)+conv2html(t.reply||'')+'</div>';
+}
+// Retry (engine/retry.py: Gemini 4 Neon writes the query): the turn's question asked again with retry:true, in the
+// background. The turn's icon loads, the question box stays open, and the retry's answer takes the turn's place in
+// view, wherever the turn is by then (owner, 2026-11-27: "never ever wait for neon to show engine's answer ... the
+// icon can change into retry loading"). It runs at once for an answer served very likely wrong (owedRetry), and on a
+// click of the mark's Retry.
+async function retryTurn(index){
+  const shared=window.PrereasonerTurnRenderer;
+  if(!ORCH||!shared||!shared.revisedTurn)return;
+  const held=index==null?null:CHAT[index];
+  if(held?(held.retrying||!held.q||!held.reply):(!SETTLED||FAILMSG||RETRYING||!CONV))return;
+  const key=held?(held.key=held.key||++TURN_SEQ):TURN_KEY, cid=convId();
+  const q=held?held.q:question, was=held?{reply:held.reply,check:held.check}:{reply:CONV,check:CHECK};
+  if(held){ held.retrying=true; held.html=archivedTurnHtml(held,index); } else RETRYING=true;
+  renderRail();
+  let retried=null;
+  try{
+    const token=await window.ensureToken();
+    const send=async force=>fetch(CHAT_ENDPOINT,{method:'POST',
+      headers:{'content-type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify(Object.assign({message:q, history:shared.historyBefore(HISTORY,q,was.reply), retry:true},
+        await uploadedSource(token,q,force), executionRequestFields(null)))});
+    let response=await send(false);
+    if(response.status===409) response=await send(true);     // the stored sheets were replaced since: upload them again
+    const j=response.ok?await response.json().catch(()=>null):null;
+    if(j&&j.reply&&!j.error){ const traces=Array.isArray(j.traces)?j.traces:[], last=traces[traces.length-1];
+      retried={reply:j.reply, check:shared.turnCheck(traces), analysis:(last&&last.engine&&last.engine.analysis)||null,
+        calls:traces.map(t=>({jobId:t.jobId,question:t.question,read_as:t.read_as}))}; }
+  }catch(_){}
+  if(convId()!==cid)return;                                   // another chat is open by now
+  const now=shared.revisedTurn(was,retried), at=CHAT.findIndex(t=>t.key===key);
+  if(at>=0){ const t=CHAT[at]; t.retrying=false; t.reply=now.reply; t.check=now.check;
+    if(now.replaced){ if(retried.analysis&&retried.analysis.slug)t.analysis=Object.assign({},retried.analysis);
+      t.asks=shared.renderAsks(retried.calls.map(c=>c.read_as||c.question),t.q); }
+    t.html=archivedTurnHtml(t,at); }
+  else if(TURN_KEY===key&&SETTLED){ RETRYING=false; CHECK=now.check;
+    if(now.replaced){ REVISED=true; CONV=REPLY=now.reply; CALLS=retried.calls; } }
+  else return;                                                // the turn is gone
+  if(now.replaced){ REVISIONS.push({q:q,was:was.reply,now:now.reply}); HISTORY=revisedTranscript(HISTORY);
+    try{ sessionStorage.setItem('pr_orch_history', JSON.stringify(HISTORY)); }catch(_){} }
+  renderRail(); saveConvState();
+  // The live turn's workbook follows its answer: the retry's stored analysis opens in place of the first reading's.
+  if(at<0&&now.replaced&&retried.analysis&&retried.analysis.slug){ noteAnalysis(retried.analysis);
+    if(await loadAnalysis(retried.analysis.analysis_id,retried.analysis.revision)&&TURN_KEY===key){
+      const n=BOOK.filter(s=>s.cls==='deriv').length; STATUS=n?answeredStatus(n):'Done'; renderRail(); } }
+}
+// An answer served very likely wrong is owed its retry (turn-renderer.js owesRetry): asked the moment the turn ends.
+function owedRetry(){
+  const shared=window.PrereasonerTurnRenderer;
+  if(ORCH&&SETTLED&&!FAILMSG&&!RETRYING&&!REVISED&&shared&&shared.owesRetry&&shared.owesRetry(CHECK)) retryTurn();
 }
 function turnHtmlBody(){
   if(CONV){ let h='';
@@ -550,7 +609,7 @@ function turnHtmlBody(){
     const after=!ORCH&&PRESENT?derivLinks():'';
     h=window.PrereasonerTurnRenderer
       ? window.PrereasonerTurnRenderer.renderAssistantTurn({reasoningHtml:reasoning,answerHtml:conv2html(CONV),afterHtml:after,
-          checkHtml:SETTLED?checkMark(CHECK):''})
+          checkHtml:SETTLED?checkMark(CHECK,null,RETRYING):''})
       : reasoning+'<div class=convmsg>'+conv2html(CONV)+'</div>'+after;
     if(CONVPROP) h+='<div class=convrun><button onclick="runProposed()">Run &ldquo;'+esc(CONVPROP)+'&rdquo;</button></div>';
     return h; }
@@ -559,8 +618,7 @@ function turnHtmlBody(){
   // (coalesced full-state writes, docs/SHEETS_AS_REASONING.md untouched — this is rail text only).
   // Render it as it grows so the answer starts appearing mid-turn; settle() then swaps in the
   // authoritative CONV text unchanged.
-  // The engine answers first (owner, 2026-11-27): the reply is the answer already, and its mark (CHECK, streamed on
-  // the call's trace) shows beside it while it is still being checked, then settles in place.
+  // The reply is the engine's answer, and its mark (CHECK, streamed on the call's trace) is on screen with it.
   if(ORCH&&REPLY&&!SETTLED)
     return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>'
           +'<div class=convmsg>'+checkMark(CHECK)+conv2html(REPLY)+'</div>';
@@ -583,15 +641,13 @@ function turnReply(){                                         // the current tur
   const rs=resultSummary(); return rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):'';
 }
 function archiveTurn(){                                       // freeze the turn; its immutable workbook link remains usable
-  let h; const reply=turnReply(), archivedHeading=analysisHeading(TURN_ANALYSIS), archivedAsks=asksLine();
-  const archivedMeta=(archivedHeading||archivedAsks)
-    ? '<div class="cot archived">'+(archivedHeading?'<div class=cotbar>'+archivedHeading+'</div>':'')+archivedAsks+'</div>' : '';
+  let h; const reply=turnReply(), archivedAsks=asksLine();
   if(FAILMSG) h='<div class=statusline>&#9888; '+esc(FAILMSG)+'</div>';
-  else if(CONV) h=(ORCH?archivedMeta:'')+'<div class=convmsg>'+checkMark(CHECK,CHAT.length)+conv2html(CONV)+'</div>';
+  else if(CONV) h=archivedTurnHtml({analysis:TURN_ANALYSIS,asks:archivedAsks,check:CHECK,reply:CONV,retrying:RETRYING},CHAT.length);
   else{ const rs=resultSummary(); const n=BOOK.filter(s=>s.cls==='deriv').length;
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
   CHAT.push({q:question, html:h, reply:reply, analysis:TURN_ANALYSIS?Object.assign({},TURN_ANALYSIS):null,
-             check:CHECK&&CHECK.state==='checking'?null:CHECK});   // a mark still being checked is not a turn's kept mark
+             check:CHECK, asks:archivedAsks, key:TURN_KEY, retrying:!FAILMSG&&!!CONV&&RETRYING});   // a retry still out finds the turn by its key
 }
 async function loadAnalysis(analysisId,revision,options){
   if(!SETTLED||!convId()||!/^a_[0-9a-f]{32}$/.test(String(analysisId))
@@ -647,6 +703,7 @@ async function loadAnalysis(analysisId,revision,options){
         ? (summary.k==='result'?summary.v:(summary.k+': '+summary.v))
         : 'This analysis is shown in the workbook.');
       CHAT=[]; question=linkedQuestion||question; TURN_ANALYSIS=descriptor?Object.assign({},descriptor):null;
+      TURN_KEY=++TURN_SEQ; RETRYING=false; REVISED=false; CHECK=null;   // another turn is on screen: no retry still out is its
       CONV=linkedReply; COTOPEN=true; setHeaderTitle(question);
     }
     AUTO=false; STATUS=oldStatus; paint(); if(options.persist!==false)saveConvState();return true;
@@ -1086,11 +1143,10 @@ async function startTurn(){
   catch(e){ if(RUN===myRun) fail((e&&e.message)||'the sheets could not be uploaded'); return; }
   // The question names the conversation's stored sheets. A 409 means they were replaced since: upload the
   // page's sheets again and ask once more.
-  const retrying=RETRY_ASK; RETRY_ASK=false;
   const ask=()=>fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
     body:JSON.stringify(Object.assign({message:question, history:HISTORY, turnId:turnId},
-      source, executionRequestFields(ONESHOT_USE), retrying?{retry:true}:{}))});
+      source, executionRequestFields(ONESHOT_USE)))});
   const httpPromise=ask().then(async r=>{ if(r&&r.status===409){ source=await uploadedSource(token,question,true); return ask(); } return r; })
     .then(parseBody).catch(()=>null);
   // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
@@ -1108,12 +1164,12 @@ async function startTurn(){
   // (2) HTTP body (blocking; {reply, traces, history}): the authoritative HISTORY + the completion path when
   // RTDB is off. On a null body (proxy 60s timeout on a cold engine) DO NOT fail while streaming — the RTDB
   // 'done' will finish the turn; only fail here if there's no stream to fall back on.
-  httpPromise.then(j=>{ if(RUN!==myRun)return;
+  httpPromise.then(j=>{ if(RUN!==myRun||REVISED)return;       // a body later than the retry's answer has nothing to add
     if(j&&j.conversation_id) setConversation(j.conversation_id);
-    if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
+    if(j&&Array.isArray(j.history)){ HISTORY=revisedTranscript(j.history); HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     const shared=window.PrereasonerTurnRenderer, check=shared&&shared.turnCheck?shared.turnCheck(j.traces):null;
-    if(check){ CHECK=check; if(SETTLED){ renderRail(); saveConvState(); } }
+    if(check&&!RETRYING){ CHECK=check; if(SETTLED){ renderRail(); saveConvState(); } }
     if(Array.isArray(j.traces)) j.traces.forEach(t=>{ const engine=t.engine||{};
       const call=CALLS.find(c=>c.jobId===t.jobId); if(call&&t.read_as)call.read_as=t.read_as;
       noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis);
@@ -1124,7 +1180,8 @@ async function startTurn(){
       if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS=answeredStatus(n); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
     takeBodyReply(j.reply);
     if(!SETTLED) markTurnDone();
-    else if(EXEC) saveConvState();                            // late HTTP metadata upgrades the durable per-sheet provenance
+    else{ if(EXEC) saveConvState();                           // late HTTP metadata upgrades the durable per-sheet provenance
+      owedRetry(); }                                          // the mark came with the body, after the turn ended
   });
   // (3) SAFETY NET: fail only if NOTHING arrived through either channel (covers a truly dead run / cold start).
   setTimeout(()=>{ if(RUN!==myRun||SETTLED)return; if(!VIEWS.length&&!REPLY&&!CALLS.length) fail('the assistant is taking too long — please try again in a moment'); }, 180000);
@@ -1208,6 +1265,7 @@ function markTurnDone(){                                      // the turn finish
   surfaceUnresolved();                                        // offer master-data sheets for unresolved text columns
   renderRail();
   saveConvState();                                            // persist a renderable snapshot so a reload restores this turn
+  owedRetry();                                                // an answer very likely wrong: its retry starts now, in the background
 }
 
 async function recoverTransport(){
@@ -1258,15 +1316,8 @@ async function startRun(){
   // Persist the server-authoritative conversation_id — GUARDED to this turn (RUN===myRun) so a slow
   // earlier turn can't clobber a later one — and re-render so the follow-up send button re-enables.
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
-  // The engine answers first (owner, 2026-11-27): an answer comes back with its mark still being checked and a
-  // token. The chat service settles it for an orchestrated turn (mcp_server/engine_client.py settle); on this
-  // direct path the page asks POST /api/check itself, and the mark settles in place.
-  httpPromise.then(async j=>{ if(RUN!==myRun||!j||!j.check||j.check.state!=='checking'||!j.check.pending)return;
-    const settled=await fetch(API_BASE+'/api/check',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-        body:JSON.stringify({pending:j.check.pending,jobId:jobId,conversation_id:j.conversation_id,analysis:j.analysis})}).then(parseBody).catch(()=>null);
-    if(RUN!==myRun)return;
-    CHECK=(settled&&settled.check)||{state:'warned',reason:'The second check of this answer did not run.'};
-    renderRail(); saveConvState(); });
+  // The answer's mark comes with it (the engine's check, one of four levels).
+  httpPromise.then(j=>{ if(RUN!==myRun||!j||!j.check)return; CHECK=j.check; renderRail(); if(SETTLED)saveConvState(); });
   // The HTTP body is ATOMIC (result+present+sql together) — the race-free source for present. Stash it and
   // (re)attempt present; tryPresent no-ops until the derivation has settled, so this can't pre-empt streaming.
   httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); noteExecution(executionOf(j),jobId);
@@ -1329,6 +1380,7 @@ function resetRun(){
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null; EXEC=null; SRCOPEN=false; SRC_PINNED=false; SRC='py';
   EXEC_BY_KEY=new Map();
   CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false; CHECK=null;  // orchestrated turn state (HISTORY persists across turns)
+  RETRYING=false; REVISED=false; TURN_KEY=++TURN_SEQ;         // a new live turn: a retry still out belongs to the archived one
   TURN_ANALYSIS=null; ANALYSIS_ERROR=null;
   callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;

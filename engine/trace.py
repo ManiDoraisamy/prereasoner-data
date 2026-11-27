@@ -288,9 +288,8 @@ def stream_final(emit, res):
         if res.get("execution") is not None:
             emit("execution", res["execution"])
         if isinstance(res.get("check"), dict):
-            # the answer's mark: answered, warned, erred or retried, or checking while its second judge is asked
-            # (the token that settles it stays in the response: engine/tables.py seal_pending)
-            emit("check", {key: value for key, value in res["check"].items() if key != "pending"})
+            # the answer's mark and its level (engine/tables.py answer_check), with the answer
+            emit("check", res["check"])
         if res.get("read_as"):
             emit("read_as", res["read_as"])
         if res.get("low_confidence"):

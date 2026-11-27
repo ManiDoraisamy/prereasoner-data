@@ -17,7 +17,6 @@ import csv as _csv
 import io
 import re
 import threading
-from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 
@@ -408,18 +407,14 @@ class TableQuery:
         return sims[0][0] if sims and sims[0][1] > 0.3 else None
 
     # ---------- planning ----------
-    def select_query(self, question, tables, marked=True, judged=False):
+    def select_query(self, question, tables):
         """Choose the query to serve for an own-data question over the request's ``tables``; returns a
         ``PoolSelection`` (engine/sql_rank.py). This is the one own-data selection: serving, the compose probe,
         decomposition leaves and the evaluators (the Spider evaluator, the messy benchmark, the dev replay) call it.
-        ``marked`` is False for a compound question's part, whose listing alone is read: it asks no second judge
-        (engine/program/answer.py), and its answer is kept apart from a marked one of the same question.
 
-        The answer is given before the second judge is asked (owner, 2026-11-27: "always serve the answer before the
-        judge has answered"). The selection comes back as the choice left it, and where its mark depends on the judge
-        it is ``pending`` (``PendingMark``): serving gives the answer with its mark being checked and settles it after
-        (``checking_check``, ``settle_check``). ``judged`` asks the judge here and applies its answer, for a caller
-        that reads the mark with the selection: the evaluators.
+        The answer comes with its mark, at once and from the engine alone (owner, 2026-11-27: "never ever wait for
+        neon to show engine's answer ... show only icons"): the choice's own probability of the answer puts it in one
+        of four levels (engine/program/closed.py choose_answer; ``answer_check``). No other model is asked about it.
 
         The tables are one workbook, a tab per table in their order, each its ``grid`` (``table_grid``), prepared once
         per content (engine/prepared.py prepared_workbook), with the stock reading's vectors its conversation keeps for
@@ -431,15 +426,14 @@ class TableQuery:
         database (engine/program/answer.py), once per request (RequestDatabase.answered), naming the tab the client has
         in view (RequestDatabase.active_sheet): the stock reading and one closed-question call read the question, the
         decoder builds the programs, the verifier runs each one, one choice call weighs those that returned rows, and
-        the likeliest answer is answered, warned or most likely wrong (engine/program/closed.py ERRED: nothing is
+        the likeliest answer is answered, warned or very likely wrong (engine/program/closed.py ERRED: nothing is
         decided, and ``erred`` holds it). No model writes a program; the retry of an erred answer (``serve``,
         engine/retry.py) is the one written query. The candidates that returned rows are the pool, each its program's
         typed AST (engine/program/lowering.py) and SQL with its read-as line as evidence. A question longer than
-        ONE_QUERY_WORDS words whose answer is most likely wrong asks, in an analysis, for the decomposition proposal
+        ONE_QUERY_WORDS words whose answer is very likely wrong asks, in an analysis, for the decomposition proposal
         (engine/decomposition.py declined_compound). Raises LLMUnavailable when a Decisions call fails."""
         from engine.prepared import hold_sheet_vectors, scratch_database
-        from engine.program.answer import ERRED, WARNED, answer, ask
-        from engine.program.answer import judged as with_judgement
+        from engine.program.answer import ERRED, WARNED, answer
         from engine.program.closed import answer_masses
         from engine.program.lowering import to_query
         from engine.sql_ast import render_query
@@ -450,14 +444,7 @@ class TableQuery:
             key, prepared, targets = self.workbook(question, tables, database)
             hold_sheet_vectors(tables, database)
             store = database.program_tables(key, prepared.catalog)
-            said = database.answered(key if marked else (key, "unmarked"), question,
-                                     lambda: answer(question, prepared, store, database.active_sheet, marked))
-        left, pending = said, None
-        if said.awaited is not None:
-            if judged:
-                said = with_judgement(said, ask(said.awaited))
-            else:
-                pending = PendingMark(said.awaited, lambda key: with_judgement(left, key))
+            said = database.answered(key, question, lambda: answer(question, prepared, store, database.active_sheet))
         mass, _first = answer_masses(said.probabilities, said.listed_answers)
         scores = [mass.get(answer_id, 0.0) for answer_id in said.listed_answers]
         pool = []
@@ -469,7 +456,7 @@ class TableQuery:
         return PoolSelection(tuple(pool), ranking, None if erred else said.pick, said.mass,
                              said.pick if erred else None, said.kind == WARNED, said.uncertain, said.runner_up,
                              said.probabilities, said.listed_programs, said.listed_rows, prepared.catalog, store, bool(targets),
-                             said.alike, said.doubt, pending)
+                             said.alike, said.sure)
 
     @staticmethod
     def workbook(question, tables, database):
@@ -503,7 +490,7 @@ class TableQuery:
         """Select the own-data query (``select_query``) and run it. In an analysis, as every served request is, the
         chosen program's one plan runs through both deterministic emitters on the request's database
         (``_execute_deterministic``, which records it); outside one (an evaluator, a test) the answer is the rows the
-        choice read. Returns (candidate, result, error, selection); a question whose answer is most likely wrong has
+        choice read. Returns (candidate, result, error, selection); a question whose answer is very likely wrong has
         neither a candidate nor an error."""
         selection = self.select_query(question, norm)
         if selection.candidate is None:
@@ -534,25 +521,17 @@ class TableQuery:
                   "rows": [["" if value is None else value for value in row] for row in rows]}
         return candidate, result, None
 
-    def retry_answer(self, tables, question, explicit_fks=(), pending=None):
+    def retry_answer(self, tables, question, explicit_fks=()):
         """The retry of an answer (engine/retry.py): Gemini 4 Neon writes the query over the workbook the question
         reads (``workbook``: its tables and what the request's links reach), whatever the Decisions path read. It is
-        the person's Retry, or, with ``pending`` (the token of an answer ``serve`` gave marked most likely wrong), the
-        retry that answer is owed: the answer was served first and this one replaces it (owner, 2026-11-27). The
-        response has ``serve``'s shape: the retry's rows and query (``check`` retried; asked when the person asked),
-        its word that the sheet cannot answer the question (the one question back), or the error its query met; a
-        pending retry that cannot answer leaves the served answer marked, with why. Raises PendingInvalid for a token
-        this engine did not issue."""
+        one request, the person's Retry: a client sends it by itself, in the background, for an answer ``serve`` gave
+        marked very likely wrong, after that answer is on screen, and the retry's answer takes its place (owner,
+        2026-11-27). The response has ``serve``'s shape: the retry's rows and query (``check`` retried), its word that
+        the sheet cannot answer the question (the one question back), or the error its query met."""
         from engine.prepared import scratch_database
         from engine.query_contract import Coverage
         from engine.retry import retry, workbook_tables
 
-        erred = None
-        if pending is not None:
-            erred = open_pending(pending).get("retry")
-            if not isinstance(erred, dict):
-                raise PendingInvalid("the token holds no retry")
-        read, confidence = (erred.get("read_as"), erred.get("confidence")) if erred else (None, None)
         norm, _fks = self.ingest(tables, explicit_fks=explicit_fks)
         with scratch_database() as database:
             _key, prepared, _targets = self.workbook(question, norm, database)
@@ -562,34 +541,25 @@ class TableQuery:
                     "tables": [{"name": table["name"], "columns": table["columns"], "n_rows": len(table["rows"])}
                                for table in norm]}
         if retried.answered:
-            response.update(result=retried_result(retried), check=retried_check(retried, read, confidence, asked=erred is None),
-                            coverage=Coverage(True).record())
+            response.update(result=retried_result(retried), check=retried_check(retried), coverage=Coverage(True).record())
         elif not retried.answerable:
             response.update({"clarify": True, "reason": retried.reason or UNANSWERABLE, "dropped": [],
                              "retry": retried.record()})
-            if read:
-                response["read_as"] = read
         else:
-            response.update(error=RETRY_FAILED, check={
-                "state": "erred", "confidence": confidence,
-                "reason": RETRY_FAILED if erred is None else erred_reason(read, confidence, True), "retry": retried.record()})
+            response.update(error=RETRY_FAILED, check={"state": "erred", "level": VERY_LIKELY_WRONG, "confidence": None,
+                                                       "reason": RETRY_FAILED, "retry": retried.record()})
         return response
 
     def settled(self, response, tables, question, explicit_fks=()):
-        """``response`` (a ``serve`` answer) with what it is still owed done here, in process: its mark settled
-        (``settle_check``), or the retry of an answer served most likely wrong, whose answer, or word that the sheet
-        cannot answer, takes its place; a retry that cannot answer leaves the served answer marked with why. The chat
-        service does the same over HTTP after it has shown the answer (mcp_server/engine_client.py settle); this is
-        for a caller in the engine's own process that reads one settled answer (the live suites, an evaluator)."""
-        check = response.get("check") if isinstance(response, dict) else None
-        if not isinstance(check, dict) or "pending" not in check:
+        """``response`` (a ``serve`` answer) with the retry it is owed done here, in process: the retry of an answer
+        served very likely wrong, whose answer, or word that the sheet cannot answer, takes its place; a retry that
+        cannot answer leaves the served answer and its mark. A client does the same after it has shown the answer
+        (web/public/lib/turn-renderer.js owesRetry; mcp_server/engine_client.py settled_query); this is for a caller in
+        the engine's own process that reads one settled answer (the live suites, an evaluator)."""
+        if not owes_retry(response):
             return response
-        if check.get("state") == "checking":
-            return {**response, "check": settle_check(check["pending"])}
-        again = self.retry_answer(tables, question, explicit_fks=explicit_fks, pending=check["pending"])
-        if again.get("result") is not None or again.get("clarify") is True:
-            return again
-        return {**response, "check": again.get("check") or shown_check(check)}
+        again = self.retry_answer(tables, question, explicit_fks=explicit_fks)
+        return again if again.get("result") is not None or again.get("clarify") is True else response
 
     # ---------- guard + execute ----------
     def guard(self, sql):
@@ -769,11 +739,11 @@ class TableQuery:
                 candidate, result, selection = None, None, None
                 err = f"{type(exc).__name__}: {exc}"
             if candidate is None and err is None:
-                # The likeliest answer is most likely wrong (engine/program/closed.py ERRED): a long question asks, in
+                # The likeliest answer is very likely wrong (engine/program/closed.py ERRED): a long question asks, in
                 # an analysis, for its decomposition; any other is owed its retry (engine/retry.py), never asked
-                # back. The likeliest reading is served first, marked most likely wrong, with the token of the retry
-                # it is owed (owner, 2026-11-27: the answer first; a wrong answer changed to the right one in view is
-                # the reasoning shown): the caller asks ``retry_answer`` with it, and the retry's answer replaces
+                # back. The likeliest reading is served at once, marked very likely wrong (owner, 2026-11-27: the
+                # answer first; a wrong answer changed to the right one in view is the reasoning shown): the client
+                # that shows it asks the retry in the background (``retry_answer``), and the retry's answer replaces
                 # this one, or says the sheet cannot answer the question (the one question back).
                 from engine.decomposition import declined_compound
                 from engine.deterministic.context import current_analysis_context
@@ -782,15 +752,14 @@ class TableQuery:
                     declined = declined_compound(selection, question)
                 if declined is None:
                     likeliest = selection.pool[selection.erred] if selection.erred is not None else None
-                    due = seal_pending({"retry": {"read_as": read_as_of(likeliest), "confidence": _rounded(selection.confidence)}})
                     if likeliest is not None:
                         candidate, result, err = self._run_member(selection, selection.erred, tablemap)
-                        check = {"state": "erred", "confidence": _rounded(selection.confidence),
-                                 "reason": erred_reason(read_as_of(likeliest), selection.confidence, False), "pending": due}
+                        check = {"state": "erred", "level": VERY_LIKELY_WRONG, "confidence": _rounded(selection.confidence),
+                                 "reason": erred_reason(read_as_of(likeliest), selection.confidence)}
                     else:
                         err = NO_CANDIDATE
-                        check = {"state": "erred", "confidence": None, "reason": erred_reason(None, None, False),
-                                 "pending": due}
+                        check = {"state": "erred", "level": VERY_LIKELY_WRONG, "confidence": None,
+                                 "reason": erred_reason(None, None)}
         sql = candidate.sql if candidate is not None else None
         computation = None
         if candidate is not None:
@@ -834,8 +803,7 @@ class TableQuery:
             from engine.query_contract import Coverage
             response['coverage'] = Coverage(True).record()
             if check is None:
-                # decided: its mark, or, where the mark awaits the second judge, that it is being checked
-                response["check"] = answer_check(selection, candidate) if selection.pending is None else checking_check(selection, candidate)
+                response["check"] = answer_check(selection, candidate)
             from engine.sql_ast import share_output
             if share_output(candidate.query):
                 response["unit"] = "percent"         # a share of a whole: 0.3 is stated as 30%
@@ -912,156 +880,53 @@ def _rounded(value):
     return None if value is None else round(float(value), 4)
 
 
-def _mark(warned, read, also, confidence, alike, doubt, uncertain):
-    if not warned:
-        return {"state": "answered", "confidence": _rounded(confidence)}
-    from engine.answer_presentation import warned_reason
-    return {"state": "warned", "confidence": _rounded(confidence),
-            "reason": warned_reason(read, also, confidence, alike, doubt),
-            "coordinates": list(uncertain), "also_read_as": also}
+# The four marks an answer carries, each the level of the choice's own probability of it (engine/program/closed.py
+# T_ERR, T_FLAG, T_SURE): the icon a client shows with the answer, at once (owner, 2026-11-27).
+VERY_LIKELY_CORRECT, LIKELY_CORRECT, LIKELY_WRONG, VERY_LIKELY_WRONG = (
+    "very_likely_correct", "likely_correct", "likely_wrong", "very_likely_wrong")
+
+
+def level_of(selection):
+    """The level of a selection's mark, one of the four: very likely wrong where the path decided on no answer (its
+    likeliest is served and owed the retry), likely wrong where the answer is warned, very likely correct where the
+    choice gives it closed.T_SURE or more, else likely correct. Serving's ``check`` and the evaluators' records read
+    it here."""
+    if selection.selected is None:
+        return VERY_LIKELY_WRONG
+    if selection.warned:
+        return LIKELY_WRONG
+    return VERY_LIKELY_CORRECT if selection.sure else LIKELY_CORRECT
 
 
 def answer_check(selection, candidate):
-    """The response's ``check`` of a decided answer: answered, or warned (``PoolSelection.warned``: below
-    closed.T_FLAG, another answer's reading reads word for word like it, or the second judge did not pick it) with the
-    reason its mark opens on (how it was read, how sure the choice was, what else the question may mean: the runner-up's
-    reading, the second judge's own pick when it picked another answer) and the coordinates the runner-up reads
-    differently (engine/program/language.coordinates)."""
+    """The response's ``check`` of a decided answer, complete when the answer is: its ``level`` (very likely correct
+    when the choice gives it closed.T_SURE or more, likely correct, or likely wrong: ``PoolSelection.warned``, below
+    closed.T_FLAG or another answer's reading reads word for word like it), the choice's confidence, and the reason the
+    mark opens on: how the question was read and how sure the choice was, and for a likely-wrong answer what else the
+    question may mean (the runner-up's reading) with the coordinates it reads differently
+    (engine/program/language.coordinates). No other model is asked: nothing here is pending."""
+    from engine.answer_presentation import answered_reason, warned_reason
+    read, confidence = read_as_of(candidate), selection.confidence
+    if not selection.warned:
+        return {"state": "answered", "level": level_of(selection), "confidence": _rounded(confidence),
+                "reason": answered_reason(read, confidence)}
     other = selection.runner_up
     also = read_as_of(selection.pool[other]) if other is not None else None
-    return _mark(selection.warned, read_as_of(candidate), also, selection.confidence, selection.alike, selection.doubt,
-                 selection.uncertain)
+    return {"state": "warned", "level": level_of(selection), "confidence": _rounded(confidence),
+            "reason": warned_reason(read, also, confidence, selection.alike),
+            "coordinates": list(selection.uncertain), "also_read_as": also}
 
 
-@dataclass(frozen=True)
-class PendingMark:
-    """A selection whose mark awaits the second judge (``PoolSelection.pending``): the judge's question
-    (engine/program/answer.py Awaited) and ``judged``, the path's answer with a key of the judge's applied."""
-    awaited: object
-    judged: object
+def owes_retry(response) -> bool:
+    """Whether ``response`` (a ``serve`` answer) is owed the retry: it was served very likely wrong."""
+    check = response.get("check") if isinstance(response, dict) else None
+    return isinstance(check, dict) and check.get("level") == VERY_LIKELY_WRONG and check.get("state") == "erred" \
+        and "retry" not in check
 
 
-PENDING_SECONDS = 900          # a pending mark or retry is settled within this long of its answer
-
-
-class PendingInvalid(ValueError):
-    """A pending token this engine did not issue, or one too old to settle."""
-
-
-def _pending_key() -> bytes:
-    """The key pending tokens are sealed with, derived from the deployment's Decisions key: every engine that can
-    answer an own-data question holds it, and no other configuration is needed."""
-    import hashlib
-
-    from engine import config
-    return hashlib.sha256(b"prereasoner pending mark\0" + (config.decisions_key() or "").encode("utf-8")).digest()
-
-
-def _pending_mac(body: str) -> str:
-    import hashlib
-    import hmac
-    return hmac.new(_pending_key(), body.encode("ascii"), hashlib.sha256).hexdigest()
-
-
-def seal_pending(payload: dict) -> str:
-    """What settling an answer needs, as a token the caller hands back (``settle_check``, ``retry_answer``): sealed,
-    so the second judge is only ever sent a question this engine built, and dated, so it is settled soon or not at
-    all. It never reaches the live trace or the stored analysis (``shown_check``)."""
-    import base64
-    import json
-    import time
-    import zlib
-    held = json.dumps({**payload, "t": int(time.time())}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    body = base64.urlsafe_b64encode(zlib.compress(held.encode("utf-8"))).decode("ascii")
-    return f"p1.{body}.{_pending_mac(body)}"
-
-
-def open_pending(token) -> dict:
-    """A pending token's payload. Raises PendingInvalid for one this engine did not issue or one too old."""
-    import base64
-    import hmac
-    import json
-    import time
-    import zlib
-    parts = str(token or "").split(".")
-    if (len(parts) != 3 or parts[0] != "p1" or not (parts[1].isascii() and parts[2].isascii())
-            or not hmac.compare_digest(_pending_mac(parts[1]), parts[2])):
-        raise PendingInvalid("the pending token was not issued here")
-    try:
-        payload = json.loads(zlib.decompress(base64.urlsafe_b64decode(parts[1])).decode("utf-8"))
-    except Exception:                                     # noqa: BLE001 - a sealed body that does not open is invalid
-        raise PendingInvalid("the pending token does not open") from None
-    if not isinstance(payload, dict) or time.time() - float(payload.get("t") or 0) > PENDING_SECONDS:
-        raise PendingInvalid("the pending token is too old")
-    return payload
-
-
-def checking_check(selection, candidate):
-    """The ``check`` of an answer served before its second judge is asked (owner, 2026-11-27): state checking, with
-    the token that settles it (``settle_check``). The token holds the judge's question and, for every key the judge
-    may answer with (and for no answer), the mark that leaves, worded as ``answer_check`` words it: settling asks the
-    judge and reads the mark off, with nothing of the selection to rebuild."""
-    import json
-
-    from engine.program.answer import WARNED
-    from engine.program.closed import UNJUDGED
-    pending, read = selection.pending, read_as_of(candidate)
-    marks, seen, of = [], {}, {}
-    for key in (*pending.awaited.keys, UNJUDGED):
-        left = pending.judged(key)
-        also = left.listed_read_as[left.runner_up] if left.runner_up is not None else None
-        mark = _mark(left.kind == WARNED, read, also, left.mass, left.alike, left.doubt, left.uncertain)
-        text = json.dumps(mark, sort_keys=True, ensure_ascii=False)
-        if text not in seen:
-            seen[text] = len(marks)
-            marks.append(mark)
-        of[key] = seen[text]
-    token = seal_pending({"mark": {"judge": pending.awaited.body.decode("utf-8"), "keys": list(pending.awaited.keys),
-                                   "marks": marks, "of": of}})
-    return {"state": "checking", "confidence": _rounded(selection.confidence), "pending": token}
-
-
-def _held_mark(pending) -> dict:
-    held = open_pending(pending).get("mark")
-    if not isinstance(held, dict):
-        raise PendingInvalid("the token holds no mark to settle")
-    return held
-
-
-def settle_check(pending) -> dict:
-    """The mark of an answer served while it was being checked (``checking_check``): the second judge is asked its
-    question now, and the mark its answer leaves is the answer's ``check`` (answered, or warned with its reason).
-    Raises PendingInvalid for a token this engine did not issue."""
-    from engine.program.answer import Awaited, ask
-    held = _held_mark(pending)
-    key = ask(Awaited(held["judge"].encode("utf-8"), tuple(held["keys"])))
-    return held["marks"][held["of"][key]]
-
-
-def shown_check(check):
-    """``check`` as the live trace and the stored analysis hold it: without its pending token. A stored answer still
-    being checked is kept as not judged twice, which is what it is until its mark is settled
-    (engine/conversations.py settle_analysis_check); the trace shows it as being checked."""
-    if not isinstance(check, dict) or "pending" not in check:
-        return check
-    return {key: value for key, value in check.items() if key != "pending"}
-
-
-def unsettled_check(check):
-    """The mark a stored answer carries until its pending one is settled: an answer being checked is not judged
-    twice yet; one most likely wrong is that, its retry not yet run."""
-    from engine.program.closed import UNJUDGED
-    if not isinstance(check, dict) or "pending" not in check:
-        return check
-    if check.get("state") == "checking":
-        held = _held_mark(check["pending"])
-        return held["marks"][held["of"][UNJUDGED]]
-    return shown_check(check)
-
-
-def erred_reason(read_as, confidence, retried):
+def erred_reason(read_as, confidence):
     from engine.answer_presentation import erred_reason as reason
-    return reason(read_as, confidence, retried)
+    return reason(read_as, confidence)
 
 
 def retried_model():
@@ -1074,12 +939,13 @@ def retried_result(retried):
     return {"columns": list(retried.columns), "rows": [["" if value is None else value for value in row] for row in retried.rows]}
 
 
-def retried_check(retried, read_as, confidence, asked):
-    """The ``check`` of an answer the retry wrote (engine/retry.py): the person asked for it, or the path's likeliest
-    reading (``read_as``, ``confidence``) was most likely wrong; its reason, and the retry's own record."""
+def retried_check(retried):
+    """The ``check`` of an answer the retry wrote (engine/retry.py): likely correct (the choice gave it no
+    probability: on the answers it rewrote, the retry was right on 61 of 95 and 37 of 56, spider/results/RESULTS.md
+    2026-11-27), its reason, and the retry's own record."""
     from engine.answer_presentation import retried_reason
-    return {"state": "retried", "confidence": _rounded(confidence), "asked": asked,
-            "reason": retried_reason(read_as, confidence, retried.reason, asked), "retry": retried.record()}
+    return {"state": "retried", "level": LIKELY_CORRECT, "confidence": None,
+            "reason": retried_reason(retried.reason), "retry": retried.record()}
 
 
 def sch_col_of(agg, sch):

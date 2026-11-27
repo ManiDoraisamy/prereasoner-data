@@ -9,12 +9,8 @@ Gemini is the only external model, and it is always on: there is no switch. Four
 - ``write_query``: the own-data retry (engine/retry.py). One generateContent call to QUERY_MODEL (Gemini 4 Neon, on
   the Developer API only) that writes one SQLite SELECT over the request's tables, or says the tables cannot answer
   the question, as a JSON document; the caller guards and runs it. Owner's decision, 2026-11-21: the Decisions path
-  never asks back for its own uncertainty, and its answer most likely wrong, or one the person retries, is retried
+  never asks back for its own uncertainty, and its answer very likely wrong, or one the person retries, is retried
   by this call. It authenticates as ``decide`` does.
-- ``judge``: the own-data choice's one closed question put to a second model (JUDGE_MODEL, one generateContent call on
-  the Developer API), its answer held by a schema to the key of one option the engine built: an answer stays unmarked
-  only where both judges pick it (engine/program/closed.py choose_answer). Owner's decision, 2026-11-26. It writes no
-  text, SQL or program, and authenticates as ``decide`` does.
 
 - The synchronous calls: ``generate_text`` (starter questions, orchestrator/suggestions.py) and
   ``stream_text`` (reference generation, /api/master/generate). One ``genai.Client`` per process, created lazily under a lock.
@@ -38,7 +34,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -230,114 +226,6 @@ def write_query(system: str, prompt: str) -> WrittenQuery:
     return WrittenQuery(answerable and bool(sql.strip()), sql.strip(), reason.strip(),
                         int(usage.get("promptTokenCount") or 0),
                         int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0))
-
-
-# ------------------------------------------------------------------------------------------------ the second judge
-# The own-data choice's one closed question put to a second model (engine/program/answer.py): generateContent on the
-# Developer API, the answer held by a JSON schema to the key of exactly one option the engine built. It writes no
-# text, no SQL and no program. Gemini 4 Neon at its low thinking level answered in 4.9 s at the median, 8.3 s at p90
-# and 11 s at p95 (2026-11-26, 606 questions; 16 took over 15 s); it takes no temperature or seed. One attempt within
-# 15 s: an answer waits no longer for its second judge, and one the judge does not reach in time is warned as unread.
-# A call still out after 8 s is sent a second time beside the first, and the first of the two to answer is the
-# judgement: the provider's slow spells hold a call for 15 s and more (release 568b1f0a's gate: 5 of 115 waits ended
-# by the clock, each answer right and served warned), and of 4,401 recorded calls 5.1% were out at 8 s and 0.5% at
-# 15 s, so the second asking adds a twentieth to the judge's cost and leaves a second call 7 s, which 91% of calls
-# answer within.
-JUDGE_THINKING = "low"
-JUDGE_MAX_OUTPUT_TOKENS = 16384
-JUDGE_TIMEOUT_SECONDS = 15.0
-JUDGE_SECOND_SECONDS = 8.0
-JUDGE_ATTEMPTS = 1
-JUDGE_SYSTEM = ("You answer one closed question about a person's spreadsheet. STATE describes the spreadsheet and the "
-                "question asked of it, QUESTION says what to choose, and OPTIONS lists the options by key. Reply with the "
-                "key of exactly one option.")
-
-
-def judge_payload(state: dict, instructions: str, options: Sequence[tuple[str, str]], model: str | None = None,
-                  thinking: str = JUDGE_THINKING) -> bytes:
-    """The generateContent body of one judgement: the same STATE the Decisions endpoint is given, the instruction, and
-    the options (key, text) in the order given; the answer held to one option's key by its schema. Keys are sorted, so
-    a question and a judge give one body (``decision_hash`` keys a recorded answer)."""
-    prompt = ("STATE:\n" + json.dumps(state, ensure_ascii=False) + "\n\nQUESTION: " + instructions
-              + "\n\nOPTIONS:\n" + "\n".join(f"{key}: {text}" for key, text in options))
-    schema = {"type": "object", "properties": {"choice": {"type": "string", "enum": [key for key, _text in options]}}, "required": ["choice"]}
-    body = {"model": model or config.JUDGE_MODEL, "systemInstruction": {"parts": [{"text": JUDGE_SYSTEM}]},
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "application/json", "responseJsonSchema": schema,
-                                 "thinkingConfig": {"thinkingLevel": thinking}, "maxOutputTokens": JUDGE_MAX_OUTPUT_TOKENS}}
-    return json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8")
-
-
-def _first_to_answer(call, after: float):
-    """``call()``'s answer, the call made a second time beside the first when the first is still out ``after`` seconds
-    on: the answer of whichever returns first. A call that fails leaves the other to answer, and when none is left
-    the first failure is raised; a first call that fails before ``after`` is not made again. The request's timing
-    line counts the second asking (``judge_second``) and its answer when that is the one read
-    (``judge_second_answered``)."""
-    import contextvars
-    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-
-    from engine import request_timing
-
-    pool = ThreadPoolExecutor(max_workers=2)
-    try:
-        first = pool.submit(contextvars.copy_context().run, call)
-        out = {first}
-        if not wait(out, timeout=after).done:
-            request_timing.count("judge_second")
-            out.add(pool.submit(contextvars.copy_context().run, call))
-        failure = None
-        while out:
-            done, out = wait(out, return_when=FIRST_COMPLETED)
-            for one in done:
-                if one.exception() is None:
-                    if one is not first:
-                        request_timing.count("judge_second_answered")
-                    return one.result()
-                failure = failure or one.exception()
-        raise failure
-    finally:
-        pool.shutdown(wait=False)     # a call still out ends by its own limit
-
-
-def _post_judge(payload: bytes) -> dict:
-    """The judge's answer to one body: {"text": its JSON answer, "usage": {...}, "seconds": the time to it}. The call
-    is made a second time when it is still out JUDGE_SECOND_SECONDS on (_first_to_answer). Raises LLMUnavailable."""
-    body = json.loads(payload.decode("utf-8"))
-    model = body.pop("model")
-    url, data = QUERY_ENDPOINT.format(model=model), json.dumps(body, ensure_ascii=False).encode("utf-8")
-    clock = time.perf_counter()
-    result = _first_to_answer(lambda: _post_developer(url, data, JUDGE_TIMEOUT_SECONDS, JUDGE_ATTEMPTS, "Judge"), JUDGE_SECOND_SECONDS)
-    try:
-        parts = result["candidates"][0]["content"]["parts"]
-    except (KeyError, IndexError, TypeError):
-        raise LLMUnavailable(f"Judge call failed: no choice ({(result.get('candidates') or [{}])[0].get('finishReason')})") from None
-    text = "".join(part.get("text", "") for part in parts if not part.get("thought"))
-    return {"text": text, "usage": result.get("usageMetadata") or {}, "seconds": round(time.perf_counter() - clock, 2)}
-
-
-# The transport ``judge`` sends a body through; an evaluation may replay recorded answers by ``decision_hash``.
-JUDGE_TRANSPORT = _post_judge
-
-
-def judged_key(payload: bytes, keys: Sequence[str]) -> str:
-    """The key the second judge answers one body with (``judge_payload``), one of ``keys``. The body is built when the
-    answer is chosen and sent when its mark is settled (engine/program/answer.py ask). Raises LLMUnavailable and
-    nothing else."""
-    answer = JUDGE_TRANSPORT(payload)
-    try:
-        choice = json.loads(answer.get("text") or "")["choice"]
-    except (ValueError, KeyError, TypeError) as exc:
-        raise LLMUnavailable(f"Judge answer is not its JSON ({type(exc).__name__})") from None
-    if choice not in set(keys):
-        raise LLMUnavailable("Judge answer is not one of its options")
-    return choice
-
-
-def judge(state: dict, instructions: str, options: Sequence[tuple[str, str]]) -> str:
-    """One judgement: the key of the option the second judge picks for a closed question. Raises LLMUnavailable and
-    nothing else."""
-    return judged_key(judge_payload(state, instructions, options), [key for key, _text in options])
 
 
 def decide(state: dict, questions: dict) -> Decision:

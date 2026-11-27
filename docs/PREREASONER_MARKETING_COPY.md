@@ -31,7 +31,7 @@ connects tables to public knowledge, private references, and domain-specific cal
 ### Short feature list
 
 - **See the query** - Read the SQL that produced the result.
-- **Know who built it** - The engine builds and checks every query it decides. When it is unsure it marks the answer, and an answer it holds most likely wrong is retried with a query Gemini writes, shown with its SQL.
+- **Know who built it** - The engine builds and checks every query it decides. Every answer carries a mark of how likely it is right, and an answer it holds very likely wrong is retried with a query Gemini writes, shown with its SQL.
 - **Check the rows** - Open the matched input and reference rows.
 - **Use public facts** - Join approved source data when your table does not contain the answer.
 - **Keep the calculation** - See currency, ratio, tax, and commission operands and units.
@@ -154,7 +154,7 @@ run the same request against the same data and inspect what changed when the res
 ### Short feature list
 
 - **Named inputs** - See which columns, values, and source facts were used.
-- **Built by the engine** - The engine builds and checks every query it decides. When it is unsure it marks the answer, and an answer it holds most likely wrong is retried with a query Gemini writes, shown with its SQL.
+- **Built by the engine** - The engine builds and checks every query it decides. Every answer carries a mark of how likely it is right, and an answer it holds very likely wrong is retried with a query Gemini writes, shown with its SQL.
 - **Repeatable results** - Fixed inputs and artifacts produce the same plan and result.
 - **Source-aware answers** - Read the source release and matched reference rows.
 - **Clear limits** - Missing evidence is reported, and an answer the engine is unsure of is served with a mark and its reason.

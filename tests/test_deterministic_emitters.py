@@ -847,7 +847,7 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
         def schema(self, _tables, _foreign_keys):
             return schema, {}, {"orders": tables[0]}
 
-        def select_query(self, _question, _tables, marked=True):
+        def select_query(self, _question, _tables):
             store = RequestTables(catalog, current_database().connection)
             return PoolSelection((candidate,), (0,), 0, programs=(program,), rows=(((30.0,),),),
                                  catalog=catalog, tables=store)
@@ -1013,7 +1013,7 @@ def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
         def schema(self, _tables, _foreign_keys):
             return schema, {}, {"courses": tables[0]}
 
-        def select_query(self, _question, _tables, marked=True):
+        def select_query(self, _question, _tables):
             # The rows the choice read: one of the two tied courses.
             store = RequestTables(catalog, current_database().connection)
             return PoolSelection((candidate,), (0,), 0, programs=(program,), rows=((("rs", 1),),),

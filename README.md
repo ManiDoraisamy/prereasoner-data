@@ -46,17 +46,18 @@ What runs today:
 |---|---|---|
 | Encoder | `Qwen/Qwen2.5-0.5B` used without its decoder, adapted with a LoRA and a 10-block relational readout trained to fill **90 named coordinates**: 9 column types (`is_num`, `is_time`, `currency`, ...), 71 property names (`addressCountry`, `brand`, `birthDate`, ...), and 10 query intents (`intent_agg_sum`, `intent_filter_gt`, `intent_sort_desc`, ...) | What each column is, and what a composition or world question asks for |
 | Schema.org head | A linear layer reading 80 Schema.org properties. A class score is a weighted sum of those property scores. 56 properties and 11 classes pass the release gates; the others abstain | Which world table a column may join. Joins also need exact source-key matches |
-| Decisions path (own data) | The sheet compiler reads each uploaded tab; stock bge-m3 and the engine's word reader shortlist what a question may mean; the Decisions API (an external closed-choice model) answers closed questions whose options the engine built, with probabilities only; and one more closed question weighs the programs that ran | Which reading is decoded into programs, and whether an answer is served plainly, with a warning, or retried as most likely wrong |
-| Retry (own data) | Gemini 4 Neon writes one SQLite query over the workbook, for an answer the choice holds most likely wrong or one the person retries; guarded, read-only, shown with its SQL | The answer to a question the decoder's programs did not read |
+| Decisions path (own data) | The sheet compiler reads each uploaded tab; stock bge-m3 and the engine's word reader shortlist what a question may mean; the Decisions API (an external closed-choice model) answers closed questions whose options the engine built, with probabilities only; and one more closed question weighs the programs that ran | Which reading is decoded into programs, and which of four marks an answer carries: very likely correct, likely correct, likely wrong, or very likely wrong (retried) |
+| Retry (own data) | Gemini 4 Neon writes one SQLite query over the workbook, in the background, for an answer the choice holds very likely wrong or one the person retries; guarded, read-only, shown with its SQL | The answer to a question the decoder's programs did not read |
 | Program decoder and typed SQL | A deterministic decoder that builds the most probable programs of the reading, each lowered to a typed syntax tree over one table | The candidate queries themselves |
 | Execution | PostgreSQL, plus a generated Python program that mirrors the SQL for supported shapes | The numbers |
 
 The decoder builds every own-data program from the reading, each candidate runs on your tables, and the
 choice weighs the ones that returned rows, per answer; no model writes those queries. The answer shows the
-query and how the question was read. An answer goes unmarked only where a second judge (Gemini 4 Neon, asked
-the same closed question) picks it too; otherwise, or when two readings of it are worded alike, it carries a
-warning mark. One the choice holds most likely wrong is retried: Gemini 4 Neon writes one SQLite query over the
-workbook, shown with its SQL. A click on the mark shows the reason and a Retry.
+query and how the question was read. Every answer appears at once with one of four marks, from the engine alone:
+very likely correct, likely correct, likely wrong or very likely wrong, by the choice's own probability of it. A
+click on the mark shows the reason. One marked very likely wrong is retried in the background while the question
+box stays open: Gemini 4 Neon writes one SQLite query over the workbook, and its answer, shown with its SQL, takes
+the first one's place in view.
 
 The optional chat service uses Gemini to make follow-up wording explicit and request engine operations.
 It sends schema metadata, bounded recent user questions and saved analysis questions. It sends no source
@@ -160,8 +161,9 @@ engine/knowledge.py              one serving entry point
         |
         +--> own-data path: the Decisions API answers closed questions over options
         |       the engine built, the decoder builds programs (typed ASTs), the verifier
-        |       runs them, one choice per answer: served, warned, or most likely wrong
-        |       and retried by a written query (engine/retry.py, Gemini 4 Neon)
+        |       runs them, one choice per answer: served at once with one of four marks;
+        |       one very likely wrong is retried in the background by a written query
+        |       (engine/retry.py, Gemini 4 Neon)
         |       engine/tables.py (select_query), engine/program/, engine/sheet/,
         |       engine/sql_ast.py
         |

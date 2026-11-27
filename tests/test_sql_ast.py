@@ -1092,7 +1092,7 @@ def test_spider_ingestion_keeps_discovered_and_declared_relationships():
     declared = [{"from_table": "shipments", "from_col": "destination_id", "to_table": "ports", "to_col": "id"}]
     planner = _hermetic_planner()
     # The evaluator's own selection is production's (TableQuery.select_query); this test reads its ingestion.
-    planner.select_query = lambda question, tables, marked=True: PoolSelection((), (), None)
+    planner.select_query = lambda question, tables: PoolSelection((), (), None)
     cache = {}
     with patch.object(planner, "schema", wraps=planner.schema) as schema:
         actual = ast_predict(planner, tables, "How many shipments use carrier Alpha?", declared, cache)
@@ -1137,7 +1137,7 @@ def test_declared_self_relationship_keeps_unrelated_queries_and_source_rows():
     assert graph.reachable({"employees"}) == {"employees"}
     assert graph.join_trees({"employees", "artists"}) == ()
     assert graph.join_trees({"employees"})[0].joins == ()
-    planner.select_query = lambda question, tables, marked=True: PoolSelection((), (), None)
+    planner.select_query = lambda question, tables: PoolSelection((), (), None)
     ast_predict(planner, tables, "List employee names", declared)
     assert json.dumps(tables, sort_keys=True) == before
     for malformed in ({**declared[0], "to_table": "absent"},
@@ -2127,13 +2127,12 @@ def _choice(first, none=0.0):
     return rule
 
 
-def _decided(rule, call, judge=None):
-    """``call`` with a fake API answering by ``rule`` and a second judge that picks what the rule favours (``judge``:
-    another judge's rule, as a judge that picks none for a test of an answer the two do not both pick)."""
-    from tests.test_answer import FakeJudge, FakeTransport, _use_fake_reader, _with_transport
+def _decided(rule, call):
+    """``call`` with a fake API answering by ``rule``."""
+    from tests.test_answer import FakeTransport, _use_fake_reader, _with_transport
     _use_fake_reader()
     transport = FakeTransport(rule)
-    return _with_transport(transport, call, None if judge is None else FakeJudge(judge)), transport
+    return _with_transport(transport, call), transport
 
 
 def test_the_selection_is_the_decisions_paths_listed_candidates():
@@ -2181,19 +2180,21 @@ def _neon(answers):
 EAST = 'SELECT SUM("Amount") AS "total amount" FROM "orders" WHERE "Region" = \'East\''
 
 
-def test_an_answer_most_likely_wrong_is_retried_never_asked_back():
+def test_an_answer_very_likely_wrong_is_served_at_once_and_owed_its_retry():
     """Owner, 2026-11-21: "never ask back unless the question is wrong". Below closed.T_ERR, or with "none of these"
     likelier, the Decisions path decides nothing (compose and the search may answer it) and the answer is owed its
     retry (engine/retry.py): Gemini 4 Neon writes one SQLite query over typed copies of the request's tables, guarded
-    and run read-only, and its rows are the answer, marked retried with its reason and query. Owner, 2026-11-27: the
-    answer first. Serving gives the likeliest reading at once, marked most likely wrong, with the token of the retry
-    it is owed, and asks no model; the retry (``retry_answer`` with the token) replaces it. The retry's word that the
-    sheet cannot answer is the one question back; a retry that cannot answer leaves the served answer marked, with
-    why. A token this engine did not seal is refused. Until 2026-11-27 serving waited for the retry before it
-    answered."""
+    and run read-only, and its rows are the answer, marked retried with its reason and query.
+
+    Owner, 2026-11-27: "never ever wait for neon to show engine's answer". Serving gives the likeliest reading at
+    once, marked very likely wrong, and asks no model; nothing in the response is pending. The retry is one request
+    (``retry_answer``, the Retry a person can press), which a client sends in the background once the answer is on
+    screen; ``settled`` does both for a caller in the engine's own process. The retry's word that the sheet cannot
+    answer is the one question back; a retry that cannot answer says so and leaves the served answer in place. Until
+    2026-11-27 the chat turn held the question box for the retry."""
     from engine import config
     from engine.llm import LLMUnavailable
-    from engine.tables import RETRY_FAILED, PendingInvalid
+    from engine.tables import RETRY_FAILED, VERY_LIKELY_WRONG, owes_retry
 
     planner = _hermetic_planner()
     prompts, restore = _neon([{"answerable": True, "sql": EAST, "reason": "Adds Amount over the East rows."}])
@@ -2202,52 +2203,47 @@ def test_an_answer_most_likely_wrong_is_retried_never_asked_back():
         assert prompts == [], "serving answers before any retry is asked"
         assert "clarify" not in first and first["valid"] and first["result"]["rows"] and first["model"] == PROGRAM_MODEL, first
         owed = first["check"]
-        assert owed["state"] == "erred" and "most likely wrong" in owed["reason"] and "could not answer" not in owed["reason"], owed
+        assert owed["state"] == "erred" and owed["level"] == VERY_LIKELY_WRONG and "very likely wrong" in owed["reason"], owed
+        assert set(owed) == {"state", "level", "confidence", "reason"}, "the mark is whole when the answer is: nothing pending"
         assert first["selection"]["selected"] is None and first["selection"]["erred"] == 0 and first["read_as"]
-        response = planner.retry_answer(_orders_request(), "total amount for East", pending=owed["pending"])
+        assert owes_retry(first)
+        response = planner.retry_answer(_orders_request(), "total amount for East")
+        assert len(prompts) == 1
+        settled = planner.settled(first, _orders_request(), "total amount for East")
     finally:
         restore()
     assert "clarify" not in response and response["valid"] and response["error"] is None, response
     assert response["result"] == {"columns": ["total amount"], "rows": [[240.5]]}, response["result"]
     check = response["check"]
-    assert check["state"] == "retried" and check["asked"] is False and check["retry"]["sql"] == EAST, check
-    assert check["retry"]["model"] == config.QUERY_MODEL and "most likely wrong" in check["reason"], check
-    assert first["read_as"] in check["reason"], "the retried answer's reason names the reading it replaces"
+    assert check["state"] == "retried" and check["level"] == "likely_correct" and check["retry"]["sql"] == EAST, check
+    assert check["retry"]["model"] == config.QUERY_MODEL and check["reason"].startswith("Retried: Gemini 4 Neon wrote this query."), check
     assert response["sql"] == EAST and response["read_as"] == "Adds Amount over the East rows."
+    assert not owes_retry(response), "a retried answer is not retried by itself again"
+    assert settled["check"]["state"] == "retried" and settled["result"] == response["result"], "in process: the retry's answer"
     assert 'TABLE "orders" (7 rows)' in prompts[0] and '"Amount" REAL' in prompts[0] and "'East'" in prompts[0], prompts[0]
     assert prompts[0].endswith("QUESTION: total amount for East")
+    # an answer the choice stands behind, or one it warns, is owed no retry
+    sure, _ = _decided(_choice(0.9), lambda: planner.serve(_orders_request(), "total amount for East"))
+    assert not owes_retry(sure) and planner.settled(sure, _orders_request(), "total amount for East") is sure
     # the question is wrong: the retry says the sheet cannot answer it, and that is asked
     _p, restore = _neon([{"answerable": False, "sql": "", "reason": "The sheet has no column of costs."}])
     try:
-        asked, _ = _decided(_choice(0.05, none=0.9), lambda: planner.serve(_orders_request(), "total cost for East"))
-        wrong = planner.retry_answer(_orders_request(), "total cost for East", pending=asked["check"]["pending"])
+        wrong = planner.retry_answer(_orders_request(), "total cost for East")
     finally:
         restore()
     assert wrong["clarify"] is True and wrong["reason"] == "The sheet has no column of costs." and wrong["result"] is None
-    assert wrong["read_as"] == asked["read_as"]
-    # the retry cannot answer (a query the guard refuses, twice; then a failed call): the served answer stays, marked
+    # the retry cannot answer (a query the guard refuses, twice; then a failed call): it says so, and the served
+    # answer stays where it is
     for answers in ([{"answerable": True, "sql": 'DELETE FROM "orders"', "reason": "r"}] * 2, [LLMUnavailable("down")]):
         _p, restore = _neon(answers)
         try:
-            failed = planner.retry_answer(_orders_request(), "total amount for East", pending=owed["pending"])
+            failed = planner.retry_answer(_orders_request(), "total amount for East")
+            kept = planner.settled(first, _orders_request(), "total amount for East")
         finally:
             restore()
-        assert failed["error"] == RETRY_FAILED and failed["result"] is None and failed["check"]["state"] == "erred", failed
-        assert "most likely wrong" in failed["check"]["reason"] and "could not answer it either" in failed["check"]["reason"]
-        assert "pending" not in failed["check"] and "clarify" not in failed
-    for forged in (owed["pending"][:-1] + ("0" if owed["pending"][-1] != "0" else "1"), "p1.e30.00", "", None and "x"):
-        try:
-            planner.retry_answer(_orders_request(), "total amount for East", pending=forged or "x")
-        except PendingInvalid:
-            continue
-        raise AssertionError("a token this engine did not seal ran a retry")
-    # the person's Retry: the retry answers whatever the path read
-    _p, restore = _neon([{"answerable": True, "sql": EAST, "reason": "Adds Amount over the East rows."}])
-    try:
-        retried = planner.retry_answer(_orders_request(), "total amount for East")
-    finally:
-        restore()
-    assert retried["result"]["rows"] == [[240.5]] and retried["check"]["state"] == "retried" and retried["check"]["asked"]
+        assert failed["error"] == RETRY_FAILED and failed["result"] is None and "clarify" not in failed, failed
+        assert failed["check"]["state"] == "erred" and failed["check"]["reason"] == RETRY_FAILED and "retry" in failed["check"]
+        assert not owes_retry(failed) and kept is first
 
 
 def test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alone():
@@ -2330,59 +2326,47 @@ def test_the_retry_is_told_to_put_the_answer_first():
     assert public.recorded_key(sent[0]) != llm.decision_hash(sent[0])
 
 
-def test_a_warned_answer_is_served_with_what_else_it_may_mean():
-    """Between closed.T_ERR and T_FLAG, where the second judge does not pick the answer too, an answer's ``check`` is
-    warned: the reason its mark opens on says how it was read, how sure the choice was and what else the question may
-    mean, with the coordinates the runner-up reads differently. The reply is the answer alone (the reason moved from
-    the reply to the mark, 2026-11-21). Contrast: an answer the choice stands behind is answered, and so is one in
-    that band that both judges pick (2026-11-27).
-
-    Owner, 2026-11-27: "always serve the answer before the judge has answered". Serving gives the answer with its
-    mark being checked (``check`` checking, with a sealed token) and asks no judge; ``settle_check`` asks the judge
-    and returns the mark its answer leaves; the selection's record is the choice's own. The stored and streamed forms
-    hold no token, and a stored answer is not judged twice until it is settled. Until 2026-11-27 serving waited for
-    the judge, a median 3.7 s and a p90 of 10 s of a request's 6.1 s and 13.7 s (release 95e2a7af's gate)."""
+def test_an_answer_is_served_with_its_mark_one_of_four_levels():
+    """Owner, 2026-11-27: "Always show engine's answer immediately ... and show only icons for: Very likely correct,
+    likely Correct, likely Wrong, Very likely Wrong." Every own-data answer's ``check`` is whole when the answer is:
+    its level, from the choice's own probability (engine/tables.py level_of), the confidence, and the reason the mark
+    opens on. A likely-wrong answer (between closed.T_ERR and T_FLAG) says how it was read, how sure the choice was
+    and what else the question may mean, with the coordinates the runner-up reads differently; an answer the choice
+    stands behind says how it was read. The reply is the answer alone (the reason moved from the reply to the mark,
+    2026-11-21). No other model is asked and nothing in the response is pending. Until 2026-11-27 a second judge
+    (Gemini 4 Neon) settled the mark after the answer, and the question box waited for it."""
     from engine.answer_presentation import terminal_reply
-    from engine.tables import PendingInvalid, settle_check, shown_check, unsettled_check
-    from mcp_server.engine_client import shape_reason_response
-    from tests.test_answer import NONE, FakeJudge, FakeTransport, _use_fake_reader, _with_transport
+    from engine.program.closed import T_FLAG, T_SURE
+    from engine.tables import LIKELY_CORRECT, LIKELY_WRONG, VERY_LIKELY_CORRECT
+    from mcp_server.engine_client import owes_retry, shape_reason_response
 
     planner = _hermetic_planner()
-    _use_fake_reader()
 
-    def served(rule, judge):
-        def run():
-            response = planner.serve(_orders_request(), "total amount for East")
-            assert judge.bodies == [], "the answer is served before the judge is asked"
-            given = response["check"]
-            return response, given, settle_check(given["pending"])
-        return _with_transport(FakeTransport(rule), run, judge)
+    def served(rule):
+        response, transport = _decided(rule, lambda: planner.serve(_orders_request(), "total amount for East"))
+        assert list(transport.bodies[-1]["questions"]) == ["reading"], "the choice is the path's last call"
+        return response, response["check"]
 
-    response, given, check = served(_choice(0.47, none=0.44), FakeJudge(lambda name, question, state: {NONE: 0.9}))
+    response, check = served(_choice(0.47, none=0.44))
     assert response["valid"] and response["result"]["rows"] and response["selection"]["warned"], response["selection"]
-    assert given["state"] == "checking" and set(given) == {"state", "confidence", "pending"}, sorted(given)
-    assert check["state"] == "warned" and check["reason"].startswith("I read this as “") and "% sure" in check["reason"]
+    assert check["state"] == "warned" and check["level"] == LIKELY_WRONG, check
+    assert check["reason"].startswith("I read this as “") and "% sure" in check["reason"]
     assert isinstance(check["coordinates"], list) and all(":" in name for name in check["coordinates"])
     assert check["also_read_as"] is None or isinstance(check["also_read_as"], str)
-    assert shown_check(given) == {"state": "checking", "confidence": given["confidence"]}
-    assert unsettled_check(given)["state"] == "warned", "stored before it is settled: warned, as the choice alone left it"
-    shaped = shape_reason_response({**response, "check": check}, None)
-    assert shaped["status"] == "answered" and shaped["check"] == check
-    assert "not sure" not in terminal_reply(shaped)
-    for forged in (given["pending"][:-2] + "00", "p1.e30.00", "not a token"):
-        try:
-            settle_check(forged if forged != given["pending"] else forged + "0")
-        except PendingInvalid:
-            continue
-        raise AssertionError("a token this engine did not seal was sent to the judge")
-    agreeing = FakeJudge(_choice(0.47, none=0.44))
-    both, both_given, both_check = served(_choice(0.47, none=0.44), agreeing)
-    assert both_given["state"] == "checking" and both_check == {"state": "answered", "confidence": both_given["confidence"]}
-    assert len(agreeing.bodies) == 1, "the judge is asked once, when the mark is settled"
-    sure, sure_given, sure_check = served(_choice(0.9), FakeJudge(_choice(0.9)))
-    assert sure["valid"] and sure_given["state"] == "checking" and sure_check["state"] == "answered" and not sure["selection"]["warned"]
-    unsettled = unsettled_check(sure_given)
-    assert unsettled["state"] == "warned" and unsettled["reason"].endswith("the second check of this reading did not run."),         "an answer the choice stands behind is stored as not judged twice until its mark is settled"
+    assert "pending" not in check
+    shaped = shape_reason_response(response, None)
+    assert shaped["status"] == "answered" and shaped["check"] == check and not owes_retry(shaped)
+    assert "not sure" not in terminal_reply(shaped) and "likely" not in terminal_reply(shaped)
+
+    assert T_FLAG < 0.7 < T_SURE
+    likely, likely_check = served(_choice(0.7))
+    assert likely["valid"] and not likely["selection"]["warned"] and not likely["selection"]["sure"]
+    assert likely_check["state"] == "answered" and likely_check["level"] == LIKELY_CORRECT, likely_check
+    assert set(likely_check) == {"state", "level", "confidence", "reason"} and likely_check["reason"].startswith("I read this as “")
+
+    sure, sure_check = served(_choice(0.95))
+    assert sure["valid"] and sure["selection"]["sure"] and sure_check["state"] == "answered"
+    assert sure_check["level"] == VERY_LIKELY_CORRECT and sure_check["confidence"] >= T_SURE, sure_check
 
 
 def test_an_analysis_runs_the_chosen_program_on_both_emitters():
@@ -2563,10 +2547,10 @@ def test_an_uploaded_sheets_grid_keeps_its_structure():
 TESTS = [
     test_a_longest_run_renders_alone_and_counts_unbroken_runs,
     test_the_selection_is_the_decisions_paths_listed_candidates,
-    test_an_answer_most_likely_wrong_is_retried_never_asked_back,
+    test_an_answer_very_likely_wrong_is_served_at_once_and_owed_its_retry,
     test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alone,
     test_the_retry_is_told_to_put_the_answer_first,
-    test_a_warned_answer_is_served_with_what_else_it_may_mean,
+    test_an_answer_is_served_with_its_mark_one_of_four_levels,
     test_an_analysis_runs_the_chosen_program_on_both_emitters,
     test_a_long_question_the_path_asks_back_asks_for_the_decomposition,
     test_the_decisions_paths_reading_certifies_its_calculation_but_a_conversion_it_could_not_make,
@@ -2660,10 +2644,10 @@ TESTS = [
 # the public CI's hermetic environment does not, and there they are skipped, as skipped.
 NEEDS_TORCH = (
     test_the_selection_is_the_decisions_paths_listed_candidates,
-    test_an_answer_most_likely_wrong_is_retried_never_asked_back,
+    test_an_answer_very_likely_wrong_is_served_at_once_and_owed_its_retry,
     test_the_retry_reads_typed_copies_of_the_tables_and_leaves_the_database_alone,
     test_the_retry_is_told_to_put_the_answer_first,
-    test_a_warned_answer_is_served_with_what_else_it_may_mean,
+    test_an_answer_is_served_with_its_mark_one_of_four_levels,
     test_an_analysis_runs_the_chosen_program_on_both_emitters,
     test_a_long_question_the_path_asks_back_asks_for_the_decomposition,
     test_the_decisions_paths_reading_certifies_its_calculation_but_a_conversion_it_could_not_make,

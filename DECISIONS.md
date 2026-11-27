@@ -5844,6 +5844,9 @@ grant when the grant loses its `count`. Consumer: Terraform state of deployments
 
 ## Two judges must agree for an answer to go unmarked (2026-11-26)
 
+> Superseded on 2026-11-27 by "An answer's mark is the engine's own, one of four levels; nothing waits for another
+> model": the second judge is removed. This section records what ran until then.
+
 Owner's decision, after the judge test (`spider/results/RESULTS.md`, 2026-11-26): the own-data choice gains a second
 judge. Beside the Decisions choice, the same closed question (the same sheet description, instruction and options, in
 the decoder's order with none last) goes to a second model through `engine/llm.py` `judge`, which answers with the key
@@ -5917,6 +5920,9 @@ body's recorded answer by its hash and are unchanged.
 
 ## The answer is served before the judge has answered, and settled after (2026-11-27)
 
+> Superseded on 2026-11-27 by "An answer's mark is the engine's own, one of four levels; nothing waits for another
+> model": the second judge is removed. This section records what ran until then.
+
 Owner, 2026-11-27: "yes, always serve the answer before the judge has answered. Latency to see answer is very
 important. Its like our CoT like reasoning models. Wrong answer and then changing to correct answer in real time is
 actually interpretability." At release 95e2a7af's gate the judge's wait was a median 3.7 s and a p90 of 10.0 s of a
@@ -5988,3 +5994,54 @@ program (7 of the 37 questions left unbuilt among WikiTableQuestions training's 
   different values by appearance, and a figure over the top lines by a measure ("the two heaviest").
 
 The measurements are in `spider/results/RESULTS.md`.
+
+## An answer's mark is the engine's own, one of four levels; nothing waits for another model (2026-11-27)
+
+Owner, 2026-11-27: "In any case, never ever ever ever ever wait for neon to show engine's answer. Always show
+engine's answer immediately in lightening speed and show only icons for: Very likely correct, likely Correct, likely
+Wrong, Very likely Wrong. And the icon can change into retry loading for errors like Very likely Wrong (may be +
+likely Wrong) and execute neon". And, of a note that the judge's 15 s limit could be longer at the price of the
+question box staying closed: "This is never ... acceptable ... Your job is to increase engine accuracy". The release
+of that morning (b47c950e, the section "The answer is served before the judge has answered") showed the answer
+first, but the turn stayed open until the second judge's mark came back (a median 4.8 s after the answer, up to
+15 s) and until the retry of an erred answer finished, so the question box was closed for both.
+
+**What changes.**
+
+- **The mark.** An answer's mark is the level of the choice's own probability of it
+  (`engine/program/closed.py` `choose_answer`; `engine/tables.py` `level_of`, `answer_check`): very likely correct
+  at `T_SURE` (0.90) or more, likely correct from `T_FLAG` (0.575), likely wrong from `T_ERR` (0.42) or where another
+  answer's reading is worded like it, very likely wrong below that or where "none of these" is likelier. It is
+  whole when the answer is: `check` holds `state`, `level`, `confidence` and the reason, and nothing is pending.
+- **The second judge is removed.** `engine/llm.py` `judge` and its transport, `JUDGE_MODEL`, the two judges' rule
+  (`DOUBT_*`, `awaits_judge`), `Answer.awaited`, the `checking` state, `POST /api/check`, the sealed token
+  (`seal_pending`), `conversations.settle_analysis_check`, the chat client's `settle` and `call_check`, and the judge
+  test's harness in `regress/run_public.py` are deleted; the sections "Two judges must agree for an answer to go
+  unmarked" and "The answer is served before the judge has answered, and settled after" describe what ran from
+  2026-11-26 to 2026-11-27. Their recorded answers stay as the records of those measurements
+  (`regress/sets/judge_calls`, `regress/sets/public/calls/judge`), which replay at commit c7d725d3.
+- **The turn.** A chat turn ends at the engine's answer (`orchestrator._run_turn`): the reply, then done. The
+  question box opens with the answer.
+- **The retry.** An answer served very likely wrong is owed its retry (`engine/retry.py`, unchanged). The client
+  that shows the answer asks it, by itself, in the background, as the request a person's Retry sends (`/chat` or
+  `/api/reason` with `retry: true`, the transcript before the turn): the turn's icon loads, and the retry's answer
+  takes the turn's place in view and in the transcript, its mark keeping what the first answer was
+  (`web/public/lib/turn-renderer.js` `owesRetry`, `revisedTurn`; `retryTurn` in the web page, the Sheets sidebar
+  and the Excel pane). The mark's Retry on a likely-wrong or retried answer runs the same way, in place; it used to
+  add a new turn and close the question box. A caller that returns one answer retries before it returns
+  (`mcp_server/engine_client.py` `settled_query`, `KnowledgeReasoner.settled`).
+
+**Why the retry is the client's request, with no token.** The retry needs nothing the first answer knew: Neon
+reads the workbook and the question. A token carried the erred reading only for the wording of the retried mark,
+which the client now shows itself (the first answer and its reason, kept beside the retry's). One request shape
+serves the person's Retry and the owed one, the Sheets add-on's published script already forwards it, and the chat
+service holds no work after its response (a Cloud Run instance is throttled once the response is sent, so a retry
+finished there would stall).
+
+**Scope of Neon.** Neon rewrites only answers marked very likely wrong, as before. "Likely wrong" answers stay
+the engine's unless the owner says to include them. No answer and no question box waits for it, and accuracy is
+to be raised in the engine (`CLAUDE.md`, recorded at the owner's ruling).
+
+**What it costs.** Where the judge had agreed with a low-probability answer it went unmarked, and where it
+disagreed with a high-probability one it was warned; both now carry the choice's own level. The measured levels,
+and the transition from the judged marks, are in `spider/results/RESULTS.md`.

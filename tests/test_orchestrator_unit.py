@@ -184,89 +184,107 @@ def test_a_warned_answer_says_so_by_its_mark_and_a_retry_reaches_the_engine():
     assert retried["reply"] == "876.50" and engine_calls[0][1]["retry"] is True
 
 
-def test_the_answer_is_shown_before_its_mark_is_settled_or_its_retry_runs():
-    """Owner, 2026-11-27: "always serve the answer before the judge has answered. Latency to see answer is very
-    important ... Wrong answer and then changing to correct answer in real time is actually interpretability."
-    The engine answers first (engine/tables.py checking_check): the turn writes that answer to the reply at once, then
-    settles what it is owed. An answer being checked has its second judge asked (POST /api/check) with its own job
-    and stored revision, and its trace carries the settled mark. An answer served most likely wrong is shown, and its
-    retry is one more engine call of the turn (announced, under its own job, as a modify of the stored revision,
-    with the token): the retry's answer takes its place; its word that the sheet cannot answer is the question back;
-    a retry that cannot answer leaves the first answer, marked with why. Until 2026-11-27 the reply waited for the
-    judge (a median 3.7 s of a request's 6.1 s at release 95e2a7af's gate) and for the retry."""
+def test_a_turn_ends_at_the_engines_answer_and_waits_for_no_other_model():
+    """Owner, 2026-11-27: "never ever wait for neon to show engine's answer. Always show engine's answer immediately
+    ... And the icon can change into retry loading for errors like Very likely Wrong". The engine's answer comes with
+    its mark (engine/tables.py answer_check: one of four levels), and the turn ends there: one engine call, the reply,
+    done. An answer served very likely wrong ends the turn the same way, with its mark in the turn's trace; its retry
+    is another turn (retry: true), which the client asks in the background while the question box is open, and every
+    engine call of that turn is the engine's retry. Until 2026-11-27 the turn asked a second judge for the mark (a
+    median 4.8 s more at release b47c950e's gate, up to 15 s) and ran the retry itself, and the question box waited
+    for both."""
     stored = {"analysis_id": "a_" + "0" * 32, "slug": "net_amount", "revision": 1}
 
-    def turn(first, second=None, settled=None):
+    def turn(first, retry=False):
         events = []
 
         async def query(*args, **kwargs):
-            events.append(("query", kwargs.get("retry"), kwargs.get("pending"), args[2], kwargs.get("analysis")))
-            if kwargs.get("retry"):
-                await asyncio.sleep(0.4)             # the first answer reaches the reply while the retry is out
-                events.append(("retry answered",))
-                return second
+            events.append(("query", kwargs.get("retry"), args[2], sorted(kwargs)))
             return first
-
-        async def check(pending, job_id=None, conversation_id=None, analysis=None, **_kwargs):
-            events.append(("check asked", pending, job_id, analysis))
-            await asyncio.sleep(0.4)                 # the answer reaches the reply while the judge is out
-            events.append(("check answered",))
-            return settled
 
         async def get_catalog(*_args, **_kwargs):
             return []
 
         held = (orchestrator.AsyncGeminiClient, orchestrator.httpx.AsyncClient, orchestrator.engine_client.call_query,
-                orchestrator.engine_client.call_check, orchestrator.engine_client.call_analysis_catalog)
+                orchestrator.engine_client.call_analysis_catalog)
         orchestrator.AsyncGeminiClient = lambda **_kwargs: _Client([], False, None)
         orchestrator.httpx.AsyncClient = lambda **_kwargs: _HTTP()
-        orchestrator.engine_client.call_query, orchestrator.engine_client.call_check = query, check
+        orchestrator.engine_client.call_query = query
         orchestrator.engine_client.call_analysis_catalog = get_catalog
         try:
             result = asyncio.run(orchestrator._run_turn(
                 "net amount", [{"name": "orders", "data": "tier,amount\nGold,100\n"}], [],
                 engine_base_url="http://engine.invalid", bearer_token=None, model="test-model", principal="user-a",
-                turn_id="t1", emit=lambda node, value: events.append(("emit", node, value))))
+                turn_id="t1", emit=lambda node, value: events.append(("emit", node, value)), retry=retry))
         finally:
             (orchestrator.AsyncGeminiClient, orchestrator.httpx.AsyncClient, orchestrator.engine_client.call_query,
-             orchestrator.engine_client.call_check, orchestrator.engine_client.call_analysis_catalog) = held
+             orchestrator.engine_client.call_analysis_catalog) = held
         return result, events
 
     def answered(value, check):
         return {"status": "answered", "answer": {"columns": ["net_amount"], "rows": [[value]]}, "check": check,
                 "analysis": dict(stored), "conversation_id": "c_test"}
 
-    def before(events, shown, marker):
-        return events.index(("emit", "reply", shown)) < events.index(marker)
+    def ended(result, events, value, check):
+        asked = [event for event in events if event[0] == "query"]
+        assert len(asked) == 1 and asked[0][2] == "t1_0", "one engine call: nothing else is asked about the answer"
+        assert "pending" not in asked[0][3]
+        assert result["reply"] == value and len(result["traces"]) == 1 and result["traces"][0]["engine"]["check"] == check
+        emitted = [event[1:] for event in events if event[0] == "emit"]
+        assert emitted.index(("reply", value)) < emitted.index(("status", "done")), "the answer, then the turn is over"
+        assert not any(node.startswith("calls/1") for node, _value in emitted), "no second engine call is announced"
+        return asked[0]
 
-    # its mark is being checked: the answer first, then the judge
-    mark = {"state": "warned", "confidence": 0.9, "reason": "I read this as “the total of Amount”, 90% sure, but a second check found no reading."}
-    result, events = turn(answered("876.50", {"state": "checking", "confidence": 0.9, "pending": "p1.mark.mac"}), settled=mark)
-    assert before(events, "876.50", ("check answered",)), "the answer is on screen before the judge has answered"
-    assert ("check asked", "p1.mark.mac", "t1_0", stored) in events, "the judge is asked with the answer's own job and revision"
-    assert result["reply"] == "876.50" and len(result["traces"]) == 1 and result["traces"][0]["engine"]["check"] == mark
-    once = [event for event in events if event[0] == "query"]
-    assert len(once) == 1 and once[0][1:4] == (False, None, "t1_0"), "an answer being checked is not asked again"
-    # served most likely wrong: shown, then its retry's answer takes its place
-    owed = {"state": "erred", "confidence": 0.2, "reason": "This answer is most likely wrong.", "pending": "p1.retry.mac"}
-    retried = answered("240.50", {"state": "retried", "asked": False, "reason": "My reading was most likely wrong, so Gemini 4 Neon wrote this query."})
-    result, events = turn(answered("430.50", dict(owed)), second=retried)
-    assert before(events, "430.50", ("retry answered",)), "the first answer is on screen while its retry is out"
-    asked = [event for event in events if event[0] == "query"]
-    assert asked[1][1:4] == (True, "p1.retry.mac", "t1_1"), "the retry is its own engine call, with the token"
-    assert asked[1][4] == {"action": "modify", "analysis_id": stored["analysis_id"], "slug": stored["slug"]}
-    announced = [event[2] for event in events if event[0] == "emit" and event[1] == "calls/1"]
-    assert announced and announced[0]["jobId"] == "t1_1" and announced[0]["retry"] is True
-    assert result["reply"] == "240.50" and [trace["jobId"] for trace in result["traces"]] == ["t1_0", "t1_1"]
-    assert result["traces"][-1]["engine"]["check"]["state"] == "retried"
-    assert all("pending" not in trace["engine"]["check"] for trace in result["traces"]), "a spent token leaves no trace"
-    # the question is wrong: the retry says the sheet cannot answer it
-    result, events = turn(answered("430.50", dict(owed)), second={"status": "clarify", "clarify": {"reason": "The sheet has no column of costs."}})
-    assert result["reply"].startswith("The sheet has no column of costs.") and len(result["traces"]) == 2
-    # the retry cannot answer: the first answer stays, marked with why, and nothing is left pending
-    why = {"state": "erred", "confidence": 0.2, "reason": "This answer is most likely wrong. The retry could not answer it either."}
-    result, events = turn(answered("430.50", dict(owed)), second={"status": "error", "error": "The retry could not write a query that runs on this sheet.", "check": why})
-    assert result["reply"] == "430.50" and len(result["traces"]) == 1 and result["traces"][0]["engine"]["check"] == why
+    sure = {"state": "answered", "level": "very_likely_correct", "confidence": 0.95, "reason": "I read this as “the total of Amount”, 95% sure."}
+    assert ended(*turn(answered("876.50", sure)), "876.50", sure)[1] is False
+    # served very likely wrong: the same one call and the same end; the mark tells the client the retry is owed
+    owed = {"state": "erred", "level": "very_likely_wrong", "confidence": 0.2, "reason": "This answer is very likely wrong."}
+    assert ended(*turn(answered("430.50", owed)), "430.50", owed)[1] is False
+    assert orchestrator.engine_client.owes_retry(answered("430.50", owed)) and not orchestrator.engine_client.owes_retry(answered("876.50", sure))
+    # the retry is its own turn: its engine call is the engine's retry, and its answer is that turn's answer
+    retried = {"state": "retried", "level": "likely_correct", "confidence": None, "reason": "Retried: Gemini 4 Neon wrote this query."}
+    assert ended(*turn(answered("240.50", retried), retry=True), "240.50", retried)[1] is True
+    assert not orchestrator.engine_client.owes_retry(answered("240.50", retried))
+
+
+def test_a_tool_call_returns_the_retried_answer_of_one_served_very_likely_wrong():
+    """The MCP tool returns one answer and cannot show an answer and revise it (mcp_server/engine_client.py
+    settled_query): an answer served very likely wrong is retried before the tool returns, as the next revision of
+    its stored analysis. The retry's answer, or its word that the sheet cannot answer the question, is returned; a
+    retry that cannot answer returns the served answer with its mark. Any other answer is returned as served, with
+    no second call."""
+    from mcp_server import engine_client
+
+    stored = {"analysis_id": "a_" + "0" * 32, "slug": "net_amount", "revision": 1}
+    owed = {"status": "answered", "answer": {"rows": [[430.5]]}, "analysis": dict(stored), "conversation_id": "c_test",
+            "source_hash": "h" * 64, "check": {"state": "erred", "level": "very_likely_wrong", "confidence": 0.2, "reason": "r"}}
+
+    def settled(first, second=None):
+        calls = []
+
+        async def query(question, tables, job_id=None, conversation_id=None, **kwargs):
+            calls.append((question, job_id, conversation_id, kwargs))
+            return second if kwargs.get("retry") else first
+
+        held = engine_client.call_query
+        engine_client.call_query = query
+        try:
+            return asyncio.run(engine_client.settled_query("net amount", [], "job-1", "c_test", token="t", analysis={"action": "create", "slug": "net_amount"})), calls
+        finally:
+            engine_client.call_query = held
+
+    retried = {"status": "answered", "answer": {"rows": [[240.5]]}, "check": {"state": "retried", "level": "likely_correct"}}
+    result, calls = settled(owed, retried)
+    assert result is retried and len(calls) == 2
+    again = calls[1][3]
+    assert again["retry"] is True and again["analysis"] == {"action": "modify", "analysis_id": stored["analysis_id"], "slug": "net_amount"}
+    assert again["source_hash"] == "h" * 64 and again["token"] == "t" and calls[1][1] is None and calls[1][2] == "c_test"
+    unanswerable = {"status": "clarify", "clarify": {"reason": "The sheet has no column of costs."}}
+    assert settled(owed, unanswerable)[0] is unanswerable
+    assert settled(owed, {"status": "error", "error": "The retry could not write a query that runs on this sheet."})[0] is owed
+    sure = {"status": "answered", "answer": {"rows": [[876.5]]}, "check": {"state": "answered", "level": "likely_correct"}}
+    result, calls = settled(sure)
+    assert result is sure and len(calls) == 1
 
 
 def test_request_execution_mode_reaches_each_orchestrated_engine_call():
@@ -1917,7 +1935,8 @@ def test_the_tab_on_screen_reaches_every_engine_call():
 TESTS = [
     test_the_tab_on_screen_reaches_every_engine_call,
     test_a_warned_answer_says_so_by_its_mark_and_a_retry_reaches_the_engine,
-    test_the_answer_is_shown_before_its_mark_is_settled_or_its_retry_runs,
+    test_a_turn_ends_at_the_engines_answer_and_waits_for_no_other_model,
+    test_a_tool_call_returns_the_retried_answer_of_one_served_very_likely_wrong,
     test_intent_context_has_schema_and_questions_but_no_values_or_assistant_answers,
     test_the_intent_context_names_which_question_came_last,
     test_a_yes_can_accept_the_question_a_clarification_offered,

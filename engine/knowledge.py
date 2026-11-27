@@ -61,8 +61,8 @@ class KnowledgeReasoner:
             finally:
                 self.qw.end_request()       # close the resolution connection this request opened
 
-    def retry(self, tables, question, active_sheet=None, as_of=None, explicit_fks=(), pending=None):
-        """The retry of an answer, the person's or (``pending``) the one an answer served most likely wrong is owed: the
+    def retry(self, tables, question, active_sheet=None, as_of=None, explicit_fks=()):
+        """The retry of an answer (the person's, or the one a client sends for an answer served very likely wrong): the
         own-data planner's retry (engine/tables.py TableQuery.retry_answer,
         engine/retry.py) on the request's database, over the workbook its links connect (``link_request``, as
         ``_serve`` registers them), so a retried question reads what the request's columns reach."""
@@ -70,24 +70,18 @@ class KnowledgeReasoner:
             self.qw.begin_request()
             try:
                 self.qw.link_request(as_of, explicit_fks)
-                return self.qw.q11.retry_answer(tables, question, explicit_fks=explicit_fks, pending=pending)
+                return self.qw.q11.retry_answer(tables, question, explicit_fks=explicit_fks)
             finally:
                 self.qw.end_request()
 
     def settled(self, response, tables, question, active_sheet=None, as_of=None, explicit_fks=()):
-        """``response`` (a ``serve`` answer) with what it is still owed done in process (engine/tables.py
-        TableQuery.settled): its mark settled, or its retry run over the workbook the request's links connect."""
-        from engine.tables import settle_check, shown_check
-        check = response.get("check") if isinstance(response, dict) else None
-        if not isinstance(check, dict) or "pending" not in check:
+        """``response`` (a ``serve`` answer) with the retry it is owed done in process (engine/tables.py
+        TableQuery.settled), over the workbook the request's links connect."""
+        from engine.tables import owes_retry
+        if not owes_retry(response):
             return response
-        if check.get("state") == "checking":
-            return {**response, "check": settle_check(check["pending"])}
-        again = self.retry(tables, question, active_sheet=active_sheet, as_of=as_of, explicit_fks=explicit_fks,
-                           pending=check["pending"])
-        if again.get("result") is not None or again.get("clarify") is True:
-            return again
-        return {**response, "check": again.get("check") or shown_check(check)}
+        again = self.retry(tables, question, active_sheet=active_sheet, as_of=as_of, explicit_fks=explicit_fks)
+        return again if again.get("result") is not None or again.get("clarify") is True else response
 
     def _serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
                decomposition=None):

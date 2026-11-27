@@ -696,3 +696,62 @@ test('a quick sheet is read again before each question, so an edit is in the ans
   expect((await calls(page, 'getWorkbookPlan')).length).toBe(1);
   await expect(page.locator('#liveTurn .statusline')).not.toContainText('Waiting');
 });
+
+// Owner, 2026-11-27: "never ever wait for neon to show engine's answer ... the icon can change into retry loading for
+// errors like Very likely Wrong". The answer and its mark are in the thread at once and the composer is open; the
+// sidebar asks the retry of an answer served very likely wrong by itself (the script's askPrereasoner with retry, the
+// transcript before the turn), and the retry's answer takes the turn's place while a later question runs.
+test('an answer very likely wrong is shown at once and replaced in place by its background retry', async ({page}) => {
+  const erred = {state: 'erred', level: 'very_likely_wrong', confidence: 0.31, reason: 'This answer is very likely wrong. I read this as “the count of country”, 31% sure.'};
+  const retried = {state: 'retried', level: 'likely_correct', confidence: null, reason: 'Retried: Gemini 4 Neon wrote this query. Adds amount over every order.',
+    retry: {sql: 'SELECT SUM("amount") FROM "Orders"'}};
+  const asked = () => page.evaluate(() => window.__calls.filter(call => call.name === 'askPrereasoner').map(call => call.arg));
+  const reply = (text, check, question) => page.evaluate(({conversation, text, check, question, views}) => {
+    const waiting = window.__server.pendingAsk;
+    window.__server.pendingAsk = null;
+    waiting.ok({reply: text, conversationId: conversation,
+      history: [{role: 'user', content: waiting.arg.question}, {role: 'assistant', content: text}],
+      traces: [{jobId: 'job-1', question, check, views}]});
+  }, {conversation, text, check, question, views});
+  await openSidebar(page, orders);
+  await expect(page.locator('#newConversation')).toBeEnabled();
+  await page.locator('#question').fill('total amount');
+  await page.locator('#question').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
+  await reply('2', erred, 'total amount');
+  // the answer and its mark at once; the retry is out, the icon loads, and the composer is open
+  const first = page.locator('[data-turn="0"]');
+  await expect(first.locator('.turn-answer')).toContainText('2');
+  await expect(first.locator('.turn-check')).toHaveClass(/check-very_likely_wrong check-retrying/);
+  await expect(page.locator('#send')).toBeEnabled();
+  await expect.poll(async () => (await asked()).length).toBe(2);
+  const owed = (await asked())[1];
+  expect(owed.retry).toBe(true);
+  expect(owed.question).toBe('total amount');
+  expect(owed.history).toEqual([]);
+  expect(owed.turnId).toBeUndefined();
+  // the retry comes back: its answer takes the turn's place, the mark keeps what the first answer was
+  await reply('1,860', retried, 'total amount');
+  await expect(first.locator('.turn-answer')).toContainText('1,860');
+  await expect(first.locator('.turn-check')).toHaveClass(/check-likely_correct/);
+  await expect(first.locator('.turn-check')).not.toHaveClass(/check-retrying/);
+  await first.locator('.turn-check summary').click();
+  await expect(first.locator('.checkfirst')).toContainText('First answer: 2 This answer is very likely wrong.');
+  await expect(first.locator('.checksql')).toContainText('SELECT SUM("amount") FROM "Orders"');
+  await page.waitForTimeout(300);
+  expect((await asked()).length).toBe(2);                    // the owed retry is asked once
+  // what is saved and what the next question is asked with hold the retry's answer, and no retry still out
+  const saved = (await calls(page, 'savePrereasonerSheetConversation')).pop().arg.state;
+  expect(saved.turns[0].reply).toBe('1,860');
+  expect('retrying' in saved.turns[0]).toBe(false);
+  expect(saved.history[1]).toEqual({role: 'assistant', content: '1,860'});
+  // the mark's Retry asks again in place, and the composer stays open for it
+  await first.locator('.checkretry').click();
+  await expect(first.locator('.turn-check')).toHaveClass(/check-retrying/);
+  await expect(page.locator('#send')).toBeEnabled();
+  await expect.poll(async () => (await asked()).length).toBe(3);
+  expect((await asked())[2].retry).toBe(true);
+  await page.evaluate(() => window.__server.pendingAsk.fail({name: 'ScriptError', message: 'Prereasoner is busy.'}));
+  await expect(first.locator('.turn-check')).not.toHaveClass(/check-retrying/);
+  await expect(first.locator('.turn-answer')).toContainText('1,860');
+});

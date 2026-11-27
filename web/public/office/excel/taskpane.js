@@ -113,10 +113,10 @@ function renderTurns() {
     const assistantHtml = turn.error
       ? `<div class="turn-content"><div class="answer error" role="alert">${renderer.escapeHtml(turn.reply)}</div></div>`
       : renderer.renderAssistantTurn({reply: turn.reply, reasoningHtml,
-        // The answer's mark and its Retry (engine check, owner 2026-11-21): the delegated click below re-asks.
+        // The answer's mark, one of four levels, on screen with the answer; its Retry runs in place (retryTurn).
         // A turn still running shows its mark with no Retry.
         checkHtml: !renderer.renderCheck ? '' : turn.pending ? renderer.renderCheck(turn.check)
-          : renderer.renderCheck(turn.check, `data-retry="${index}"`),
+          : renderer.renderCheck(turn.check, `data-retry="${index}"`, turn.retrying),
         afterHtml: renderer.renderResultLink(turn.reply, analysisUrl)});
     thread.insertAdjacentHTML('beforeend', renderer.renderTurn({question: turn.question, assistantHtml}));
   });
@@ -124,7 +124,9 @@ function renderTurns() {
 }
 
 function snapshot() {
-  return {client: 'prereasoner-excel-addon', version: 1, turns: state.turns.slice(-24), history: state.history.slice(-24)};
+  // A retry still out is not a saved turn's state.
+  const turns = state.turns.slice(-24).map(({retrying, ...turn}) => turn);
+  return {client: 'prereasoner-excel-addon', version: 1, turns, history: state.history.slice(-24)};
 }
 
 async function persist() {
@@ -222,7 +224,40 @@ function awaitStream(turnId, onLive) {
   return {promise, cancel};
 }
 
-async function ask(question, retry = false) {
+// Retry (engine/retry.py: Gemini 4 Neon writes the query): the turn's question asked again with retry, in the
+// background. The turn's icon loads, the composer stays open, and the retry's answer takes the turn's place in view
+// (owner, 2026-11-27: "never ever wait for neon to show engine's answer ... the icon can change into retry loading").
+// It runs at once for an answer served very likely wrong, and on a click of the mark's Retry.
+async function retryTurn(turn) {
+  if (!turn || turn.retrying || turn.pending || turn.error || !turn.question || !renderer.revisedTurn) return;
+  const was = {reply: turn.reply, check: turn.check}, conversation = state.conversationId;
+  const repaint = () => { const thread = $('thread'), top = thread.scrollTop; renderTurns(); thread.scrollTop = top; };
+  let retried = null;
+  turn.retrying = true;
+  repaint();
+  try {
+    const response = await api('/chat', {
+      message: turn.question, history: renderer.historyBefore(state.history, turn.question, turn.reply),
+      conversation_id: conversation, source_hash: state.sourceHash, active_sheet: await readActiveSheet(), retry: true
+    }, [409]);
+    if (response && response.reply && !response.error) {
+      retried = {reply: response.reply, check: renderer.turnCheck(response.traces), reasoning: mapReasoning(response)};
+    }
+  } catch (_) { /* the turn keeps its answer; its mark says the retry did not finish */ }
+  turn.retrying = false;
+  if (state.conversationId !== conversation || !state.turns.includes(turn)) return;   // a new chat by now
+  const now = renderer.revisedTurn(was, retried);
+  turn.check = now.check;
+  if (now.replaced) {
+    turn.reply = now.reply;
+    turn.reasoning = retried.reasoning;
+    state.history = renderer.revisedHistory(state.history, turn.question, was.reply, now.reply);
+  }
+  repaint();
+  persist().catch(() => {});
+}
+
+async function ask(question) {
   setBusy(true);
   let baseHistory = state.history.slice();
   try {
@@ -241,8 +276,8 @@ async function ask(question, retry = false) {
     state.history.push({role: 'user', content: question});
     state.turns.push({question, reply: 'Working on your question…', reasoning: [], pending: true});
     renderTurns();
-    // The engine answers first (owner, 2026-11-27): the reply is the answer as soon as it is written, and the last
-    // engine call's mark shows beside it while it is still being checked; the settled turn replaces this one.
+    // The reply is the engine's answer as soon as it is written, and the last engine call's mark is on screen with
+    // it; the finished turn replaces this one.
     const streamResult = awaitStream(turnId, (run, runs) => {
       const pending = state.turns[state.turns.length - 1];
       if (!pending || !pending.pending || typeof run.reply !== 'string' || !run.reply) return;
@@ -258,8 +293,7 @@ async function ask(question, retry = false) {
     const activeSheet = await readActiveSheet();
     const chat = () => api('/chat', {
       message: question, history: baseHistory,
-      conversation_id: state.conversationId, source_hash: state.sourceHash, active_sheet: activeSheet, turnId,
-      ...(retry ? {retry: true} : {})
+      conversation_id: state.conversationId, source_hash: state.sourceHash, active_sheet: activeSheet, turnId
     }, [409]);
     try {
       response = await chat();
@@ -293,13 +327,16 @@ async function ask(question, retry = false) {
     notice('');
     // A failed save loses nothing on screen; the next answer saves the whole conversation again.
     persist().catch(() => {});
+    // An answer very likely wrong: its retry starts now, in the background; the composer is open.
+    const answered = state.turns[state.turns.length - 1];
+    if (renderer.owesRetry && renderer.owesRetry(answered.check)) retryTurn(answered);
   } catch (error) {
     // A failed question stays in the thread with its reason; it was dropped, and lost entirely when
     // the user had typed a new draft meanwhile (2026-10-04).
     const failed = {question, reply: error.message || 'Could not answer that question.', error: true};
     if (state.turns[state.turns.length - 1]?.pending) state.turns[state.turns.length - 1] = failed;
     else state.turns.push(failed);
-    state.history = baseHistory;
+    state.history = state.history.slice(0, baseHistory.length);   // what came before, with any retry's answer since
     if (!$('question').value.trim()) $('question').value = question;
     renderTurns(); notice('');
   } finally { setBusy(false); }
@@ -434,11 +471,9 @@ async function init() {
     } catch (error) { notice(error.message, true); }
   });
   $('previousChats').addEventListener('click', () => showHistory($('history').hidden));
-  $('thread').addEventListener('click', event => {        // an answer mark's Retry: the turn's question, retried
+  $('thread').addEventListener('click', event => {        // an answer mark's Retry: the turn's question, retried in place
     const button = event.target.closest('[data-retry]');
-    if (!button || !auth.currentUser || state.busy) return;
-    const turn = state.turns[Number(button.dataset.retry)];
-    if (turn && turn.question) ask(turn.question, true).catch(error => notice(error.message, true));
+    if (button && auth.currentUser) retryTurn(state.turns[Number(button.dataset.retry)]);
   });
   $('composer').addEventListener('submit', event => {
     event.preventDefault(); const question = $('question').value.trim();

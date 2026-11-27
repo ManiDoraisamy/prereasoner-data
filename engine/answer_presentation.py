@@ -124,44 +124,34 @@ def _sure(confidence: Any) -> str:
         return ""
 
 
-def warned_reason(read_as: Any, also_read_as: Any, confidence: Any, alike: bool, doubt: Any = None) -> str:
-    """Why a warned answer carries its warning (engine/tables.py answer_check): how it was read and how sure the choice
-    was, and what else the question may mean. A reading another column reads word for word like says the question does
-    not tell the two apart; the read-as names each column by the sheet's letter. ``doubt`` (engine/program/closed.py
-    DOUBT_*): a second check of the reading chose another one, found none that answers the question, or did not run."""
+def answered_reason(read_as: Any, confidence: Any) -> str:
+    """What the mark of an answer the choice stands behind opens on (engine/tables.py answer_check): how the question
+    was read and how sure the choice was."""
+    if read_as:
+        return f"I read this as “{_data_text(read_as)}”{_sure(confidence)}."
+    return f"I am{_sure(confidence).replace(',', '', 1)} of this answer." if confidence is not None else "This is the answer I read from the sheet."
+
+
+def warned_reason(read_as: Any, also_read_as: Any, confidence: Any, alike: bool) -> str:
+    """Why a likely-wrong answer carries its mark (engine/tables.py answer_check): how it was read and how sure the
+    choice was, and what else the question may mean. A reading another column reads word for word like says the
+    question does not tell the two apart; the read-as names each column by the sheet's letter."""
     read = f"I read this as “{_data_text(read_as)}”{_sure(confidence)}" if read_as else f"I'm not sure of this answer{_sure(confidence)}"
     also = _data_text(also_read_as or "")
     if alike and also:
         return f"{read}, but “{also}” reads the same way and gives another answer; the question does not say which."
-    if doubt == "another" and also:
-        return f"{read}, but a second check read it as “{also}”, which gives another answer."
-    if doubt == "none":
-        return f"{read}, but a second check found no reading that answers the question as asked."
-    if doubt == "unread":
-        return f"{read}; the second check of this reading did not run."
     return f"{read}; it may also mean “{also}”." if also else f"{read}."
 
 
-def erred_reason(read_as: Any, confidence: Any, retried: bool) -> str:
-    """Why an answer is marked most likely wrong: how it was read and how sure the choice was; whether its retry could
-    not answer."""
+def erred_reason(read_as: Any, confidence: Any) -> str:
+    """Why an answer is marked very likely wrong: how it was read and how sure the choice was."""
     read = f"I read this as “{_data_text(read_as)}”{_sure(confidence)}" if read_as else "I could not read this question from the sheet"
-    tail = " The retry could not answer it either." if retried else ""
-    return f"This answer is most likely wrong. {read}.{tail}"
+    return f"This answer is very likely wrong. {read}."
 
 
-def retried_reason(read_as: Any, confidence: Any, reason: Any, asked: bool) -> str:
-    """Why an answer came from the retry (engine/retry.py): the person asked for it, or the path's own reading was most
-    likely wrong; and how the retry's query reads the question."""
-    how = _data_text(reason or "")
-    if asked:
-        lead = "Retried: Gemini 4 Neon wrote this query."
-    elif read_as:
-        lead = (f"My reading (“{_data_text(read_as)}”{_sure(confidence)}) was most likely wrong, "
-                "so Gemini 4 Neon wrote this query.")
-    else:
-        lead = "I could not read this question from the sheet, so Gemini 4 Neon wrote this query."
-    return f"{lead} {how}".strip()
+def retried_reason(reason: Any) -> str:
+    """Why an answer came from the retry (engine/retry.py), and how the retry's query reads the question."""
+    return f"Retried: Gemini 4 Neon wrote this query. {_data_text(reason or '')}".strip()
 
 
 def terminal_reply(shaped: dict[str, Any]) -> str:

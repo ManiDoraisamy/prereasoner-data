@@ -318,38 +318,6 @@ def validate_active_sheet(req: dict) -> str | None:
     return value.strip() or None
 
 
-MAX_PENDING_CHARS = 400_000       # a sealed judge question and the marks its answers leave (engine/tables.py seal_pending)
-
-
-def validate_pending(value, *, required: bool) -> str | None:
-    """A pending token as text of bounded size (engine/tables.py open_pending checks who issued it)."""
-    if value is None and not required:
-        return None
-    if not isinstance(value, str) or not value or len(value) > MAX_PENDING_CHARS:
-        raise RequestValidationError("pending must be the token an answer came with")
-    return value
-
-
-def validate_check_request(req: object) -> dict:
-    """POST /api/check: the token of an answer being checked, and where its settled mark goes (the run's live trace,
-    the stored analysis revision)."""
-    if not isinstance(req, dict):
-        raise RequestValidationError("request body must be a JSON object")
-    normalized = {"pending": validate_pending(req.get("pending"), required=True),
-                  "jobId": _optional_id(req, "jobId"),
-                  "conversation_id": _optional_id(req, "conversation_id", conversation=True)}
-    analysis = req.get("analysis")
-    if analysis is not None:
-        if (not isinstance(analysis, dict) or not isinstance(analysis.get("analysis_id"), str)
-                or not re.fullmatch(r"a_[0-9a-f]{32}", analysis["analysis_id"])
-                or isinstance(analysis.get("revision"), bool) or not isinstance(analysis.get("revision"), int)
-                or not 1 <= analysis["revision"] <= 1_000_000):
-            raise RequestValidationError("analysis must name a revision")
-        analysis = {"analysis_id": analysis["analysis_id"], "revision": analysis["revision"]}
-    normalized["analysis"] = analysis
-    return normalized
-
-
 def validate_reason_request(req: object) -> dict:
     """Validate the authenticated /api/reason and /api/knowledge body."""
     if not isinstance(req, dict):
@@ -381,9 +349,6 @@ def validate_reason_request(req: object) -> dict:
     if not isinstance(req.get("retry", False), bool):
         raise RequestValidationError("retry must be true or false")
     normalized["retry"] = req.get("retry", False)
-    normalized["pending"] = validate_pending(req.get("pending"), required=False)
-    if normalized["pending"] is not None and not normalized["retry"]:
-        raise RequestValidationError("pending names the retry an answer is owed: send it with retry")
     normalized["dataset_ops"] = _validate_dataset_ops_shape(req.get("dataset_ops"))
     try:
         from engine.decomposition import DecompositionError, validate_decomposition

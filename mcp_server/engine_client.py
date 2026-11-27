@@ -226,8 +226,7 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                      use: str | None = None,
                      source_hash: str | None = None,
                      active_sheet: str | None = None,
-                     retry: bool = False,
-                     pending: str | None = None) -> dict[str, Any]:
+                     retry: bool = False) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
     `tables` is [{name, data}] where data is raw CSV text — exactly the engine's inline shape (no dataset_id).
@@ -238,12 +237,12 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
 
     ASYNC because both callers are async: the MCP tool (FastMCP awaits it) and the orchestrator's chat
     loop, which runs on one shared event loop and would stall every concurrent turn on a blocking POST.
-    One implementation serves both; pass `client` to reuse a connection across a turn's calls. `retry`: the person
-    retried an answer, and the engine's retry writes the query (engine/retry.py); with `pending`, it is the retry an
-    answer served most likely wrong is owed (`settle`).
+    One implementation serves both; pass `client` to reuse a connection across a turn's calls. `retry`: an answer's
+    retry, and the engine's retry writes the query (engine/retry.py).
 
-    The engine answers first (owner, 2026-11-27): an answer may come back with its mark still being checked, or
-    marked most likely wrong with its retry due (`pending_of`). `settle` settles it; `settled_query` does both."""
+    The answer comes with its mark (`check`: one of four levels, from the engine alone; owner, 2026-11-27). One served
+    very likely wrong is owed its retry (`owes_retry`): a chat client asks it in the background after it has shown
+    the answer; `settled_query` asks it at once, for a caller that cannot show an answer and revise it."""
     base = (base_url or _engine_base_url()).rstrip("/")
     body: dict[str, Any] = ({"source_hash": source_hash} if source_hash else {"tables": tables})
     body["question"] = question
@@ -263,8 +262,6 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
         body["use"] = use
     if retry:
         body["retry"] = True
-        if pending:
-            body["pending"] = pending
     try:
         async with _http(client, timeout) as http:
             for attempt in (1, 2):
@@ -301,87 +298,30 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
     return shaped
 
 
-# The mark of an answer whose second check could not be asked for: said plainly, never left as being checked.
-UNCHECKED = {"state": "warned", "confidence": None, "reason": "The second check of this answer did not run."}
-
-
-def pending_of(shaped: Any) -> tuple[str | None, str | None]:
-    """What an engine answer is still owed and the token that settles it (engine/tables.py seal_pending): "check"
-    when its mark is being checked, "retry" when it was served most likely wrong and its retry is due; else
-    (None, None)."""
+def owes_retry(shaped: Any) -> bool:
+    """Whether an engine answer is owed the retry: it was served very likely wrong (engine/tables.py owes_retry)."""
     check = shaped.get("check") if isinstance(shaped, dict) else None
-    token = check.get("pending") if isinstance(check, dict) else None
-    if not token:
-        return None, None
-    return ("check" if check.get("state") == "checking" else "retry"), token
-
-
-async def call_check(pending: str, job_id: str | None = None, conversation_id: str | None = None,
-                     analysis: dict[str, Any] | None = None, *, base_url: str | None = None, token: str | None = None,
-                     timeout: float | None = None, request_id: str | None = None,
-                     client: httpx.AsyncClient | None = None) -> dict[str, Any]:
-    """POST /api/check: the settled mark of an answer the engine served while it was being checked (the second judge
-    is asked now). `job_id` is the answer's own, so the mark reaches its live trace; `analysis` its stored revision.
-    When the engine cannot be asked, the mark says the second check did not run."""
-    base = (base_url or _engine_base_url()).rstrip("/")
-    body: dict[str, Any] = {"pending": pending}
-    if job_id:
-        body["jobId"] = job_id
-    if conversation_id:
-        body["conversation_id"] = conversation_id
-    if isinstance(analysis, dict) and analysis.get("analysis_id") and analysis.get("revision"):
-        body["analysis"] = {"analysis_id": analysis["analysis_id"], "revision": analysis["revision"]}
-    try:
-        async with _http(client, timeout) as http:
-            r = await _send(http, "POST", f"{base}/api/check", json=body, headers=_headers(token, request_id),
-                            timeout=timeout or DEFAULT_TIMEOUT)
-        check = r.json().get("check") if r.status_code == 200 else None
-    except (httpx.HTTPError, ValueError, AttributeError):
-        check = None
-    return check if isinstance(check, dict) and check.get("state") else dict(UNCHECKED)
-
-
-async def settle(shaped: dict[str, Any], question: str, tables: list[dict], job_id: str | None = None,
-                 conversation_id: str | None = None, *, retry_job_id: str | None = None,
-                 base_url: str | None = None, token: str | None = None, timeout: float | None = None,
-                 request_id: str | None = None, client: httpx.AsyncClient | None = None,
-                 analysis: dict[str, Any] | None = None, use: str | None = None,
-                 source_hash: str | None = None, active_sheet: str | None = None) -> dict[str, Any]:
-    """What `shaped` (a `call_query` answer) is still owed, done: its mark settled in place (`call_check`), or the
-    retry of an answer served most likely wrong, asked under `retry_job_id` (never the answer's own job, whose
-    response the engine replays). Returns the answer to show: `shaped` itself with its mark settled, or the retry's
-    answer, or its word that the sheet cannot answer (the one question back). A retry that cannot answer leaves
-    `shaped`, marked with why. `analysis` is the original call's, used when the served answer stored no revision."""
-    due, pending = pending_of(shaped)
-    conversation = shaped.get("conversation_id") or conversation_id
-    if due == "check":
-        shaped["check"] = await call_check(pending, job_id, conversation, shaped.get("analysis"), base_url=base_url,
-                                           token=token, timeout=timeout, request_id=request_id, client=client)
-    elif due == "retry":
-        stored = shaped.get("analysis") if isinstance(shaped.get("analysis"), dict) else None
-        spec = ({"action": "modify", "analysis_id": stored["analysis_id"], "slug": stored["slug"]}
-                if stored and stored.get("analysis_id") and stored.get("slug") else analysis)
-        again = await call_query(question, tables, retry_job_id, conversation, base_url=base_url, token=token,
-                                 timeout=timeout, request_id=retry_job_id or request_id, client=client, analysis=spec,
-                                 use=use, source_hash=shaped.get("source_hash") or source_hash, active_sheet=active_sheet,
-                                 retry=True, pending=pending)
-        kept = {key: value for key, value in shaped["check"].items() if key != "pending"}
-        shaped["check"] = kept                 # the served answer's own mark, its token spent
-        if again.get("status") in ("answered", "clarify"):
-            return again
-        if isinstance(again.get("check"), dict):
-            shaped["check"] = again["check"]
-    return shaped
+    return (isinstance(check, dict) and check.get("level") == "very_likely_wrong" and check.get("state") == "erred"
+            and "retry" not in check and shaped.get("status") == "answered")
 
 
 async def settled_query(question: str, tables: list[dict], job_id: str | None = None,
                         conversation_id: str | None = None, **kwargs: Any) -> dict[str, Any]:
-    """`call_query`, then what its answer is still owed (`settle`): one settled answer, for a caller that cannot show
-    an answer and revise it (the MCP tool)."""
+    """`call_query`, then the retry its answer is owed when it was served very likely wrong: one settled answer, for
+    a caller that cannot show an answer and revise it (the MCP tool). The retry's answer, or its word that the sheet
+    cannot answer the question, takes the served answer's place and is stored as the next revision of its analysis; a
+    retry that cannot answer leaves the served answer and its mark."""
     shaped = await call_query(question, tables, job_id, conversation_id, **kwargs)
-    follow = {key: kwargs[key] for key in ("base_url", "token", "timeout", "request_id", "client", "analysis", "use",
-                                           "source_hash", "active_sheet") if key in kwargs}
-    return await settle(shaped, question, tables, job_id, conversation_id, **follow)
+    if not owes_retry(shaped):
+        return shaped
+    stored = shaped.get("analysis") if isinstance(shaped.get("analysis"), dict) else None
+    follow = {key: kwargs[key] for key in ("base_url", "token", "timeout", "request_id", "client", "use", "active_sheet")
+              if key in kwargs}
+    spec = ({"action": "modify", "analysis_id": stored["analysis_id"], "slug": stored["slug"]}
+            if stored and stored.get("analysis_id") and stored.get("slug") else kwargs.get("analysis"))
+    again = await call_query(question, tables, None, shaped.get("conversation_id") or conversation_id, analysis=spec,
+                             source_hash=shaped.get("source_hash") or kwargs.get("source_hash"), retry=True, **follow)
+    return again if again.get("status") in ("answered", "clarify") else shaped
 
 
 class EngineStatusError(RuntimeError):
