@@ -10,6 +10,48 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## The judge's second asking, measured live: a call sent beside a slow one is slow too (median 7.8 s against 4.3 s), so it saves 3 of the 23 answers the clock would warn; a slow judge is the provider's moment, not the question (2026-11-27)
+
+- Release 95e2a7af's gate could not read which of the judge's two calls answered (the entry below), so the calls
+  were measured directly. The 83 bodies the selection hands the judge on the demo set's replay, each sent three
+  times (249 first calls), as served (`engine/llm.py` `_post_developer`, the judge's endpoint and thinking) but with a
+  30 s limit so the slow tail is seen whole, three questions at a time. A call still out at 4 s was sent a second
+  time and one still out at 8 s a third time; nothing was cancelled and every call's own time was recorded. 454
+  calls, $5.93.
+
+  | | |
+  |---|---|
+  | First calls: median / p90 / p95 | 4.3 s / 14.3 s / 20.1 s; 7 of 249 gave no answer in 30 s |
+  | Still out at 4 s / 6 s / 8 s | 158 (63%) / 62 (25%) / 47 (19%) |
+  | Past the 15 s clock (14.7 s after the choice's own call) | 23 (9.2%) |
+  | A call sent at 8 s beside a slow first one (47), as served: its own time, median | 7.8 s; it answered first on 9 |
+  | Past the clock with that second asking | 20 of the 23; the slow ones' median wait 14.6 s -> 12.7 s |
+  | A call sent at 4 s beside the first (158): its own time, median | 4.9 s; it answered first on 17 |
+  | Past the clock with a second asking at 4 s | 18 of the 23, asking twice on 63% of answers |
+
+- **It is the moment, not the question.** Of the 38 bodies that took longer than 8 s in at least one of their three
+  rounds, 31 did so in one round only and 2 in all three. A slow call writes no more than a fast one: about 200
+  tokens out with thinking at the median in every band of time (146 under 4 s, 209 at 4 to 8 s, 216 at 8 to 15 s,
+  199 past 15 s), and time against tokens out correlates at 0.39. Time against the time of the call sent beside it
+  correlates at 0.55: what holds one call holds the next one sent.
+- **So a second asking saves little**, at 8 s 3 of 23 warned answers and 1.9 s of a slow wait, at 4 s 5 of 23 for
+  twice the calls on most answers. `DECISIONS.md` had reckoned two independent calls and one miss in two thousand
+  answers; the gate's 4 of 15 and this run's 20 of 47 say a second call misses nearly as often as the first. The
+  second asking stays at 8 s (it adds 5% to the judge's calls in the recorded calm and 19% in a spell like this one,
+  and it does save some); it is not the fix.
+- **What it leaves**: in a slow spell 8% to 9% of judged answers wait to the clock and are served warned though
+  right (3.4% and 4.3% at the two gates), and every judged answer waits for the judge, a median 3.7 s and a p90 of
+  10.0 s of the request's 6.1 s and 13.7 s at the last gate. Both come from the answer waiting for its mark.
+  Serving the answer when it is ready and its mark when the judge has answered would remove both, and it changes
+  the response's contract and every client's turn, so it is the owner's decision and is not made here.
+- Read with care: the run sent up to nine calls at once on one key, against the gate's one conversation at a time,
+  and the provider grew slower through its 13 minutes (first calls past 8 s: 2 of 46 in the first two minutes, 10 of
+  42 in minutes 10 to 12), so part of this slowness may be the run's own load. The pairing does not depend on it: at
+  the gate, one conversation at a time, 4 of 15 second askings missed too.
+- Records: `prereasoner-scratch/open-20261127/judge-probe/` (`capture_bodies.py`, `probe.py`, `analyse.py`,
+  `probe-1.jsonl`: each call's start, time and tokens, no question text), in the archive's `scratch-records`.
+
+
 ## Release 95e2a7af (a figure of the first or the last lines, a judge still out after 8 s asked a second time) live; Chrome gate 77 of 78 existing and 101 of 102 fresh, the one miss a follow-up the chat's ten-requests-a-minute budget refused, right when asked again; the second asking shows no gain: 4 of 117 answers that waited for the judge were still warned by the clock (2026-11-27)
 
 - Engine `prereasoner-api-00360-qag` (`engine@sha256:d5eaad46...`, Cloud Build a1d2cbb1: build, offline regression

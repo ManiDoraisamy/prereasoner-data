@@ -5902,6 +5902,14 @@ one read, `judge_second_answered`, and the waits that still end by the clock are
 happens once in a request never showed (`world_lookup_skipped` and `deterministic_python_fallback` among them). It
 prints every counter now and leaves out only the count of a span that ran once (`engine/request_timing.py` `emit`).
 
+Measured live the same day (`spider/results/RESULTS.md`, 249 first calls with a second call beside each slow one):
+the reckoning above does not hold. A slow judge is the provider's moment, not the question and not one call's luck,
+and a call sent beside a slow one is slow too (a median 7.8 s against 4.3 s), so a second asking at 8 s saves 3 of 23
+answers the clock would warn, and one at 4 s 5 of 23 for twice the calls on most answers. The second asking stays at
+8 s for the little it saves at little cost. What it cannot remove is the answer's wait for its mark; ending that
+wait (the answer served when ready, the mark when the judge has answered) changes the response's contract and is
+the owner's decision.
+
 It is the same body to the same model, not a third opinion and not a retry: a call that fails at once is not made
 again (`JUDGE_ATTEMPTS` stays 1), and a failed first call leaves a second already out to answer. The judge takes no
 seed, so two askings can pick differently, as one asking's answer already could from the next; evaluations replay a
