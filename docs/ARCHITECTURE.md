@@ -406,8 +406,9 @@ wrote.
    choice warns only because its own probability is below `T_FLAG` waits for the judge too and is given unmarked
    where the judge picks it (2026-11-27). The answer served is the choice's in every case; an answer with a reading
    worded alike and a most-likely-wrong one do not wait. The wait ends by the clock at the judge's own limit
-   (`JUDGE_TIMEOUT_SECONDS` after it was asked), and a compound question's part, whose listing alone is read, asks no
-   judge (`select_query(..., marked=False)`). On unseen tables the answers given unmarked and wrong fell from 13.6%
+   (`JUDGE_TIMEOUT_SECONDS` after it was asked); a judge call still out `JUDGE_SECOND_SECONDS` on is made a second
+   time beside the first and the first of the two to answer is read (`engine/llm.py` `_first_to_answer`); and a
+   compound question's part, whose listing alone is read, asks no judge (`select_query(..., marked=False)`). On unseen tables the answers given unmarked and wrong fell from 13.6%
    and 12.8% to 6.7% and 5.8% (`spider/results/RESULTS.md`).
 6. `select_query` records it as a `PoolSelection`: the listed candidates (each its typed AST, SQL, answer probability
    and read-as line), ranked by that probability; `selected` (answered or warned), `warned` and `uncertain` (the
