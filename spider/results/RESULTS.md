@@ -102,9 +102,15 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 - A written model's recorded answers stay replayable: they were kept under the retry's body as it was before the
   rule moved into it, and the request they answered is the same text (`regress/run_public.py` `recorded_key`; 40
   Fable answers replayed at no cost with the same query each).
-- Records: `regress/sets/public/records/2026-11-27-retry-before/` and `2026-11-27-retry-after/` (`wtq-test`,
-  `databench-test`, system `prereasoner`, `--unjudged`); retry spend $2.06. The retry at Neon's default thinking is
-  being measured on the same answers.
+- **The retry at Neon's default thinking: not kept.** With the rule in place and `QUERY_THINKING` set to high (the one
+  line changed, the retry's own 60 s limit and output room as served), the same rewritten answers: 61 -> 61 of 95 on
+  WikiTableQuestions (4 wins, 4 losses) and 37 -> 33 of 56 on DataBench (1 win, 5 losses), with 9 and 6 retries that
+  wrote no query in time where none failed at low thinking. Thinking longer does not make the retry right more
+  often within the time a retry has, and it costs twice as much ($4.40 against $2.06).
+- Records: `regress/sets/public/records/2026-11-27-retry-before/`, `2026-11-27-retry-after/` and
+  `2026-11-27-retry-high/` (`wtq-test`, `databench-test`, system `prereasoner`, `--unjudged`). The default-thinking
+  run's recorded calls answer a body head does not send; they are in the archive's `scratch-records`
+  (`open-20261127/retry-high-calls/`).
 - tests: `test_the_retry_is_told_to_put_the_answer_first`.
 
 ## The judge's second asking, measured live: a call sent beside a slow one is slow too (median 7.8 s against 4.3 s), so it saves 3 of the 23 answers the clock would warn; a slow judge is the provider's moment, not the question (2026-11-27)
