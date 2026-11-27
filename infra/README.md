@@ -272,8 +272,17 @@ Community deployment explicitly enables the reviewed `iana_country` dataset.
 > `gcloud run services update-traffic --to-latest`, and moves the jobs with `gcloud run jobs update
 > --image`. gcloud names each revision, stamps the `client` it was made with, and adds tags; the
 > services and jobs ignore those fields (`lifecycle.ignore_changes`), and the engine ignores its
-> traffic, so a plan neither renames a revision nor drops the tags a rollback uses. Pass the
+> traffic, so a plan neither renames a revision nor drops a release's tag. Pass the
 > released digests as `image` and `chat_image`, and the plan shows the services and jobs unchanged.
+>
+> Remove the previous release's tag once the new one has passed its gate (`gcloud run services
+> update-traffic prereasoner-api --remove-tags=<tag>`). A tagged revision keeps its minimum instances
+> running whether or not it takes traffic: two engine instances each, 4 vCPU and 16 GiB with CPU
+> always allocated. Fifteen release tags left in place from 2026-11-21 to 2026-11-27 kept up to 26
+> idle engine instances running (about 2,000 instance-hours) and filled the database's 50 connection
+> slots, which failed the release smoke of 5ada49a1. A rollback names the previous revision
+> (`--to-revisions=<revision>=100`); it starts cold. The chat service keeps no minimum instance, so
+> its tags cost nothing.
 > Cloud Run refuses a template change under an existing revision's name, so on a gcloud-released
 > service a template change (environment, secrets, limits) is made with gcloud as well, and its
 > plan must show no change afterwards.

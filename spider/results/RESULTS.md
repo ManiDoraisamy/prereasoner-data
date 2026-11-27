@@ -10,6 +10,67 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release 5ada49a1 (four marks from the engine alone; the retry in the background) live; Chrome gate 77 of 78 existing and 102 of 102 fresh; the answer, its mark and an open question box at a median 4.4 s where the box opened at 10.0 s; found at the release: 13 stale release tags kept 26 idle engine instances running and filled the database's connections (2026-11-27)
+
+- Owner, 2026-11-27: "never ever ever ever ever wait for neon to show engine's answer ... show only icons for: Very
+  likely correct, likely Correct, likely Wrong, Very likely Wrong. And the icon can change into retry loading". The
+  engine `prereasoner-api-00364-tap` (`engine@sha256:16ac5f40...`, Cloud Build eb8eb7bb: build, offline regression
+  gate, runtime server smoke, live product suite, 50 min), tag `marks4`, health ok, the release smoke job ok on its
+  second run (execution 7hfsj; the first, mdmc7, could not connect to the database: below), 100% of traffic from
+  2026-11-27 21:43 UTC, both engine jobs on the image; then the chat service `prereasoner-chat-00247-wux`
+  (`chat@sha256:be0669b5...`, Cloud Build 1e5fa8d3), 100%; then the web files of 5ada49a1 (Hosting version
+  9b1960e224dabd17). The engine went first this time: an engine that leaves nothing to settle works under the old
+  chat service, and the old engine under the new one would have left its marks unsettled. Rollback: Hosting
+  `firebase hosting:clone prereasoner-inference:a0028f8dec71a237 prereasoner-inference:live`, then chat
+  `prereasoner-chat-00245-ses`, then engine `prereasoner-api-00362-mok` by name (it holds no tag and starts cold).
+  CI green on 5ada49a1.
+- **Found at the release, mine: stale tags kept idle engines running.** Every release since 2026-11-21 deployed its
+  engine revision with a tag and none was removed. A tagged revision keeps its minimum instances whether or not it
+  takes traffic, so by this release 15 tagged revisions ran 30 engine instances (Cloud Monitoring's instance count:
+  a daily mean of 10 on 11-21 rising to 29.6 on 11-27) where 2 to 4 serve. Two harms. The database's 50 connection
+  slots were full ("remaining connection slots are reserved"): the release smoke failed on it, and for about ten
+  minutes around 21:35 UTC a production instance needing a new connection would have failed the same way. None
+  did: no engine revision logged a refused connection or a 5xx between 20:30 and 21:50 UTC, and the serving
+  revision took no question in that window. And about 2,000 idle instance-hours of a
+  4 vCPU, 16 GiB instance with CPU always allocated: about $725 at list price, my estimate from the revisions'
+  creation times, not a bill. Fixed: the 13 stale tags removed at 21:40 UTC (connections 50 -> 9), the previous
+  release's tag removed once this gate passed, and the step written into the release procedure
+  (`infra/README.md`). Nothing a rollback needs is lost: a revision is named directly.
+- **Chrome gate** on the deployed site (Claude in Chrome on the owner's account, harness and captures in
+  `prereasoner-scratch/gate-5ada49a1/`). Existing conversations first (the 24 of b47c950e's fresh pass): 77 of 78;
+  the miss is customer-orders "in GBP for the whole of Europe?", asked after an average in that conversation and
+  read by the chat model as the average in GBP (it passed at the last gate and passes in this gate's fresh pass,
+  where it follows a total). Fresh pass: 102 of 102 on the 24 datasets, the six uploads among them, no request
+  refused. The first run of one upload was cut off by the driver while its first answer was still out after 56 s on
+  an instance that had just started; run again it answered 3 of 3.
+- **Nothing waits, in the browser.** On all 78 follow-ups of each pass the question box was open the moment the
+  turn ended, the turn ended within 0.2 s of the answer appearing, and every marked answer had its icon in the
+  thread at that moment.
+
+  | Fresh pass, follow-ups | b47c950e | This release |
+  |---|---|---|
+  | Asking to the answer on screen: median / p90 | 5.0 s / 6.8 s | 4.4 s / 8.3 s |
+  | Asking to its mark: median / p90 | 10.0 s / 14.3 s | 4.4 s / 8.3 s (with the answer) |
+  | Asking to an open question box: median / p90 | 10.0 s / 14.3 s | 4.4 s / 8.3 s |
+
+  The existing pass, run right after the traffic moved: a median 5.6 s, p90 12.3 s.
+- **Marks** (fresh pass, 102 answers): 52 very likely correct, 7 likely correct, 1 a question back, 42 with no
+  mark. The 42 are answers of the world and composed routes (a currency conversion, a country looked up, a compound
+  question): those routes have no probability of the choice's, so they carry no level, as they carried no mark
+  before. Existing pass (78): 43, 4, 1 and 30. No gate answer was marked likely wrong or very likely wrong.
+- **The retry, live.** No gate question is marked very likely wrong, so one was asked for it on neartail-orders:
+  "what is the ratio of the highest amount to the lowest amount?". At 6.4 s the engine's answer (36, the highest
+  amount, 10% sure) was on screen marked very likely wrong, its icon loading and the question box open; at 12.7 s
+  the retry's answer took its place: 6, right by the sheet (36 / 6), marked likely correct, its mark holding the
+  first answer, the reason and Neon's query. The workbook opened the retry's result.
+- **Production's times** (`[timing]`, `gate-5ada49a1/timing-prereasoner-api-00364-tap.json`): a question
+  (`reason`, 198) a median 2.5 s, p90 4.9 s, longest 63.3 s (the instance that had just started), 6 over 15 s,
+  against 2.8 s, 5.7 s, 27.5 s and 5 at the last gate. No route settles a mark after an answer.
+- **Not driven**: the Sheets sidebar and the Excel pane in their hosts. The sidebar's background retry has its
+  browser test (`web/tests/browser/sheets-sidebar.spec.js`, CI); the Excel pane's is pinned by its unit test.
+- **Open**: answers of the world and composed routes show no icon. A mark for them needs a confidence those routes
+  do not have today.
+
 ## Four marks from the engine alone, on screen with the answer; the second judge removed; right at each level on the 896 dev questions 380 of 397, 284 of 327, 52 of 98, 19 of 74, and on an unseen 1,000 310 of 345, 332 of 426, 79 of 136, 29 of 93; answers shown without a warning and wrong 30 -> 60 of the 896 and 52 -> 129 of the unseen 1,000 (2026-11-27)
 
 - Owner, 2026-11-27: "never ever ever ever ever wait for neon to show engine's answer. Always show engine's answer
