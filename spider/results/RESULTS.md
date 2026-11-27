@@ -10,6 +10,81 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Four marks from the engine alone, on screen with the answer; the second judge removed; right at each level on the 896 dev questions 380 of 397, 284 of 327, 52 of 98, 19 of 74, and on an unseen 1,000 310 of 345, 332 of 426, 79 of 136, 29 of 93; answers shown without a warning and wrong 30 -> 60 of the 896 and 52 -> 129 of the unseen 1,000 (2026-11-27)
+
+- Owner, 2026-11-27: "never ever ever ever ever wait for neon to show engine's answer. Always show engine's answer
+  immediately in lightening speed and show only icons for: Very likely correct, likely Correct, likely Wrong, Very
+  likely Wrong. And the icon can change into retry loading for errors like Very likely Wrong". Commit 5ada49a1
+  (`DECISIONS.md`, "An answer's mark is the engine's own, one of four levels"). The mark is the level of the
+  choice's own probability of the answer (`engine/tables.py` `level_of`: 0.90, 0.575 and 0.42), whole when the
+  answer is. The second judge (Gemini 4 Neon, since 2026-11-26) is removed, and with it the wait for its mark. The
+  chat turn ends at the engine's answer. The retry of an answer very likely wrong is asked by the client in the
+  background and its answer takes the turn's place.
+- **Expected to change**: marks, and when the question box opens. **Not** which answer is served, and not what the
+  retry rewrites.
+- **Which answer is served: unchanged.** `python -X utf8 -m regress.run_dev_decisions --sets wtq`, `--sets
+  messy,freshdev`, `--sets databench` and `--sets demo --demo-maps` (tags `four-marks-*`, recorded answers only, no
+  miss): every question's listings and the choice's probabilities are the reference's, 896 of 896 and 91 of 91;
+  the always-answering pick 735 of 896 and 86 of 91, wins 0, losses 0. Every reference is kept again (`--keep`),
+  now with each answer's `level`.
+- **Right at each level** (the engine's own answer, before any retry):
+
+  | Set | Very likely correct | Likely correct | Likely wrong | Very likely wrong |
+  |---|---|---|---|---|
+  | WikiTableQuestions dev (300) | 103 of 109 | 102 of 122 | 22 of 41 | 9 of 28 |
+  | Messy (120) | 42 of 42 | 47 of 49 | 11 of 19 | 5 of 10 |
+  | Fresh dev (176) | 70 of 75 | 55 of 65 | 7 of 18 | 0 of 18 |
+  | DataBench dev (300) | 165 of 171 | 80 of 91 | 12 of 20 | 5 of 18 |
+  | **The 896** | **380 of 397 (95.7%)** | **284 of 327 (86.9%)** | **52 of 98 (53.1%)** | **19 of 74 (25.7%)** |
+  | Demo (91, request databases of 2026-11-18) | 75 of 75 | 9 of 10 | 2 of 2 | 0 of 4 |
+  | WikiTableQuestions test sample (1,000) | 317 of 360 (88.1%) | 338 of 428 (79.0%) | 64 of 117 (54.7%) | 26 of 95 (27.4%) |
+  | DataBench test within the upload limit (450) | 207 of 219 (94.5%) | 109 of 145 (75.2%) | 12 of 30 (40.0%) | 11 of 56 (19.6%) |
+  | **WikiTableQuestions fresh sample 3 (1,000), unseen** | **310 of 345 (89.9%)** | **332 of 426 (77.9%)** | **79 of 136 (58.1%)** | **29 of 93 (31.2%)** |
+
+  0.575 and 0.42 are the choice's thresholds since 2026-11-21. 0.90 was chosen on 2026-11-27 looking at the two
+  test samples' recorded probabilities, so those two rows are not unseen for it; fresh sample 3 is (`--set
+  wtq-fresh3 --system engine`, read in totals only). There, an answer marked very likely correct is wrong 10 times
+  in 100 and one marked likely correct 22 times in 100. The dev sets, which the readings were built on, read higher.
+- **What the judge's removal costs** (the 896, each label against the judged reference of b47c950e): 123 marks
+  moved and no answer.
+
+  | | With the second judge | The engine alone |
+  |---|---|---|
+  | Right, no warning | 649 | 664 |
+  | Wrong, no warning | 30 (3.3%) | 60 (6.7%): 17 marked very likely correct, 43 likely correct |
+  | Right, warned | 67 | 52 |
+  | Wrong, warned | 76 | 46 |
+  | Very likely wrong (retried) | 74 | 74 |
+
+  47 right and 37 wrong answers lose a warning the judge gave; 32 right and 7 wrong ones gain the warning their own
+  probability gives. By set, wrong with no warning: WikiTableQuestions dev 14 -> 26, messy 5 -> 2, fresh dev 2 ->
+  15, DataBench dev 9 -> 17; demo 0 -> 1 (customer-orders "in GBP for the whole of Europe?").
+
+  On the unseen fresh sample 3, against its judged run of this morning (`2026-11-27-marks`, commit 568b1f0a):
+  wrong with no warning 52 -> 129 of 1,000 (5.2% -> 12.9%): 35 marked very likely correct, 94 likely correct. Right
+  with no warning 641 -> 642, right and warned 79 -> 79, wrong and warned 135 -> 57, very likely wrong 93 -> 93. This
+  is the gain the judge test measured on 2026-11-26, given back: the mark now costs no wait and no second model,
+  and what it leaves unwarned is the engine's own to reduce. Two of that sample's answers differ from the morning's
+  run for changes made since (one a year printed "2005" for "2005.0", one right where it was wrong); neither is this
+  change's, whose listings are the references' on all 896.
+- **Served on the public benchmark: unchanged.** `python -X utf8 -m regress.run_public --run 2026-11-27-four-marks
+  --set wtq-test --system prereasoner` and `--set databench-test` (records
+  `regress/sets/public/records/2026-11-27-four-marks/`; every call replayed, $0.00): 780 of 1,000 and 365 of 450,
+  wins 0 and losses 0 against `2026-11-27-retry-after`. The retry still rewrites only the answers marked very
+  likely wrong (95 and 56).
+- **Nothing waits.** At release b47c950e the question box opened a median 4.8 s after the answer (the judge's
+  mark), up to 15 s, and after the retry of an erred answer. Now a turn is one engine call: the reply, then done
+  (`tests.test_orchestrator_unit` `test_a_turn_ends_at_the_engines_answer_and_waits_for_no_other_model`). The
+  browser's times are in the release entry.
+- **Tests.** `tests.run_all` with the proxy (`RUN_ENGINE_TESTS=0`): every invoked suite passes (the live product
+  suite runs in the release build); `regress.run_regression --offline` PASS; `npm run test:web` and the browser
+  tests of the background retry in the web page and the Sheets sidebar (`web/tests/browser`) pass. New or rewritten:
+  `tests.test_answer` (the four levels from the choice alone), `tests.test_sql_ast` (an answer served with its
+  level and nothing pending; the retry with no token; `settled`), `tests.test_orchestrator_unit` (the turn; the MCP
+  tool's retry), `tests.test_request_limits` (no route settles a mark), `web/tests/turn_check.test.js`.
+- **Not measured**: the Excel pane in its host (its unit tests pin the request and the in-place retry). The Sheets
+  add-on's published script is unchanged: it already forwards `retry`.
+
 ## Release b47c950e (the answer first; the retry told where to put the answer) live; Chrome gate 78 of 78 existing and 102 of 102 fresh; the answer is on screen at a median 5.0 s where it was 10.3 s, its mark 4.8 s after it; the engine's time for a question 6.1 s -> 2.8 s (2026-11-27)
 
 - Owner, 2026-11-27: "yes, always serve the answer before the judge has answered." Three parts, in this order,
