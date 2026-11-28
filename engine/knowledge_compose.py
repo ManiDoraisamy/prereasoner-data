@@ -126,53 +126,6 @@ class ComposedKnowledgeQuery:
                     return True
         return False
 
-    # A question with a DATA-INTENT word, or that names a schema column/table, or whose token resolves to a
-    # world entity, is a query OVER THE DATA. A question with NONE of these ("how does this work?") is almost
-    # certainly conversational — route it to the Gemini fallback instead of forcing a degenerate COUNT(*). This
-    # is the COVERAGE gate for wholly-non-data questions (the clarify gate still handles AMBIGUOUS data ones).
-    _DATA_INTENT = frozenset({
-        "total", "sum", "average", "avg", "mean", "count", "number", "list", "show", "give", "display",
-        "top", "most", "least", "largest", "smallest", "highest", "lowest", "biggest", "maximum", "minimum",
-        "max", "min", "per", "each", "group", "grouped", "sort", "sorted", "order", "ordered", "rank",
-        "ranked", "distinct", "unique", "where", "greater", "less", "between", "over", "under", "above",
-        "below", "fewer", "filter"})
-    _META_STOP = frozenset({
-        "how", "does", "this", "that", "it", "work", "works", "the", "a", "an", "is", "are", "was", "were",
-        "do", "did", "you", "your", "we", "our", "me", "i", "can", "could", "would", "should", "what", "why",
-        "when", "who", "explain", "tell", "about", "mean", "means", "help", "and", "or", "but", "so"})
-
-    def _has_data_signal(self, question, tables):
-        """True iff the question looks like a query over the DATA (a data-intent word, a schema column/table
-        mention, or a token that resolves to a world entity). False -> a conversational/meta question that the
-        fallback should answer, not a forced degenerate query. Best-effort; on any error it FAILS OPEN (returns
-        True — never block a real query). This is the OPPOSITE default from _human_tone, which fails closed."""
-        try:
-            ql = (question or "").lower()
-            if re.search(r"\bhow\s+(?:many|much)\b", ql):
-                return True                                       # 'how many/much' is a data intent (not 'how does…')
-            # Words of every script: an ASCII-only reading saw no words in "売上の合計" and called a question
-            # naming the sheet's 売上 column a chat (release review, revision 2). A script written without
-            # spaces runs a column's name into the words around it, so a name outside ASCII also counts
-            # where the question contains it.
-            toks = set(re.findall(r"[^\W\d_]+", ql))
-            if toks & self._DATA_INTENT:
-                return True
-            schema = self._schema_tokens(tables)
-            if toks & schema or any(not part.isascii() and part in ql for part in schema):
-                return True
-            content = [w for w in toks if len(w) > 2 and w not in self._META_STOP]
-            if content:
-                # A fuzzy city word is matched among the cities the request's tables name (engine/prepared.py),
-                # which their preparations hold: prepare them first, as routing would.
-                from engine.tables import normalize_tables
-                for table in normalize_tables(tables or ()):
-                    self.qw._prepared(table)
-                if self.qw._best_world_entity(content):
-                    return True
-            return False
-        except Exception:                                        # noqa: BLE001 — fail OPEN: never block a real query
-            return True
-
     def _schema_tokens(self, tables):
         """The set of lowercased word-parts, in any script, of every table/column name (plus a naive
         de-pluralized form)."""
@@ -211,7 +164,7 @@ class ComposedKnowledgeQuery:
         computed answer should be PRESENTED in human words rather than shown as a bare table. A cue word that
         is ALSO a schema column/table name ("show me the feeling column") is a DATA reference, not emotion, so
         it doesn't count. The evaluative "is that/this/it <X>" framing counts regardless. Best-effort; on any
-        error it FAILS CLOSED (returns False — never force a needless present). Opposite of _has_data_signal."""
+        error it FAILS CLOSED (returns False — never force a needless present)."""
         try:
             ql = (question or "").lower()
             if self._HUMAN_RE.search(ql):

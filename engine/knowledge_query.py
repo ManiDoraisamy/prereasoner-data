@@ -56,7 +56,7 @@ from engine.numeric import parse_decimal
 from engine.sql_expansion import SHARE_WORDS
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
 from engine.query_contract import (DROPPED_PART_MODEL, QUANTITY_WORDS, UNMATCHED_NAMES_MODEL, UNREADABLE_MEASURE_MODEL, Coverage, lexical_words,
-                                   unreadable_measure_violation)
+                                   unreadable_measure_violation, unreadable_operand)
 from engine import request_timing
 
 # The order a non-geo entity lookup breaks a tie in: the name's primary entity, then the lowest numeric QID.
@@ -1167,11 +1167,25 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             return qid                                                # already a name (defensive) -> pass through
         return self._qid_labels([qid]).get(qid)
 
+    @staticmethod
+    def _compiled_column(norm, name):
+        """Whether the sheet compiler names a column of the request's workbook ``name`` (engine/prepared.py
+        prepared_workbook: compiled once per content). True where the workbook cannot be compiled: the planner's own
+        names are then all there is."""
+        from engine.prepared import prepared_workbook
+        from engine.program.semantics import fold
+        try:
+            _key, prepared = prepared_workbook(norm)
+        except Exception as error:                       # noqa: BLE001 - the planner's names stand
+            print(f"workbook not compiled for a column's name: {type(error).__name__}", flush=True)
+            return True
+        return any(fold(column.name) == fold(name) for table in prepared.catalog.tables for column in table.columns)
+
     def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=(),
               upload_alone=False):
         """Hybrid structured+semantic retrieval when the question has a free-text predicate AND the data has a
-        free-text column AND it is not an aggregate AND it filters by a place the sheet's cells connect to ("who
-        ordered a trench coat in France": the world filter is the search's point); otherwise delegate to EntityQuery
+        free-text column AND it is not an aggregate AND it filters by a place of the world that the sheet's cells
+        connect to ("who ordered a trench coat in France": the world filter is the search's point); otherwise delegate to EntityQuery
         (which uses the unified operator via read_op_all). Any hybrid error falls back to EntityQuery so the world path
         never hard-fails. ``upload_alone``: the reader decided a reading that takes nothing from the world
         (engine.routing.upload_answers_alone), so no world route here or below is consulted. The search stands in
@@ -1184,7 +1198,14 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # cells (query_contract.unreadable_operand), before any route reads it. Both world routes read their
         # measure with read_op_all, which counted the rows when the named column was text ("total amount in France"
         # was 5 orders) and totaled a saved reference's `estimated amount` beside it (2026-10-09).
-        unreadable = unreadable_measure_violation(question, SchemaGraph.from_planner(sch, fks))
+        graph = SchemaGraph.from_planner(sch, fks)
+        unreadable = unreadable_measure_violation(question, graph)
+        if unreadable and not self._compiled_column(norm, unreadable_operand(question, graph)[0]):
+            # The name is the sheet's title, which the request's first line holds over its real header: no column,
+            # and the cells under it are the sheet's labels. "Which state had the highest monthly average number of
+            # total TANF recipient families" was refused naming the 59 states under "TANF: Total Number of Families"
+            # as values that are no numbers (fresh dev as served, 2026-11-28).
+            unreadable = None
         if unreadable:
             return {"question": question, "as_of": as_of, "clarify": True, "reason": unreadable,
                     "result": None, "error": None, "model": UNREADABLE_MEASURE_MODEL}
@@ -1207,7 +1228,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         drop = ([cr[2]] if cr else []) + [value for _table, _column, value in own]
         pred = "" if is_agg else semantic_predicate(question, drop, sch, closed)
         plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred and not upload_alone else None
-        if plan and not (self._searchable(plan) and plan["conn"] and (cr or own)):
+        # Only where the question filters by a place of the world (``cr``): a value the upload's own cells hold
+        # ("who ordered a trench coat in Paris", "previous to Tom Andrews who was elected?") is the reader's to read,
+        # and with no decided reading its answer is marked very likely wrong and retried. The search took such a
+        # question whenever a column of the sheet connected to the world, and answered with no mark (2 of the first
+        # 40 WikiTableQuestions dev questions as served, 2026-11-28, neither right).
+        if plan and not (self._searchable(plan) and plan["conn"] and cr):
             plan = None
         # The search reads one sheet; a filter on another sheet needs the structured path's joins.
         if plan and any(table != plan["table"]["name"] for table, _column, _value in own):

@@ -5,10 +5,11 @@ A "near/around/closest <city>" question resolves the reference city to its lat/l
 clean ~174k-row geo source) and returns the nearest world cities by haversine distance. Everything else
 delegates to ComposedKnowledgeQuery unchanged (population ranking, aggregates, hybrid, clarify, composition).
 
-serve() also owns two signals for the conversational layer (docs/ARCHITECTURE.md §10): the COVERAGE PRE-GATE
-(a message with no data intent short-circuits with low_confidence, before reasoning) and the PRESENT tag
-(_tag_present flags a real answer whose phrasing is emotional/human, so the UI presents it in words). Both
-detectors live on ComposedKnowledgeQuery; KnowledgeReasoner applies them across the geo + composed paths.
+serve() also owns one signal for the conversational layer: the PRESENT tag (_tag_present flags a real answer whose
+phrasing is emotional/human, so the UI presents it in words). Its detector lives on ComposedKnowledgeQuery;
+KnowledgeReasoner applies it across the geo + composed paths. No word list stands before the reader: every question
+asked of a sheet is read (until 2026-11-28 a list of English intent words decided first whether a message was a data
+question at all; as served it turned away none of 355 dev questions, and no evaluation below it could see it).
 """
 from __future__ import annotations
 import re
@@ -93,16 +94,6 @@ class KnowledgeReasoner:
             if r:                                                           # geo nearby handled (server emits its result)
                 r = self._tag_present(r, question, tables)
                 return self._verify_calculations(r, tables, question, explicit_fks)
-        # COVERAGE PRE-GATE: a question with no data-intent, no schema mention, and no resolvable entity is
-        # conversational ("how does this work?"), not a query. Short-circuit BEFORE reasoning (nothing garbage
-        # streams) with low_confidence -> the UI answers it in-chat via the Gemini fallback. Best-effort.
-        try:
-            if not self.composed._has_data_signal(question, tables):
-                return {"question": question, "as_of": as_of, "low_confidence": True,
-                        "clarify": None, "error": None, "result": None,
-                        "model": "engine - conversational (not a data query)"}
-        except Exception as e:                                              # noqa: BLE001 — never block a real query
-            print(f"coverage pre-gate skipped: {type(e).__name__}", flush=True)
         self.qw.begin_typing()                                              # capture the model's per-column typing
         try:                                                                # evidence emitted while this serve routes
             res = (self.composed.serve(
@@ -122,8 +113,8 @@ class KnowledgeReasoner:
     def _upload_stands(self, res, tables, question, sub, as_of, explicit_fks, dataset_semantics, decomposition):
         """A world route's failure never takes the place of the upload's answer (owner, 2026-11-21: "never ask back
         unless the question is wrong. You can't push your failure to users"). Where the composed stack returns an
-        error with no result, or a world route's question back about what it could not do itself (names its lookup
-        could not match, a word its query left out: query_contract.WORLD_ROUTE_ASKS), the own-data path's answer is
+        error with no result, an answer of no rows at all, or a world route's question back about what it could not do
+        itself (names its lookup could not match, a word its query left out: query_contract.WORLD_ROUTE_ASKS), the own-data path's answer is
         served in its place, with its mark, and its retry is owed as for any answer. On the frozen government
         workbooks 3 of 212 questions came back that way, and on fresh dev's first 60, 6 (as served, 2026-11-28). A
         question back that says the question or the sheet is wrong stands: no rows match it, the measure it names is
@@ -132,7 +123,10 @@ class KnowledgeReasoner:
         if (explicit_fks or decomposition or not tables or not isinstance(res, dict) or res.get("model") == PROGRAM_MODEL
                 or res.get("decomposition_required")):
             return res
-        failed = (res.get("error") and not res.get("result")) or (res.get("clarify") is True and res.get("model") in WORLD_ROUTE_ASKS)
+        result = res.get("result")
+        nothing = isinstance(result, dict) and not result.get("rows") and not res.get("clarify") and not res.get("error")
+        failed = ((res.get("error") and not result) or nothing
+                  or (res.get("clarify") is True and res.get("model") in WORLD_ROUTE_ASKS))
         if not failed:
             return res
         own = self.qw.serve(tables, question, as_of=as_of, schema=sub, dataset_semantics=dataset_semantics, upload_alone=True)
@@ -193,7 +187,7 @@ class KnowledgeReasoner:
         BOTH the geo path and the composed path. Best-effort — never breaks the answer."""
         try:
             if (isinstance(res, dict) and res.get("result") and not res.get("clarify")
-                    and not res.get("error") and not res.get("low_confidence")
+                    and not res.get("error")
                     and self.composed._human_tone(question, tables)):
                 res["present"] = True
         except Exception as e:                                              # noqa: BLE001 — never break the answer

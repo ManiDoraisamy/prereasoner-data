@@ -403,8 +403,10 @@ def test_an_answer_carries_one_of_four_marks_from_the_choice_alone() -> None:
         return choice.kind, choice.sure
 
     assert T_ERR < T_FLAG < T_SURE < 1
-    assert marked({"r00": 0.6, "r01": 0.32, "r02": 0.05, NONE: 0.03}) == (ANSWERED, True), "0.92: very likely correct"
-    assert marked({"r00": 0.5, "r01": 0.4, "r02": 0.05, NONE: 0.05}) == (ANSWERED, True), "exactly T_SURE"
+    assert (T_FLAG, T_SURE) == (0.575, 0.95), "very likely correct from 0.95 (regress.served_gates bands)"
+    assert marked({"r00": 0.6, "r01": 0.37, "r02": 0.02, NONE: 0.01}) == (ANSWERED, True), "0.97: very likely correct"
+    assert marked({"r00": 0.5, "r01": 0.45, "r02": 0.03, NONE: 0.02}) == (ANSWERED, True), "exactly T_SURE"
+    assert marked({"r00": 0.6, "r01": 0.32, "r02": 0.05, NONE: 0.03}) == (ANSWERED, False), "0.92: likely correct"
     assert marked({"r00": 0.5, "r01": 0.2, "r02": 0.2, NONE: 0.1}) == (ANSWERED, False), "0.70: likely correct"
     assert marked({"r00": 0.3, "r01": 0.2, "r02": 0.3, "r03": 0.1, NONE: 0.1}) == (WARNED, False), "0.50: likely wrong"
     assert marked({"r00": 0.2, "r02": 0.1, NONE: 0.7}) == (ERRED, False), "none is likelier: very likely wrong"
@@ -418,7 +420,7 @@ def test_an_answer_carries_one_of_four_marks_from_the_choice_alone() -> None:
 
     def rule(name, criteria_question, state):     # the choice holds its first listing likeliest
         if name == "reading":
-            return {next(option for option in criteria_question["criteria"] if option != NONE): 0.93}
+            return {next(option for option in criteria_question["criteria"] if option != NONE): 0.97}
         return _reading_rule(name, criteria_question, state)
 
     transport = FakeTransport(rule)

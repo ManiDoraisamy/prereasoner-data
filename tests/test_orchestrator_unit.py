@@ -825,9 +825,36 @@ def test_named_workbook_tool_contract_and_catalog_boundary():
 
 def test_followup_prompt_treats_tier_calculation_as_a_data_question():
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
-    assert "reduce the discount from total amount based on customer's tier" in prompt
-    assert "do not ask whether the user wants a tier breakdown" in prompt
+    assert "take the rebate off the total fees according to each member's level" in prompt
+    assert "do not ask whether the user wants a breakdown by level" in prompt
     assert "retains the latest country, currency, and measure" in prompt
+
+
+def test_the_prompt_quotes_no_gate_question():
+    """Audit, 2026-11-28: seven of the prompt's examples were the release gate's own questions or their expected
+    rewrites, word for word ("how about Belgium?", "how much commission came from cards?", "reduce the discount from
+    total amount based on customer's tier", ...), so the gate's chat follow-ups partly measured recall. Every rule
+    keeps an example of its shape from another domain. No run of five words of a shipped dataset's prompt.txt or of
+    an eval.txt question stands in the prompt."""
+    import re
+    from pathlib import Path
+    words = lambda text: re.findall(r"[^\W_]+", text.lower())
+    prompt = " " + " ".join(words(orchestrator.SYSTEM_PROMPT)) + " "
+    datasets = Path(__file__).resolve().parent.parent / "web" / "public" / "dataset"
+    asked = []
+    for folder in sorted(path for path in datasets.iterdir() if path.is_dir()):
+        asked.extend(line for line in (folder / "prompt.txt").read_text(encoding="utf-8").splitlines() if line.strip())
+        for line in (folder / "eval.txt").read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.lstrip().startswith("#"):
+                question = line.split("=>", 1)[0].strip()
+                asked.append(question[5:] if question.lower().startswith("chat:") else question)
+    assert len(asked) > 80, len(asked)
+    quoted = []
+    for question in asked:
+        held = words(question)
+        runs = [" ".join(held[at:at + 5]) for at in range(max(1, len(held) - 4))] if len(held) >= 5 else [" ".join(held)] if len(held) >= 3 else []
+        quoted.extend((question, run) for run in runs if f" {run} " in prompt)
+    assert not quoted, quoted[:5]
 
 
 def test_followup_prompt_separates_geography_from_output_currency_and_executes_yes():
@@ -851,7 +878,7 @@ def test_a_whole_place_follow_up_asks_for_one_figure_not_a_ranking():
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert 'a follow-up about "the whole of" a place, "all of" it, or the place "as a whole"' in prompt
     assert "never a ranking within the place, even when the latest question was a ranking" in prompt
-    assert '"in yen for the whole of asia?" is "total sales in asia in jpy"' in prompt
+    assert '"in yen for the whole of asia?" is "total fees in asia in jpy"' in prompt
     assert "europe" not in prompt
 
 
@@ -1978,6 +2005,7 @@ TESTS = [
     test_a_clarification_nothing_earlier_can_settle_is_terminal,
     test_named_workbook_tool_contract_and_catalog_boundary,
     test_followup_prompt_treats_tier_calculation_as_a_data_question,
+    test_the_prompt_quotes_no_gate_question,
     test_followup_prompt_separates_geography_from_output_currency_and_executes_yes,
     test_an_output_currency_survives_a_complete_question_in_between,
     test_the_model_sees_the_rows_the_answer_covers,

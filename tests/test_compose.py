@@ -603,7 +603,8 @@ def test_a_world_routes_failure_never_takes_the_place_of_the_uploads_answer():
     failures = ({"error": "no foreign key relates sheet 'a' to 'b' — cannot combine them", "result": None, "model": join},
                 {"error": "KeyError: 'x'", "result": None},
                 {"clarify": True, "reason": "3 of the 3 State names in your sheet could not be matched", "result": None, "model": UNMATCHED_NAMES_MODEL},
-                {"clarify": True, "dropped": ["state"], "model": DROPPED_PART_MODEL})
+                {"clarify": True, "dropped": ["state"], "model": DROPPED_PART_MODEL},
+                {"result": {"columns": ["name"], "rows": []}, "error": None, "model": "engine - unified encoder: world bridge + semantic rank"})
     for response in failures:
         kept, delegate = served(response)
         assert kept is own, response
@@ -626,6 +627,24 @@ def test_a_world_routes_failure_never_takes_the_place_of_the_uploads_answer():
     assert served(failures[0], tables=[])[0] is failures[0]
     nothing = {"error": "boom", "result": None}
     assert served(failures[0], nothing)[0] is failures[0], "the upload has no answer either: the failure is what there is"
+
+
+def test_a_sheets_title_is_no_column_for_the_unreadable_measure_refusal():
+    """The refusal of a total over a column holding a cell that is no number names a column of the request's first
+    line. On a sheet whose first line is its title, that "column" is the title and the cells under it are the
+    sheet's labels: "which state had the highest monthly average number of total TANF recipient families" was
+    refused naming the 59 states under "TANF: Total Number of Families" (fresh dev as served, 2026-11-28). The
+    refusal stands only where the sheet compiler names a column so; a real column of text amounts is still one."""
+    from engine.knowledge_query import KnowledgeQuery
+    from engine.tables import normalize_tables
+
+    titled = normalize_tables([{"name": "TFam", "columns": ["TANF: Total Number of Families", "", "", ""], "rows": [
+        ["Fiscal Year 2023", "", "", ""], ["State", "Oct-22", "Nov-22", "Average FY 2023"], ["U.S. Totals", 300, 320, 310],
+        ["Alabama", 100, 110, 105], ["Alaska", 90, 95, 92.5], ["Arizona", 110, 115, 112.5]]}])
+    assert not KnowledgeQuery._compiled_column(titled, "TANF: Total Number of Families")
+    assert KnowledgeQuery._compiled_column(titled, "State") and KnowledgeQuery._compiled_column(titled, "average fy 2023")
+    plain = normalize_tables([{"name": "orders", "columns": ["city", "amount"], "rows": [["Paris", "12 EUR"], ["Lyon", 5], ["Nice", 7]]}])
+    assert KnowledgeQuery._compiled_column(plain, "amount"), "a text amount under its own header is still refused by name"
 
 
 def test_serving_hands_an_own_data_composition_to_the_planner():
@@ -675,9 +694,6 @@ def test_a_nearness_word_reaches_the_place_lookup_only_for_places():
     from engine.knowledge import KnowledgeReasoner
 
     class Composed:
-        def _has_data_signal(self, question, tables):
-            return True
-
         def _human_tone(self, question, tables):
             return False
 
@@ -750,29 +766,10 @@ def test_a_nearness_word_reaches_the_place_lookup_only_for_places():
     assert nearest[1] == (48.85, 2.35, 48.85, 1, "Paris", "Q90", 5) and len(rows) == 2, nearest[1]
 
 
-def test_a_question_naming_a_column_in_any_script_is_about_the_data():
-    """The conversational pre-gate read questions and column names as ASCII words, so "売上の合計" (total of
-    the 売上 sales column) had no words at all and was answered as a chat, never reaching the planner or the
-    rewrite fallback (release review, revision 2, 2026-10-07). A chat in that script is still a chat."""
-    from unittest.mock import Mock
-
-    from engine.knowledge_compose import ComposedKnowledgeQuery
-
-    host = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)
-    host.qw = Mock()
-    host.qw._best_world_entity.return_value = None
-    sales = [{"name": "注文", "columns": ["地域", "売上"], "rows": [["東京", 10]]}]
-    assert host._has_data_signal("売上の合計", sales)
-    assert host._has_data_signal("地域ごとの売上", sales)
-    assert not host._has_data_signal("これはどう動くの？", sales)
-    assert not host._has_data_signal("how does this work?", sales)
-    assert host._has_data_signal("total sales", [{"name": "orders", "columns": ["region", "sales"], "rows": []}])
-
-
 def test_cities_are_searched_only_when_no_word_is_near_a_country():
     """The world-entity guess returned the best country whenever one cleared its floor, yet searched the 213k
     cities for every word beside it: 124 of 243 production questions spent a median 0.77 s on those searches,
-    mostly in the conversational pre-gate (2026-10-27). The guess is unchanged; the city search runs only when it
+    mostly in the conversational pre-gate of the time (2026-10-27; the pre-gate itself was removed on 2026-11-28). The guess is unchanged; the city search runs only when it
     is the answer."""
     from unittest.mock import patch
 
@@ -998,9 +995,9 @@ TESTS = [
     test_a_learned_ranking_needs_a_ranking_word,
     test_serving_hands_an_own_data_composition_to_the_planner,
     test_a_nearness_word_reaches_the_place_lookup_only_for_places,
-    test_a_question_naming_a_column_in_any_script_is_about_the_data,
     test_a_question_the_upload_reads_whole_skips_the_world_lookup,
     test_a_world_routes_failure_never_takes_the_place_of_the_uploads_answer,
+    test_a_sheets_title_is_no_column_for_the_unreadable_measure_refusal,
     test_a_threshold_on_an_aggregate_compares_numbers,
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,

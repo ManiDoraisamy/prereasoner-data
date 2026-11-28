@@ -27,8 +27,8 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `encoder_overlay.py` | `EncoderQuery`; `load_encoder` — the single loader for `encoder_meta.pt`/`encoder.pt`/`qwen_lora`. |
 | `compose.py` | `ComposeEngine`. |
 | `knowledge_query.py` | `KnowledgeQuery`; model-driven column routing (`KB_MODEL_ROUTE`) and non-geo world joins over pre-synchronized facts. |
-| `knowledge_compose.py` | `ComposedKnowledgeQuery`; also the conversational detectors (`_has_data_signal`, `_human_tone`). |
-| `knowledge.py` | `KnowledgeReasoner` (geo NEARBY wrapper; the shared serving entry point for reason/knowledge; the conversational coverage pre-gate + present-tagging). |
+| `knowledge_compose.py` | `ComposedKnowledgeQuery`; also the tone detector (`_human_tone`). |
+| `knowledge.py` | `KnowledgeReasoner` (geo NEARBY wrapper; the shared serving entry point for reason/knowledge; present-tagging). |
 | `dimension.py` | `DimensionModel`. |
 | `encoder.py` | `LiveQwen`; base model id from `BASE_MODEL_ID`. |
 | `router.py` | `Router` — schema.org-property superposition-decode column typing (see docs/TRAINING.md); device from `DEVICE`. |
@@ -159,14 +159,12 @@ records the engine surface for maintainers.
   Gemini path. It uses the single `engine/llm.py` client. Own-data questions use the same client's
   `decide` (the Decisions API: probabilities over the engine's built options); how the question was
   read is the response's `read_as`, shown as the turn's "read as" line.
-- **`engine/knowledge.py`** (`KnowledgeReasoner.serve`): the COVERAGE PRE-GATE (`_has_data_signal` → return
-  `low_confidence` before reasoning) and `_tag_present` (apply the `present` flag when a real answer
-  is human-toned), applied across both the geo and composed paths. `KnowledgeReasoner` also lives here.
-- **`engine/knowledge_compose.py`**: the three cheap, schema-aware detectors — `_has_data_signal`
-  (fails OPEN), `_human_tone` (fails CLOSED), and the shared `_schema_tokens` (a cue word that names
-  a column is data, not tone). Lexicons: `_DATA_INTENT`, `_META_STOP`, `_HUMAN_CUE`, `_HUMAN_RE`.
-- **`engine/trace.py`** (`stream_final`): streams `low_confidence` and `present` alongside the
-  existing terminal nodes.
+- **`engine/knowledge.py`** (`KnowledgeReasoner.serve`): `_tag_present` (apply the `present` flag when a real
+  answer is human-toned), applied across both the geo and composed paths. `KnowledgeReasoner` also lives here.
+  No gate stands before the reader (the coverage pre-gate, an English word list, was removed on 2026-11-28).
+- **`engine/knowledge_compose.py`**: the schema-aware tone detector `_human_tone` (fails CLOSED) and its
+  `_schema_tokens` (a cue word that names a column is data, not tone). Lexicons: `_HUMAN_CUE`, `_HUMAN_RE`.
+- **`engine/trace.py`** (`stream_final`): streams `present` alongside the existing terminal nodes.
 - **`engine/config.py`**: `GOOGLE_CLOUD_PROJECT` (Vertex AI: reference generation) and `GOOGLE_API_KEY`
   (the Decisions API: own-data closed choices) configure the always-on Gemini; there is no switch.
   `/api/converse` renders facts locally.

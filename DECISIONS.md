@@ -5,6 +5,39 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## No word list stands before the reader; "very likely correct" is cut where it is true; the chat prompt quotes no gate question (2026-11-28)
+
+Three findings of the audit of 2026-11-28 (`spider/results/RESULTS.md`), fixed together.
+
+- **The coverage pre-gate is removed** (`engine/knowledge.py`, `engine/knowledge_compose.py`: `_has_data_signal`,
+  `_DATA_INTENT`, `_META_STOP`; the `low_confidence` reply and its stream in `engine/trace.py` and the web client).
+  A list of 45 English intent words, with a guess that some word names a world entity, decided before any model
+  whether a message was a data question at all; a message it turned away came back as "the engine returned no
+  answer". As served it turned away none of 355 dev questions, so it bought nothing, and it read no language but
+  English. Every question asked of a sheet is now read. One that is no data question gets what any unanswerable
+  question gets: an answer marked very likely wrong, retried, and the retry's word that the sheet cannot answer it.
+  The chat service decides what is conversation before it calls the engine, as it always did.
+- **The mark's top cut-off** (`engine/program/closed.py`): `T_SURE` 0.90 -> 0.95. Cut at 0.90, "very likely
+  correct" answers between 0.90 and 0.95 were right 86% of the time on the fresh WikiTableQuestions sample and 94%
+  on dev; from 0.95 they are right 95% and 97% (`python -m regress.served_gates bands`). `T_FLAG` stays at 0.575,
+  measured and not moved: the answers it marks "likely wrong" are right about as often as wrong (51 right, 46 wrong
+  of 97 on dev's 896), but cut at 0.50 they are wrong only 52% of the time (24 of 46) and 22 more wrong answers are
+  served with no warning (58 to 80 of 896, 6.5% to 8.9%; replay `marks-1128`). The warning is kept; whether the
+  icon's words or the warning matters more is the owner's to say. `T_ERR` stays: it says which answers are owed
+  the retry, and moving it would move what Gemini 4 Neon rewrites.
+- **The chat prompt's examples are invented** (`orchestrator/system_prompt.py`). Seven of them were the release
+  gate's own questions or their expected rewrites, word for word ("how about Belgium?", "how much commission came
+  from cards?", "reduce the discount from total amount based on customer's tier", "use the top 3 products
+  instead", the complex datasets' "Order customers by spend descending and categories by revenue descending"), so
+  the gate's chat follow-ups partly measured recall. Each rule keeps an example of the same shape from another
+  domain; no five-word run of a gate question remains (`tests.test_orchestrator_unit`
+  `test_the_prompt_quotes_no_gate_question`).
+- With them: the similarity search answers only a question that filters by a place of the world (a value the
+  sheet's own cells hold is the reader's to read); a world route's answer of no rows at all is one of the
+  failures the upload's marked answer replaces (`_upload_stands`); and the refusal of a total over a column
+  holding a cell that is no number stands only where the sheet compiler names a column so (a sheet's title, which
+  the request's first line holds over its real header, is no column: `KnowledgeQuery._compiled_column`).
+
 ## The reader says whether a question needs the world; the search stands in for no undecided answer (2026-11-28)
 
 Measured through the served entry for the first time since the Decisions path took over (`regress/run_dev_decisions.py

@@ -47,7 +47,6 @@ window.subscribeRun = (uid, jobId, cb) => {
   const resultRef = at('result');
   const datasetSemanticsRef = at('dataset_semantics');
   const clarifyRef = at('clarify');
-  const lowConfRef = at('low_confidence');
   const presentRef = at('present');
   const errorRef = at('error');
   const checkRef = at('check');                                   // the answer's mark (engine/tables.py answer_check)
@@ -66,13 +65,12 @@ window.subscribeRun = (uid, jobId, cb) => {
   });
   const uQuestion = onValue(questionRef, s => { const v = s.val(); if (v != null && cb.onQuestion) cb.onQuestion(v); });
   const uClarify = onValue(clarifyRef, s => { const v = s.val(); if (v && cb.onClarify) cb.onClarify(v); });
-  const uLowConf = onValue(lowConfRef, s => { const v = s.val(); if (v && cb.onLowConfidence) cb.onLowConfidence(); });
   const uPresent = onValue(presentRef, s => { const v = s.val(); if (v && cb.onPresent) cb.onPresent(); });
   const uError = onValue(errorRef, s => { const v = s.val(); if (v != null && cb.onError) cb.onError(v); });
   const uCheck = onValue(checkRef, s => { const v = s.val(); if (v && cb.onCheck) cb.onCheck(v); });
   const uMcols = onValue(mcolsRef, s => { const v = s.val(); if (v && cb.onMasterCols) cb.onMasterCols(v); });
   const uMrow = onChildAdded(mrowsRef, s => { if (cb.onMasterRow) cb.onMasterRow(s.key, s.val()); });
-  return () => { try { uConv(); uStatus(); uResolve(); uView(); uExecution(); uAnalysis(); uResult(); uDatasetSemantics(); uQuestion(); uClarify(); uLowConf(); uPresent(); uError(); uCheck(); uMcols(); uMrow(); off(base); } catch(_){} };
+  return () => { try { uConv(); uStatus(); uResolve(); uView(); uExecution(); uAnalysis(); uResult(); uDatasetSemantics(); uQuestion(); uClarify(); uPresent(); uError(); uCheck(); uMcols(); uMrow(); off(base); } catch(_){} };
 };
 
 // Subscribe to an ORCHESTRATED turn at /runs/{uid}/{turnId}: the Gemini front-door announces each engine

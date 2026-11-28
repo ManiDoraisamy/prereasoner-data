@@ -29,7 +29,8 @@ is very likely wrong (ERRED) otherwise: it is never asked back for (owner, 2026-
 question is wrong"), it is retried (engine/retry.py) and, when the retry cannot answer, served marked as such.
 
 W, T_ERR and T_FLAG are the CLEF path's own, fixed before the Decisions measurement (decisions-probe-20261118): W was
-picked on Enron, the thresholds on factory validation; none is tuned for the API.
+picked on Enron, the thresholds on factory validation; none is tuned for the API. T_SURE is cut where "very likely
+correct" is true of the answers that carry it (2026-11-28, below).
 """
 from __future__ import annotations
 
@@ -58,11 +59,15 @@ from engine.sheet.names import P_DAY, P_MONTH, P_QUARTER, P_RANGE, P_YEAR
 
 W = 2.0                    # an API probability's weight on the decoder's reading
 # The answer's mark is the choice's own probability of it, in four levels (owner, 2026-11-27: the answer and its mark
-# at once, from the engine alone; nothing waits for another model). On unseen tables (WikiTableQuestions fresh sample
-# 3, 2026-11-27) the answers of each level were right 90%, 78%, 56% and 32% of the time.
+# at once, from the engine alone; nothing waits for another model). T_SURE stands where "very likely correct" is true
+# (2026-11-28; python -m regress.served_gates bands): cut at 0.90, answers between 0.90 and 0.95 were right 86% of the
+# time on the fresh WikiTableQuestions sample and 94% on dev; from 0.95, 95% and 97%. T_FLAG stays, though the answers
+# it warns of are right about as often as wrong (46 wrong of the 97 on dev): cut at 0.50 they are wrong 52% of the
+# time, and 22 more wrong answers of dev's 896 are served with no warning (58 to 80; the marks-1128 replay). T_ERR
+# says which answers are owed the retry.
 T_ERR = 0.42               # below this, the likeliest answer is very likely wrong: owed its retry, never asked back
 T_FLAG = 0.575             # below this, the likeliest answer is likely wrong
-T_SURE = 0.90              # from this up it is very likely correct; between T_FLAG and it, likely correct
+T_SURE = 0.95              # from this up it is very likely correct; between T_FLAG and it, likely correct
 CHOOSE_K = 50              # candidates the choice offers
 P_FLOOR = 1e-4             # a probability is read no smaller than this
 SCORE_DIGITS = 4

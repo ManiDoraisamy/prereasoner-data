@@ -1039,7 +1039,7 @@ function tryPresent(){
   conversationalReply({question:question, present:true, answer:ans, sql:(J&&J.sql)||(HTTPJ&&HTTPJ.sql)||null});
 }
 function renderFromJSON(j,executionKey=null){
-  if(j.clarify||j.low_confidence){ conversationalReply(Object.assign({question:question},j)); return; }
+  if(j.clarify){ conversationalReply(Object.assign({question:question},j)); return; }
   if(j.error){ fail(j.error); settle(); return; }
   j=RESULT_WIRE.decode(j);
   if(Array.isArray(j.views))j.views=j.views.map(v=>RESULT_WIRE.table(v));
@@ -1206,7 +1206,7 @@ function addCall(uid,c){                                      // an engine call 
       const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale&&s.executionKey===c.jobId).pop();
       if(last){ if(r.columns&&r.columns.length)last.cols=r.columns; last.rows=r.rows; last.columnProvenance=r.column_provenance||last.columnProvenance||[]; last.result=true; if(last.id===ACTIVE)paint(); } else paint(); },
     onCheck:v=>{ CHECK=v; renderRail(); },
-    onStatus:()=>{}, onClarify:()=>{}, onLowConfidence:()=>{}, onPresent:()=>{}, onError:()=>{},
+    onStatus:()=>{}, onClarify:()=>{}, onPresent:()=>{}, onError:()=>{},
   });
   callSubs.push(sub);
 }
@@ -1341,7 +1341,6 @@ async function startRun(){
       onResult:r=>{ if(RUN!==myRun)return; J=J||{}; J.result=RESULT_WIRE.table(r); if(live()){ if(DONE)markDone(); } else if(PRESENT){ tryPresent(); } },
       onTransportError:message=>{ if(RUN!==myRun)return; TRANSPORT_ERROR=message;STATUS=message;renderRail(); },
       onClarify:c=>{ if(!live())return; conversationalReply(Object.assign({question:question,clarify:true},c)); },
-      onLowConfidence:()=>{ if(!live())return; conversationalReply({question:question}); },
       onPresent:()=>{ if(RUN!==myRun)return; PRESENT=true; tryPresent(); },   // real answer, human phrasing -> present it (no-ops until settled + answer in hand)
       onError:e=>{ if(!live())return; fail(e||'the model reported an error'); settle(); },
     });

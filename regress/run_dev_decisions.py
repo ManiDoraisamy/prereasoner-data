@@ -41,11 +41,11 @@ cannot answer it, or the retry failed); the retry model's answers are kept by bo
 
 --served is a new measurement, not parity: each question through the served entry, as the engine's server serves it
 (engine/knowledge.py KnowledgeReasoner.serve inside an analysis execution context on its own request database,
-regress/live_schema.py served: the coverage pre-gate, the request's links read from the live knowledgebase, the
-world and compose routes, the calculation gate, then the own-data selection), and then the retry its mark owes
-(KnowledgeReasoner.settled), as a chat client asks it. It needs a live Postgres (KB_PG_*), sends the bodies the store
-lacks (it implies --record, and keeps the retry's answers as --retry does), and reports, per set, what the person gets
-(an answer, a question back, a chat reply, an error), how many are right before and after the retry, and each question
+regress/live_schema.py served: the request's links read from the live knowledgebase, the world and compose routes,
+the calculation gate, then the own-data selection), and then the retry its mark owes (KnowledgeReasoner.settled), as
+a chat client asks it. It needs a live Postgres (KB_PG_*), sends the bodies the store lacks (it implies --record, and
+keeps the retry's answers as --retry does), and reports, per set, what the person gets (an answer, a question back,
+a request for the question's parts, an error), how many are right before and after the retry, and each question
 the served entry loses or gains against the reference's always-answering pick. Its records are
 <out>/<set>.served.jsonl; --keep writes them to regress/sets/dev_decisions/served/<set>.jsonl.gz.
 
@@ -313,8 +313,7 @@ class ServedEntry:
 
 def served_outcome(item, response) -> tuple[str, bool]:
     """What a served response is to the person, and whether it is right: an answer (graded on its rows), a question
-    back ("asked"; "parts" when the engine asks the chat for the question's parts), a chat reply (the coverage pre-gate
-    found no data question, so the chat model answers without the sheet), or an error."""
+    back ("asked"; "parts" when the engine asks the chat for the question's parts), or an error."""
     if not isinstance(response, dict):
         return "error", False
     if response.get("clarify"):
@@ -323,8 +322,6 @@ def served_outcome(item, response) -> tuple[str, bool]:
     rows = result.get("rows") if isinstance(result, dict) else None
     if rows:
         return "answer", graded(item, rows)
-    if response.get("low_confidence"):
-        return "chat", False
     return "error", False
 
 
