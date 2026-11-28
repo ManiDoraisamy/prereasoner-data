@@ -74,6 +74,12 @@ class Retried:
     def answered(self) -> bool:
         return self.answerable and self.error is None
 
+    @property
+    def empty(self) -> bool:
+        """The query ran and found no value: no row, or rows whose every cell is blank (a total over no line). That is
+        not an answer: served as one, its reply was a question back under the mark of a likely-correct answer."""
+        return self.answered and not any(value is not None and str(value).strip() for row in self.rows for value in row)
+
     def record(self) -> dict:
         return {"model": config.QUERY_MODEL, "sql": self.sql or None, "reason": self.reason,
                 "answerable": self.answerable, "error": self.error}
@@ -239,8 +245,11 @@ def _prompt(question: str, connection, names: list[str], in_view: str | None = N
 
 def _run(connection, sql: str) -> tuple[tuple[str, ...], tuple[tuple, ...]]:
     """The written query's columns and rows (at most ROW_LIMIT), run read-only and stopped after QUERY_SECONDS."""
+    from engine.prepared import arm_deadline
+    from engine.request_deadline import expired
+
     deadline = time.monotonic() + QUERY_SECONDS
-    connection.set_progress_handler(lambda: 1 if time.monotonic() > deadline else 0, 10_000)
+    connection.set_progress_handler(lambda: 1 if time.monotonic() > deadline or expired() else 0, 10_000)
     connection.execute("PRAGMA query_only = ON")
     try:
         cursor = connection.execute(sql)
@@ -248,7 +257,7 @@ def _run(connection, sql: str) -> tuple[tuple[str, ...], tuple[tuple, ...]]:
         columns = tuple(str(d[0]) for d in cursor.description or ())
     finally:
         connection.execute("PRAGMA query_only = OFF")
-        connection.set_progress_handler(None, 0)
+        arm_deadline(connection)             # the request's own deadline again: a connection holds one handler
     return columns, tuple(tuple(_value(value) for value in row) for row in rows)
 
 

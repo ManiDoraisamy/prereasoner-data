@@ -540,14 +540,19 @@ class TableQuery:
                     "result": None, "read_as": retried.reason or None, "model": retried_model(),
                     "tables": [{"name": table["name"], "columns": table["columns"], "n_rows": len(table["rows"])}
                                for table in norm]}
-        if retried.answered:
+        if retried.answered and not retried.empty:
             response.update(result=retried_result(retried), check=retried_check(retried), coverage=Coverage(True).record())
         elif not retried.answerable:
-            response.update({"clarify": True, "reason": retried.reason or UNANSWERABLE, "dropped": [],
-                             "retry": retried.record()})
+            # The one question back. Its check says the retry ran and what it found, so a client that shows the
+            # answer the retry was owed for can tell this from a retry that did not come back (no mark is drawn).
+            why = retried.reason or UNANSWERABLE
+            response.update({"clarify": True, "reason": why, "dropped": [], "retry": retried.record(),
+                             "check": {"state": "retried", "level": None, "confidence": None, "answerable": False,
+                                       "reason": why, "retry": retried.record()}})
         else:
-            response.update(error=RETRY_FAILED, check={"state": "erred", "level": VERY_LIKELY_WRONG, "confidence": None,
-                                                       "reason": RETRY_FAILED, "retry": retried.record()})
+            why = RETRY_EMPTY if retried.empty else RETRY_FAILED
+            response.update(valid=False, error=why, check={"state": "erred", "level": VERY_LIKELY_WRONG, "confidence": None,
+                                                           "reason": why, "retry": retried.record()})
         return response
 
     def settled(self, response, tables, question, explicit_fks=()):
@@ -874,6 +879,7 @@ def read_as_of(candidate):
 
 UNANSWERABLE = "The sheet does not hold what this question asks."
 RETRY_FAILED = "The retry could not write a query that runs on this sheet."
+RETRY_EMPTY = "The retry's query found no value on this sheet."
 
 
 def _rounded(value):

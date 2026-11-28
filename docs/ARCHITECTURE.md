@@ -419,8 +419,9 @@ Only the retry (step 8 below) runs a query a model wrote.
    counts, first lines, a text column's few values, the tab in view) and writes one SQLite SELECT with the answer in
    its first column (`retry.ANSWER_FIRST`), which the one guard checks and the request's database runs read-only
    over TEMP typed copies (a failed query goes back once with its error). Its rows are the answer; its word that the
-   tables cannot answer the question is the one question back; a retry that cannot answer leaves the likeliest
-   reading served, marked very likely wrong. It is one request (`retry: true` on `/chat` and `/api/reason`,
+   tables cannot answer the question is the one question back (its `check` says the retry ran: `answerable` false,
+   no mark drawn); a retry that cannot answer, or whose query finds no value (no row, or only blank cells), leaves
+   the likeliest reading served, marked very likely wrong. It is one request (`retry: true` on `/chat` and `/api/reason`,
    `TableQuery.retry_answer`), the same for the person's Retry.
 9. **The answer at once, the retry in the background** (owner, 2026-11-27: "never ever wait for neon to show
    engine's answer ... the icon can change into retry loading"). `TableQuery.serve` asks no model but the Decisions
@@ -431,7 +432,8 @@ Only the retry (step 8 below) runs a query a model wrote.
    Excel pane): the turn's question asked again with `retry: true` and the transcript before the turn, while the
    turn's icon loads. When it comes back, the retry's answer takes the turn's place in view and in the transcript
    the assistant reads, and its mark keeps what the first answer was (`revisedTurn`); its word that the sheet cannot
-   answer the question takes the turn's place; a retry that did not answer leaves the turn, its mark saying so. The
+   answer the question takes the turn's place; anything else leaves the turn, with a note of why: a retry that did
+   not answer, and a reply with no check at all (the chat's sentence for a failed engine call). The
    person's Retry on a likely-wrong or retried answer runs the same way, in place. A caller that returns one answer
    and cannot revise it retries first: the MCP tool (`mcp_server/engine_client.py` `settled_query`) and the live
    suites (`KnowledgeReasoner.settled`).

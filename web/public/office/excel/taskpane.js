@@ -124,9 +124,13 @@ function renderTurns() {
 }
 
 function snapshot() {
-  // A retry still out is not a saved turn's state.
-  const turns = state.turns.slice(-24).map(({retrying, ...turn}) => turn);
-  return {client: 'prereasoner-excel-addon', version: 1, turns, history: state.history.slice(-24)};
+  // A retry still out is not a saved turn's state, and neither is a question still being answered: a retry that
+  // comes back meanwhile saves the conversation without that question's placeholder and its unanswered message.
+  const asking = state.turns.some(turn => turn.pending);
+  const turns = state.turns.filter(turn => !turn.pending).slice(-24).map(({retrying, ...turn}) => turn);
+  const history = state.history.slice();
+  if (asking && history.length && history[history.length - 1].role === 'user') history.pop();
+  return {client: 'prereasoner-excel-addon', version: 1, turns, history: history.slice(-24)};
 }
 
 async function persist() {

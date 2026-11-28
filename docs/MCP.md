@@ -78,7 +78,6 @@ A call with `retry: true` (`/chat` `retry`) has the engine's retry answer it.
 A chat client shows an answer served very likely wrong at once and asks its retry in the background
 (`web/public/lib/turn-renderer.js` `owesRetry`, `revisedTurn`). A tool call returns one answer and cannot revise
 it, so the shared client retries such an answer before it returns (`mcp_server/engine_client.py` `settled_query`).
-(`mcp_server/engine_client.py` `settled_query`), so a tool result never carries a `pending` token.
 
 The orchestrator's `prereasoner_query` schema also has an optional `dataset_ops` array for a fact the user
 states about their own data's meaning, such as "these amounts are in euros". Each item is a closed

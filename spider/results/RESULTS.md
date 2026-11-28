@@ -10,6 +10,96 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## An audit against the project's objectives: the reader is the outside API, no real sheet has been measured since it took over, the test samples are spent, and an English word gate no evaluation sees stands before the reader; the plan of 2026-11-28 withdrawn; six defects of release 5ada49a1 fixed (2026-11-28)
+
+- Owner, 2026-11-28: "Think carefully and review if this plan. Check all the code and training data used so far and
+  check for any mistakes. Make sure it doesnt sabotage the project objectives of being high performance, generalized,
+  not memorized, interpretable, high accuracy, deterministic, encoder only model (neon as fallback only) that answers
+  real world messy questions with real world messy data." Six independent read-only passes (hand-written words on
+  the own-data path; the same on the world and chat paths; leaks and training data; determinism; a review of
+  5ada49a1; what held-out evidence exists), their main findings checked again against the code and the records.
+  Nothing was run but the two counts of `python -X utf8 -m regress.served_gates` (below).
+- **The plan I gave on 2026-11-28 ("to 92.2%") is withdrawn.** Its first step is the change not kept on 2026-11-27
+  ("A cell's list items and parts": unread DataBench 87 -> 89 of 121, 3 more unmarked and wrong, 4.0 -> 6.0 s); its
+  second is of the kind of the three readings of 2026-11-26 (+12 on the test set they were read from, +1 of 400 on
+  questions not read); "The stage map" (2026-11-26) had already measured that a human query's reading builds about
+  one question in a hundred more. It was written without rereading these entries. No plan with evidence behind it
+  takes the engine alone to 90% on these benchmarks; 92.2% is what a perfect choice between the engine's answer and
+  Neon's would reach, not an engine figure.
+- **Encoder only: not met.** An own-data answer is read and chosen by the Decisions API (`gemini-decision-1`), a chat
+  follow-up is rewritten by Gemini Flash, and a retry is written by Gemini 4 Neon. Of ours that path uses the stock,
+  untrained bge-m3 (the shortlist) and `sheet_line_model.json` (trained on 1,987 Enron files of the train family; none
+  of the 102 evaluation workbooks among them, by hash). The trained 0.5B encoder (`qwen_lora`, `encoder.pt`) serves
+  the world and compose routes; `docs/MODEL_CARD.md`: "its original source corpus and split provenance are
+  incomplete".
+- **Real, messy sheets: not measured for the path that serves.** Enron's 186 questions were never run on the
+  Decisions path (no Enron sheet goes to an outside model; last figure 25 right of 186, production, 2026-11-01).
+  `regress/run_messy.py` last ran on 2026-11-08, on the retired readers. `regress/sets/fresh_frozen` (212 scored
+  questions on 54 government workbooks) and the messy frozen 79 have never been run: v1 was launched on the 896 dev
+  questions. A release gates on the demo datasets, 13 synthetic cases and dev-replay parity.
+- **Not memorized: the figures quoted are flattered.**
+  - DataBench test: its misses were read one by one and readings built from them (entries of 2026-11-26). It is a
+    diagnosis set and has no unread split left.
+  - 17 keep-or-discard decisions cite `wtq-test`, DataBench test or a fresh sample; `wtq-test` holds 15 recorded runs,
+    `wtq-fresh2` 13 (with single questions quoted), `wtq-fresh3` 4. The 0.90 of the highest mark was chosen on the two
+    test samples.
+  - `wtq-fresh3` is unseen questions, not unseen tables: 902 of its 1,000 questions sit on a table `wtq-test` holds,
+    993 on a table of some earlier sample (the test split has 421 tables). 344 test questions are undrawn. "The stage
+    map": 80.5% on the tables the rules were written on, 72.8% on unseen ones.
+  - `orchestrator/system_prompt.py` gives the demo gate's own `chat:` follow-ups as examples ("how about Belgium?",
+    "how much commission came from cards?", "reduce the discount from total amount based on customer's tier", "use
+    the top 3 products instead"), since 2026-09-09: the Chrome gate's follow-ups test recall of the prompt.
+    `engine/program/closed.py` writes "July 10, 2026", the date of a demo gate question.
+  - The Schema.org head's training manifest pins `customers.csv` and `orders.csv`, byte for byte the customers-orders
+    demo's files (50 instances, all in the train split).
+- **Generalized, no hand-written words: kept inside the reader, broken around it.** `engine/program` and
+  `engine/sheet` match no word list. In front of them:
+  - `engine/knowledge_compose.py` `_has_data_signal`, called first in `KnowledgeReasoner._serve`: 45 English intent
+    words, "how many/much" and header words decide whether a question is a data question; one that passes none rests
+    on a guess that a word names a world entity, and is answered as chat when the guess fails.
+    `python -X utf8 -m regress.served_gates pregate`: 21 of the 120 messy dev questions pass none of the three plain
+    checks ("sales from retailers", "monthly vs yearly subscribers"), 37 of 300 WikiTableQuestions dev, 5 of 176
+    fresh dev. How many the guess lets through is not measured.
+  - No evaluation sees it: `regress/run_dev_decisions.py` and `regress/run_public.py` call
+    `TableQuery.select_query`, below that gate, the world routing and the calculation gates. Every "as served" figure
+    of the public benchmark is the one selection plus the retry, not the served entry.
+  - Money columns (`engine/currency_intent.py`) and keys between tables (`engine/relations.py`,
+    `engine/sql_schema.py`) are found by English header words. The world and compose routes (42 of the gate's 102
+    fresh answers) hold about 90 English word lists and use an English tagger (spaCy `en_core_web_md`) and an English
+    embedder (`bge-small-en-v1.5`). Numbers and dates are read the US way; a script written without spaces is one
+    word.
+- **Deterministic: the engine's code, not the system.** One digest over every request body and answer under 7 hash
+  seeds (the determinism pass's probe). Not repeatable: the retry (no seed, not cached, a new query each time; 74 of
+  the 896 dev answers are owed one); the Decisions probabilities, asked again on every request and held raw against
+  the cut-offs (31 of 896 within 0.005 of one); the models are named by family and the answering version is not
+  recorded; a stock vector's last bits depend on what its process encoded before.
+- **The marks' names are not true as cut** (`python -X utf8 -m regress.served_gates bands`, `wtq-fresh3`): answers
+  with a probability from 0.50 to 0.575, marked likely wrong, are right 72% of the time (50 of 69); from 0.42 to
+  0.50, 39%; below 0.42 (very likely wrong) 32%, and only below 0.20 is it 10%; from 0.90 to 0.95 (very likely
+  correct) 86%, from 0.95 up 95%. World and composed answers carry no mark.
+- **Corrections to earlier entries.** "Prereasoner as served" in the public benchmark's entries means the one
+  selection plus the retry. "Unseen" for `wtq-fresh3` means unseen questions. The Fable entry's engine-alone 746 is
+  the run of the either-or change that was not kept; at head it is 745.
+- **Fixed here** (each with a test that failed for the observed reason):
+  - A retry the chat answered with its sentence for a failed engine call (a normal response, no mark) took the
+    answer's place and its mark, and was saved. Only a reply whose check says the retry ran replaces an answer now
+    (`web/public/lib/turn-renderer.js` `revisedTurn`; `web/tests/turn_check.test.js`, the browser test's "errors"
+    case); the retry's word that the sheet cannot answer carries such a check (`answerable` false).
+  - A retry whose query found no value (no row, or blank cells) was served as an answer: a question back under the
+    mark "likely correct". It is a retry that did not answer (`Retried.empty`, `RETRY_EMPTY`; `tests.test_sql_ast`).
+  - The tool did not retry a question for which nothing was listed (`mcp_server/engine_client.py` `owes_retry`;
+    `tests.test_orchestrator_unit`).
+  - The retry's query cleared the request's deadline for the rest of the request (`engine/prepared.py`
+    `arm_deadline`; `tests.test_request_database`).
+  - A failed retry wrote over a kept mark's query and stacked its note; a second retry showed the first retry's
+    answer as "First answer". The mark keeps its own query and the engine's first answer; the note is one line.
+  - A retry's return saved the conversation in the middle of another question (the Excel pane's "Working on your
+    question…" placeholder; the web page's half-built sheets), and a late response could ask the owed retry twice.
+- **Not fixed, for the owner's ruling or a later change**: the pre-gate and the other word lists; the gate's
+  questions in the chat prompt; the marks' cut-offs; a mark for world and composed answers; the retry's
+  repeatability; evaluators through the served entry; a retry longer than the hosting proxy's 60 s is lost to the
+  page.
+
 ## Release 5ada49a1 (four marks from the engine alone; the retry in the background) live; Chrome gate 77 of 78 existing and 102 of 102 fresh; the answer, its mark and an open question box at a median 4.4 s where the box opened at 10.0 s; found at the release: 13 stale release tags kept 26 idle engine instances running and filled the database's connections (2026-11-27)
 
 - Owner, 2026-11-27: "never ever ever ever ever wait for neon to show engine's answer ... show only icons for: Very

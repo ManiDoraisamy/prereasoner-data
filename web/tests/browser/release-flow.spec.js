@@ -921,8 +921,10 @@ test('an answer very likely wrong is shown at once and replaced in place by its 
 });
 
 // The same retry coming back while its turn is still the last one: the answer changes in view, the workbook opens the
-// retry's stored analysis, and a retry that does not come back leaves the first answer with its mark and a Retry.
-for(const outcome of ['answers','fails'])test('a retry that '+outcome+' settles the live turn in place',async({page})=>{
+// retry's stored analysis, and a retry that does not come back leaves the first answer with its mark and a Retry. So
+// does a retry the chat answers with its sentence for a failed engine call (a normal response, no mark in its trace):
+// until 2026-11-28 that sentence took the answer's place and the mark went with it.
+for(const outcome of ['answers','fails','errors'])test('a retry that '+outcome+' settles the live turn in place',async({page})=>{
   await mockAuth(page);
   await page.addInitScript(()=>{
     sessionStorage.setItem('pr_world_tables',JSON.stringify([{name:'orders',data:'order_id,city,amount\n1,Paris,120\n2,Lyon,60'}]));
@@ -933,6 +935,11 @@ for(const outcome of ['answers','fails'])test('a retry that '+outcome+' settles 
     const body=route.request().postDataJSON(); sent.push(body);
     if(body.retry&&outcome==='fails')return route.fulfill({status:503,json:{error:'Prereasoner is busy; try again shortly'}});
     const response=await route.fetch(), json=await response.json();
+    if(body.retry&&outcome==='errors'){
+      json.reply="Prereasoner couldn't answer that right now. Please ask again in a moment.";
+      json.traces=[{jobId:'retry',question:body.message,engine:{status:'error',error:'engine unavailable'}}];
+      return route.fulfill({response,json});
+    }
     json.reply=body.retry?'180':'2';
     json.traces[0].engine.check=body.retry
       ? {state:'retried',level:'likely_correct',confidence:null,reason:'Retried: Gemini 4 Neon wrote this query.',retry:{sql:'SELECT SUM("amount") FROM "orders"'}}
@@ -953,8 +960,10 @@ for(const outcome of ['answers','fails'])test('a retry that '+outcome+' settles 
     await expect(turn.locator('.turn-answer')).toContainText('2');
     await expect(turn.locator('.turn-check')).toHaveClass(/check-very_likely_wrong/);
     await turn.locator('.turn-check summary').click();
-    await expect(turn.locator('.checkreason')).toContainText('This answer is very likely wrong. The retry did not finish.');
+    await expect(turn.locator('.checkreason')).toHaveText('This answer is very likely wrong.');
+    await expect(turn.locator('.checknote')).toHaveText('The retry did not finish.');
     await expect(turn.locator('.checkretry')).toBeVisible();
+    await expect(page.locator('#rail')).not.toContainText("couldn't answer that right now");
   }
   await page.waitForTimeout(500);
   expect(sent.filter(body=>body.retry).length).toBe(1);        // the page asks the owed retry once, never in a loop

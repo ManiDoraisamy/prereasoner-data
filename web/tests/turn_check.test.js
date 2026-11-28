@@ -64,22 +64,51 @@ assert.match(shown, /SELECT SUM\(&quot;Amount&quot;\) FROM &quot;orders&quot;/);
 assert.match(shown, /checkretry/, 'a retried answer can be retried again');
 assert.ok(!R.owesRetry(revised.check));
 
-// The retry's word that the sheet cannot answer the question takes the turn's place, with no mark.
-const unanswerable = R.revisedTurn(turn, {reply: 'The sheet does not hold what this question asks.', check: null});
-assert.deepStrictEqual(unanswerable, {replaced: true, reply: 'The sheet does not hold what this question asks.', check: null});
+// The retry's word that the sheet cannot answer the question takes the turn's place, with no mark: its check says the
+// retry ran and found the question unanswerable.
+const cannot = {state: 'retried', level: null, answerable: false, reason: 'The sheet has no column of costs.'};
+const unanswerable = R.revisedTurn(turn, {reply: 'The sheet has no column of costs.', check: cannot});
+assert.deepStrictEqual(unanswerable, {replaced: true, reply: 'The sheet has no column of costs.', check: null});
+assert.strictEqual(R.renderCheck(cannot, 'data-retry="0"'), '', 'a question back carries no mark');
 
-// A retry that did not answer leaves the turn's answer, its mark saying so; it is not asked again by itself.
+// A reply with no check is not the retry's: it is the chat's sentence for a failed engine call. It never takes the
+// answer's place (until 2026-11-28 it did, and the mark went with it).
+const sentence = R.revisedTurn(turn, {reply: "Prereasoner couldn't answer that right now. Please ask again in a moment.", check: null});
+assert.strictEqual(sentence.replaced, false);
+assert.strictEqual(sentence.reply, turn.reply);
+assert.strictEqual(sentence.check.level, 'very_likely_wrong');
+assert.strictEqual(sentence.check.note, 'The retry did not finish.');
+
+// A retry that did not answer leaves the turn's answer and its reason, with a note of why; it is not asked again by
+// itself, and its failed query is not shown under an answer it did not give.
 const failed = R.revisedTurn(turn, {reply: 'x', check: {state: 'erred', level: 'very_likely_wrong',
-  reason: 'The retry could not write a query that runs on this sheet.', retry: {sql: null}}});
+  reason: 'The retry could not write a query that runs on this sheet.', retry: {sql: 'SELECT nothing'}}});
 assert.strictEqual(failed.replaced, false);
 assert.strictEqual(failed.reply, turn.reply);
-assert.match(failed.check.reason, /very likely wrong\..*The retry could not write a query that runs on this sheet\.$/);
+assert.strictEqual(failed.check.reason, erred.reason);
+assert.strictEqual(failed.check.note, 'The retry could not write a query that runs on this sheet.');
+assert.deepStrictEqual(failed.check.retry, {failed: true});
 assert.ok(!R.owesRetry(failed.check));
 const lost = R.revisedTurn(turn, null);
 assert.strictEqual(lost.replaced, false);
-assert.match(lost.check.reason, /The retry did not finish\.$/);
+assert.strictEqual(lost.check.note, 'The retry did not finish.');
 assert.ok(!R.owesRetry(lost.check));
-assert.match(R.renderCheck(lost.check, 'data-retry="0"'), /checkretry/, 'the person can still retry it');
+const lostHtml = R.renderCheck(lost.check, 'data-retry="0"');
+assert.match(lostHtml, /checkretry/, 'the person can still retry it');
+assert.match(lostHtml, /<p class="checknote">The retry did not finish\.<\/p>/);
+assert.ok(!/checksql/.test(lostHtml));
+// failing twice says so once
+assert.strictEqual(R.revisedTurn({reply: turn.reply, check: lost.check}, null).check.note, 'The retry did not finish.');
+
+// A second Retry on an answer a retry already gave: when it fails the answer keeps its own query and reason; when it
+// answers, the first answer shown is still the engine's.
+const again = R.revisedTurn({reply: revised.reply, check: revised.check}, null);
+assert.strictEqual(again.replaced, false);
+assert.deepStrictEqual(again.check.retry, retriedCheck.retry);
+assert.strictEqual(again.check.reason, retriedCheck.reason);
+assert.strictEqual(again.check.note, 'The retry did not finish.');
+const twice = R.revisedTurn({reply: revised.reply, check: revised.check}, {reply: '900', check: retriedCheck});
+assert.deepStrictEqual(twice.check.first, {reply: '42', reason: erred.reason});
 
 // The transcript the assistant reads: the retry is asked with what came before the turn, and its answer replaces the
 // turn's there.

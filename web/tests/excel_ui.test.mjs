@@ -60,5 +60,10 @@ assert.match(retry, /retry: true/);
 assert.match(retry, /renderer\.revisedTurn\(was, retried\)/);
 assert.doesNotMatch(retry, /setBusy/, 'a retry never closes the composer');
 assert.doesNotMatch(pane, /checking/, 'no answer waits for its mark');
+// A retry that comes back while another question is being answered saves the conversation without that question's
+// placeholder and its unanswered message: until 2026-11-28 a failure after such a save restored a permanent
+// "Working on your question…" turn.
+assert.match(pane, /const turns = state\.turns\.filter\(turn => !turn\.pending\)\.slice\(-24\)\.map\(\(\{retrying, \.\.\.turn\}\) => turn\);/);
+assert.match(pane, /if \(asking && history\.length && history\[history\.length - 1\]\.role === 'user'\) history\.pop\(\);/);
 assert.doesNotMatch(pane, /api\('\/chat', \{[^}]*tables/);
-console.log('Excel and shared conversation UI: 25 checks passed');
+console.log('Excel and shared conversation UI: 27 checks passed');

@@ -299,10 +299,11 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
 
 
 def owes_retry(shaped: Any) -> bool:
-    """Whether an engine answer is owed the retry: it was served very likely wrong (engine/tables.py owes_retry)."""
+    """Whether an engine answer is owed the retry: it was served very likely wrong (engine/tables.py owes_retry), with
+    its likeliest reading or, where the path listed nothing, with none (its status is then an error)."""
     check = shaped.get("check") if isinstance(shaped, dict) else None
     return (isinstance(check, dict) and check.get("level") == "very_likely_wrong" and check.get("state") == "erred"
-            and "retry" not in check and shaped.get("status") == "answered")
+            and "retry" not in check)
 
 
 async def settled_query(question: str, tables: list[dict], job_id: str | None = None,

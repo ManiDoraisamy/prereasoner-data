@@ -80,7 +80,8 @@ let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announ
 let CHECK=null;                                   // the turn's answer mark (engine check: one of four levels, with the answer)
 // A turn's Retry runs in the background (retryTurn): RETRYING while the live turn's is out, REVISED once its answer took
 // the turn's place. TURN_KEY names the live turn, so a retry that comes back finds its turn wherever it is by then.
-let RETRYING=false,REVISED=false,TURN_SEQ=1,TURN_KEY=1;
+// OWED: the live turn's owed retry was asked; it is asked once, whatever comes back and whenever its mark arrives.
+let RETRYING=false,REVISED=false,OWED=false,TURN_SEQ=1,TURN_KEY=1;
 // The answers retries put in a turn's place ({q, was, now}): a transcript the server built from an older one (a
 // question asked while the retry was out) takes them again.
 let REVISIONS=[];
@@ -592,7 +593,8 @@ async function retryTurn(index){
   else return;                                                // the turn is gone
   if(now.replaced){ REVISIONS.push({q:q,was:was.reply,now:now.reply}); HISTORY=revisedTranscript(HISTORY);
     try{ sessionStorage.setItem('pr_orch_history', JSON.stringify(HISTORY)); }catch(_){} }
-  renderRail(); saveConvState();
+  renderRail();
+  if(SETTLED||FAILMSG) saveConvState();                       // a question still being answered is saved when it ends, whole
   // The live turn's workbook follows its answer: the retry's stored analysis opens in place of the first reading's.
   if(at<0&&now.replaced&&retried.analysis&&retried.analysis.slug){ noteAnalysis(retried.analysis);
     if(await loadAnalysis(retried.analysis.analysis_id,retried.analysis.revision)&&TURN_KEY===key){
@@ -601,7 +603,7 @@ async function retryTurn(index){
 // An answer served very likely wrong is owed its retry (turn-renderer.js owesRetry): asked the moment the turn ends.
 function owedRetry(){
   const shared=window.PrereasonerTurnRenderer;
-  if(ORCH&&SETTLED&&!FAILMSG&&!RETRYING&&!REVISED&&shared&&shared.owesRetry&&shared.owesRetry(CHECK)) retryTurn();
+  if(ORCH&&SETTLED&&!FAILMSG&&!RETRYING&&!REVISED&&!OWED&&shared&&shared.owesRetry&&shared.owesRetry(CHECK)){ OWED=true; retryTurn(); }
 }
 function turnHtmlBody(){
   if(CONV){ let h='';
@@ -703,7 +705,7 @@ async function loadAnalysis(analysisId,revision,options){
         ? (summary.k==='result'?summary.v:(summary.k+': '+summary.v))
         : 'This analysis is shown in the workbook.');
       CHAT=[]; question=linkedQuestion||question; TURN_ANALYSIS=descriptor?Object.assign({},descriptor):null;
-      TURN_KEY=++TURN_SEQ; RETRYING=false; REVISED=false; CHECK=null;   // another turn is on screen: no retry still out is its
+      TURN_KEY=++TURN_SEQ; RETRYING=false; REVISED=false; OWED=false; CHECK=null;   // another turn is on screen: no retry still out is its
       CONV=linkedReply; COTOPEN=true; setHeaderTitle(question);
     }
     AUTO=false; STATUS=oldStatus; paint(); if(options.persist!==false)saveConvState();return true;
@@ -1169,7 +1171,7 @@ async function startTurn(){
     if(j&&Array.isArray(j.history)){ HISTORY=revisedTranscript(j.history); HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     const shared=window.PrereasonerTurnRenderer, check=shared&&shared.turnCheck?shared.turnCheck(j.traces):null;
-    if(check&&!RETRYING){ CHECK=check; if(SETTLED){ renderRail(); saveConvState(); } }
+    if(check&&!RETRYING&&!OWED){ CHECK=check; if(SETTLED){ renderRail(); saveConvState(); } }   // never over a retry's outcome
     if(Array.isArray(j.traces)) j.traces.forEach(t=>{ const engine=t.engine||{};
       const call=CALLS.find(c=>c.jobId===t.jobId); if(call&&t.read_as)call.read_as=t.read_as;
       noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis);
@@ -1380,7 +1382,7 @@ function resetRun(){
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null; EXEC=null; SRCOPEN=false; SRC_PINNED=false; SRC='py';
   EXEC_BY_KEY=new Map();
   CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false; CHECK=null;  // orchestrated turn state (HISTORY persists across turns)
-  RETRYING=false; REVISED=false; TURN_KEY=++TURN_SEQ;         // a new live turn: a retry still out belongs to the archived one
+  RETRYING=false; REVISED=false; OWED=false; TURN_KEY=++TURN_SEQ;   // a new live turn: a retry still out belongs to the archived one
   TURN_ANALYSIS=null; ANALYSIS_ERROR=null;
   callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;

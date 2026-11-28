@@ -2194,7 +2194,7 @@ def test_an_answer_very_likely_wrong_is_served_at_once_and_owed_its_retry():
     2026-11-27 the chat turn held the question box for the retry."""
     from engine import config
     from engine.llm import LLMUnavailable
-    from engine.tables import RETRY_FAILED, VERY_LIKELY_WRONG, owes_retry
+    from engine.tables import RETRY_EMPTY, RETRY_FAILED, VERY_LIKELY_WRONG, owes_retry
 
     planner = _hermetic_planner()
     prompts, restore = _neon([{"answerable": True, "sql": EAST, "reason": "Adds Amount over the East rows."}])
@@ -2232,6 +2232,23 @@ def test_an_answer_very_likely_wrong_is_served_at_once_and_owed_its_retry():
     finally:
         restore()
     assert wrong["clarify"] is True and wrong["reason"] == "The sheet has no column of costs." and wrong["result"] is None
+    # its check says the retry ran and found the question unanswerable, so a client can tell it from a retry that did
+    # not come back (a reply with no check), which never takes an answer's place
+    assert wrong["check"]["state"] == "retried" and wrong["check"]["answerable"] is False and wrong["check"]["level"] is None
+    assert wrong["check"]["reason"] == "The sheet has no column of costs." and not owes_retry(wrong)
+    # a query that runs and finds no value is not an answer: served as one, its reply was a question back under the
+    # mark of a likely-correct answer (review of 5ada49a1, 2026-11-28). A total over no line, and no line at all.
+    for found_nothing in ('SELECT SUM("Amount") AS "total amount" FROM "orders" WHERE "Region" = \'Eest\'',
+                          'SELECT "Amount" FROM "orders" WHERE "Region" = \'Eest\''):
+        _p, restore = _neon([{"answerable": True, "sql": found_nothing, "reason": "Adds Amount over the Eest rows."}])
+        try:
+            empty = planner.retry_answer(_orders_request(), "total amount for East")
+            kept = planner.settled(first, _orders_request(), "total amount for East")
+        finally:
+            restore()
+        assert empty["error"] == RETRY_EMPTY and empty["result"] is None and empty["valid"] is False, empty
+        assert empty["check"]["state"] == "erred" and empty["check"]["reason"] == RETRY_EMPTY, empty["check"]
+        assert empty["check"]["retry"]["sql"] == found_nothing and "clarify" not in empty and kept is first
     # the retry cannot answer (a query the guard refuses, twice; then a failed call): it says so, and the served
     # answer stays where it is
     for answers in ([{"answerable": True, "sql": 'DELETE FROM "orders"', "reason": "r"}] * 2, [LLMUnavailable("down")]):

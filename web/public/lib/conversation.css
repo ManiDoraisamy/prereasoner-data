@@ -61,6 +61,7 @@ a.steplink:hover,a.steplink:focus-visible{border-color:#b9a8e8;background:#faf9f
 .checklevel{margin:0 0 4px;font-weight:600;color:#302a3b}
 .checkreason{margin:0 0 6px;color:#302a3b}
 .checkfirst{margin:0 0 6px;color:#6b6478}
+.checknote{margin:0 0 6px;color:#8a4b00}
 .checksql{margin:0 0 6px;padding:6px 8px;max-height:140px;overflow:auto;white-space:pre-wrap;border-radius:6px;background:#f2eff7;font:12px Consolas,monospace}
 .checkretry{padding:4px 12px;border:1px solid #6040dc;border-radius:6px;background:#6040dc;color:#fff;font:600 12px Inter,Arial,sans-serif;cursor:pointer}
 .checkretry:hover{background:#4c30c0}

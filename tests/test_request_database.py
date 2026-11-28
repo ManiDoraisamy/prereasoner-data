@@ -128,6 +128,31 @@ def test_text_folds_case_in_every_alphabet():
         database.close()
 
 
+def test_the_retrys_query_leaves_the_requests_deadline_armed():
+    """A connection holds one progress handler. The retry's written query (engine/retry.py _run) sets its own for the
+    query's time limit and, until 2026-11-28, cleared it after: every later statement of that request ran with no
+    deadline at all. It arms the request's again, and while its query runs the request's deadline ends it too."""
+    from engine import request_deadline
+    from engine.retry import _run
+    database = RequestDatabase()
+    # long enough to outlive the deadline, bounded so that a missing handler fails this test instead of hanging it
+    runaway = "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 40000000) SELECT COUNT(*) FROM n"
+    token = request_deadline.begin(0.4)
+    try:
+        assert _run(database.connection, "SELECT 1 AS one") == (("one",), ((1,),))
+        time.sleep(0.5)
+        for statement in (lambda: database.connection.execute(runaway).fetchone(), lambda: _run(database.connection, runaway)):
+            try:
+                statement()
+            except sqlite3.OperationalError as exc:
+                assert "interrupt" in str(exc), exc
+            else:
+                raise AssertionError("a statement after the retry's query outlived the request's deadline")
+    finally:
+        request_deadline.end(token)
+        database.close()
+
+
 def test_a_statement_ends_at_the_requests_deadline():
     """The PostgreSQL statement timeout ended a runaway statement at the request's deadline; the database's
     progress handler does now."""
@@ -499,6 +524,7 @@ TESTS = [
     test_large_identifier_and_scientific_decimal_use_exact_storage,
     test_an_unchanged_table_is_loaded_once_and_a_changed_one_replaced,
     test_text_folds_case_in_every_alphabet,
+    test_the_retrys_query_leaves_the_requests_deadline_armed,
     test_a_statement_ends_at_the_requests_deadline,
     test_place_ambiguity_is_one_lookup_for_every_value,
     test_a_tables_identity_ignores_the_columns_a_dataset_op_synthesizes,

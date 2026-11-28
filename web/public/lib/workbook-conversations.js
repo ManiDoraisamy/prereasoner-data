@@ -359,7 +359,7 @@ function restoreConvState(st){                               // render a stored 
   VIEWED_ANALYSIS=st.viewedAnalysis||((last&&last.analysis)||null); ANALYSIS_ERROR=null;
   CHAT=turns.map((t,i)=>{ const turn={q:t.q, reply:t.reply||'', analysis:t.analysis||null, check:t.check||null};
     turn.html=archivedTurnHtml(turn,i,true); return turn; });
-  TURN_KEY=++TURN_SEQ; RETRYING=false; REVISED=false;         // the saved chat's last turn is the live one now
+  TURN_KEY=++TURN_SEQ; RETRYING=false; REVISED=false; OWED=true;   // the saved chat's last turn is the live one now; a saved answer is not retried by itself
   if(last){ question=last.q; TURN_ANALYSIS=last.analysis||null; CHECK=last.check||null;
     try{ sessionStorage.setItem(SS.Q, last.q); }catch(_){}; CONV=last.reply||''; }
   if(Array.isArray(st.history)) HISTORY=st.history;

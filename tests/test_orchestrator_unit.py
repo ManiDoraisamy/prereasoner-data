@@ -285,6 +285,13 @@ def test_a_tool_call_returns_the_retried_answer_of_one_served_very_likely_wrong(
     sure = {"status": "answered", "answer": {"rows": [[876.5]]}, "check": {"state": "answered", "level": "likely_correct"}}
     result, calls = settled(sure)
     assert result is sure and len(calls) == 1
+    # nothing listed at all: the engine's status is an error, its mark still very likely wrong, and the retry is owed
+    # as it is to a chat client (5ada49a1 asked it only of an answered status, so the tool returned the planner's error)
+    nothing = {"status": "error", "error": "planner: no valid AST candidate", "conversation_id": "c_test",
+               "check": {"state": "erred", "level": "very_likely_wrong", "confidence": None, "reason": "r"}}
+    result, calls = settled(nothing, retried)
+    assert result is retried and len(calls) == 2 and calls[1][3]["retry"] is True
+    assert calls[1][3]["analysis"] == {"action": "create", "slug": "net_amount"}, "no stored revision: the call's own analysis"
 
 
 def test_request_execution_mode_reaches_each_orchestrated_engine_call():

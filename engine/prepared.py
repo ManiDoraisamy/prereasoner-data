@@ -82,6 +82,15 @@ STORED_PER_CONVERSATION = 64
 VECTORS_FORMAT = 1
 # How many SQLite VM steps run between two checks of the request's deadline.
 DEADLINE_STEPS = 20_000
+
+
+def arm_deadline(connection) -> None:
+    """Any statement on ``connection`` ends once the request's deadline passes (it was the PostgreSQL statement
+    timeout). The request database arms it when it opens; a caller that sets a handler of its own for one statement
+    (the retry's written query, engine/retry.py) arms it again after, since a connection holds one handler: until
+    2026-11-28 the retry's query left the request's database with none."""
+    from engine.request_deadline import expired
+    connection.set_progress_handler(lambda: int(expired()), DEADLINE_STEPS)
 # Prepared workbooks (``prepared_workbook``) are kept until they hold these many cells: a prepared workbook holds its
 # catalog, the decoder's indexes and the stock reading's targets, several times the cells' own size.
 WORKBOOK_CACHE_CELLS = 2_000_000
@@ -659,9 +668,7 @@ class RequestDatabase:
         self.connection.execute("ATTACH DATABASE ':memory:' AS knowledgebase")
         if base is not None:
             self.connection.deserialize(base.image, name="knowledgebase")
-        # Any statement ends once the request's deadline passes (it was the PostgreSQL statement timeout).
-        from engine.request_deadline import expired
-        self.connection.set_progress_handler(lambda: int(expired()), DEADLINE_STEPS)
+        arm_deadline(self.connection)
 
     # ---- the request's tables ----
     def load(self, tablemap, sch):

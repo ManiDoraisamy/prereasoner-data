@@ -404,7 +404,7 @@
   var STATE_LEVELS = {warned: 'likely_wrong', erred: 'very_likely_wrong', retried: 'likely_correct'};
 
   function checkLevel(check) {
-    if (!check) return '';
+    if (!check || check.answerable === false) return '';    // the retry's word that the sheet cannot answer: no mark
     return CHECK_MARKS[check.level] ? check.level : (STATE_LEVELS[check.state] || '');
   }
 
@@ -449,19 +449,22 @@
   }
 
   // A turn after its retry came back. ``turn``: {reply, check} as shown. ``retried``: the chat's answer to the same
-  // question asked with retry:true ({reply, check}), or null when it did not come back. The retry's answer takes the
-  // turn's place and keeps what the first answer was (``check.first``); its word that the sheet cannot answer the
-  // question takes the turn's place with no mark; a retry that did not answer leaves the turn, its mark saying so.
+  // question asked with retry:true ({reply, check}), or null when it did not come back. Only a reply whose check says
+  // the retry ran (state retried) takes the turn's place: its answer, keeping what the engine's first answer was
+  // (``check.first``), or its word that the sheet cannot answer the question (``answerable`` false), with no mark.
+  // Anything else leaves the turn as it was, with a note of why (``check.note``): a retry whose query failed or
+  // found no value, and a reply that carries no check at all. That last one is the chat's sentence for a failed
+  // engine call, which until 2026-11-28 took the answer's place and its mark.
   function revisedTurn(turn, retried) {
     var was = (turn && turn.check) || {}, now = retried && retried.check;
     if (retried && retried.reply && now && now.state === 'retried') {
+      if (now.answerable === false) return {replaced: true, reply: retried.reply, check: null};
       return {replaced: true, reply: retried.reply, check: Object.assign({}, now, {
-        first: {reply: firstLine(turn.reply), reason: String(was.reason || '')}})};
+        first: was.first || {reply: firstLine(turn.reply), reason: String(was.reason || '')}})};
     }
-    if (retried && retried.reply && !now) return {replaced: true, reply: retried.reply, check: null};
-    var why = (now && now.reason) || 'The retry did not finish.';
-    return {replaced: false, reply: turn.reply, check: Object.assign({}, was, {
-      reason: (was.reason ? was.reason + ' ' : '') + why, retry: (now && now.retry) || {failed: true}})};
+    var why = (now && now.state === 'erred' && now.reason) || 'The retry did not finish.';
+    return {replaced: false, reply: turn.reply,
+      check: Object.assign({}, was, {note: why, retry: was.retry || {failed: true}})};
   }
 
   // ``retryAttrs``: the attributes the Retry button carries (a client's own handler); none, no button. ``retrying``:
@@ -481,7 +484,8 @@
       '<summary class="checkmark" title="' + label + '" aria-label="' + label + '"' +
       (retrying ? ' role="status"' : '') + '>' + (retrying ? '<span class="checkspin"></span>' : mark.icon) + '</summary>' +
       '<div class="checkbody"><p class="checklevel">' + label + '</p>' +
-      (check.reason ? '<p class="checkreason">' + escapeHtml(check.reason) + '</p>' : '') + before + sql + button +
+      (check.reason ? '<p class="checkreason">' + escapeHtml(check.reason) + '</p>' : '') +
+      (check.note ? '<p class="checknote">' + escapeHtml(check.note) + '</p>' : '') + before + sql + button +
       '</div></details>';
   }
 
