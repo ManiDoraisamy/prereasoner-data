@@ -10,6 +10,87 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## What clients send is not what the evaluations read: every client sends the browser importer's flat CSV of each worksheet; on fresh dev the engine's first answer is right on 136 of 176 given the whole workbook, 134 as the Sheets sidebar sends it, 110 as a web upload, which refuses 8 of 27 xlsx workbooks (2026-11-28)
+
+- **The finding.** The web upload, the Google Sheets sidebar and the Excel task pane all run
+  `web/public/lib/workbook-import.js`: one flat CSV per worksheet (it picks a header line, drops the lines over it,
+  joins one merged label line into the names, sets printed totals apart in a "summaries" table), and the engine
+  builds each table's grid from that CSV (`engine/server.py` `csv_table`). No title, band, formula, merge or style
+  reaches the sheet compiler. Every dev and frozen evaluation, the served-entry runs and the frozen read of the
+  night before among them, read each workbook with `engine/sheet/xlsx_reader.py` and gave the compiler the tab
+  whole. `engine/sheet/payload.py` says as much ("nothing here changes an add-on yet"). So the frozen read's 82.8%
+  and fresh dev's 83.0% as served are figures for a payload no client sends.
+- **The measurement** (`regress/run_dev_decisions.py`, commit 5c22afa2; `regress/upload_sheets.js` runs the importer
+  itself, as the upload worker runs it). `--upload` gives each workbook as a web upload sends it; `--upload sidebar`
+  as the Sheets sidebar reads a workbook, the tab in view first (the tab the question was written on) and eight
+  tabs a read (`sheets-addon/Code.js` `workbookPlan_`); `--unstyled` the whole sheet with no row styles. Each is the
+  selection replay, so these are the engine's own first answers, before any retry; the served entry has not been
+  run on these payloads yet. Recorded answers: `regress/sets/calls/2026-11-28-upload-*`, `-unstyled-*`.
+
+  | Fresh dev, 176 questions, first answer right | all 176 | the 32 in workbooks the web refuses | the other 144 |
+  |---|---|---|---|
+  | the whole workbook (the reference) | 136 (77.3%) | 18 | 118 |
+  | the whole workbook, no row styles | 134 (76.1%) | | |
+  | as the Sheets sidebar sends it | 134 (76.1%) | 23 | 111 |
+  | as a web upload sends it | 110 (62.5%) | 0, refused | 110 |
+
+  Messy, 120 questions (its cells through the importer as a live host's grids): 100 right given the whole sheet, 98
+  as a client sends it (5 gained, 7 lost; wrong with no warning 2 -> 6), 100 with no row styles.
+- **What it says.**
+  - The web upload refuses a workbook of more than eight worksheets (7 of fresh dev's 27 xlsx workbooks) or of a
+    sheet over 50,000 rows (1): 32 of 176 questions cannot be asked there at all, and the page offers no way to
+    choose sheets. This is the largest loss measured, and it is the product's, not the reader's.
+  - Flattening costs less than feared: on the 144 questions whose workbooks upload, 110 right against 118 (2
+    gained, 10 lost). Of the 10, the importer lost the reading on 7 (a year merged over the header's columns was
+    dropped; year bands on the Census housing sheet; an unnamed first column became "Column A"); 3 are on plain CSV
+    files, where only the table's name and cell typing differ between the two paths.
+  - The sidebar's tab in view helps where a workbook has many tabs: 23 of those 32 right against 18 with every tab
+    given and none said to be in view. The evaluations pass no tab in view; the sidebar does.
+  - Row styles carry almost nothing: 134 against 136 (1 gained, 3 lost; 29 questions' bodies differ), messy the
+    same. A client that sent the sheet itself would not need to read styles.
+- **Fixed with it** (70abd9e7): the importer joined a merged label over the header only when it was text, so the
+  EIA's "2024" and "2023" over "Number of Mines" and "Production" reached the engine as "Production [column C]" and
+  "Production [column E]". A number merged over the header's columns is their label too. It changes one of fresh
+  dev's 35 xlsx workbooks and none of the nine shipped demo workbooks.
+- **Not done, and whose call it is.** Sending the sheet itself to the compiler (the wire form `payload.py`
+  describes) changes the request API, three clients and what a conversation stores: the owner's decision, with these
+  figures. So is the web upload's eight-worksheet refusal.
+
+
+## Release d3284c08 (a world route's failure never takes the upload's place; no reading first where the question needs the world) live; Chrome gate's fresh pass 102 of 102; currency answers back to a 4.2 s median; WikiTableQuestions dev as served 245 of 300 (2026-11-28)
+
+- An engine-only release. The engine `prereasoner-api-00374-fiv` (`engine@sha256:1cc3c646...`, Cloud Build e20375af:
+  build, offline regression gate, runtime server smoke, live product suite), tag `stands`, health ok, the release
+  smoke job ok (execution lph52), 100% of traffic from 2026-11-28 13:08 UTC, both engine jobs on the image. Chat
+  `prereasoner-chat-00249-kog` and Hosting e1c723fe40931b49 stay. Rollback: engine `prereasoner-api-00371-nif` by
+  name (tag `reader1st`, kept until the next gate).
+- **What changed** (d3284c08). A world route's error with no result, or its question back about what it could not
+  do itself (names its lookup could not match, a word its query left out), gives way to the own-data path's marked
+  answer (`KnowledgeReasoner._upload_stands`). The reader is not asked first where the question needs the world
+  whatever it reads: a stated currency to convert to, or a world type or measure the upload has no column of.
+  Local before the build: the hermetic suites and the live suites through the database proxy pass.
+- **Chrome gate, fresh pass only** (Claude in Chrome on the owner's account, the in-page controller; harness,
+  captures and notes in `prereasoner-scratch/gate-d3284c08/`): 102 of 102 on the 24 datasets, the six uploads among
+  them, no request refused; marks as at 4022a06e (52 very likely correct, 7 likely correct, 1 a question back, 42
+  none); the question box open at each turn's end (74 of 74 timed follow-ups). The existing-conversation pass was
+  not run on this release: d557ecd4 followed it within hours and its gate runs both passes.
+- **What it bought.** Asking to the turn's end, fresh pass: median 5.05 s (4022a06e 5.4 s, f38ab725 4.9 s), p90
+  9.2 s. By route, medians over f38ab725 -> 4022a06e -> this release: own-data answers 5.0 -> 5.0 -> 5.1 s (47);
+  world or composed answers that convert a currency 4.2 -> 5.6 -> 4.15 s (16); other world or composed answers 5.0
+  -> 7.3 -> 6.5 s (14). The conversions no longer wait for a reading; a world filter the reader could have
+  answered alone still does.
+- **Three slow answers, cause not established.** Three own-data answers of one dataset took 49, 60 and 60 s. A
+  recording replay was running on the development machine at that time, sending Decisions calls on the key
+  production uses. Nothing is recorded during a gate from here on; whether evaluation traffic on the shared key
+  slows production readings is to be measured, not assumed.
+- **WikiTableQuestions dev through the served entry on this code** (`python -X utf8 -m regress.run_dev_decisions
+  --sets wtq --served --keep --tag served-d3284c08`; records `regress/sets/dev_decisions/served/wtq.jsonl.gz`): of
+  300, the engine's own answer right on 237, 245 after the retry its mark owes (81.7%). The selection's reference
+  pick is 238: the served entry loses 3 and gains 2. 24 answers were retried, 16 right afterwards. The world layer
+  still took 3 questions and answered none (one an error with rows of nothing, which d557ecd4 gives back to the
+  upload).
+
+
 ## Release 4022a06e (the reader says whether a question needs the world; a year beside a comma; the guard) live; Chrome gate 77 of 78 existing and 102 of 102 fresh; world-route answers wait 1.4 to 2.3 s longer for the reading (2026-11-28)
 
 - An engine-only release: no file of the chat service, the web app or the add-ons changed since f38ab725. The engine
