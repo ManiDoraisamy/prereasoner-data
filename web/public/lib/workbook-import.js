@@ -57,8 +57,20 @@
     // when no header is identifiable, neutral column letters preserve all rows.
     const warnings=[];
     if(formulaWarnings.size)warnings.push('Formula results are unavailable in columns '+[...formulaWarnings].join(', ')+'. Error markers were kept; these cells are not numbers.');
+    // A header may name its columns by years across ("Field", 1978, 1983, ... over each field's counts): beside a
+    // word, three or more whole numbers that read as years, rising or falling along the line, and nothing else.
+    // Read as a line of figures, the table had no header at all and every column a letter for a name (the NSF's
+    // doctorates by field, 2026-11-28). A line of other figures is still no header.
+    const year=v=>typeof v==='number'&&Number.isInteger(v)&&v>=1000&&v<=2999;
+    const yearsAcross=r=>{
+      const years=r.filter(year);
+      return years.length>=3&&r.some(text)&&r.every(v=>!filled(v)||text(v)||year(v))
+        &&(years.every((v,i)=>!i||v>years[i-1])||years.every((v,i)=>!i||v<years[i-1]));
+    };
+    const named=v=>text(v)?v.trim():year(v)?String(v):'';
     let start=rows.findIndex((r,i)=>i<64&&r.every(text));
     if(start<0)start=rows.findIndex((r,i)=>i<64&&count(r)>=2&&count(r)*3>=width*2&&r.every(v=>!filled(v)||text(v)));
+    if(start<0)start=rows.findIndex((r,i)=>i<64&&count(r)*3>=width*2&&yearsAcross(r));
     const inferredHeader=start>=0;
     if(!inferredHeader){start=-1;warnings.push('No header row was identified. All rows were kept with column-letter names.');}
     const headers=inferredHeader?rows[start]:Array(width).fill(null);
@@ -79,7 +91,7 @@
       start=-1;
     }
     const keep=Array.from({length:width},(_,c)=>c);
-    let columns=keep.map(c=>!shifted&&start>=0&&text(headers[c])?headers[c].trim():'Column '+letter(c));
+    let columns=keep.map(c=>!shifted&&start>=0&&named(headers[c])?named(headers[c]):'Column '+letter(c));
     if(unnamedPopulated.length&&start>=0&&!shifted)warnings.push('Unnamed columns '+unnamedPopulated.map(letter).join(', ')+' were kept with column-letter names.');
     if(start>0&&count(rows[start-1])>=2){
       const parent=rows[start-1], absolute=start-1+bounds.s.r;

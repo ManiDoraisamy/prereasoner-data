@@ -28,6 +28,12 @@ assert.match(WORKBOOK_IMPORT.normalize(grouped,XLSX).csv,/"?ID"?,Amounts Net,Amo
 const yearly=XLSX.utils.aoa_to_sheet([['State',2024,null,2023,null],['Name','Mines','Production','Mines','Production'],['Alabama',18,14382,20,12043]]);
 yearly['!merges']=[{s:{r:0,c:1},e:{r:0,c:2}},{s:{r:0,c:3},e:{r:0,c:4}}];
 assert.equal(WORKBOOK_IMPORT.normalize(yearly,XLSX).csv.split('\n')[0],'Name,2024 Mines,2024 Production,2023 Mines,2023 Production');
+const yearsHead=normalize([['Doctorates by field'],[],['Field',1978,1983,1988,1993],['Education',7194,7147,6362,6689],['Humanities',4231,3500,3558,4482]]);
+assert.equal(yearsHead.import.headerRow,3);
+assert.equal(yearsHead.csv.split('\n')[0],'Field,1978,1983,1988,1993');
+assert.equal(yearsHead.csv.split('\n').length,3);
+assert.equal(normalize([['Alabama',2020,1999,2005],['Alaska',1,2,3]]).import.headerRow,null);
+assert.equal(normalize([['Region',5,6,7],['East',1,2,3]]).import.headerRow,null);
 const fixtures=[['eval-formesign-assets-xls/assets.xls',3,4],['eval-neartail-supplier-report-xlsx/payments.xlsx',30,11],
   ['eval-formesign-procurement-xlsx/procurement.xlsx',1007,2]];
 for(const [file,rows,header] of fixtures){
