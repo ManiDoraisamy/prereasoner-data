@@ -55,7 +55,7 @@ from engine.calculations import calculation_clarify
 from engine.numeric import parse_decimal
 from engine.sql_expansion import SHARE_WORDS
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
-from engine.query_contract import (QUANTITY_WORDS, UNREADABLE_MEASURE_MODEL, Coverage, lexical_words,
+from engine.query_contract import (DROPPED_PART_MODEL, QUANTITY_WORDS, UNMATCHED_NAMES_MODEL, UNREADABLE_MEASURE_MODEL, Coverage, lexical_words,
                                    unreadable_measure_violation)
 from engine import request_timing
 
@@ -120,7 +120,7 @@ def unmatched_clarification(question, unmatched, label):
                        f"not be matched to a known {label} ({unmatched_names(unmatched)}), so an answer "
                        "would leave most of them out"),
             "unmatched": unmatched,
-            "model": "engine - clarify (most names matched no knowledgebase entity)"}
+            "model": UNMATCHED_NAMES_MODEL}
 
 
 def _cos(a, b):
@@ -1300,7 +1300,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                             "calculations": calculations,
                             "computation": (res or {}).get("computation"),
                             "currency": currency,
-                            "model": "engine - clarify (the query dropped part of the question)"}
+                            "model": DROPPED_PART_MODEL}
             if isinstance(res, dict):
                 res['coverage'] = Coverage(not dropped, tuple(dropped)).record()
         return res

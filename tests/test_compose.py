@@ -543,6 +543,24 @@ def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
         host.serve([orders], "total amount by continent", sub)
         host._world_lookup.assert_called_once()
         assert "upload_alone" not in host.qw.serve.call_args.kwargs
+        # ... and a question that asks for a world type the upload has no column of is not put to the reader before
+        # the world routes at all (it was, and every such answer waited for a reading no route used).
+        asking = host_of(True)
+        asking._composed = Mock(return_value=False)
+        probed = []
+        selecting = asking.qw.select_query
+        asking.qw.select_query = lambda question, tables: probed.append(question) or selecting(question, tables)
+        asking.serve([orders], "which country has the highest total amount", sub)
+        assert not probed and "upload_alone" not in asking.qw.serve.call_args.kwargs
+        # Contrast: a question that states the currency it wants needs the world's rates whatever the upload holds:
+        # the reader is not asked before the routes that convert (it is still asked before a compose plan is built).
+        converting = host_of(True)
+        converting._composed = Mock(return_value=False)
+        asked = []
+        held = converting.qw.select_query
+        converting.qw.select_query = lambda question, tables: asked.append(question) or held(question, tables)
+        converting.serve([orders], "total amount by plan in US dollars", sub)
+        assert not asked and "upload_alone" not in converting.qw.serve.call_args.kwargs
     with analysis_execution_context({"slug": "totals", "revision": 1}, sub):
         # Contrast: a request whose links no world layer registered (a caller of this host alone). Its reader was
         # shown nothing of the world: the question still skips compose, and the delegate's world routes still decide.
@@ -554,6 +572,60 @@ def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
         unsure = host_of(False)
         unsure.serve([orders], "total amount by plan", sub)
         unsure._world_lookup.assert_called_once()
+
+
+def test_a_world_routes_failure_never_takes_the_place_of_the_uploads_answer():
+    """Owner, 2026-11-21: "never ask back unless the question is wrong. You can't push your failure to users". A world
+    route that errors ("no foreign key relates sheet ..."), or asks back about what it could not do itself (names its
+    lookup could not match, a word its query left out), served that in place of the answer the own-data path had: 6
+    of fresh dev's first 60 questions as served and 3 of the frozen 212 (2026-11-28). The upload's answer is served
+    instead, with its mark. A question back that says the question or the sheet is wrong stands (the measure it
+    names is no number: a total never skips a text cell), and so does the failure when the upload has no answer."""
+    from unittest.mock import Mock
+
+    from engine.knowledge import KnowledgeReasoner
+    from engine.query_contract import DROPPED_PART_MODEL, UNMATCHED_NAMES_MODEL, UNREADABLE_MEASURE_MODEL
+    from engine.tables import NO_CANDIDATE, PROGRAM_MODEL
+
+    orders = {"name": "orders", "columns": ["state", "amount"], "rows": [["Ohio", 10], ["Utah", 20]]}
+    own = {"question": "q", "result": {"columns": ["total"], "rows": [[30]]}, "model": PROGRAM_MODEL,
+           "check": {"state": "warned", "level": "likely_wrong", "confidence": 0.5, "reason": "r"}}
+
+    def served(response, uploads_answer=own, **more):
+        reasoner = KnowledgeReasoner.__new__(KnowledgeReasoner)
+        reasoner.qw = Mock()
+        reasoner.qw.serve.return_value = uploads_answer
+        kept = reasoner._upload_stands(response, more.pop("tables", [orders]), "total amount by state", "c_" + "7" * 32, None,
+                                       more.pop("explicit_fks", ()), (), more.pop("decomposition", None))
+        return kept, reasoner.qw.serve
+
+    join = "engine - CSV -> knowledgebase join + bitemporal/freshness"
+    failures = ({"error": "no foreign key relates sheet 'a' to 'b' — cannot combine them", "result": None, "model": join},
+                {"error": "KeyError: 'x'", "result": None},
+                {"clarify": True, "reason": "3 of the 3 State names in your sheet could not be matched", "result": None, "model": UNMATCHED_NAMES_MODEL},
+                {"clarify": True, "dropped": ["state"], "model": DROPPED_PART_MODEL})
+    for response in failures:
+        kept, delegate = served(response)
+        assert kept is own, response
+        assert delegate.call_args.kwargs["upload_alone"] is True, "the upload's own answer: no world route is asked again"
+    # the upload's marked answer with no rows is still its answer (owed the retry); its own word that nothing matches too
+    listed_nothing = {"error": NO_CANDIDATE, "result": None, "model": PROGRAM_MODEL,
+                      "check": {"state": "erred", "level": "very_likely_wrong", "confidence": None, "reason": "r"}}
+    assert served(failures[0], listed_nothing)[0] is listed_nothing
+    # stands: a question back that says the question is wrong, a request for its parts, the own-data path's own reply,
+    # an answer, a request with declared keys or a decomposition, and a failure the upload cannot better
+    no_rows = {"clarify": True, "reason": "No rows in your data match this question", "model": "engine - clarify (the query matched no rows)"}
+    parts = {"clarify": True, "decomposition_required": {"reason": "long"}, "model": "engine - typed AST decomposition requested"}
+    answer = {"result": {"columns": ["x"], "rows": [[1]]}, "model": join}
+    unreadable = {"clarify": True, "reason": "amount holds text", "result": None, "model": UNREADABLE_MEASURE_MODEL}
+    for response in (no_rows, parts, listed_nothing, answer, unreadable):
+        kept, delegate = served(response)
+        assert kept is response and not delegate.called, response
+    assert served(failures[0], explicit_fks=(("a", "b"),))[0] is failures[0]
+    assert served(failures[0], decomposition={"nodes": []})[0] is failures[0]
+    assert served(failures[0], tables=[])[0] is failures[0]
+    nothing = {"error": "boom", "result": None}
+    assert served(failures[0], nothing)[0] is failures[0], "the upload has no answer either: the failure is what there is"
 
 
 def test_serving_hands_an_own_data_composition_to_the_planner():
@@ -928,6 +1000,7 @@ TESTS = [
     test_a_nearness_word_reaches_the_place_lookup_only_for_places,
     test_a_question_naming_a_column_in_any_script_is_about_the_data,
     test_a_question_the_upload_reads_whole_skips_the_world_lookup,
+    test_a_world_routes_failure_never_takes_the_place_of_the_uploads_answer,
     test_a_threshold_on_an_aggregate_compares_numbers,
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,

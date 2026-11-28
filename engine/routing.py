@@ -70,6 +70,14 @@ def _asks_no_world_fact(question, schema) -> bool:
     return not asked_world_types(question, schema)
 
 
+def asks_world_fact(question, schema) -> bool:
+    """Whether ``question`` names a world measure, or asks for a world type by name, that the column records
+    ``schema`` lack ("which country has the most deposits" over a sheet of banks). Whatever reading of the upload's
+    own columns is decided, the upload does not answer such a question alone (``upload_answers_alone`` asks the
+    same of the same names), so the serving host does not ask the reader before the world routes for it."""
+    return not _asks_no_world_fact(question, schema)
+
+
 def upload_answers_alone(question, selection, schema) -> bool:
     """Whether the upload answers ``question`` with nothing from the world, by the reader's own account: the upload
     reads it whole (``reads_upload_whole``) and the reading the Decisions path decided, answered or warned, reads no

@@ -34,8 +34,23 @@ WikiTableQuestions dev questions they took 8, none right.
   trench coat in France").
 - Cost: the selection is read before the world routes for every question (it was read before compose only). A
   question the world routes answer waits for it; one the upload answers skips their lookups.
-- Not changed, and still against "never ask back" (2026-11-21): the world routes' own clarifications ("the query
-  dropped part of the question", "most names matched no knowledgebase entity") when a question reaches them.
+- The rule holds only where the world layer registered the request's links (`RequestDatabase.world_linked`,
+  set by `link_request`; every served request does): a reader that was shown nothing of the world cannot say a
+  question needs none of it.
+- The reader is not asked first where the question needs the world whatever it reads: it states the currency it
+  wants its answer in (`currency_intent`), or asks for a world type or measure the upload has no column of, by its
+  names as sent and as the sheet compiler names them (`routing.asks_world_fact`; no reading is made for either).
+  Asked first for every question, a world-route answer waited for a reading no route used: at release 4022a06e's
+  gate, 4.2 s -> 5.6 s for answers that convert and 5.0 s -> 7.3 s for the other world answers (medians).
+- A world route's failure never takes the place of the upload's answer (`engine/knowledge.py _upload_stands`): an
+  error with no result, or a question back about what the route could not do itself (names its lookup could not
+  match, a word its query left out: `query_contract.WORLD_ROUTE_ASKS`), is replaced by the own-data path's answer
+  with its mark, owed its retry as any answer is. A question back that says the question or the sheet is wrong
+  stands (no rows match, the measure it names is no number, a calculation is unmet, the question's parts are asked
+  for), and so does the failure where the upload has no answer either. On fresh dev's 176 as served it turns one
+  error into a right answer (146 -> 147). The unreadable-measure refusal was first counted among the routes' own
+  failures and the live suite refused it: a total must not skip a text cell. It is wrong on one fresh dev sheet
+  whose column lies under a title (it reads the title's cells as values), which is its own defect to fix.
 
 ## Nothing lives only on one machine: what git cannot hold is in the archive, pinned by sha256 in the repository (2026-11-23)
 

@@ -96,6 +96,13 @@ def unreadable_measure_violation(question, graph):
 
 # The model label of a reply refusing ``unreadable_operand``, on the composed and world routes alike.
 UNREADABLE_MEASURE_MODEL = "engine - clarify (the named measure is not numeric)"
+# The model labels of the world routes' two questions back about what they could not do themselves: names their lookup
+# could not match, and a word their query left out. Neither says the question is wrong, so neither is the person's to
+# answer (engine/knowledge.py _upload_stands). The unreadable measure is not one of them: it says what the sheet holds
+# (a total never skips a cell that is no number, nor falls to another column), and it stands.
+UNMATCHED_NAMES_MODEL = "engine - clarify (most names matched no knowledgebase entity)"
+DROPPED_PART_MODEL = "engine - clarify (the query dropped part of the question)"
+WORLD_ROUTE_ASKS = frozenset({UNMATCHED_NAMES_MODEL, DROPPED_PART_MODEL})
 
 
 @dataclass(frozen=True)

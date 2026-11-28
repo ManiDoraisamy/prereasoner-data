@@ -27,6 +27,7 @@ from engine.relations import request_memo
 from engine.request_state import request_scope
 from engine.sql_expansion import FUNCTION_WORDS
 from engine.sql_schema import SchemaGraph
+from engine.query_contract import WORLD_ROUTE_ASKS
 from engine.tables import PROGRAM_MODEL
 
 NEAR = re.compile(r"\b(near(?:est|by)?|closest|around|close to)\b", re.I)
@@ -113,9 +114,32 @@ class KnowledgeReasoner:
             ))
         finally:
             typing = self.qw.take_typing()
+        res = self._upload_stands(res, tables, question, sub, as_of, explicit_fks, dataset_semantics, decomposition)
         res = self._tag_present(res, question, tables)
         res = self._verify_calculations(res, tables, question, explicit_fks)
         return self._attach_typing(res, typing)
+
+    def _upload_stands(self, res, tables, question, sub, as_of, explicit_fks, dataset_semantics, decomposition):
+        """A world route's failure never takes the place of the upload's answer (owner, 2026-11-21: "never ask back
+        unless the question is wrong. You can't push your failure to users"). Where the composed stack returns an
+        error with no result, or a world route's question back about what it could not do itself (names its lookup
+        could not match, a word its query left out: query_contract.WORLD_ROUTE_ASKS), the own-data path's answer is
+        served in its place, with its mark, and its retry is owed as for any answer. On the frozen government
+        workbooks 3 of 212 questions came back that way, and on fresh dev's first 60, 6 (as served, 2026-11-28). A
+        question back that says the question or the sheet is wrong stands: no rows match it, the measure it names is
+        no number, a calculation is unmet, its parts are asked for. So does the failure, when the upload has no answer
+        either."""
+        if (explicit_fks or decomposition or not tables or not isinstance(res, dict) or res.get("model") == PROGRAM_MODEL
+                or res.get("decomposition_required")):
+            return res
+        failed = (res.get("error") and not res.get("result")) or (res.get("clarify") is True and res.get("model") in WORLD_ROUTE_ASKS)
+        if not failed:
+            return res
+        own = self.qw.serve(tables, question, as_of=as_of, schema=sub, dataset_semantics=dataset_semantics, upload_alone=True)
+        # its answer, its marked answer with no rows (owed the retry), or its own word that the question matches nothing
+        if isinstance(own, dict) and (own.get("result") is not None or isinstance(own.get("check"), dict) or own.get("clarify")):
+            return own
+        return res
 
     def _verify_calculations(self, res, tables, question, explicit_fks):
         """Apply one route-independent gate to every registered calculation intent."""

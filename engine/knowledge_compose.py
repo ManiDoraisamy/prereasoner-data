@@ -36,7 +36,7 @@ from engine.routing import (
     route,
 )
 from engine.numeric import parse_decimal
-from engine.query_contract import UNREADABLE_MEASURE_MODEL
+from engine.query_contract import UNMATCHED_NAMES_MODEL, UNREADABLE_MEASURE_MODEL
 
 
 _TRACE_VIEW_FIELDS = (
@@ -65,6 +65,23 @@ class ComposedKnowledgeQuery:
         self.qw = KnowledgeQuery()                            # resolution + world DB + auth + bridge machinery
         self.reader = PrimitiveReader(encoder=self.qw)    # the learned 10-primitive head on the SAME unified encoder
         self.reason = ComposeEngine(reader=self.reader)   # the deterministic composition engine
+
+    def _asks_world_fact(self, tables, question):
+        """Whether ``question`` asks for a world fact the upload's own columns do not hold
+        (engine.routing.asks_world_fact), by its tables' names as sent and as the sheet compiler names them
+        (engine/prepared.py prepared_workbook: compiled once per content, no reading). False where the upload cannot be
+        compiled: the probe that follows reports what is wrong with it."""
+        from engine.prepared import prepared_workbook
+        from engine.routing import asks_world_fact
+        try:
+            norm, _fks = self.qw.ingest(tables)
+            _key, prepared = prepared_workbook(norm)
+        except Exception as error:                       # noqa: BLE001 - the probe reports it
+            print(f"own columns unread, asking the reader: {type(error).__name__}", flush=True)
+            return False
+        names = [*({"table": table["name"], "name": column} for table in norm for column in table["columns"]),
+                 *({"table": table.table.tab, "name": column.name} for table in prepared.catalog.tables for column in table.columns)]
+        return asks_world_fact(question, names)
 
     def _composed(self, tables, question):
         """LEARNED compose gate (no lexical DEPTH regex): route to the engine when the unified encoder READS a
@@ -424,8 +441,7 @@ class ComposedKnowledgeQuery:
             # says which cells, and no other column is totaled in its place.
             return {"question": question, "as_of": as_of, "clarify": True, "reason": res["reason"],
                     "result": None, "error": None, "unmatched": res.get("unmatched"),
-                    "model": ("engine - clarify (most names matched no knowledgebase entity)" if res.get("unmatched")
-                              else UNREADABLE_MEASURE_MODEL)}
+                    "model": UNMATCHED_NAMES_MODEL if res.get("unmatched") else UNREADABLE_MEASURE_MODEL}
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()
         # route() alone decides ownership, here as in the Spider evaluator. A local composition (top-N, sort,
@@ -536,23 +552,39 @@ class ComposedKnowledgeQuery:
         # reads the question over the upload and what the request's links reach. A reading it decides that takes
         # nothing from the world is the upload's answer (engine.routing.upload_answers_alone), and no world route
         # is consulted for it. The probe selects but never executes.
+        from engine.currency_intent import CurrencyIntentKind, currency_intent
         from engine.deterministic.context import current_analysis_context
         from engine.decomposition import DecompositionError, search_probe
         from engine.prepared import current_database
         from engine.routing import reads_upload_whole, upload_answers_alone
 
         probe = probe_failed = None
-        if current_analysis_context() is not None:
-            try:
-                with request_timing.span("decompose_probe"):
-                    probe = search_probe(self.qw, tables, question)
-            except DecompositionError as exc:
-                probe_failed = exc
+
+        def probed():
+            nonlocal probe, probe_failed
+            if probe is None and probe_failed is None and current_analysis_context() is not None:
+                try:
+                    with request_timing.span("decompose_probe"):
+                        probe = search_probe(self.qw, tables, question)
+                except DecompositionError as exc:
+                    probe_failed = exc
+            return probe
+
         # Only where the world layer registered the request's links (engine/knowledge.py _serve): a reader that was
-        # shown nothing of the world cannot say the question needs none of it.
+        # shown nothing of the world cannot say the question needs none of it. And not for a question that states
+        # the currency it wants its answer in: it needs the world's rates whatever the upload holds, so the reader is
+        # not asked before the routes that convert (asked first, every such answer waited two to four seconds more
+        # for a reading no route used: release 4022a06e's gate, 2026-11-28).
         database = current_database()
-        if (probe is not None and probe.decomposition_required is None and database is not None and database.world_linked
-                and upload_answers_alone(question, probe.selection, probe.schema)):
+        stated = currency_intent(question or "")
+        converts = stated is not None and stated.kind == CurrencyIntentKind.OUTPUT
+        linked = database is not None and database.world_linked and current_analysis_context() is not None
+        # Nor for one that asks for a world type or measure the upload has no column of, by the names it was sent
+        # with and the names the sheet compiler gives it (no reading is made for those): "which country has the most
+        # transfers" over a sheet of hospitals.
+        needs_world = converts or (linked and self._asks_world_fact(tables, question))
+        if (linked and not needs_world and probed() is not None
+                and probe.decomposition_required is None and upload_answers_alone(question, probe.selection, probe.schema)):
             request_timing.count("world_lookup_skipped")
             return self.qw.serve(tables, question, as_of=as_of, schema=sub, dataset_semantics=dataset_semantics,
                                  upload_alone=True)
@@ -565,7 +597,7 @@ class ComposedKnowledgeQuery:
             # composed top-N would answer one fragment of it. Consult the SAME selected-candidate
             # predicate the delegate applies (engine/decomposition.py) before composing.
             own_data = False
-            if probe is not None or probe_failed is not None:
+            if probed() is not None or probe_failed is not None:
                 if probe_failed is not None:
                     return {
                         "question": question,
