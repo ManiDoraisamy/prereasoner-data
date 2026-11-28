@@ -60,6 +60,9 @@ def main() -> int:
     parser.add_argument("--resume", action="store_true", help="skip the questions this tag's progress file already holds")
     args = parser.parse_args()
     torch.set_num_threads(args.threads)
+    # the code this run reads with is the code loaded now: its commit is read before the first question, not after the last
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    dirty = bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True).stdout.strip())
     out = dev.ROOT / "regress" / "results" / "frozen" / args.tag
     out.mkdir(parents=True, exist_ok=True)
     batch = f"{datetime.date.today().isoformat()}-{args.tag}-{SET}-{os.getpid()}"
@@ -98,8 +101,7 @@ def main() -> int:
             if (at + 1) % 20 == 0:     # progress without outcomes
                 print(f"{at + 1}/{len(items)} {round(time.time() - started)}s", flush=True)
     report = {"set": "fresh_frozen", "questions": len(items), "tag": args.tag, "date": datetime.date.today().isoformat(),
-              "commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
-              "dirty": bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True).stdout.strip()),
+              "commit": commit, "dirty": dirty,
               "calls_batch": batch, "retry_tokens_sent": list(query_replay.tokens), "seconds": round(time.time() - started, 1),
               "totals": totals(measured)}
     READS.mkdir(parents=True, exist_ok=True)

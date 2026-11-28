@@ -1,0 +1,146 @@
+{
+ "calls_batch": "2026-11-28-overnight-1128-freshfrozen-28612",
+ "commit": "c93c640be6e5aad9a56f205472e6b6de88e4cf9f",
+ "date": "2026-11-28",
+ "dirty": true,
+ "note": "Ran from 04:09 UTC on the code committed as c93c640b, loaded when the run began; the runner then read the commit when it wrote this report (4022a06e, two commits later: a test's stand-in, and a routing condition that holds for every served request). dirty: the owner's uncommitted excel-addon/MARKETPLACE_LISTING.md only.",
+ "questions": 212,
+ "retry_tokens_sent": [
+  137116,
+  41454
+ ],
+ "seconds": 15729.5,
+ "set": "fresh_frozen",
+ "tag": "overnight-1128",
+ "totals": {
+  "domain": {
+   "health": {
+    "n": 110,
+    "right": 89
+   },
+   "other": {
+    "n": 102,
+    "right": 83
+   }
+  },
+  "final": {
+   "answer": {
+    "n": 208,
+    "right": 172
+   },
+   "asked": {
+    "n": 4,
+    "right": 0
+   }
+  },
+  "final_right": 172,
+  "first": {
+   "answer": {
+    "n": 208,
+    "right": 144
+   },
+   "asked": {
+    "n": 3,
+    "right": 0
+   },
+   "error": {
+    "n": 1,
+    "right": 0
+   }
+  },
+  "first_right": 144,
+  "form": {
+   "average": {
+    "n": 4,
+    "right": 0
+   },
+   "comparison": {
+    "n": 36,
+    "right": 30
+   },
+   "date_period": {
+    "n": 23,
+    "right": 21
+   },
+   "filtered_count": {
+    "n": 17,
+    "right": 15
+   },
+   "filtered_sum": {
+    "n": 7,
+    "right": 6
+   },
+   "group_by": {
+    "n": 13,
+    "right": 10
+   },
+   "lookup": {
+    "n": 53,
+    "right": 50
+   },
+   "top_n": {
+    "n": 36,
+    "right": 23
+   },
+   "yes_no": {
+    "n": 23,
+    "right": 17
+   }
+  },
+  "level": {
+   "None": {
+    "n": 6,
+    "right": 0
+   },
+   "likely_correct": {
+    "n": 73,
+    "right": 59
+   },
+   "likely_wrong": {
+    "n": 26,
+    "right": 13
+   },
+   "very_likely_correct": {
+    "n": 73,
+    "right": 69
+   },
+   "very_likely_wrong": {
+    "n": 34,
+    "right": 3
+   }
+  },
+  "n": 212,
+  "retried": {
+   "False": {
+    "n": 179,
+    "right": 141
+   },
+   "True": {
+    "n": 33,
+    "right": 31
+   }
+  },
+  "route": {
+   "engine - CSV -> knowledgebase join + bitemporal/freshness": {
+    "n": 1,
+    "right": 0
+   },
+   "engine - Decisions path: closed questions over the sheet's programs + typed SQL AST": {
+    "n": 206,
+    "right": 144
+   },
+   "engine - clarify (most names matched no knowledgebase entity)": {
+    "n": 2,
+    "right": 0
+   },
+   "engine - clarify (the query dropped part of the question)": {
+    "n": 1,
+    "right": 0
+   },
+   "engine - unified encoder: world bridge + semantic rank": {
+    "n": 2,
+    "right": 0
+   }
+  }
+ }
+}

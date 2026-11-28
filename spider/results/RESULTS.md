@@ -10,6 +10,77 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## The served entry measured for the first time since the Decisions path took over, and the frozen real-sheet sets read once: 172 of 212 government questions and 69 of 79 messy ones right as served (82.8%); the world layer in front of the reader took one government question in six and answered none (2026-11-28)
+
+- Owner, 2026-11-28, after the audit below: "take over and execute till you reach 90%+". Read as: 90% of answers
+  right as served, through the real entry, on real-sheet data; develop on dev sets only; read the two frozen sets
+  once, totals only, and report that figure whatever it is. It is 82.8%.
+- **The measurement.** `python -X utf8 -m regress.run_dev_decisions --sets messy,freshdev --served` sends each dev
+  question through `KnowledgeReasoner.serve` inside an analysis execution context on its own request database
+  (`regress/live_schema.py served`: the coverage pre-gate, the request's links read from the live knowledgebase,
+  the world and compose routes, the calculation gate, then the own-data selection) and then the retry its mark owes,
+  as a chat client asks it. A record says what the person gets (an answer, a question back, a request for the
+  question's parts, a chat reply, an error), its route and mark, and whether it is right before and after the retry.
+  Until now every evaluator called `TableQuery.select_query`, below all of that.
+- **Before any change** (release f38ab725, as served). Messy dev: 105 of 120 right from the engine, 108 after the
+  retry, every question on the Decisions path. Fresh dev, the first 60 of 176 (stopped there: a new government
+  workbook's world preparation takes 2 to 5 minutes against the database from this machine): 41 from the engine, 46
+  after the retry, where the selection's own pick is right on 50. The world layer took 9 of the 60 (three errors
+  "no foreign key relates sheet ... cannot combine them", "3 of the 3 State Name names in your sheet could not be
+  matched", "no rows match", "the query dropped part of the question", and rows by similarity with no mark) and
+  answered none; the selection is right on 8 of them. WikiTableQuestions dev, the first 98: 68 and 72, the world
+  layer taking 10 and answering none (5 right in the replay). DataBench dev, the first 77: 72 and 73, none taken.
+  The coverage pre-gate, which the audit named first, sent no question of these 355 to chat.
+- **The reader says whether a question needs the world** (`engine/routing.py upload_answers_alone`; DECISIONS.md,
+  2026-11-28). On the same 60 fresh dev questions: 41 -> 49 from the engine and 46 -> 54 after the retry, no
+  question lost. On all 176 with this change alone: 124 and 138 (78.4%).
+- **Two more defects only the served entry shows.** The SQL guard read its forbidden keywords in the whole text,
+  so the engine's own query over a column named "Deaths with COVID-19" was served as the error "guard: forbidden
+  keyword": 3 of 152 fresh dev questions, each right in the replay, which runs no guard (`engine/tables.py
+  bare_sql`). And the routing check read the planner's column records, which name nothing when a header lies under
+  a title: "What was the 2020 apportionment population of California?" was answered with the knowledgebase's
+  population, 4 questions (`PoolSelection.own_names`).
+- **Three reading fixes**, each found by reading fresh dev's misses (`engine/program/words.py`,
+  `engine/program/decoder.py`, `engine/sheet/grid.py`). A year followed by a comma or a full stop was read as
+  nothing, as a period or as a number ("In fiscal year 2023, which ...": 26 of the 176 fresh dev questions, 2 of
+  WikiTableQuestions dev's 300). One stated year is the value of a column of year numbers that holds more than 30
+  of them (a line a year since 1966). A label column's leader dots are the page's ("Alabama..............."). Dev
+  replay against the references (tag `engine-1128`, kept): picks 735 -> 741 of 896 (WikiTableQuestions 236 -> 238,
+  2 wins and no loss; fresh dev 132 -> 136, 5 wins and 1 loss; messy 105 and DataBench 262 unchanged), built 800 ->
+  802, answered without a warning and wrong 60 -> 58; demo at parity (91). The loss is fd/FD-0063: the year now
+  read lets the reading's named comparison build "Year is above 2021", which crowds the list. A rule that held a
+  stated year to a value unless a comparison is named did not recover it and was withdrawn unmeasured.
+- **Dev as served, final code** (commit 4022a06e; records `regress/sets/dev_decisions/served/`). Messy: 105 and 108
+  of 120 (90.0%). Fresh dev: 135 from the engine and 146 after the retry of 176 (83.0%); by mark, the engine's own
+  answers right: very likely correct 68 of 73, likely correct 61 of 70, likely wrong 5 of 16, very likely wrong 1
+  of 14 (12 of 14 after the retry); 4 questions still not answered (one asks for its parts, one knowledgebase-join
+  error, one "the named measure is not numeric", one error on the Decisions path). WikiTableQuestions and DataBench
+  dev were not run as served on the final code.
+- **The frozen read, once, totals only** (`python -X utf8 -m regress.run_frozen`, new; reports in
+  `regress/sets/frozen_reads/`; the code of c93c640b, whose served behaviour 4022a06e does not change).
+  - Government workbooks (fresh_frozen, the 212 questions its review found right, 54 workbooks): **144 right from
+    the engine (67.9%), 172 after the retry (81.1%)**. 208 answers, 4 questions back. The retry ran on 33 answers
+    and 31 of them are right: 28 of the 172 right answers are Gemini 4 Neon's written query, not the engine's.
+  - By mark, the engine's own answers right: very likely correct 69 of 73, likely correct 59 of 73, likely wrong
+    13 of 26, very likely wrong 3 of 34; 6 with no mark (the world layer still took them: two questions back, one
+    join, two searches, one "dropped part", none right). Answered without a warning and wrong: 18 of 212 (8.5%).
+  - By form, right after the retry: lookup 50 of 53, date or period 21 of 23, filtered count 15 of 17, filtered
+    sum 6 of 7, comparison 30 of 36, group-by 10 of 13, yes/no 17 of 23, top-N 23 of 36, average 0 of 4. A value
+    looked up is right 94% of the time; a list, an average or a grouping over a table's lines 33 of 53 (62%).
+  - Messy frozen split (`python -m regress.run_messy --split frozen`): **69 right, 0 asked, 10 wrong of 79
+    (87.3%)**.
+  - Together: 241 of 291 (82.8%). 90% is 262. Both frozen sets are now spent: the next gate needs a new unseen set.
+- Not done, of the audit's list: the coverage pre-gate and the world route's word lists are still there (the reader
+  now decides before them); the chat prompt still holds the gate's own follow-ups; the marks' cut-offs are
+  unchanged; the retry is still unseeded; the public benchmark (`regress/run_public.py`) still calls below the
+  served entry; no encoder was trained and Enron was not run.
+- Records and spend. Served dev records by tag in `regress/results/dev_decisions/` (`served-f38ab725`,
+  `served-alone`, `served-c93c640b`), the kept ones in `regress/sets/dev_decisions/served/`; the Decisions answers
+  in `regress/sets/calls/2026-11-28-*` and the retry's in `regress/sets/retry_calls/`; working notes and logs in
+  `prereasoner-scratch/overnight-20261128/`. The frozen read's retries sent 137,116 input and 41,454 output tokens;
+  the night's API spend is a few dollars by token counts (my estimate, not a bill).
+
+
 ## Release f38ab725 (only a retry that ran takes an answer's place) live; Chrome gate 77 of 78 existing and 102 of 102 fresh (2026-11-28)
 
 - The six defects the review of 5ada49a1 found (the audit entry below lists them), fixed in f38ab725. The engine

@@ -1,0 +1,113 @@
+{
+ "commit": "c93c640be6e5aad9a56f205472e6b6de88e4cf9f",
+ "data_dir": "engine/data",
+ "dirty": true,
+ "note": "The messy benchmark's frozen split through the served entry (python -m regress.run_messy --split frozen), totals only; dirty: the owner's uncommitted listing file only.",
+ "split": "frozen",
+ "summary": {
+  "family": {
+   "column": {
+    "asked": 0,
+    "n": 32,
+    "right": 28,
+    "seconds_p50": 3.3,
+    "wrong": 4
+   },
+   "plain": {
+    "asked": 0,
+    "n": 11,
+    "right": 11,
+    "seconds_p50": 2.8,
+    "wrong": 0
+   },
+   "structure": {
+    "asked": 0,
+    "n": 3,
+    "right": 2,
+    "seconds_p50": 3.7,
+    "wrong": 1
+   },
+   "value": {
+    "asked": 0,
+    "n": 33,
+    "right": 28,
+    "seconds_p50": 2.8,
+    "wrong": 5
+   }
+  },
+  "split": {
+   "frozen": {
+    "asked": 0,
+    "n": 79,
+    "right": 69,
+    "seconds_p50": 3.1,
+    "wrong": 10
+   }
+  },
+  "total": {
+   "asked": 0,
+   "n": 79,
+   "right": 69,
+   "seconds_p50": 3.1,
+   "wrong": 10
+  },
+  "workbook": {
+   "appointments": {
+    "asked": 0,
+    "n": 11,
+    "right": 11,
+    "seconds_p50": 2.7,
+    "wrong": 0
+   },
+   "deals": {
+    "asked": 0,
+    "n": 14,
+    "right": 13,
+    "seconds_p50": 3.05,
+    "wrong": 1
+   },
+   "expenses": {
+    "asked": 0,
+    "n": 12,
+    "right": 10,
+    "seconds_p50": 2.8,
+    "wrong": 2
+   },
+   "inventory": {
+    "asked": 0,
+    "n": 10,
+    "right": 9,
+    "seconds_p50": 2.8,
+    "wrong": 1
+   },
+   "marks": {
+    "asked": 0,
+    "n": 7,
+    "right": 7,
+    "seconds_p50": 2.6,
+    "wrong": 0
+   },
+   "orders": {
+    "asked": 0,
+    "n": 9,
+    "right": 7,
+    "seconds_p50": 3.9,
+    "wrong": 2
+   },
+   "roster": {
+    "asked": 0,
+    "n": 5,
+    "right": 2,
+    "seconds_p50": 4.2,
+    "wrong": 3
+   },
+   "tickets": {
+    "asked": 0,
+    "n": 11,
+    "right": 10,
+    "seconds_p50": 3.1,
+    "wrong": 1
+   }
+  }
+ }
+}
