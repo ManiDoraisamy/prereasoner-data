@@ -538,6 +538,7 @@ class ComposedKnowledgeQuery:
         # is consulted for it. The probe selects but never executes.
         from engine.deterministic.context import current_analysis_context
         from engine.decomposition import DecompositionError, search_probe
+        from engine.prepared import current_database
         from engine.routing import reads_upload_whole, upload_answers_alone
 
         probe = probe_failed = None
@@ -547,7 +548,10 @@ class ComposedKnowledgeQuery:
                     probe = search_probe(self.qw, tables, question)
             except DecompositionError as exc:
                 probe_failed = exc
-        if (probe is not None and probe.decomposition_required is None
+        # Only where the world layer registered the request's links (engine/knowledge.py _serve): a reader that was
+        # shown nothing of the world cannot say the question needs none of it.
+        database = current_database()
+        if (probe is not None and probe.decomposition_required is None and database is not None and database.world_linked
                 and upload_answers_alone(question, probe.selection, probe.schema)):
             request_timing.count("world_lookup_skipped")
             return self.qw.serve(tables, question, as_of=as_of, schema=sub, dataset_semantics=dataset_semantics,

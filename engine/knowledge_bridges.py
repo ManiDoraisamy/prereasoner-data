@@ -123,7 +123,7 @@ class KnowledgeBridgeMixin:
         the request's workbook (engine/prepared.py RequestDatabase.links). ``as_of``: the day a money column of a table
         with no date column is converted on, today when the request names none."""
         day = str(as_of) if as_of else date.today().isoformat()
-        self._database().link_with(lambda tables: self.request_links(tables, day, explicit_fks))
+        self._database().link_with(lambda tables: self.request_links(tables, day, explicit_fks), world=True)
 
     def request_links(self, tables, as_of, explicit_fks=()):
         """What production connects for the request's ``tables`` (engine/prepared.py RequestLinks), each table named by

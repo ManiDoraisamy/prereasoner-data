@@ -526,9 +526,14 @@ def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
                                         "bindings": {}, "answer": {"columns": [], "rows": []}}
         return host
 
+    from engine.prepared import scratch_database
+
     sub = "c_" + "5" * 32
     host = host_of(True)
-    with analysis_execution_context({"slug": "totals", "revision": 1}, sub):
+    with analysis_execution_context({"slug": "totals", "revision": 1}, sub), scratch_database() as database:
+        # the world layer registered the request's links (engine/knowledge.py _serve): the reader saw what the
+        # upload reaches, so its reading of the upload's own columns says the question needs none of it
+        database.link_with(lambda tables: None, world=True)
         assert host.serve([orders], "total amount by plan", sub) is served
         host._world_lookup.assert_not_called()
         host.reason.run.assert_not_called()
@@ -538,6 +543,13 @@ def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
         host.serve([orders], "total amount by continent", sub)
         host._world_lookup.assert_called_once()
         assert "upload_alone" not in host.qw.serve.call_args.kwargs
+    with analysis_execution_context({"slug": "totals", "revision": 1}, sub):
+        # Contrast: a request whose links no world layer registered (a caller of this host alone). Its reader was
+        # shown nothing of the world: the question still skips compose, and the delegate's world routes still decide.
+        unlinked = host_of(True)
+        assert unlinked.serve([orders], "total amount by plan", sub) is served
+        unlinked._world_lookup.assert_not_called()
+        assert "upload_alone" not in unlinked.qw.serve.call_args.kwargs
         # Contrast: a question the path asks back does not say the upload answers it.
         unsure = host_of(False)
         unsure.serve([orders], "total amount by plan", sub)

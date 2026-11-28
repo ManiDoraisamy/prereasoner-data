@@ -145,10 +145,13 @@ def main():
     got = (gold.get("result") or {}).get("rows") or []
     ok("filter: gold customers in France are Lupin's three orders",
        sorted(str(row[0]) for row in got) == ["121", "122", "123"], f"rows={got}")
+    # Paris and the trench coat are both in the upload's own cells: the reader's reading of them answers who, and
+    # no world route is consulted (engine.routing.upload_answers_alone, 2026-11-28). Until then the search answered
+    # with order 109's whole line.
     paris = ask("who ordered a trench coat in Paris")
     got = (paris.get("result") or {}).get("rows") or []
-    ok("search + filter: the Paris order that mentions a trench coat",
-       [str(row[0]) for row in got] == ["109"], f"rows={got}")
+    ok("filter: who ordered the trench coat in Paris is order 109's customer",
+       [str(row[0]) for row in got] in (["Inspector Clouseau"], ["109"]), f"rows={got} model={paris.get('model')}")
 
     # --- (H) the trail as the user sees it (docs/SHEETS_AS_REASONING.md rules 3 and 5, 2026-09-27) ---
     # 'amount in France' opened with a 'combined' copy of the one uploaded sheet, and its lookup, filter and

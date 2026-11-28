@@ -655,6 +655,7 @@ class RequestDatabase:
         self._program = None                 # (workbook identity, the own-data path's tables on this database)
         self._answers = {}                   # (workbook identity, question) -> the own-data path's answer
         self._linker = None                  # the world layer's builder of the request's links (link_with)
+        self.world_linked = False            # that builder reads the knowledgebase: the path sees what the tables reach
         self._links = {}                     # workbook identity -> the request's links
         self._connected = {}                 # (workbook identity, currency) -> (identity, preparation) connected
         self._tables = {}                    # main table -> fingerprint of the rows loaded into it
@@ -752,11 +753,14 @@ class RequestDatabase:
         database holds none and reads nothing stored."""
         return self._base is not None
 
-    def link_with(self, linker):
+    def link_with(self, linker, world=False):
         """Have ``linker(tables)`` build the request's links (RequestLinks) when the own-data path first reads a
         workbook of the request. The world layer registers it for a served request (engine/knowledge_bridges.py
-        link_request); a database with none (an evaluator's scratch database) reads its workbook unconnected."""
+        link_request, ``world``: its links hold what the tables reach in the knowledgebase, so a reading that takes
+        none of it says the upload answers alone, engine/routing.py upload_answers_alone); a database with none (an
+        evaluator's scratch database) reads its workbook unconnected."""
         self._linker = linker
+        self.world_linked = bool(world)
 
     def links(self, key, tables):
         """The request's links for the workbook ``key`` of ``tables``, built once per request; None without a linker."""
