@@ -10,6 +10,29 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release f38ab725 (only a retry that ran takes an answer's place) live; Chrome gate 77 of 78 existing and 102 of 102 fresh (2026-11-28)
+
+- The six defects the review of 5ada49a1 found (the audit entry below lists them), fixed in f38ab725. The engine
+  `prereasoner-api-00368-qak` (`engine@sha256:d10d2d74...`, Cloud Build fb93755b: build, offline regression gate,
+  runtime server smoke, live product suite), tag `retryran`, health ok, the release smoke job ok (execution pbcqz),
+  100% of traffic from 2026-11-28 01:31 UTC, both engine jobs on the image; then the chat service
+  `prereasoner-chat-00249-kog` (`chat@sha256:72bfb3d9...`, Cloud Build 68babc87), 100%; then the web files of
+  f38ab725 (Hosting version e1c723fe40931b49). Rollback: Hosting `firebase hosting:clone
+  prereasoner-inference:9b1960e224dabd17 prereasoner-inference:live`, then chat `prereasoner-chat-00247-wux`, then
+  engine `prereasoner-api-00364-tap` by name. The previous revision's tag (`marks4`) was removed when the gate
+  passed, as the release procedure now says (`infra/README.md`): one tagged revision remains.
+- **Chrome gate** on the deployed site (Claude in Chrome on the owner's account; harness, captures and notes in
+  `prereasoner-scratch/gate-f38ab725/`). Existing conversations (the 24 of 5ada49a1's fresh pass): 77 of 78, the
+  miss the known one (customer-orders "in GBP for the whole of Europe?", asked after an average in that
+  conversation). Fresh pass: 102 of 102 on the 24 datasets, the six uploads among them, no request refused.
+- Marks, fresh pass: 52 very likely correct, 7 likely correct, 1 a question back, 42 with no mark (world and
+  composed routes). On every timed follow-up the question box was open when the turn ended, and a marked answer's
+  icon was on screen with the answer.
+- Asking to the turn's end, fresh pass: a median 4.9 s, p90 10.1 s, longest 12 s (5ada49a1: 4.4 s, 8.3 s). The
+  existing pass's times are not reported: this machine ran three evaluation processes beside the browser during it
+  and ran out of memory, so they measure the machine.
+
+
 ## An audit against the project's objectives: the reader is the outside API, no real sheet has been measured since it took over, the test samples are spent, and an English word gate no evaluation sees stands before the reader; the plan of 2026-11-28 withdrawn; six defects of release 5ada49a1 fixed (2026-11-28)
 
 - Owner, 2026-11-28: "Think carefully and review if this plan. Check all the code and training data used so far and
