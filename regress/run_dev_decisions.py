@@ -27,8 +27,17 @@ layer's links registered (engine/knowledge_bridges.py link_request), so it reads
 reads each dataset instead on the request database production built for it on 2026-11-18 (regress/sets/demo_maps),
 with the links recorded there: the reference's inputs, so the knowledgebase's changes since do not enter.
 
---csv is a new measurement, not parity: each tab is rendered to CSV text and read as an upload is (csv_table,
-canonical table names); its bodies differ, so it needs --record.
+--upload is a new measurement, not parity: each workbook as a client sends it to the engine. The web app, the Sheets
+sidebar and the Excel task pane do not send the sheet: the browser's importer (web/public/lib/workbook-import.js)
+makes one flat CSV of each worksheet (it picks the header line, drops the lines over it, sets printed totals apart)
+and the engine reads that (engine/server.py csv_table). So a government workbook goes through that importer
+(regress/upload_sheets.js, the upload worker itself), messy's cells through it as a live host's grids, and a CSV
+file as its text; a workbook the importer refuses (more than eight worksheets) is an error, as the person uploading
+it meets one. --upload sidebar reads a workbook file as the Google Sheets sidebar does instead: the tab in view (the
+tab the question was written on) first and as many tabs as one read holds, eight, with no workbook refused. Its
+bodies differ, so it needs --record. The other runs give the sheet compiler every tab whole, with
+its formulas and styles (engine/sheet/xlsx_reader.py): what the compiler was built to read, and no client sends yet.
+--unstyled is that whole sheet with no row styles: what a client that parses the file could send today.
 
 An answer's label is its mark as served, the choice's own (engine/program/closed.py choose_answer): right or wrong,
 flagged when it is served likely wrong, asked when it is served very likely wrong. Until 2026-11-27 a second judge
@@ -50,7 +59,7 @@ the served entry loses or gains against the reference's always-answering pick. I
 <out>/<set>.served.jsonl; --keep writes them to regress/sets/dev_decisions/served/<set>.jsonl.gz.
 
 usage: python -X utf8 -m regress.run_dev_decisions [--sets messy,freshdev] [--limit N] [--tag NAME] [--threads 4] [--resume]
-                                                   [--record] [--keep] [--csv] [--sets demo [--demo-maps [DIR]]] [--retry]
+                                                   [--record] [--keep] [--upload [web|sidebar] | --unstyled] [--sets demo [--demo-maps [DIR]]] [--retry]
                                                    [--served]
 """
 from __future__ import annotations
@@ -68,7 +77,11 @@ from pathlib import Path
 
 import contextlib
 import csv
+import functools
+import hashlib
 import io
+import subprocess
+import tempfile
 
 import torch
 
@@ -84,6 +97,8 @@ from regress import eval_sets
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCE = eval_sets.SETS / "dev_decisions" / "reference"
 SERVED = eval_sets.SETS / "dev_decisions" / "served"
+# --served --upload --keep: the served records as a client sends each workbook, by the client (web, sidebar)
+SERVED_UPLOAD = {way: eval_sets.SETS / "dev_decisions" / f"served_upload_{way}" for way in ("web", "sidebar")}
 DEMO_MAPS = eval_sets.SETS / "demo_maps"
 RETRY_CALLS = eval_sets.SETS / "retry_calls"
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
@@ -193,21 +208,98 @@ def csv_text(rows) -> str:
     return out.getvalue()
 
 
-def tables_of(item, as_csv=False):
+# How each dev set's workbooks reach a client that uploads them (--upload): a workbook file, a live host's cells, a CSV.
+UPLOADS = {"freshdev": "file", "messy": "grids", "wtq": "csv", "databench": "csv"}
+# --upload sidebar: a workbook file as the Google Sheets sidebar sends it, which reads the tab in view first and as many
+# tabs as one read holds (sheets-addon/Code.js workbookPlan_, GRID_LIMITS.sheets), where the web upload refuses a
+# workbook of more worksheets than that. The tab in view is the tab the question was written on.
+SIDEBAR_TABS = 8
+UPLOAD_JS = Path(__file__).with_name("upload_sheets.js")
+
+
+@functools.lru_cache(maxsize=1)
+def _question_tabs() -> dict[str, str]:
+    """{fresh dev item id: the tab its question was written on} (sets/fresh_dev/questions.jsonl "sheet")."""
+    with open(eval_sets.FRESH_DEV / "questions.jsonl", encoding="utf-8") as source:
+        return {f"fd/{row['id']}": str(row.get("sheet") or "") for row in map(json.loads, source)}
+
+
+def workbook_key(item, upload: str | None):
+    """What a replay holds a workbook's request tables by: the workbook, and under the sidebar's way the tab in view."""
+    return (item.book, _question_tabs().get(item.id, "")) if upload == "sidebar" else item.book
+
+
+class UploadRefused(RuntimeError):
+    """The browser's importer refuses the workbook: what the person uploading it meets."""
+
+
+@functools.lru_cache(maxsize=32)
+def _imported(mode: str, source: str) -> tuple[tuple[str, str], ...]:
+    """(name, CSV text) of each table the browser's importer makes of a workbook file or of a host's grids
+    (regress/upload_sheets.js)."""
+    done = subprocess.run(["node", str(UPLOAD_JS), mode, source], capture_output=True, text=True, encoding="utf-8", timeout=900)
+    if done.returncode != 0 or not done.stdout.strip():
+        raise RuntimeError(f"the importer did not run on {source}: {done.stderr.strip()[:300]}")
+    result = json.loads(done.stdout)
+    if not result.get("ok"):
+        said = str(result.get("error"))
+        raise UploadRefused((said[len(source) + 2:] if said.startswith(f"{source}: ") else said)[:300])
+    return tuple((sheet["name"], sheet["csv"]) for sheet in result["sheets"])
+
+
+def uploaded_tables(item, raw: dict, how: str) -> list[dict]:
+    """The request tables a client sends for the item's workbook (--upload), each read as engine/server.py reads an
+    uploaded sheet: csv_table on its CSV text under its canonical name, its grid that CSV's rows. ``how``: "file", the
+    workbook file through the browser's importer, one table a worksheet (named for the file when it holds one sheet,
+    as web/public/index.html names it), or a CSV file as its text; "grids", the loader's tabs through the importer as
+    a live host's cells; "sidebar", the workbook file's tabs so, the tab in view first and SIDEBAR_TABS of them at most;
+    "csv", each tab rendered to CSV text."""
+    tabs = [tab for tab in raw.get("tabs") or () if (tab.get("sheetType") or "grid") == "grid"]
+    path = eval_sets.FRESH_DEV / item.book if how in ("file", "sidebar") else None
+    if path is not None and path.suffix.lower() == ".csv":
+        sheets = ((path.stem, path.read_bytes().decode("utf-8-sig", errors="replace")),)
+    elif how == "file":
+        held = _imported("file", str(path))
+        sheets = held if len(held) > 1 else tuple((path.stem, text) for _name, text in held)
+    elif how in ("grids", "sidebar"):
+        if how == "sidebar":     # the tab in view first, then workbook order, as many as one read holds
+            in_view = _question_tabs().get(item.id, "")
+            tabs = sorted((tab for tab in tabs if tab.get("rows") and len(tab["rows"]) > 1), key=lambda tab: tab["name"] != in_view)[:SIDEBAR_TABS]
+        body = json.dumps(tabs, ensure_ascii=False, sort_keys=True)
+        source = Path(tempfile.gettempdir()) / f"upload-grids-{hashlib.sha256(body.encode('utf-8')).hexdigest()[:20]}.json"
+        if not source.exists():
+            source.write_text(body, encoding="utf-8")
+        sheets = _imported("grids", str(source))
+    else:
+        sheets = tuple((tab["name"], csv_text([list(row) for row in tab.get("rows") or ()])) for tab in tabs if tab.get("rows"))
+    return [csv_table(text, canonical_table_name(name, index)) for index, (name, text) in enumerate(sheets)]
+
+
+def upload_of(name: str, args) -> str | None:
+    """The way set ``name``'s workbooks are uploaded under the run's --upload: UPLOADS, a workbook file under --upload
+    sidebar as the sidebar reads it."""
+    if not args.upload:
+        return None
+    return "sidebar" if args.upload == "sidebar" and UPLOADS[name] == "file" else UPLOADS[name]
+
+
+def tables_of(item, upload: str | None = None, unstyled: bool = False):
     """The request tables of the item's workbook: one per tab its loader built, each carrying that tab as its grid. With
-    as_csv, each grid tab is instead rendered to CSV text (csv_text) and read as an upload is read: named by its canonical
-    table name (engine/request_validation.py) and parsed by engine/tables.py csv_table, its grid the CSV's rows."""
+    ``upload`` (a way of UPLOADS), the tables a client sends for it instead (uploaded_tables). ``unstyled``: each tab
+    without its row styles (bold, fill, underline), said to be unread (engine/sheet/payload.py styleRead): the sheet as
+    a client that parses the file can send it today, since the browser's reader reads values, formats, merges and
+    formulas and no style."""
     try:
         with capturing():
             item.load()
     except _Payload as held:
+        if upload is not None:
+            return normalize_tables(uploaded_tables(item, held.raw, upload))
         tables = []
-        for index, tab in enumerate(held.raw.get("tabs") or ()):
+        for tab in held.raw.get("tabs") or ():
             rows = [list(row) for row in tab.get("rows") or ()]
-            if as_csv:
-                if rows and (tab.get("sheetType") or "grid") == "grid":
-                    tables.append(csv_table(csv_text(rows), canonical_table_name(tab["name"], index)))
-                continue
+            if unstyled:
+                tab = {**{key: value for key, value in tab.items() if key != "rowStyles"}, "styleRead": False}
             tables.append({"name": tab["name"], "columns": [str(cell) for cell in rows[0]] if rows else [], "rows": rows[1:], "grid": tab})
         return normalize_tables(tables)
     raise RuntimeError(f"{item.id}: the loader read no workbook")
@@ -389,8 +481,8 @@ def served_run(names: list[str], args, out: Path, replay: Replay, query_replay: 
                 replay.used = []
                 clock = time.perf_counter()
                 try:
-                    if item.book != book:
-                        book, tables = item.book, tables_of(item)
+                    if workbook_key(item, upload_of(name, args)) != book:
+                        book, tables = workbook_key(item, upload_of(name, args)), tables_of(item, upload_of(name, args), args.unstyled)
                     first, final = entry.ask(tables, item.question)
                     row = served_row(item, name, first if isinstance(first, dict) else {}, final if isinstance(final, dict) else {})
                 except Exception as error:     # a request that raises is an error the person sees
@@ -416,7 +508,7 @@ def served_run(names: list[str], args, out: Path, replay: Replay, query_replay: 
         totals[name] = counts
         print(json.dumps({"set": name, **counts}), flush=True)
         if args.keep:
-            keep_reference(name, measured, SERVED, SERVED_KEPT)
+            keep_reference(name, measured, SERVED_UPLOAD[args.upload] if args.upload else SERVED, SERVED_KEPT)
             print(f"kept {name}'s served records ({len(measured)} questions)", flush=True)
     return totals
 
@@ -558,7 +650,10 @@ def main() -> int:
     parser.add_argument("--tag", default="parity")
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--resume", action="store_true", help="skip questions already recorded (the stock reader's history then differs)")
-    parser.add_argument("--csv", action="store_true", help="each tab rendered to CSV and read as an upload is (a new measurement, not parity)")
+    parser.add_argument("--upload", nargs="?", const="web", choices=("web", "sidebar"),
+                        help="each workbook as a client sends it: the browser importer's CSV of each worksheet (a new measurement, not parity). "
+                             "web (default): a workbook file as the web upload reads it; sidebar: as the Sheets sidebar reads it, the tab in view first, eight tabs a read")
+    parser.add_argument("--unstyled", action="store_true", help="each tab whole but with no row styles, as a client that parses the file could send it today (a new measurement, not parity)")
     parser.add_argument("--record", action="store_true", help="a body the recorded answers lack is sent to the Decisions API and kept in regress/sets/calls")
     parser.add_argument("--keep", action="store_true", help="the run's records become each measured set's reference (a kept change)")
     parser.add_argument("--demo-maps", type=Path, nargs="?", const=DEMO_MAPS, help="the demo set on the request databases built for it on 2026-11-18 (default regress/sets/demo_maps)")
@@ -570,8 +665,14 @@ def main() -> int:
         raise SystemExit(f"sets are {SETS}")
     if args.keep and (args.limit or args.resume):
         raise SystemExit("a reference is a whole set measured in one run: --keep takes neither --limit nor --resume")
-    if args.served and ("demo" in names or args.csv or args.demo_maps):
-        raise SystemExit("--served measures the dev sets as their loaders build them (the demo gate's served run is tests.test_datasets)")
+    if args.served and ("demo" in names or args.demo_maps):
+        raise SystemExit("--served measures the dev sets (the demo gate's served run is tests.test_datasets)")
+    if args.upload and "demo" in names:
+        raise SystemExit("--upload measures the dev sets: the demo gate's datasets are read as uploaded already")
+    if (args.upload or args.unstyled) and args.keep and not (args.served and args.upload):
+        raise SystemExit("--upload and --unstyled are no parity runs: their records are no reference")
+    if args.upload and args.unstyled:
+        raise SystemExit("--upload sends no sheet to leave the styles out of: take one of --upload and --unstyled")
     torch.set_num_threads(args.threads)
     out = ROOT / "regress" / "results" / "dev_decisions" / args.tag
     out.mkdir(parents=True, exist_ok=True)
@@ -614,12 +715,12 @@ def main() -> int:
                         selection = demo.select(item)
                         row["convert_to"] = demo.converted
                     else:
-                        if item.book != book:
+                        if workbook_key(item, upload_of(name, args)) != book:
                             book, tables = None, None
                             request.close()
-                            tables = tables_of(item, args.csv)
+                            tables = tables_of(item, upload_of(name, args), args.unstyled)
                             request.enter_context(scratch_database())
-                            book = item.book
+                            book = workbook_key(item, upload_of(name, args))
                         selection = planner.select_query(item.question, tables)
                     shown = selection.selected if selection.selected is not None else selection.erred
                     rows = selection.answer(shown) if shown is not None else ()
