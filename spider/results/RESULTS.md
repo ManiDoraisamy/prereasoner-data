@@ -10,6 +10,34 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release 4022a06e (the reader says whether a question needs the world; a year beside a comma; the guard) live; Chrome gate 77 of 78 existing and 102 of 102 fresh; world-route answers wait 1.4 to 2.3 s longer for the reading (2026-11-28)
+
+- An engine-only release: no file of the chat service, the web app or the add-ons changed since f38ab725. The engine
+  `prereasoner-api-00371-nif` (`engine@sha256:b581ee82...`, Cloud Build bc5d689d: build, offline regression gate,
+  runtime server smoke, live product suite), tag `reader1st`, health ok, the release smoke job ok (execution sx4nq),
+  100% of traffic from 2026-11-28 10:27 UTC, both engine jobs on the image. Chat `prereasoner-chat-00249-kog` and
+  Hosting e1c723fe40931b49 stay. Rollback: engine `prereasoner-api-00368-qak` by name. Its tag (`retryran`) was
+  removed when the gate passed.
+- Two builds before it failed their live product suite on a test this change had to update (a stand-in for the
+  knowledge delegate, then a live suite that calls the compose host with no links registered): the commits
+  0bb54c9a and 4022a06e fix them, and 4022a06e holds the routing rule only where the world layer registered the
+  request's links, which every served request does. Local, on 4022a06e: the hermetic suites of `tests.run_all`
+  pass; the live suites through the database proxy pass (`tests.test_world` 87 of 87, `tests.test_geo` 73 of 73,
+  `tests.test_datasets`, `test_nongeo`, `test_world_joins`, `test_route_wired`, `test_question_families`,
+  `test_complex_datasets`, `test_request_replay_live`, `test_pg_deadline_live`, `test_scale`).
+- **Chrome gate** on the deployed site (Claude in Chrome on the owner's account, the in-page controller, nothing
+  else running on the machine; harness, captures and notes in `prereasoner-scratch/gate-4022a06e/`). Existing
+  conversations (the 24 of f38ab725's fresh pass): 77 of 78, the miss the known one. Fresh pass: 102 of 102 on the
+  24 datasets, the six uploads among them, no request refused. Marks as at f38ab725 (52 very likely correct, 7
+  likely correct, 1 a question back, 42 none): the rule moved no gate question to another route.
+- **What it costs.** Asking to the turn's end, fresh pass: a median 5.4 s where f38ab725's was 4.9 s (p90 8.8 s,
+  longest 24.4 s). By route, medians against f38ab725's fresh pass: own-data answers 5.0 s -> 5.0 s (47); world or
+  composed answers that convert a currency 4.2 s -> 5.6 s (16); other world or composed answers 5.0 s -> 7.3 s
+  (14). The reader is asked before the world routes, and an answer they give waits for a reading no route uses.
+  Not acceptable as it stands: a question that states its currency, or asks for a world type the upload has no
+  column of, needs the world whatever the reader says, and is the next change.
+
+
 ## The served entry measured for the first time since the Decisions path took over, and the frozen real-sheet sets read once: 172 of 212 government questions and 69 of 79 messy ones right as served (82.8%); the world layer in front of the reader took one government question in six and answered none (2026-11-28)
 
 - Owner, 2026-11-28, after the audit below: "take over and execute till you reach 90%+". Read as: 90% of answers
