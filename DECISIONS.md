@@ -5,6 +5,38 @@ separate frontend repo, three Cloud Run services). Every structural choice below
 deliberately during that consolidation; this file records what changed and why, so reviewers
 don't have to reverse-engineer the reasoning.
 
+## The reader says whether a question needs the world; the search stands in for no undecided answer (2026-11-28)
+
+Measured through the served entry for the first time since the Decisions path took over (`regress/run_dev_decisions.py
+--served`; `spider/results/RESULTS.md`, 2026-11-28): the world layer in front of the own-data path took questions the
+path answers. Its routes (the knowledgebase join, the non-geo lookup, the similarity search, and the clarifications
+they return) decide from the question's words, before the upload is read: a place it names that some routed column
+connects to, a world type's word ("states"), a free-text column with no decided reading. On the fresh dev workbooks
+(US government tables, a state on every line) they took 9 of the first 52 questions and answered none: an error ("no
+foreign key relates sheet ... cannot combine them"), a question back ("3 of the 3 State Name names in your sheet could
+not be matched"), or rows by similarity with no mark; the path's own answer was right on 7 of the 9. On the first 80
+WikiTableQuestions dev questions they took 8, none right.
+
+- `engine/routing.py:upload_answers_alone`: the upload answers a question alone when the one own-data selection
+  decides a reading, answered or warned (`reads_upload_whole`), and that reading reads no column the request's links
+  reach in the knowledgebase (`PoolSelection.reaches_world`, `Catalog.reached`: "city → country", "amount → USD",
+  through a key too). The path reads the upload with those columns beside its own, so a reading that takes none of
+  them is the reader saying the question depends on no world fact. `engine/knowledge_compose.py` asks it of the probe
+  before compose and before the delegate, and the delegate is told (`upload_alone`): no non-geo lookup, no search, no
+  place or world column looked for in the question's words. A stated currency conversion still converts
+  (`world_rate`).
+- A reading that takes a reached column leaves the decision where it was: the world routes answer it, with their
+  derivation. Nothing decided (very likely wrong) leaves it there too: compose or a world join may answer.
+- The similarity search stands in for no undecided answer (`_upload_declines` is deleted). An answer the path holds
+  very likely wrong is served with that mark and owed its retry (2026-11-21, 2026-11-27); the search took it first
+  wherever the sheet had a free-text column, and returned rows with no mark, or an error. It still answers the
+  question it was built for: a free-text predicate filtered by a place the sheet's cells connect to ("who ordered a
+  trench coat in France").
+- Cost: the selection is read before the world routes for every question (it was read before compose only). A
+  question the world routes answer waits for it; one the upload answers skips their lookups.
+- Not changed, and still against "never ask back" (2026-11-21): the world routes' own clarifications ("the query
+  dropped part of the question", "most names matched no knowledgebase entity") when a question reaches them.
+
 ## Nothing lives only on one machine: what git cannot hold is in the archive, pinned by sha256 in the repository (2026-11-23)
 
 The owner's order, repeated the same morning: no artifact may live only in a local folder, and "I can't get it from

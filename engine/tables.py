@@ -33,6 +33,42 @@ from engine.column_names import canonical_columns
 MAX_ROWS, MAX_LEN = 12, 48
 _ENCODE_CACHE_LOCK = threading.Lock()                    # TableQuery._encode: concurrent questions share the caches
 FORBID =re.compile(r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|replace|truncate|vacuum|with)\b", re.I)
+_QUOTE_ENDS = {"'": "'", '"': '"', "`": "`", "[": "]"}
+
+
+def bare_sql(sql: str) -> str | None:
+    """``sql`` with every quoted name and literal emptied and every comment dropped, as SQLite reads them: inside
+    '...' or "..." a doubled quote is the quote itself; `name` and [name] are names; -- runs to the line's end and
+    /* to */. None when a quote or a comment never closes. What is left is the statement's own words: the guard reads
+    its keywords and statement ends there, never in a header or a cell."""
+    out, at, end = [], 0, len(sql)
+    while at < end:
+        character = sql[at]
+        if character in _QUOTE_ENDS:
+            close, stop = _QUOTE_ENDS[character], at + 1
+            while True:
+                stop = sql.find(close, stop)
+                if stop < 0:
+                    return None
+                if close in "'\"" and sql[stop + 1:stop + 2] == close:
+                    stop += 2
+                    continue
+                break
+            out.append(character + close)
+            at = stop + 1
+        elif sql.startswith("--", at):
+            stop = sql.find("\n", at)
+            at = end if stop < 0 else stop
+        elif sql.startswith("/*", at):
+            stop = sql.find("*/", at + 2)
+            if stop < 0:
+                return None
+            out.append(" ")
+            at = stop + 2
+        else:
+            out.append(character)
+            at += 1
+    return "".join(out)
 
 
 def _torch_no_grad(function):
@@ -568,12 +604,20 @@ class TableQuery:
 
     # ---------- guard + execute ----------
     def guard(self, sql):
+        """Whether ``sql`` is one read-only SELECT: (ok, why). Its keywords and statement ends are read outside its
+        quoted names and literals (``bare_sql``). Read in the whole text, a column named "Deaths with COVID-19" or
+        "Last update", or a cell holding a semicolon, made the engine's own query a forbidden one: the answer the
+        Decisions path chose was served as the error "guard: forbidden keyword" (3 of 152 fresh dev questions as
+        served, each right in the replay, which runs no guard; 2026-11-28)."""
         s = sql.strip().rstrip(";")
-        if ";" in s:
+        bare = bare_sql(s)
+        if bare is None:
+            return False, "a quote or a comment never closes"
+        if ";" in bare:
             return False, "multiple statements"
-        if not re.match(r"(?is)\s*select\b", s):
+        if not re.match(r"(?is)\s*select\b", bare):
             return False, "not a SELECT"
-        if FORBID.search(s):
+        if FORBID.search(bare):
             return False, "forbidden keyword"
         return True, "ok"
 

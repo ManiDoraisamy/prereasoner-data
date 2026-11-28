@@ -40,9 +40,12 @@ engine/knowledge.py
         |  one serving entry point
         v
 engine/routing.py
-        |  a question the search reads whole from the upload builds no compose plan and needs no
-        |  world lookup (reads_upload_whole, asked of the search probe's pool); a pool reading that
-        |  names a value the upload holds nowhere ("Europe") leaves the decision to compose
+        |  the reader first: the one own-data selection reads the question over the upload and what the
+        |  request's links reach. A reading it decides that takes no column the links reach in the
+        |  knowledgebase is the upload's answer, and no world route is consulted for it
+        |  (upload_answers_alone). A question the upload reads whole builds no compose plan
+        |  (reads_upload_whole); a reading that takes a reached column ("city → country") leaves the
+        |  decision to the world routes
         |
         +-- DELEGATE --> own-data typed AST, local composition, or ordinary world lookup
         |
@@ -410,7 +413,7 @@ Only the retry (step 8 below) runs a query a model wrote.
 6. `select_query` records it as a `PoolSelection`: the listed candidates (each its typed AST, SQL, answer probability
    and read-as line), ranked by that probability; `selected` (answered or warned), `warned` and `uncertain` (the
    coordinates the runner-up answer reads differently), `sure` (at `T_SURE` or more), or `erred` (the likeliest, when
-   it is very likely wrong: nothing is decided, so compose and the search may answer it). A question longer than
+   it is very likely wrong: nothing is decided, so compose or a world join may answer it). A question longer than
    `decomposition.ONE_QUERY_WORDS` (30) words whose answer is very likely wrong asks, in an analysis, for the
    decomposition proposal (`decomposition.declined_compound`); one it answers is answered.
 8. Any other erred answer is owed its retry (`engine/retry.py`): Gemini 4 Neon (`engine/llm.py:write_query`, the
@@ -459,8 +462,8 @@ numbers is refused naming them (`engine/query_contract.unreadable_operand`) befo
 The response's `planner.selection` records the pool's size, the served member and its rank, the likeliest answer's
 probability, whether it is warned or sure, and the likeliest member when its answer is very likely wrong.
 
-A request answers a question once (`RequestDatabase.answered`) although compose's routing probe, the hybrid search's
-check and the delegate each select. The program language reads one table at a time; what a served request's links
+A request answers a question once (`RequestDatabase.answered`) although the routing probe
+(`engine/knowledge_compose.py`, before any world route) and the delegate each select. The program language reads one table at a time; what a served request's links
 reach (step 3) is a column of that table, so a question over a place's country, a key's other table or an amount in
 another currency reads one table. Two tables no single-column key with unique values links are not joined, nor is a
 Spider schema read through its foreign keys (the Spider evaluator registers no linker). A request answers on one

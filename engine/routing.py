@@ -54,14 +54,39 @@ def reads_upload_whole(question, selection, schema) -> bool:
     the sheet's own cells), so "total amount in Europe by city", Europe being no value of the upload, is decided only
     when the choice finds a reading that answers it without Europe; otherwise it asks back and compose decides.
     Serving and the Spider evaluator both ask this before compose."""
-    from engine.knowledge_query import asked_world_types
-
     if selection is None or selection.selected is None:
         return False
+    return _asks_no_world_fact(question, schema)
+
+
+def _asks_no_world_fact(question, schema) -> bool:
+    """Whether ``question`` names no world measure and asks for no world type that the column records ``schema``
+    lack (``WORLD_MEASURES``, ``asked_world_types``)."""
+    from engine.knowledge_query import asked_world_types
+
     measure = WORLD_MEASURES.search(str(question or ""))
     if measure and not any(measure.group(0).lower() in str(column["name"]).lower() for column in schema):
         return False
     return not asked_world_types(question, schema)
+
+
+def upload_answers_alone(question, selection, schema) -> bool:
+    """Whether the upload answers ``question`` with nothing from the world, by the reader's own account: the upload
+    reads it whole (``reads_upload_whole``) and the reading the Decisions path decided, answered or warned, reads no
+    column the request's links reach in the knowledgebase (engine/sql_rank.py PoolSelection.reaches_world). The path
+    reads the upload with those columns beside its own (engine/program/connected.py), so a reading that takes none of
+    them is the reader saying the question depends on no world fact, and no world route is consulted for it: not the
+    compose plan, the knowledgebase join, the non-geo lookup or the search. Until 2026-11-28 only compose asked the
+    reader; the other routes took any question in which they found a place or a world type's word, before the
+    upload was read: on the fresh dev workbooks (US government tables, a state on every line) 4 of the first 12
+    questions were taken that way and returned an error or a question back, where the path's own answer was right.
+    The world measure and world types the question names are looked for in the compiled workbook's own column names
+    too (``PoolSelection.own_names``): a sheet whose header lies under a title names no column in the planner's
+    records, and "what was the 2020 apportionment population of California?" over a census table was answered with
+    the knowledgebase's population."""
+    if selection is None or selection.selected is None or selection.reaches_world(selection.selected):
+        return False
+    return _asks_no_world_fact(question, [*schema, *selection.own_names()])
 
 
 def _ops(plan):

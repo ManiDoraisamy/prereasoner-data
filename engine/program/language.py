@@ -5,7 +5,7 @@ is a choice a program makes. coordinates() names what a program fills, one coord
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from typing import TypeAlias
 
 from engine.program.names import (ORDER_ENDS, A_COUNT, A_DATE, A_LIST, A_NAME, A_NUMBER, A_PERCENT, A_YES_NO, AFTER, ANY, BEFORE, BETWEEN, BREAKDOWN, CHECK, CHECK_OPS, COMPARE_OPS, EQ, GT, LT, EVERY, EVERY_COLUMN, IS, NO, QUANTIFIERS, SAID_ABOVE, SAID_BELOW, SAME, SLOT_NEIGHBOUR, SLOT_ORDER, SLOT_QUANTIFIER, SLOT_SAID, VERSUS, FIRST, LAST, LOWEST, AGG, AGGREGATES, ANCHORS, ANYWHERE, BY_SIZE, CALC, CALC_OPS, COUNT, COUNT_DISTINCT, LONGEST_RUN, RUN, DIRECTIONS, EACH_BY_SIZE, ENTITY_GROUP, ENTITY_LINE, ENTITY_PEER, HIGHEST,
@@ -687,6 +687,25 @@ def form_of(program: Program) -> str:
     if isinstance(program, Breakdown):
         return BREAKDOWN if program.keys else AGG
     return SHOW if isinstance(program, Show) else AGG if isinstance(program, Agg) else RANK if isinstance(program, Rank) else CHECK if isinstance(program, Check) else CALC
+
+
+def columns_of(program: Program) -> frozenset[Col]:
+    """Every column a program names, wherever it names it: its figure, its keys, its conditions, its order, either
+    side of a calc or a check."""
+    found: set[Col] = set()
+
+    def walk(node) -> None:
+        if isinstance(node, Col):
+            found.add(node)
+        elif is_dataclass(node) and not isinstance(node, type):
+            for field in fields(node):
+                walk(getattr(node, field.name))
+        elif isinstance(node, (tuple, list, frozenset)):
+            for item in node:
+                walk(item)
+
+    walk(program)
+    return frozenset(found)
 
 
 def tables_of(program: Program) -> tuple[str, ...]:

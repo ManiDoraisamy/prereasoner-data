@@ -14,6 +14,10 @@ from engine.sheet.values import aside_number, format_kind, is_error, is_marker, 
 
 
 _RULE = re.compile(r"^(?:[-=_~]\s*){2,}$|^(?:[*.]\s*){3,}$")
+# The leader a printed table runs from a label to its figures ("Alabama...............", "  United States......."):
+# four dots or more ending a text that holds something else. An ellipsis is three.
+_LEADER = re.compile(r"(?<=\S)\s*(?:\.\s*){4,}$")
+_LEADERS_FEWEST = 3
 
 
 def clean(text: str) -> str:
@@ -65,6 +69,25 @@ def read_cell(row: int, col: int, raw: object, number_format: str | None, date19
 class Grid:
     """A tab's filled cells by row, 1-based, each row's cells in column order."""
 
+    def _drop_leaders(self, typed: Mapping[str, str] | None) -> None:
+        """A column of labels a printed table fills with leader dots is read without them: the dots are the page's, as
+        a rule line is, and no part of a name ("California.........." is California: a question finds it, an answer
+        prints it). Only where at least _LEADERS_FEWEST text cells of a grid column end in a leader and they are at
+        least half of its text cells; a cell alone that ends in dots (a sentence trailing off) keeps them."""
+        columns: dict[int, list[Cell]] = {}
+        for line in self.rows.values():
+            for c, cell in line.items():
+                if cell.kind == V_TEXT and isinstance(cell.raw, str):
+                    columns.setdefault(c, []).append(cell)
+        for cells in columns.values():
+            led = [cell for cell in cells if _LEADER.search(cell.raw.rstrip())]
+            if len(led) < _LEADERS_FEWEST or len(led) * 2 < len(cells):
+                continue
+            for cell in led:
+                read = read_cell(cell.row, cell.col, _LEADER.sub("", cell.raw.rstrip()), None, self.tab.date1904, typed)
+                if read is not None:
+                    cell.raw, cell.kind, cell.value, cell.period, cell.format_kind = read.raw, read.kind, read.value, read.period, read.format_kind
+
     def __init__(self, tab: TabPayload, typed: Mapping[str, str] | None = None):
         self.tab = tab
         self.rows: dict[int, dict[int, Cell]] = {}
@@ -92,6 +115,7 @@ class Grid:
                 if line is None:
                     line = self.rows[r] = {}
                 line[c] = cell
+        self._drop_leaders(typed)
         # A line of rule characters is a spacer, decided before anything reads the lines: it names nothing, holds nothing, and its neighbours see a gap.
         self.rule_lines = frozenset(r for r, line in self.rows.items() if all(isinstance(cell.raw, str) and _RULE.match(clean(cell.raw)) for cell in line.values()))
         self.filled = sorted(r for r in self.rows if r not in self.rule_lines)

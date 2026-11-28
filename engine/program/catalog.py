@@ -344,5 +344,15 @@ class Catalog:
             return V_TEXT
         return self.table(column.table).columns[column.position].kind
 
+    def reached(self, column: Col) -> bool:
+        """Whether ``column`` is one the request's links reach in the knowledgebase ("city → country", "amount →
+        USD"; engine/program/connected.py connect), itself or through a key ("customer → city → country"): its
+        values are no cell of the upload. A column a key holds from another request table is that table's own."""
+        if column.position == SECTION:
+            return False
+        table_id, position = self.identities.get((column.table, column.position), (column.table, column.position))
+        held = self.table(table_id).columns[position]
+        return held.col == -1 and bool(held.path) and (table_id, position) not in self.identities
+
 
 __all__ = ["Catalog", "CatalogTable", "KIND_FAMILY", "KIND_NOTES", "KIND_TABLE"]

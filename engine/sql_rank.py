@@ -308,7 +308,7 @@ class PoolSelection:
     names the coordinates the runner-up answer (first listed at ``runner_up``) reads differently
     (engine/program/language.coordinates); ``alike`` when that reading reads word for word like the answer's own (in
     the sheet's header words). When the likeliest answer is very likely wrong (engine/program/closed.py ERRED) the path
-    decides nothing (``selected`` is None, so compose and the search may answer it) and ``erred`` is the likeliest
+    decides nothing (``selected`` is None, so compose or a world join may answer it) and ``erred`` is the likeliest
     candidate, served marked as very likely wrong when its retry (engine/retry.py) cannot answer: None when none
     returned rows.
     ``confidence`` is the likeliest answer's probability and ``probabilities`` the choice's own, per listing (r00, r01,
@@ -349,6 +349,27 @@ class PoolSelection:
 
         prepare(self.programs[index], self.tables)
         return to_plan(self.programs[index], self.catalog, slug, whole_tables)
+
+    def reaches_world(self, index: int) -> bool:
+        """Whether pool member ``index``'s program reads a column the request's links reach in the knowledgebase
+        (engine/program/catalog.py Catalog.reached), rather than the upload's own cells alone. A selection that holds
+        no workbook reaches nothing."""
+        from engine.program.language import columns_of
+
+        if self.catalog is None:
+            return False
+        return any(self.catalog.reached(column) for column in columns_of(self.programs[index]))
+
+    def own_names(self) -> list[dict]:
+        """The compiled workbook's own columns as the planner's column records ({"table", "name"}): each tab's columns
+        as the sheet compiler names them (a header under a title, or over several lines, names its columns only once
+        compiled), without the columns the request's links reach in the knowledgebase."""
+        from engine.program.language import Col
+
+        if self.catalog is None:
+            return []
+        return [{"table": table.table.tab, "name": column.name} for table in self.catalog.tables
+                for position, column in enumerate(table.columns) if not self.catalog.reached(Col(table.id, position))]
 
     def estimated_rows(self, index: int) -> int:
         """The lines pool member ``index`` reads, for the deterministic run's row bound."""

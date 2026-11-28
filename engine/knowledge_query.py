@@ -862,19 +862,6 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         return {"table": table, "conn": conn, "unconn": unconn,
                 "freetext": max(unconn, key=lambda c: self._avglen(table, c))}
 
-    def _upload_declines(self, tables, question):
-        """Whether the own-data path decides no answer to the question (it asks back, or none of its readings ran),
-        the one case a semantic search stands in for it when the question filters by no place. A word check sent
-        every question it found no aggregate word in to the search, before any reading: "what are the priciest terms
-        to advertise on" returned whole rows by similarity (2026-10-30). "who ordered a trench coat in France" stays a
-        search: the world filter is its point. A question that needs a decomposition is not one a search answers."""
-        from engine.decomposition import DecompositionError, search_probe
-        try:
-            probe = search_probe(self, tables, question)
-        except DecompositionError:
-            return True
-        return probe.decomposition_required is None and probe.selection.selected is None
-
     @staticmethod
     def _searchable(plan):
         """Whether a search can read this table's free-text columns within a request: it reads each distinct cell
@@ -1180,10 +1167,17 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             return qid                                                # already a name (defensive) -> pass through
         return self._qid_labels([qid]).get(qid)
 
-    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=()):
+    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=(),
+              upload_alone=False):
         """Hybrid structured+semantic retrieval when the question has a free-text predicate AND the data has a
-        free-text column AND it is not an aggregate; otherwise delegate to EntityQuery (which uses the unified
-        operator via read_op_all). Any hybrid error falls back to EntityQuery so the world path never hard-fails."""
+        free-text column AND it is not an aggregate AND it filters by a place the sheet's cells connect to ("who
+        ordered a trench coat in France": the world filter is the search's point); otherwise delegate to EntityQuery
+        (which uses the unified operator via read_op_all). Any hybrid error falls back to EntityQuery so the world path
+        never hard-fails. ``upload_alone``: the reader decided a reading that takes nothing from the world
+        (engine.routing.upload_answers_alone), so no world route here or below is consulted. The search stands in
+        for no undecided answer: one the own-data path holds very likely wrong is served with that mark and owed its
+        retry (engine/retry.py), where until 2026-11-28 the search took it and returned rows by similarity with no
+        mark, or an error (5 of the first 80 WikiTableQuestions dev questions as served, none right)."""
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, _, _ = self.schema(norm, fks)
         # A total or average of a column the question names whose cells are not all numbers is refused naming the
@@ -1195,7 +1189,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             return {"question": question, "as_of": as_of, "clarify": True, "reason": unreadable,
                     "result": None, "error": None, "model": UNREADABLE_MEASURE_MODEL}
         is_agg = self.read_op_all(question, sch) is not None
-        if is_agg and schema:                                         # NON-GEO world join over synchronized facts
+        if is_agg and schema and not upload_alone:                    # NON-GEO world join over synchronized facts
             ngp = None
             try:
                 ngp = self._nongeo_plan(norm, question, sch)
@@ -1212,9 +1206,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         own = [] if is_agg else self._own_value_matches(question, norm)
         drop = ([cr[2]] if cr else []) + [value for _table, _column, value in own]
         pred = "" if is_agg else semantic_predicate(question, drop, sch, closed)
-        plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred else None
-        if plan and not (self._searchable(plan) and ((plan["conn"] and (cr or own))
-                                                     or self._upload_declines(tables, question))):
+        plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred and not upload_alone else None
+        if plan and not (self._searchable(plan) and plan["conn"] and (cr or own)):
             plan = None
         # The search reads one sheet; a filter on another sheet needs the structured path's joins.
         if plan and any(table != plan["table"]["name"] for table, _column, _value in own):
@@ -1241,7 +1234,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # to EncoderQuery's metric-space operator via MRO.
         res = verify_nonempty(
             EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema,
-                              explicit_fks=explicit_fks, dataset_semantics=dataset_semantics), question)
+                              explicit_fks=explicit_fks, dataset_semantics=dataset_semantics,
+                              upload_alone=upload_alone), question)
         if isinstance(res, dict) and res.get("decomposition_required"):
             return {
                 "question": question,

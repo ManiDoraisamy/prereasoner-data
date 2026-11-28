@@ -398,7 +398,68 @@ def test_the_retry_reads_what_the_links_reach() -> None:
     print("  PASS  the retry reads what the request's links reach")
 
 
+def test_a_reading_of_the_uploads_own_columns_takes_nothing_from_the_world() -> None:
+    """engine/routing.py upload_answers_alone: the reader's decided reading says whether a question depends on the
+    world. One that reads the upload's own columns, or another request table's through a key, takes nothing from it
+    and no world route is consulted; one that reads a column the links reach in the knowledgebase (a city's country,
+    an amount in another currency), anywhere in it and through a key too, does. Until 2026-11-28 the world routes took
+    any question whose words named a place or a world type before the upload was read ("how many orders came from
+    Paris" over a sheet whose City cells say Paris was joined to the knowledgebase)."""
+    from engine.program.language import Agg, Calc, Col, Equals, columns_of
+    from engine.program.names import MINUS, SUM
+    from engine.routing import upload_answers_alone
+    from engine.sql_candidate import ScoredQuery
+    from engine.sql_rank import PoolSelection
+
+    _key, _plain, _connected_key, connected = _connected("USD")
+    catalog = connected.catalog
+    names = _names(catalog)
+
+    def col(name):
+        return Col("t0", names.index(name))
+    amount, city, tier = col("Amount"), col("City"), col(f"Customer{ARROW}Tier")
+    country, usd = col(f"City{ARROW}country"), col(f"Amount{ARROW}USD")
+    assert not catalog.reached(amount) and not catalog.reached(city)
+    assert not catalog.reached(tier), "a key's column is the other request table's own"
+    assert catalog.reached(country) and catalog.reached(usd) and catalog.reached(col(f"City{ARROW}country{ARROW}continent"))
+    own = Agg(SUM, amount, "t0", (Equals(city, "paris"), Equals(tier, "gold")))
+    assert columns_of(own) == {amount, city, tier}
+    filtered = Agg(SUM, amount, "t0", (Equals(country, "france"),))
+    converted = Agg(SUM, usd, "t0")
+    one_side = Calc(Agg(SUM, amount, "t0"), MINUS, filtered)
+    programs = (own, filtered, converted, one_side)
+    schema = [{"name": name, "table": "orders"} for name in ORDERS["columns"]]
+
+    def selection(selected, warned=False):
+        pool = tuple(ScoredQuery(None, "", 0.0, ("",)) for _ in programs)
+        return PoolSelection(pool, tuple(range(len(pool))), selected, 0.7, None, warned, programs=programs, catalog=catalog)
+    question = "total amount for gold customers in Paris"
+    assert not selection(0).reaches_world(0)
+    assert all(selection(index).reaches_world(index) for index in (1, 2, 3))
+    assert upload_answers_alone(question, selection(0), schema)
+    assert upload_answers_alone(question, selection(0, warned=True), schema), "a warned reading is still the reader's"
+    assert not any(upload_answers_alone(question, selection(index), schema) for index in (1, 2, 3))
+    assert not upload_answers_alone(question, selection(None), schema), "nothing decided: the world routes may answer"
+    assert not upload_answers_alone("total amount by continent", selection(0), schema), "a world type the upload lacks"
+    assert not upload_answers_alone("the population of Paris", selection(0), schema), "the links reach a population; the upload holds none"
+    # A sheet whose header lies under a title names no column in the planner's records (its first line is the title):
+    # the compiled workbook's own names say what the upload holds. "What was the 2020 apportionment population of
+    # California?" over a census table was answered with the knowledgebase's population (fresh dev, 2026-11-28).
+    from types import SimpleNamespace
+    titled = SimpleNamespace(tables=[SimpleNamespace(id="t0", table=SimpleNamespace(tab="Table 1"), columns=[
+        SimpleNamespace(name="State"), SimpleNamespace(name="Apportionment population (April 1, 2020)")])], reached=lambda column: False)
+    census = PoolSelection((ScoredQuery(None, "", 0.0, ("",)),), (0,), 0, 0.7, None, False,
+                           programs=(Agg(SUM, Col("t0", 1), "t0", (Equals(Col("t0", 0), "california"),)),), catalog=titled)
+    raw = [{"name": "Table 1. Apportionment and number of representatives", "table": "Table 1"}, {"name": "", "table": "Table 1"}]
+    assert census.own_names() == [{"table": "Table 1", "name": "State"}, {"table": "Table 1", "name": "Apportionment population (April 1, 2020)"}]
+    assert upload_answers_alone("What was the 2020 apportionment population of California?", census, raw)
+    assert upload_answers_alone("which state has the largest apportionment population?", census, raw)
+    assert not upload_answers_alone("which continent has the largest apportionment population?", census, raw)
+    print("  PASS  a reading of the upload's own columns takes nothing from the world; one a link reaches does")
+
+
 TESTS = [
+    test_a_reading_of_the_uploads_own_columns_takes_nothing_from_the_world,
     test_the_retry_reads_what_the_links_reach,
     test_a_key_and_what_it_reaches_hold_the_other_tables_values,
     test_an_answer_names_a_column_a_key_reaches_by_its_sheets_header,

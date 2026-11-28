@@ -597,6 +597,29 @@ def test_rule_lines_are_spacers_and_never_names():
     assert model.lines[1].role == names.BLANK and names.S_RULE_LINE in model.lines[1].signals
 
 
+def test_a_label_columns_leader_dots_are_the_pages():
+    """A printed table runs dots from each label to its figures (the Census Bureau's school finance tables:
+    "Alabama...............", "  United States......."). Read as part of the name, no question found the line
+    ("how much did California receive" was offered "united states......" and the line after it) and an answer printed
+    the dots (2026-11-28). A column most of whose text cells end in a leader is read without them; a sentence that
+    trails off among other cells keeps its dots."""
+    from engine.program.semantics import cell_text, cell_written
+    rows = [["Geographic area", "Total", "Note"], ["  United States.......", 878417472, "see page 3...."],
+            ["Alabama...............", 10656351, ""], ["Alaska................", 2769266, "revised"],
+            ["California . . . . . .", 122000000, ""], ["New York", 90000000, "as reported"]]
+    table = _tab(rows).tables[0]
+    labels = [cell_text(line.cells.get(0)) for line in table.lines]
+    assert labels == ["United States", "Alabama", "Alaska", "California", "New York"], labels
+    assert [cell_written(line.cells.get(0)) for line in table.lines][:2] == ["United States", "Alabama"]
+    assert cell_text(table.lines[0].cells.get(2)) == "see page 3....", "one cell that trails off keeps its dots"
+    # two led cells are not a column of leaders
+    few = _tab([["Name", "Amount"], ["Ann....", 1], ["Bob....", 2], ["Cy", 3], ["Di", 4], ["Ed", 5]]).tables[0]
+    assert [cell_text(line.cells.get(0)) for line in few.lines][:2] == ["Ann....", "Bob...."]
+    # a label that is a year under its leader is read as the year it is
+    years = _tab([["Year", "Amount"], ["1990.....", 1], ["1991.....", 2], ["1992.....", 3]]).tables[0]
+    assert [cell_text(line.cells.get(0)) for line in years.lines] == ["1990", "1991", "1992"]
+
+
 def test_no_header_inside_the_filter_range():
     # F6a: lines inside the autofilter that read like names opened new tables and named columns from data.
     body = [[f"Plant {i}", f"Tank {i}", 100 + i] for i in range(1, 12)]
@@ -1065,7 +1088,7 @@ TESTS = [
     test_a_key_left_of_repeated_names_goes_with_every_block, test_all_names_alike_are_a_peer_run_not_blocks, test_a_label_spanning_the_key_beside_a_figure_is_printed, test_a_column_beyond_the_named_blocks_stays_in_a_table,
     test_the_line_model_artifact_is_small_pinned_and_retrains_the_same, test_training_labels_hold_row_numbers_and_hashes_only, test_a_units_line_repeating_over_new_names_opens_a_table, test_a_total_word_naming_a_column_can_be_a_header,
     test_a_closing_total_ends_its_table_when_records_resume, test_titles_with_one_cell_a_block_part_side_by_side_blocks, test_each_side_by_side_list_has_its_own_bands, test_a_lone_label_between_a_total_and_figures_is_a_band, test_axes_cross_spacers_and_totals_and_reach_flag_columns,
-    test_a_later_line_styled_as_the_header_is_a_header, test_rule_lines_are_spacers_and_never_names, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,
+    test_a_later_line_styled_as_the_header_is_a_header, test_rule_lines_are_spacers_and_never_names, test_a_label_columns_leader_dots_are_the_pages, test_no_header_inside_the_filter_range, test_a_data_line_joined_to_a_repeated_header_stays_data, test_a_lone_data_line_called_a_header_stays_in_its_table,
     test_a_spacer_column_does_not_part_labels_from_their_figures, test_statistic_lines_under_a_date_key_are_printed, test_a_repeated_block_that_differs_opens_a_section, test_a_repeat_after_a_band_keeps_the_bands_section,
     test_the_lone_title_over_a_header_is_the_first_band, test_text_records_after_a_dated_title_stay_records, test_a_last_record_with_a_long_name_and_no_figure_stays_a_record, test_a_solid_block_ending_early_does_not_fill_down, test_a_sparse_comment_right_of_a_full_key_does_not_fill_down,
     test_continuation_lines_take_no_label, test_a_family_says_how_much_its_members_repeat_each_other, test_a_date_from_the_clock_is_no_as_of, test_an_unchanged_sheet_keeps_its_hash_and_its_model,

@@ -39,8 +39,19 @@ before then.
 retried over its workbook's tables as TableQuery.serve retries it, and its rows are graded (right, wrong, the sheet
 cannot answer it, or the retry failed); the retry model's answers are kept by body hash in regress/sets/retry_calls.
 
+--served is a new measurement, not parity: each question through the served entry, as the engine's server serves it
+(engine/knowledge.py KnowledgeReasoner.serve inside an analysis execution context on its own request database,
+regress/live_schema.py served: the coverage pre-gate, the request's links read from the live knowledgebase, the
+world and compose routes, the calculation gate, then the own-data selection), and then the retry its mark owes
+(KnowledgeReasoner.settled), as a chat client asks it. It needs a live Postgres (KB_PG_*), sends the bodies the store
+lacks (it implies --record, and keeps the retry's answers as --retry does), and reports, per set, what the person gets
+(an answer, a question back, a chat reply, an error), how many are right before and after the retry, and each question
+the served entry loses or gains against the reference's always-answering pick. Its records are
+<out>/<set>.served.jsonl; --keep writes them to regress/sets/dev_decisions/served/<set>.jsonl.gz.
+
 usage: python -X utf8 -m regress.run_dev_decisions [--sets messy,freshdev] [--limit N] [--tag NAME] [--threads 4] [--resume]
                                                    [--record] [--keep] [--csv] [--sets demo [--demo-maps [DIR]]] [--retry]
+                                                   [--served]
 """
 from __future__ import annotations
 
@@ -72,11 +83,14 @@ from regress import eval_sets
 
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCE = eval_sets.SETS / "dev_decisions" / "reference"
+SERVED = eval_sets.SETS / "dev_decisions" / "served"
 DEMO_MAPS = eval_sets.SETS / "demo_maps"
 RETRY_CALLS = eval_sets.SETS / "retry_calls"
 SETS = ("messy", "wtq", "databench", "freshdev", "demo")
 # The fields of a record that the reference keeps (its timing and comparison are the run's own)
 KEPT = ("id", "set", "kind", "label", "mass", "listed", "listed_answer", "listed_right", "choose_p", "read_as", "error", "miss", "convert_to", "calls", "level")
+# The fields of a served record that are kept (--served --keep)
+SERVED_KEPT = ("id", "set", "route", "level", "confidence", "first", "first_right", "final", "final_right", "final_route", "retried", "read_as", "why", "calls")
 DEMO_AS_OF = "2026-11-18"
 CENT = 0.01                 # run_connected.py: a scalar within one cent, a row's cells to the cent
 
@@ -262,12 +276,152 @@ def reference(name: str, folder: Path = REFERENCE) -> dict:
         return {row["id"]: row for row in map(json.loads, source) if row}
 
 
-def keep_reference(name: str, rows: list[dict], folder: Path = REFERENCE) -> None:
+def keep_reference(name: str, rows: list[dict], folder: Path = REFERENCE, kept: tuple = KEPT) -> None:
     """A kept change's records as the set's reference: the fields KEPT, one line each, no timestamp in the archive."""
     folder.mkdir(parents=True, exist_ok=True)
     with open(folder / f"{name}.jsonl.gz", "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=9) as sink:
         for row in rows:
-            sink.write((json.dumps({key: row.get(key) for key in KEPT if key in row}, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8"))
+            sink.write((json.dumps({key: row.get(key) for key in kept if key in row}, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8"))
+
+
+class ServedEntry:
+    """Each question as a served request: engine/knowledge.py KnowledgeReasoner.serve inside an analysis execution
+    context on its own request database (regress/live_schema.py served, which the live suites use), then the retry its
+    mark owes (KnowledgeReasoner.settled), as a chat client asks it after it has shown the answer. ``ask`` returns the
+    engine's own answer and the settled one (the same response when no retry was owed or the retry did not answer)."""
+
+    def __init__(self):
+        from engine.knowledge import KnowledgeReasoner
+        from regress.live_schema import live_schema
+        self.reasoner = KnowledgeReasoner()
+        self.schema = live_schema().name
+        self.first = None
+
+    def serve(self, tables, question, schema):
+        self.first = self.reasoner.serve(tables, question, schema)
+        return self.first
+
+    def settled(self, response, tables, question):
+        return self.reasoner.settled(response, tables, question)
+
+    def ask(self, tables, question) -> tuple[dict, dict]:
+        from regress.live_schema import served
+        self.first = None
+        final = served(self.schema, self.serve, tables, question, self.schema)
+        return self.first, final
+
+
+def served_outcome(item, response) -> tuple[str, bool]:
+    """What a served response is to the person, and whether it is right: an answer (graded on its rows), a question
+    back ("asked"; "parts" when the engine asks the chat for the question's parts), a chat reply (the coverage pre-gate
+    found no data question, so the chat model answers without the sheet), or an error."""
+    if not isinstance(response, dict):
+        return "error", False
+    if response.get("clarify"):
+        return ("parts" if response.get("decomposition_required") else "asked"), False
+    result = response.get("result")
+    rows = result.get("rows") if isinstance(result, dict) else None
+    if rows:
+        return "answer", graded(item, rows)
+    if response.get("low_confidence"):
+        return "chat", False
+    return "error", False
+
+
+def served_row(item, name: str, first: dict, final: dict) -> dict:
+    check = first.get("check") if isinstance(first.get("check"), dict) else {}
+    first_outcome, first_right = served_outcome(item, first)
+    final_outcome, final_right = served_outcome(item, final)
+    why = final.get("reason") if final.get("clarify") else final.get("error")
+    return {"id": item.id, "set": name, "route": first.get("model"), "level": check.get("level"), "confidence": check.get("confidence"),
+            "first": first_outcome, "first_right": first_right, "final": final_outcome, "final_right": final_right,
+            "final_route": final.get("model"), "retried": final is not first and (final.get("check") or {}).get("state") == "retried",
+            "read_as": str(first.get("read_as") or "")[:300], "why": str(why)[:300] if why else None}
+
+
+def served_summary(rows: list[dict], held: dict) -> dict:
+    """A served run's counts: what the person gets and how many are right, before the retry (the engine's own answer)
+    and after it; by route and by mark; and, against the reference's always-answering pick on the same questions
+    (pick_right: the selection alone, below the served entry), the questions the served entry loses and gains."""
+    def tally(key: str, right: str) -> dict:
+        groups: dict = {}
+        for row in rows:
+            of = groups.setdefault(str(row.get(key)), {"n": 0, "right": 0})
+            of["n"] += 1
+            of["right"] += bool(row[right])
+        return dict(sorted(groups.items()))
+
+    counts = {"n": len(rows), "first_right": sum(row["first_right"] for row in rows), "final_right": sum(row["final_right"] for row in rows),
+              "first": tally("first", "first_right"), "final": tally("final", "final_right"), "route": tally("route", "first_right"),
+              "level": tally("level", "first_right"), "retried": tally("retried", "final_right"),
+              "reference_pick": 0, "lost": {}, "gained": 0, "lost_ids": [], "gained_ids": []}
+    for row in rows:
+        theirs = held.get(row["id"])
+        if theirs is None:
+            continue
+        picked = pick_right(theirs)
+        counts["reference_pick"] += picked
+        if picked and not row["first_right"]:
+            where = f"{row['first']} / {row['route']}"
+            counts["lost"][where] = counts["lost"].get(where, 0) + 1
+            counts["lost_ids"].append(row["id"])
+        elif row["first_right"] and not picked:
+            counts["gained"] += 1
+            counts["gained_ids"].append(row["id"])
+    return counts
+
+
+def served_run(names: list[str], args, out: Path, replay: Replay, query_replay: QueryReplay) -> dict:
+    """--served: every question of ``names`` through ServedEntry, one record each."""
+    entry = ServedEntry()
+    totals = {}
+    for name in names:
+        items = items_of(name, args.limit)
+        held = reference(name)
+        target = out / f"{name}.served.jsonl"
+        measured = []
+        if args.resume and target.exists():
+            measured = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line.strip()]
+        done = {row["id"] for row in measured}
+        started = time.time()
+        book, tables = None, None
+        with open(target, "a" if args.resume else "w", encoding="utf-8", newline="\n") as sink:
+            for at, item in enumerate(items):
+                if item.id in done:
+                    continue
+                replay.used = []
+                clock = time.perf_counter()
+                try:
+                    if item.book != book:
+                        book, tables = item.book, tables_of(item)
+                    first, final = entry.ask(tables, item.question)
+                    row = served_row(item, name, first if isinstance(first, dict) else {}, final if isinstance(final, dict) else {})
+                except Exception as error:     # a request that raises is an error the person sees
+                    row = {"id": item.id, "set": name, "route": None, "level": None, "confidence": None, "first": "error", "first_right": False,
+                           "final": "error", "final_right": False, "final_route": None, "retried": False, "read_as": "",
+                           "why": f"{type(error).__name__}: {str(error)[:200]}"}
+                row["calls"] = sorted(replay.used)
+                row["seconds"] = round(time.perf_counter() - clock, 3)
+                theirs = held.get(item.id)
+                if theirs is not None:
+                    row["reference_label"], row["reference_pick"] = theirs["label"], pick_right(theirs)
+                sink.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+                sink.flush()
+                measured.append(row)
+                if row.get("reference_pick") and not row["first_right"]:
+                    print(f"LOST {name} {item.id}: {row['first']} / {row['route']}: {item.question[:90]} | {row['why'] or row['read_as'][:120]}", flush=True)
+                if (at + 1) % 25 == 0:
+                    print(f"{name} {at + 1}/{len(items)} {round(time.time() - started)}s first right {sum(r['first_right'] for r in measured)} "
+                          f"final right {sum(r['final_right'] for r in measured)}", flush=True)
+        counts = served_summary(measured, held)
+        counts["seconds"] = round(time.time() - started, 1)
+        counts["retry_tokens_sent"] = list(query_replay.tokens)
+        totals[name] = counts
+        print(json.dumps({"set": name, **counts}), flush=True)
+        if args.keep:
+            keep_reference(name, measured, SERVED, SERVED_KEPT)
+            print(f"kept {name}'s served records ({len(measured)} questions)", flush=True)
+    return totals
 
 
 @dataclass(frozen=True)
@@ -412,23 +566,30 @@ def main() -> int:
     parser.add_argument("--keep", action="store_true", help="the run's records become each measured set's reference (a kept change)")
     parser.add_argument("--demo-maps", type=Path, nargs="?", const=DEMO_MAPS, help="the demo set on the request databases built for it on 2026-11-18 (default regress/sets/demo_maps)")
     parser.add_argument("--retry", action="store_true", help="retry each erred question as serving does; the retry model's answers are kept in regress/sets/retry_calls")
+    parser.add_argument("--served", action="store_true", help="each question through the served entry and the retry its mark owes (a new measurement, not parity; needs a live Postgres)")
     args = parser.parse_args()
     names = args.sets.split(",")
     if any(name not in SETS for name in names):
         raise SystemExit(f"sets are {SETS}")
     if args.keep and (args.limit or args.resume):
         raise SystemExit("a reference is a whole set measured in one run: --keep takes neither --limit nor --resume")
+    if args.served and ("demo" in names or args.csv or args.demo_maps):
+        raise SystemExit("--served measures the dev sets as their loaders build them (the demo gate's served run is tests.test_datasets)")
     torch.set_num_threads(args.threads)
     out = ROOT / "regress" / "results" / "dev_decisions" / args.tag
     out.mkdir(parents=True, exist_ok=True)
     # one batch per process: the sets of one tag run in parallel processes, and two appending to one file interleave
     batch = f"{datetime.date.today().isoformat()}-{args.tag}-{'_'.join(args.sets.split(','))}-{os.getpid()}"
-    replay = Replay(eval_sets.CallStore(eval_sets.CALLS, batch), out / "misses", args.record)
+    replay = Replay(eval_sets.CallStore(eval_sets.CALLS, batch), out / "misses", args.record or args.served)
     llm.DECISIONS_TRANSPORT = replay
     query_replay = None
-    if args.retry:
+    if args.retry or args.served:
         query_replay = QueryReplay(eval_sets.CallStore(RETRY_CALLS, batch))
         llm.QUERY_TRANSPORT = query_replay
+    if args.served:
+        totals = served_run(names, args, out, replay, query_replay)
+        (out / f"served_{'_'.join(names)}.json").write_bytes((json.dumps(totals, indent=1) + "\n").encode("utf-8"))
+        return 0
     planner = TableQuery()
     totals = {}
     demo = DemoRequests(args.demo_maps) if "demo" in names else None

@@ -494,7 +494,9 @@ def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
     then could not own the plan. A question the Decisions path decides from the upload, and that names no world
     type the upload lacks, goes straight to the delegate (engine.decomposition.search_probe's selection,
     engine.routing.reads_upload_whole). One naming a world type the upload lacks ("continent"), or one the path
-    asks back, still builds the compose plan, world lookup included."""
+    asks back, still builds the compose plan, world lookup included. Since 2026-11-28 the delegate is told that
+    the reader's reading takes nothing from the world (engine.routing.upload_answers_alone), so its own world
+    routes (the knowledgebase join, the non-geo lookup, the search) are not consulted either."""
     from unittest.mock import Mock
 
     from engine.deterministic.context import analysis_execution_context
@@ -530,9 +532,12 @@ def test_a_question_the_upload_reads_whole_skips_the_world_lookup():
         assert host.serve([orders], "total amount by plan", sub) is served
         host._world_lookup.assert_not_called()
         host.reason.run.assert_not_called()
+        host._composed.assert_not_called()
+        assert host.qw.serve.call_args.kwargs["upload_alone"] is True, "the delegate's world routes are not consulted"
         # Contrast: "continent" is no column or value of the upload, so the world may hold it.
         host.serve([orders], "total amount by continent", sub)
         host._world_lookup.assert_called_once()
+        assert "upload_alone" not in host.qw.serve.call_args.kwargs
         # Contrast: a question the path asks back does not say the upload answers it.
         unsure = host_of(False)
         unsure.serve([orders], "total amount by plan", sub)

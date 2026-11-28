@@ -681,7 +681,35 @@ class KnowledgeTableQuery:
                      f' AND ({qident(R)}.{qident("valid_to")} IS NULL OR {qlit(as_of)} < {qident(R)}.{qident("valid_to")})')
         return cond
 
-    def serve(self, tables, question, as_of=None, explicit_fks=(), dataset_semantics=()):
+    def _serve_upload(self, tables, question, as_of, explicit_fks, norm, routes, coldims):
+        """The upload's own answer (engine/tables.py TableQuery.serve) in this layer's response: no world table, no
+        meaning join."""
+        r = (self.q11.serve(tables, question, explicit_fks=explicit_fks)
+             if explicit_fks else self.q11.serve(tables, question))
+        response = {"question": question, "as_of": as_of, "sql": r.get("sql"), "result": r.get("result"),
+                "error": r.get("error"), "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()},
+                "dims": coldims, "meaning_join": None, "provenance": None, "warnings": [],
+                "planner": {
+                    "ast": r.get("ast"),
+                    "candidate_count": r.get("candidate_count"),
+                    "evidence": r.get("evidence", []), "features": r.get("features", {}),
+                    "selection": r.get("selection"),
+                },
+                "computation": r.get("computation"),
+                "debug": self._debug_input(norm, question, [],   # own-data path: no world table, no meaning plan
+                    [{"col": f'{t["name"]}.{c}', "dims": coldims.get(c)} for t in norm for c in t["columns"] if coldims.get(c)], [], True),
+                "model": r.get("model", "engine - own-data planner (own-data SQL; no world-knowledge join)")}
+        if r.get("calculations") is not None:
+            response["calculations"] = r["calculations"]
+        if r.get("currency") is not None:  # compatibility projection of calculations
+            response["currency"] = r["currency"]
+        for key in ("views", "deterministic", "read_as", "unit", "coverage", "selection", "check",
+                    "clarify", "reason", "dropped", "retry"):
+            if r.get(key) is not None:
+                response[key] = r[key]
+        return response
+
+    def serve(self, tables, question, as_of=None, explicit_fks=(), dataset_semantics=(), upload_alone=False):
         as_of = as_of or datetime.date.today().isoformat()    # the DECISION time the answer is computed "as of"
         norm, fks = (
             self.q11.ingest(tables, explicit_fks=explicit_fks)
@@ -696,6 +724,10 @@ class KnowledgeTableQuery:
         conversion_early = self._currency_conversion_binding(question, agg, sch, fks)
         if conversion_early is None:                          # rate sheet binds (own data first)
             world_rate = self._world_rate_binding(question, agg, sch, dataset_semantics)
+        if upload_alone and world_rate is None:
+            # The reader decided a reading that takes nothing from the world (engine.routing.upload_answers_alone):
+            # no place or world column is looked for in the question's words.
+            return self._serve_upload(tables, question, as_of, explicit_fks, norm, routes, coldims)
         q_for_mf = question
         if conversion_early or world_rate:
             # The conversion phrase is CLAIMED by the conversion: "in US dollars" must not also read
@@ -749,30 +781,7 @@ class KnowledgeTableQuery:
             wtarget = None                                   # "total amount for all European countries": the world
                                                              # word only names the rows the aggregate runs over
         if mf is None and wtarget is None and world_rate is None:   # neither a world filter NOR a world column NOR a
-            r = (self.q11.serve(tables, question, explicit_fks=explicit_fks)
-                 if explicit_fks else self.q11.serve(tables, question))
-            response = {"question": question, "as_of": as_of, "sql": r.get("sql"), "result": r.get("result"),
-                    "error": r.get("error"), "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()},
-                    "dims": coldims, "meaning_join": None, "provenance": None, "warnings": [],
-                    "planner": {
-                        "ast": r.get("ast"),
-                        "candidate_count": r.get("candidate_count"),
-                        "evidence": r.get("evidence", []), "features": r.get("features", {}),
-                        "selection": r.get("selection"),
-                    },
-                    "computation": r.get("computation"),
-                    "debug": self._debug_input(norm, question, [],   # own-data path: no world table, no meaning plan
-                        [{"col": f'{t["name"]}.{c}', "dims": coldims.get(c)} for t in norm for c in t["columns"] if coldims.get(c)], [], True),
-                    "model": r.get("model", "engine - own-data planner (own-data SQL; no world-knowledge join)")}
-            if r.get("calculations") is not None:
-                response["calculations"] = r["calculations"]
-            if r.get("currency") is not None:  # compatibility projection of calculations
-                response["currency"] = r["currency"]
-            for key in ("views", "deterministic", "read_as", "unit", "coverage", "selection", "check",
-                        "clarify", "reason", "dropped", "retry"):
-                if r.get(key) is not None:
-                    response[key] = r[key]
-            return response
+            return self._serve_upload(tables, question, as_of, explicit_fks, norm, routes, coldims)
         # ---- WORLD-KNOWLEDGE path — uploaded FK joins + the meaning joins, WHERE from the world filter (if any)
         # AND any own-sheet values the question also quoted ("GOLD customers in France") ----
         mtab = (mf["csv_table"] if mf else wtarget["path"][0]["left_table"] if wtarget

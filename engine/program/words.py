@@ -27,7 +27,10 @@ from engine.sheet.names import P_DAY, P_MONTH, P_RANGE, P_YEAR
 from engine.sheet.values import parse_period
 
 _TOKEN = re.compile(r"[^\W_]+")      # a word of any script, as index.words_of reads the sheet's words
-_YEAR = re.compile(r"(?<![\w.,/:-])((?:19|20)\d{2})(?![\w.,/:-])")
+# A year the question writes in digits. A comma or a full stop beside it is the sentence's ("In fiscal year 2023, which
+# ...", "... no later than 1960."), a number's only with a digit on its other side ("2,020", "2020.5"): until 2026-11-28
+# either one beside a year left it unread, as a period and as a number both.
+_YEAR = re.compile(r"(?<![\w/:-])(?<!\d[.,])((?:19|20)\d{2})(?![\w/:-]|[.,]\d)")
 # A year ending in 0 written with letters glued on ("the 1970s", "1800's", "1970er", "1970年代"): the ten or hundred years
 # it begins, which the stated period question offers (engine/program/closed.py); its digits are no amount.
 YEARS_FROM = re.compile(r"(?<![\w.,/:-])((?:1\d|20)\d0)['’]?(?=[^\W\d_])")

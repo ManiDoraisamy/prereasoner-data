@@ -532,6 +532,26 @@ class ComposedKnowledgeQuery:
         if explicit_fks:
             return self.qw.serve(tables, question, as_of=as_of, schema=sub,
                                  explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
+        # The reader first: the one own-data selection (engine/decomposition.py search_probe, once per request)
+        # reads the question over the upload and what the request's links reach. A reading it decides that takes
+        # nothing from the world is the upload's answer (engine.routing.upload_answers_alone), and no world route
+        # is consulted for it. The probe selects but never executes.
+        from engine.deterministic.context import current_analysis_context
+        from engine.decomposition import DecompositionError, search_probe
+        from engine.routing import reads_upload_whole, upload_answers_alone
+
+        probe = probe_failed = None
+        if current_analysis_context() is not None:
+            try:
+                with request_timing.span("decompose_probe"):
+                    probe = search_probe(self.qw, tables, question)
+            except DecompositionError as exc:
+                probe_failed = exc
+        if (probe is not None and probe.decomposition_required is None
+                and upload_answers_alone(question, probe.selection, probe.schema)):
+            request_timing.count("world_lookup_skipped")
+            return self.qw.serve(tables, question, as_of=as_of, schema=sub, dataset_semantics=dataset_semantics,
+                                 upload_alone=True)
         if self._composed(tables, question):
             # _composed is EVIDENCE (primitive-head / world-measure cue) that a compose plan is worth building.
             # Ownership goes through engine.routing.route alone, as in evaluation; a plan it accepts is
@@ -539,18 +559,10 @@ class ComposedKnowledgeQuery:
             #
             # A compound question can also carry compose surface ("top 3 ... and top 2 ..."), and a
             # composed top-N would answer one fragment of it. Consult the SAME selected-candidate
-            # predicate the delegate applies (engine/decomposition.py) before composing; the probe
-            # selects but never executes.
-            from engine.deterministic.context import current_analysis_context
-            from engine.decomposition import DecompositionError, search_probe
-            from engine.routing import reads_upload_whole
-
+            # predicate the delegate applies (engine/decomposition.py) before composing.
             own_data = False
-            if current_analysis_context() is not None:
-                try:
-                    with request_timing.span("decompose_probe"):
-                        probe = search_probe(self.qw, tables, question)
-                except DecompositionError:
+            if probe is not None or probe_failed is not None:
+                if probe_failed is not None:
                     return {
                         "question": question,
                         "as_of": as_of,

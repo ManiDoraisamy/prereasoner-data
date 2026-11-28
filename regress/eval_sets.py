@@ -353,6 +353,7 @@ def databench(split: str = "dev", max_rows: int | None = None) -> list[Item]:
 
 # ------------------------------------------------------------------------------------------------------- fresh dev
 FRESH_DEV = SETS / "fresh_dev"
+FRESH_FROZEN = SETS / "fresh_frozen"
 RELATIVE = 1e-4
 SERIAL_FIRST, SERIAL_LAST = 1, 2958465     # Excel's serial days (1900-01-01 .. 9999-12-31)
 _fresh_common = None
@@ -477,11 +478,11 @@ def fresh_workbook(path: Path) -> dict:
     return {"name": path.name, "tabs": [{"name": path.stem, "rows": rows}]}
 
 
-def _fresh_loader(name: str):
+def _fresh_loader(name: str, root: Path = FRESH_DEV):
     def load():
         from engine.program.catalog import Catalog
         from engine.sheet import compile_workbook, workbook_from_json
-        return Catalog.from_model(compile_workbook(workbook_from_json(fresh_workbook(FRESH_DEV / "workbooks" / Path(name).name))))
+        return Catalog.from_model(compile_workbook(workbook_from_json(fresh_workbook(root / "workbooks" / Path(name).name))))
     return load
 
 
@@ -499,6 +500,27 @@ def fresh_dev() -> list[Item]:
             answer_type, gold = row["answer_type"], row["gold"]
             items.append(Item(f"fd/{row['id']}", row["question"], row["workbook_file"], row["domain"], row["kind"], "gold",
                               _fresh_loader(row["workbook_file"]),
+                              lambda rows, t=answer_type, g=gold: fresh_agree(t, fresh_answer(list(rows), t), g), None, []))
+    return items
+
+
+def fresh_frozen() -> list[Item]:
+    """The frozen twin (sets/fresh_frozen): the questions its review found right (verification.json "scored", 212 of
+    216), graded by the same rules as the dev set. Read once at a launch gate (regress/run_frozen.py, which reports
+    totals only) and never for development: nothing else loads it."""
+    verification = json.loads((FRESH_FROZEN / "verification.json").read_text(encoding="utf-8"))
+    if _sha256(FRESH_FROZEN / "questions.jsonl") != verification["questions_sha256"]:
+        raise RuntimeError("fresh_frozen/questions.jsonl is not the file its review verified")
+    scored = set(verification["scored"])
+    items = []
+    with open(FRESH_FROZEN / "questions.jsonl", encoding="utf-8") as source:
+        for line in source:
+            row = json.loads(line)
+            if row["id"] not in scored:
+                continue
+            answer_type, gold = row["answer_type"], row["gold"]
+            items.append(Item(f"ff/{row['id']}", row["question"], row["workbook_file"], row["domain"], row["kind"], "gold",
+                              _fresh_loader(row["workbook_file"], FRESH_FROZEN),
                               lambda rows, t=answer_type, g=gold: fresh_agree(t, fresh_answer(list(rows), t), g), None, []))
     return items
 

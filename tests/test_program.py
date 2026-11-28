@@ -1224,6 +1224,38 @@ def test_a_value_of_a_few_valued_number_column_is_named():
     assert _one(_answer(gold, tables)) == 2.0
 
 
+def test_a_year_beside_a_comma_is_read_and_is_a_value_of_a_long_year_column():
+    """"In calendar year 2020, what was the total amount paid out in benefit payments?" over a trust fund's line a year
+    since 1966 (fresh dev, 2026-11-28) held no condition on the year. Two causes. The word reader read no year a comma
+    or a full stop followed ("In fiscal year 2023, which ...": 26 of the 176 fresh dev questions), as a period or as a
+    number; a number's own comma or point still keeps its digits a number ("2,020", "2020.5"). And one year over a
+    column of year numbers was left to the column's values, which only a column of at most 30 numbers states: a longer
+    one now takes the year the question writes as its value, where it holds it."""
+    rows = [["Calendar Year", "Benefit payments"]] + [[float(1966 + i), 50000.5 + i] for i in range(60)]
+    catalog, table, tables = _setup(rows)
+    index = TableIndex(table)
+    assert index.year_columns == (0,) and 0 not in index.few_numbers, "sixty years: more than a few-valued column states"
+    year, paid = Col(table.id, 0), Col(table.id, 1)
+    for question in ("In calendar year 2020, what was the total amount paid out in benefit payments?",
+                     "What were benefit payments in calendar year 2020."):
+        reading = read_question(question, catalog, Decoder(catalog))
+        assert reading.scores.get(coordinate("period", "2020")) == 0.9, question
+        assert not any(name.startswith("number:") for name in reading.scores), "a year states no amount"
+    # the year the reading holds as a period, and nothing naming the column's value: the decoder builds the condition
+    gold = Show(table.id, (paid,), (Equals(year, 2020.0),))
+    assert _one(_answer(gold, tables)) in (50054.5, "50054.5")
+    stated = {name: 1.0 for name in coordinates(gold, catalog.column_kind) if not name.startswith("value:")}
+    assert gold in Decoder(catalog).enumerate(Reading({**stated, coordinate("period", "2020"): 0.9}), k=50)[0]
+    assert gold not in Decoder(catalog).enumerate(Reading(stated), k=50)[0], "no year read, no condition on it"
+    # a year the column does not hold is no value of it
+    absent = read_question("In calendar year 1950, what was the total amount paid out?", catalog, Decoder(catalog))
+    assert not any(isinstance(condition, Equals) and condition.value == 1950.0
+                   for program in Decoder(catalog).enumerate(absent, k=50)[0] for condition in getattr(program, "where", ()))
+    # a number's own comma or point is no sentence's: its digits are no year
+    for question in ("which line paid 2,020 dollars", "a rate of 2020.5 was paid when", "paid in fiscal 2020-21"):
+        assert coordinate("period", "2020") not in read_question(question, catalog, Decoder(catalog)).scores, question
+
+
 def test_a_number_condition_may_be_an_equality():
     """"Are there any foods with zero calories?", "teams with exactly 3 wins" (DataBench dev yes/no): a number column of
     many values held no equality, so a stated number could only bound it. Equality is a number condition (COMPARE_OPS; the
@@ -2469,6 +2501,7 @@ def test_explain_carries_the_named_contributions():
 
 
 TESTS = [
+    test_a_year_beside_a_comma_is_read_and_is_a_value_of_a_long_year_column,
     test_the_answer_says_yes_or_no_and_a_cell_as_the_sheet_writes_it,
     test_a_date_key_groups_by_its_month_or_year_to_rank_and_break_down, test_a_date_key_groups_by_its_month_of_any_year_named_as_the_column_writes_it, test_the_most_lines_in_a_row, test_a_measures_spread_is_its_highest_less_its_lowest, test_lines_are_taken_by_where_they_stand, test_lines_taken_by_place_answer_a_question_read_as_a_list, test_a_figure_of_lines_taken_by_place, test_a_median_and_a_standard_deviation, test_a_check_compares_how_many_different_values_with_a_stated_number, test_a_number_between_two_stated_numbers, test_a_text_column_of_figures_reads_each_figure_as_a_number, test_a_score_opening_with_a_mark_gets_the_mark_as_its_own_part, test_two_columns_under_one_header_read_alike_in_its_words, test_every_column_lists_every_line, test_an_exact_number_prints_alike_from_either_emitter, test_a_workbook_reads_its_values_within_a_token_bound, test_a_listing_of_values_no_line_holds, test_a_listing_of_several_columns_gives_their_distinct_combinations, test_tied_lines_print_in_sheet_order, test_a_fused_leaf_shows_its_answer_without_the_tie_order, test_a_rank_by_words_prints_the_word_counts, test_an_answer_prints_the_cell_as_the_sheet_wrote_it, test_a_column_of_prose_is_measured_by_its_words, test_several_shown_columns_cost_a_named_coordinate, test_a_stated_number_a_column_holds_reads_as_its_value, test_a_misspelled_word_reads_as_the_sheets_word, test_a_word_only_one_column_holds_says_which, test_several_columns_shown_type_the_same_however_they_stand, test_across_adds_peer_columns_of_a_line, test_the_decoder_reaches_across_when_a_word_asks, test_a_text_other_than, test_answer_types_place_money_quantity, test_decoder_ties_do_not_follow_sheet_order, test_a_family_adding_twice_says_so, test_a_family_of_tabs_reads_as_all_its_tabs, test_axes_are_read_by_their_kind, test_a_question_reads_the_tables_its_links_reach, test_verifier_stops_at_its_budget_of_lines, test_a_condition_search_stops_at_its_budget_of_checks, test_a_value_stands_whole_without_a_pattern_for_each_value,
     test_every_name_is_from_a_closed_list, test_forms_refuse_what_they_cannot_say, test_signs, test_printed_lines_are_read_by_label_and_never_added, test_shortest_label_first_and_unlabelled_printed_lines, test_a_column_filled_only_on_printed_lines_reads_them,

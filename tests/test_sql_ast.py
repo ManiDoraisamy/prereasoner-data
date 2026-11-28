@@ -2182,7 +2182,7 @@ EAST = 'SELECT SUM("Amount") AS "total amount" FROM "orders" WHERE "Region" = \'
 
 def test_an_answer_very_likely_wrong_is_served_at_once_and_owed_its_retry():
     """Owner, 2026-11-21: "never ask back unless the question is wrong". Below closed.T_ERR, or with "none of these"
-    likelier, the Decisions path decides nothing (compose and the search may answer it) and the answer is owed its
+    likelier, the Decisions path decides nothing (compose or a world join may answer it) and the answer is owed its
     retry (engine/retry.py): Gemini 4 Neon writes one SQLite query over typed copies of the request's tables, guarded
     and run read-only, and its rows are the answer, marked retried with its reason and query.
 
@@ -2488,8 +2488,30 @@ def sch_names(sch, table):
     return [column["name"] for column in sch if column["table"] == table]
 
 
+def test_the_guard_reads_keywords_outside_quoted_names_and_literals():
+    """The guard holds a query to one read-only SELECT. It read its forbidden keywords and statement ends in the whole
+    text, so the engine's own query over a column named "Deaths with COVID-19" or "Last update", or filtering by a
+    cell that holds a semicolon, was refused and the chosen answer served as the error "guard: forbidden keyword"
+    (fresh dev as served, 2026-11-28: 3 of 152 questions, each right in the replay, which runs no guard). A quoted
+    name or literal is data; what stands outside one is still held."""
+    from engine.tables import TableQuery, bare_sql
+
+    guard = TableQuery.guard
+    for sql in ("""SELECT "Deaths with COVID-19" FROM "t" WHERE "Last update" = 'replace; drop'""",
+                "SELECT 'it''s; with' AS \"create\" FROM [update] WHERE `delete` = 1",
+                "SELECT 1 /* with */ FROM t -- drop"):
+        assert guard(None, sql) == (True, "ok"), sql
+    assert bare_sql('SELECT "a ""with"" b" FROM t') == 'SELECT "" FROM t'
+    for sql, why in (("SELECT 1; DROP TABLE x", "multiple statements"), ("SELECT 'x' ; delete from t", "multiple statements"),
+                     ("SELECT 1 -- ' \n; DROP TABLE x --'", "multiple statements"),       # the quote sits in a comment
+                     ("WITH a AS (SELECT 1) SELECT * FROM a", "not a SELECT"), ("UPDATE t SET a = 1", "not a SELECT"),
+                     ("SELECT * FROM t WHERE a IN (SELECT 1) AND 1 = (replace)", "forbidden keyword"),
+                     ('SELECT "unclosed FROM t', "a quote or a comment never closes"), ("SELECT 1 /* open", "a quote or a comment never closes")):
+        assert guard(None, sql) == (False, why), (sql, guard(None, sql))
+
+
 def test_one_question_is_answered_once_per_request():
-    """The compose probe, the delegate and the hybrid search's check ask the one selection the same question in one
+    """The routing probe and the delegate ask the one selection the same question in one
     request: its Decisions calls are made once (engine/prepared.py RequestDatabase.answered). A new request asks again;
     the workbook's preparation is kept across requests (prepared_workbook)."""
     from engine.prepared import scratch_database
@@ -2572,6 +2594,7 @@ TESTS = [
     test_a_long_question_the_path_asks_back_asks_for_the_decomposition,
     test_the_decisions_paths_reading_certifies_its_calculation_but_a_conversion_it_could_not_make,
     test_the_store_shares_the_request_database_with_a_table_named_like_its_own,
+    test_the_guard_reads_keywords_outside_quoted_names_and_literals,
     test_one_question_is_answered_once_per_request,
     test_the_tab_in_view_is_the_requests_active_sheet,
     test_an_uploaded_sheets_grid_keeps_its_structure,

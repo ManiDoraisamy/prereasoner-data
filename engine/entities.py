@@ -266,10 +266,12 @@ class EntityQuery(RoutedQuery):
         return best if best[1] >= self.THRESH else None
 
     # ---- overrides ----
-    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=()):
+    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=(),
+              upload_alone=False):
         self._q_orig = question                      # original-case prompt for spaCy + bge (low_q is lowercased)
         return super().serve(tables, question, as_of=as_of,
-                             explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
+                             explicit_fks=explicit_fks, dataset_semantics=dataset_semantics,
+                             upload_alone=upload_alone)
 
     def _find_value(self, low_q, w, exact_only=False):
         """resolve a where value via embedding NN over the world `words` index for any ENTITY-typed filter attr;

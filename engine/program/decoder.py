@@ -623,6 +623,15 @@ class _Search:
             years = [span for span in periods if span.start is not None and span.end is not None and span.start[5:] == "01-01" and span.end[5:] == "12-31" and span.end[:4] > span.start[:4]]
             for position in index.year_columns:
                 out.extend(index.atom_of(InYears(Col(table.id, position), span), position) for span in years)
+            # One whole year over a column of year numbers is that column's value. A few-valued column names its numbers
+            # as values already; a longer one (a line a year since 1966) held no condition for "in calendar year 2020".
+            single = sorted({int(span.start[:4]) for span in periods if span.start is not None and span.end is not None
+                             and span.start[5:] == "01-01" and span.end[5:] == "12-31" and span.end[:4] == span.start[:4]})
+            for position in index.year_columns:
+                if position in index.few_numbers:
+                    continue
+                held = {number for number in table.numbers[position] if number is not None}
+                out.extend(index.atom_of(Equals(Col(table.id, position), float(year)), position) for year in single if float(year) in held)
         numbers = [float(name.split(":", 1)[1]) for name in self.positive(SLOT_NUMBER)]
         if numbers:
             # the comparisons the reading names, a range aside (it has its own atoms below); any of them when it names none
