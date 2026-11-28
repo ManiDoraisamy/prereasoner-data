@@ -25,6 +25,9 @@ assert.equal(WORKBOOK_IMPORT.normalize(merged,XLSX).csv,'id,amount\n1,2\n,3');
 const grouped=XLSX.utils.aoa_to_sheet([['Order','Amounts',null],['ID','Net','Tax'],[1,10,2]]);
 grouped['!merges']=[{s:{r:0,c:1},e:{r:0,c:2}}];
 assert.match(WORKBOOK_IMPORT.normalize(grouped,XLSX).csv,/"?ID"?,Amounts Net,Amounts Tax/);
+const yearly=XLSX.utils.aoa_to_sheet([['State',2024,null,2023,null],['Name','Mines','Production','Mines','Production'],['Alabama',18,14382,20,12043]]);
+yearly['!merges']=[{s:{r:0,c:1},e:{r:0,c:2}},{s:{r:0,c:3},e:{r:0,c:4}}];
+assert.equal(WORKBOOK_IMPORT.normalize(yearly,XLSX).csv.split('\n')[0],'Name,2024 Mines,2024 Production,2023 Mines,2023 Production');
 const fixtures=[['eval-formesign-assets-xls/assets.xls',3,4],['eval-neartail-supplier-report-xlsx/payments.xlsx',30,11],
   ['eval-formesign-procurement-xlsx/procurement.xlsx',1007,2]];
 for(const [file,rows,header] of fixtures){

@@ -86,8 +86,12 @@
       columns=columns.map((name,i)=>{
         const c=keep[i];
         const merge=merges.find(m=>m.s.r===absolute&&m.e.r===absolute&&m.s.c<=c+bounds.s.c&&m.e.c>=c+bounds.s.c);
-        const group=merge&&parent[merge.s.c-bounds.s.c];
-        return text(group)&&group.trim()!==name?group.trim()+' '+name:name;
+        // A year printed over its columns ("2024" merged over "Number of Mines" and "Production") names them as a
+        // word does: left out, the two years' columns were told apart only by their letters, and no question
+        // about a year could be read (the EIA's coal production by state, 2026-11-28).
+        const over=merge&&parent[merge.s.c-bounds.s.c];
+        const group=text(over)?over.trim():typeof over==='number'&&Number.isFinite(over)?String(over):'';
+        return group&&group!==name?group+' '+name:name;
       });
     }
     columns=columns.map(name=>name.replace(/[\uD800-\uDFFF]/gu,'\uFFFD'));
