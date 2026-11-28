@@ -2099,11 +2099,17 @@ def test_knowledge_delegate_preserves_shared_plan_execution_evidence():
         world_target=lambda *args: None,
         _debug_input=lambda *args: {},
     )
+    adapter._serve_upload = lambda *args: KnowledgeTableQuery._serve_upload(adapter, *args)
     response = KnowledgeTableQuery.serve(
         adapter, [], "total amount", as_of="2026-09-10"
     )
     assert response["views"] is raw["views"]
     assert response["deterministic"] is raw["deterministic"]
+    # told that the reader's reading takes nothing from the world, the adapter looks for no place or world column
+    # in the question's words and serves the same answer (engine.routing.upload_answers_alone)
+    adapter.meaning_filter = adapter.world_target = None
+    alone = KnowledgeTableQuery.serve(adapter, [], "total amount", as_of="2026-09-10", upload_alone=True)
+    assert alone["views"] is raw["views"] and alone["deterministic"] is raw["deterministic"]
     assert (
         enforce_execution_response(response, "verify")["execution"]["verified"] is True
     )
