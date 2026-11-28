@@ -10,6 +10,49 @@ new hashes. A record archived before then may cite a commit by its earlier hash:
 `prereasoner-scratch/purge-20261124/old_to_new.txt` in the archive maps each one.
 
 
+## Release a71d6cc8 (no word list before the reader; "very likely correct" from 0.95; the chat prompt quotes no gate question; two importer fixes) live; Chrome gate 77 of 78 existing and 102 of 102 fresh (2026-11-28)
+
+- **What is live.** Engine `prereasoner-api-00376-jej` (`engine@sha256:c717a0ad...`, built from 8ef59459 by Cloud
+  Build 281e8a32: build, offline regression gate, runtime server smoke, live product suite), tag `nogate`, health
+  ok, the release smoke job ok (execution n2fmw), 100% of traffic from 2026-11-28 17:10 UTC, both engine jobs on
+  the image. Chat `prereasoner-chat-00251-rer` (`chat@sha256:a8b7d7f2...`, built from a71d6cc8 by Cloud Build
+  47868a3a), tag `nogate`, 100%. Hosting from a71d6cc8, live 17:11 UTC. The engine's source is the same at
+  8ef59459 and a71d6cc8: the two commits between them change a test and the web importer. Rollback: engine
+  `prereasoner-api-00374-fiv`, chat `prereasoner-chat-00249-kog`, by name.
+- **What changed** (d557ecd4, 70abd9e7, a71d6cc8; `DECISIONS.md`, 2026-11-28).
+  - The coverage pre-gate, an English intent-word list asked before any reading, is removed with its
+    `low_confidence` reply and stream. As served it had turned away none of 355 dev questions.
+  - `T_SURE` 0.90 -> 0.95. On dev's 896 the four marks now read: very likely correct 237 answers, 230 right
+    (97.0%); likely correct 492, 441 right (89.6%); likely wrong 97, 51 right (52.6%); very likely wrong 70, 19
+    right. No answer changes: the references differ from the last kept ones only in the level of the 161 answers
+    between 0.90 and 0.95, and the demo set is at parity.
+  - `T_FLAG` was measured and left at 0.575. Cut at 0.50 (replay `marks-1128`) the answers marked "likely wrong"
+    fall from 97 (46 wrong, 47%) to 46 (24 wrong, 52%), and the wrong answers served with no warning rise from 58
+    to 80 of 896 (6.5% to 8.9%): 22 more unwarned wrong answers for a label true by two points. By set, unwarned
+    wrong at 0.575 and at 0.50: WikiTableQuestions 25 and 35, DataBench 17 and 21, fresh dev 14 and 19, messy 2
+    and 5. The label's words are still not true as cut; which matters more is the owner's to say.
+  - The chat prompt's seven examples that were gate questions or their expected rewrites are replaced by invented
+    ones of the same shape; `tests.test_orchestrator_unit` now holds that no five-word run of a shipped dataset's
+    question stands in the prompt (it says so and is not verified in the chat image's build, whose context holds no
+    dataset; the first chat build failed on exactly that, and c1b7202a fixed the test).
+  - The similarity search answers only a question filtering by a world place; a world route's answer of no rows
+    gives way to the upload's marked answer; the unreadable-measure refusal names a column only where the sheet
+    compiler names one.
+  - The importer (every client's): a year merged over the header's columns is their label ("2024 Production", where
+    it was "Production [column C]"), and a line naming its columns by years across is a header (the NSF's
+    doctorates by field had none, and every column a letter). Each changes one of fresh dev's 35 xlsx workbooks and
+    none of the nine shipped demo workbooks.
+- **Before the build.** Hermetic `tests.run_all` passes (the two suites that failed the first run did so on a
+  database reached by direct address and on prompt assertions this change had to update); the twelve live suites
+  pass through the database proxy (`test_world` 87 of 87, `test_geo` 73 of 73, `test_question_families` 34 of 34,
+  `test_complex_datasets` 6 of 6, `test_pg_deadline_live` 4 of 4, the rest by exit status); the release browser
+  journey passes 87 of 87; the web and add-on node tests pass.
+- **Chrome gate** on the deployed site (Claude in Chrome on the owner's account, the in-page controller; no
+  recording run beside it; harness, captures and notes in `prereasoner-scratch/gate-a71d6cc8/`). Existing
+  conversations (the 24 of d3284c08's fresh pass): 77 of 78. Fresh pass on the 24 datasets, the six uploads among
+  them: 102 of 102. Marks on the fresh pass: 42 very likely correct, 17 likely correct, 1 a question back, 42 none (d3284c08: 52 and 7; the ten moved are the answers between 0.90 and 0.95). The question box was open at every timed turn's end (71 of 71 and 61 of 61). Asking to the turn's end, fresh pass: median 4.5 s (d3284c08 5.05 s), p90 9.0 s; own-data answers 5.1 -> 4.2 s (47), conversions 4.15 -> 4.3 s (16), other world or composed answers 6.5 -> 6.9 s (14). The existing pass's miss is the known one (customer-orders "in GBP for the whole of Europe?" after an average). Two fresh answers took 36 and 60 s with no recording run on the machine, so the three slow answers of d3284c08's gate cannot be laid on the replay that ran beside it: a few answers in a hundred stall half a minute or more, cause not found. The engine tags `reader1st` and `stands` were removed after the gate.
+
+
 ## What clients send is not what the evaluations read: every client sends the browser importer's flat CSV of each worksheet; on fresh dev the engine's first answer is right on 136 of 176 given the whole workbook, 134 as the Sheets sidebar sends it, 110 as a web upload, which refuses 8 of 27 xlsx workbooks (2026-11-28)
 
 - **The finding.** The web upload, the Google Sheets sidebar and the Excel task pane all run
